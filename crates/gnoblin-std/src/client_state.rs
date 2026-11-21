@@ -11,13 +11,15 @@
 //! client.set_frame_inset(FrameInset { top: 30.0, ..FrameInset::NONE })?;
 //! client.set_min_size(Some((320.0, 200.0)))?;
 //! ```
-#![allow(unsafe_code)]
 
 use gnoblin_core::Rect;
-use gnoblin_std_abi::{self as abi, GnoblinStdClientState, GnoblinStdRect};
+use gnoblin_core_abi as abi_core;
+use gnoblin_object as go;
+use gnoblin_object::typed::ToVal;
 
 use crate::client::Client;
 use crate::error::Result;
+use crate::objects as classes;
 
 /// The room a window's frame takes on each side of its content, in logical pixels. Every side is 0 or more. The frame a layout places
 /// is the content with this much added on each side.
@@ -75,26 +77,25 @@ pub enum SnapZone {
 }
 
 impl SnapZone {
-    fn raw(self) -> u32 {
+    fn class(self) -> classes::SnapZone {
         match self {
-            SnapZone::Left => abi::STD_SNAP_LEFT,
-            SnapZone::Right => abi::STD_SNAP_RIGHT,
-            SnapZone::Top => abi::STD_SNAP_TOP,
+            SnapZone::Left => classes::SnapZone::Left,
+            SnapZone::Right => classes::SnapZone::Right,
+            SnapZone::Top => classes::SnapZone::Top,
         }
     }
 
-    fn from_raw(raw: u32) -> Option<SnapZone> {
-        match raw {
-            abi::STD_SNAP_LEFT => Some(SnapZone::Left),
-            abi::STD_SNAP_RIGHT => Some(SnapZone::Right),
-            abi::STD_SNAP_TOP => Some(SnapZone::Top),
-            _ => None,
+    fn from_class(zone: classes::SnapZone) -> SnapZone {
+        match zone {
+            classes::SnapZone::Left => SnapZone::Left,
+            classes::SnapZone::Right => SnapZone::Right,
+            classes::SnapZone::Top => SnapZone::Top,
         }
     }
 }
 
-fn rect_out(rect: Rect) -> GnoblinStdRect {
-    GnoblinStdRect {
+fn rect_out(rect: Rect) -> classes::LayoutRect {
+    classes::LayoutRect {
         x: rect.x,
         y: rect.y,
         width: rect.width,
@@ -102,45 +103,23 @@ fn rect_out(rect: Rect) -> GnoblinStdRect {
     }
 }
 
-fn rect_in(raw: &GnoblinStdRect) -> Rect {
-    Rect::new(raw.x, raw.y, raw.width, raw.height)
+fn rect_in(rect: &classes::LayoutRect) -> Rect {
+    Rect::new(rect.x, rect.y, rect.width, rect.height)
 }
 
 impl Client {
-    /// The library's record of the client, as the table hands it over.
-    fn raw_state(&self) -> Result<GnoblinStdClientState> {
-        let mut raw = GnoblinStdClientState {
-            size: size_of::<GnoblinStdClientState>() as u32,
-            flags: 0,
-            inset_top: 0.0,
-            inset_right: 0.0,
-            inset_bottom: 0.0,
-            inset_left: 0.0,
-            min_width: 0.0,
-            min_height: 0.0,
-            max_width: 0.0,
-            max_height: 0.0,
-            floating: rect_out(Rect::default()),
-            snap_zone: 0,
-            reserved: 0,
-            snap_floating: rect_out(Rect::default()),
-            fitted_top: 0.0,
-            fitted_right: 0.0,
-            fitted_bottom: 0.0,
-            fitted_left: 0.0,
-        };
-        let std = self.std();
-        // SAFETY: `client_state` fills the struct it is given up to the `size` the caller set; `raw` is a live local.
-        std.check(unsafe { (std.api().client_state)(std.ctx(), self.window().id().0, &mut raw) })?;
-        Ok(raw)
+    /// The library's record of the client: the class `client_state` of the client's node.
+    pub(crate) fn state(&self) -> Result<classes::ClientState> {
+        let objects = self.std().objects()?;
+        Ok(classes::ClientState::of(&objects, &self.window().id().0.to_string())?)
     }
 
-    /// Writes `raw`'s inset, limits and floating rectangle.
-    fn put_state(&self, raw: &GnoblinStdClientState) -> Result<()> {
-        let std = self.std();
-        // SAFETY: `client_set_state` reads the struct it is given up to its `size`; `raw` is a live borrow.
-        std.check(unsafe { (std.api().client_set_state)(std.ctx(), self.window().id().0, raw) })
-            .map(|_| ())
+    /// Writes the property `name` of the record, which clears it when `value` is none: the typed setters take a value only.
+    fn put(&self, name: &str, value: go::Val) -> Result<()> {
+        let state = self.state()?;
+        let api = self.std().objects()?.api();
+        let member = api.member(state.handle().class(), abi_core::MEMBER_PROPERTY, name)?;
+        Ok(api.set(state.handle().handle(), member, &value)?)
     }
 
     /// The room the client's frame takes round its content. [`FrameInset::NONE`] until a frame provider says otherwise.
@@ -149,12 +128,12 @@ impl Client {
     ///
     /// The window is not a client of the compositor, or the generation retired.
     pub fn frame_inset(&self) -> Result<FrameInset> {
-        let raw = self.raw_state()?;
+        let inset = self.state()?.inset()?.unwrap_or_default();
         Ok(FrameInset {
-            top: raw.inset_top,
-            right: raw.inset_right,
-            bottom: raw.inset_bottom,
-            left: raw.inset_left,
+            top: inset.top,
+            right: inset.right,
+            bottom: inset.bottom,
+            left: inset.left,
         })
     }
 
@@ -165,12 +144,12 @@ impl Client {
     ///
     /// A side is negative or not finite, the window is not a client, or the generation retired.
     pub fn set_frame_inset(&self, inset: FrameInset) -> Result<()> {
-        let mut raw = self.raw_state()?;
-        raw.inset_top = inset.top;
-        raw.inset_right = inset.right;
-        raw.inset_bottom = inset.bottom;
-        raw.inset_left = inset.left;
-        self.put_state(&raw)
+        Ok(self.state()?.set_inset(&classes::FrameInset {
+            top: inset.top,
+            right: inset.right,
+            bottom: inset.bottom,
+            left: inset.left,
+        })?)
     }
 
     /// The least size, `(width, height)`, a resize leaves the client, when one was set.
@@ -179,8 +158,7 @@ impl Client {
     ///
     /// The window is not a client of the compositor, or the generation retired.
     pub fn min_size(&self) -> Result<Option<(f64, f64)>> {
-        let raw = self.raw_state()?;
-        Ok((raw.flags & abi::STD_CLIENT_HAS_MIN != 0).then_some((raw.min_width, raw.min_height)))
+        Ok(self.state()?.min_size()?.map(|size| (size.width, size.height)))
     }
 
     /// Sets, or with `None` clears, the least size a resize leaves the client.
@@ -189,13 +167,7 @@ impl Client {
     ///
     /// The size is not finite, the window is not a client, or the generation retired.
     pub fn set_min_size(&self, size: Option<(f64, f64)>) -> Result<()> {
-        let mut raw = self.raw_state()?;
-        raw.flags &= !abi::STD_CLIENT_HAS_MIN;
-        (raw.min_width, raw.min_height) = size.unwrap_or((0.0, 0.0));
-        if size.is_some() {
-            raw.flags |= abi::STD_CLIENT_HAS_MIN;
-        }
-        self.put_state(&raw)
+        self.put("min_size", size_val(size))
     }
 
     /// The most a resize makes the client, `(width, height)`, when a limit was set.
@@ -204,8 +176,7 @@ impl Client {
     ///
     /// The window is not a client of the compositor, or the generation retired.
     pub fn max_size(&self) -> Result<Option<(f64, f64)>> {
-        let raw = self.raw_state()?;
-        Ok((raw.flags & abi::STD_CLIENT_HAS_MAX != 0).then_some((raw.max_width, raw.max_height)))
+        Ok(self.state()?.max_size()?.map(|size| (size.width, size.height)))
     }
 
     /// Sets, or with `None` clears, the most a resize makes the client.
@@ -214,13 +185,7 @@ impl Client {
     ///
     /// The size is not finite, the window is not a client, or the generation retired.
     pub fn set_max_size(&self, size: Option<(f64, f64)>) -> Result<()> {
-        let mut raw = self.raw_state()?;
-        raw.flags &= !abi::STD_CLIENT_HAS_MAX;
-        (raw.max_width, raw.max_height) = size.unwrap_or((0.0, 0.0));
-        if size.is_some() {
-            raw.flags |= abi::STD_CLIENT_HAS_MAX;
-        }
-        self.put_state(&raw)
+        self.put("max_size", size_val(size))
     }
 
     /// The rectangle the client floats at, when one was kept: the pointer bindings keep it after a move or a resize.
@@ -229,8 +194,7 @@ impl Client {
     ///
     /// The window is not a client of the compositor, or the generation retired.
     pub fn floating_bounds(&self) -> Result<Option<Rect>> {
-        let raw = self.raw_state()?;
-        Ok((raw.flags & abi::STD_CLIENT_HAS_FLOATING != 0).then(|| rect_in(&raw.floating)))
+        Ok(self.state()?.floating_bounds()?.map(|bounds| rect_in(&bounds)))
     }
 
     /// Keeps, or with `None` forgets, the rectangle the client floats at.
@@ -239,13 +203,10 @@ impl Client {
     ///
     /// The rectangle is not finite, the window is not a client, or the generation retired.
     pub fn set_floating_bounds(&self, bounds: Option<Rect>) -> Result<()> {
-        let mut raw = self.raw_state()?;
-        raw.flags &= !abi::STD_CLIENT_HAS_FLOATING;
-        raw.floating = rect_out(bounds.unwrap_or_default());
-        if bounds.is_some() {
-            raw.flags |= abi::STD_CLIENT_HAS_FLOATING;
-        }
-        self.put_state(&raw)
+        self.put(
+            "floating_bounds",
+            bounds.map_or(go::Val::None, |bounds| ToVal::to_val(&rect_out(bounds))),
+        )
     }
 
     /// The zone the client is snapped to, if it is.
@@ -254,7 +215,7 @@ impl Client {
     ///
     /// The window is not a client of the compositor, or the generation retired.
     pub fn snapped_zone(&self) -> Result<Option<SnapZone>> {
-        Ok(SnapZone::from_raw(self.raw_state()?.snap_zone))
+        Ok(self.state()?.snap()?.map(|snap| SnapZone::from_class(snap.zone)))
     }
 
     /// Tiles the client to `zone` of `area`, less its frame, when `edge_tiling` is on (the seat's `edge_tiling`): `true` when it
@@ -266,19 +227,9 @@ impl Client {
     ///
     /// The window is not a client of the compositor, or the generation retired.
     pub fn snap(&self, zone: SnapZone, area: Rect, edge_tiling: bool) -> Result<bool> {
-        let std = self.std();
-        let raw = rect_out(area);
-        // SAFETY: `client_snap` reads the rectangle it is given for the call; `raw` is a live local.
-        let snapped = std.check(unsafe {
-            (std.api().client_snap)(
-                std.ctx(),
-                self.window().id().0,
-                zone.raw(),
-                &raw,
-                u32::from(edge_tiling),
-            )
-        })?;
-        Ok(snapped == 1)
+        Ok(self
+            .state()?
+            .snap_to(zone.class(), &rect_out(area), Some(edge_tiling))?)
     }
 
     /// Puts a snapped client back where it floated: `false` when it was not snapped.
@@ -287,7 +238,7 @@ impl Client {
     ///
     /// The window is not a client of the compositor, or the generation retired.
     pub fn unsnap(&self) -> Result<bool> {
-        self.unsnap_with(false)
+        Ok(self.state()?.unsnap()?)
     }
 
     /// Ends the snapped state without moving the client, for a client the user is about to drag somewhere else: `false` when it was
@@ -297,16 +248,15 @@ impl Client {
     ///
     /// The window is not a client of the compositor, or the generation retired.
     pub fn forget_snap(&self) -> Result<bool> {
-        self.unsnap_with(true)
+        Ok(self.state()?.forget_snap()?)
     }
+}
 
-    fn unsnap_with(&self, forget: bool) -> Result<bool> {
-        let std = self.std();
-        // SAFETY: `client_unsnap` takes the context, a window id and a flag.
-        let was =
-            std.check(unsafe { (std.api().client_unsnap)(std.ctx(), self.window().id().0, u32::from(forget)) })?;
-        Ok(was == 1)
-    }
+/// A size limit as the value of its property: none clears it.
+fn size_val(size: Option<(f64, f64)>) -> go::Val {
+    size.map_or(go::Val::None, |(width, height)| {
+        ToVal::to_val(&classes::SizeLimit { width, height })
+    })
 }
 
 #[cfg(test)]

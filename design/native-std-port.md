@@ -2143,17 +2143,20 @@ and writing the property for it would change 94 recorded files. The test is
 `the_workspace_the_primary_output_shows_is_the_seats_active_workspace` (`tests/style.rs`, over the fake compositor), and
 `modular::native_objects` reads the seat's `active_workspace` from the real compositor's tree in a real session, in all three languages. What a
 client of `ext_workspace_manager_v1` sees of that property is `crates/protocols/ext-workspace-v1/tests` (`the_shells_active_workspace_is_the_active_one`,
-with a stand-in shell writing the same property); no single test joins the two ends, which would need a Wayland client that binds the manager in
-the modular suite (it has none yet). (4) The typed `gnoblin_std::objects` API of these classes is generated (`std_api.rs`); example 26 and `shell-objects` use it. The hand-written
-`gnoblin-std/src/{workspace,collection,client_state,desktop,layout,layouts,split}.rs` still call the std table and are not yet generated or moved
-onto the objects (their names do not change when they are).
+with a stand-in shell writing the same property); `modular::native_workspaces` joins the two ends: a stock client of `ext_workspace_manager_v1` on the
+privileged socket is told which workspace is active, as the shell shows `main` and then `side`. (4) The typed `gnoblin_std::objects` API of these classes is
+generated (`std_api.rs`), and the hand-written `gnoblin-std/src/{workspace,collection,client,client_state,desktop,layout,builtin,split}.rs` call it: a
+`Workspace` holds the `workspace` object, a `Collection<Client>` the `client_collection` (the events of a client's own properties come from the core's
+`client_collection` listener, filtered to the members), the list of workspaces is the `workspaces` service, a shell's `Layout` is an object made from
+`LayoutHandlers`, and a library layout is made, read and acted on by name from `LAYOUT_KINDS`. The names the examples use do not change. Three things stay on the
+table: `Collection<Output>` (NpStdDisplay's), `Std::ring`, and the table handle that `Collection<Client>::style()` needs, which `raw_id` finds again.
+A selection of clients takes the keys of `client_query`. Example 34 and `modular::native_workspaces` (Rust and Python) make two workspaces, give the
+first each layout of the library and one of the shell's own, and drag a divider with a pointer binding of the core.
 
-**Exact remaining items of the replay.** (a) The nine binding fixtures (`binding_priority`, `directed_gesture`, `dwindle_drag`, `gesture_cancel_on_close`,
-`pointer_move_resize`, `resize_limits`, `snap`, `split_resize_drag`, `tile_swap`) need the binding classes (NpStdPolicy, NpCoreInput). (b)
-`examples_tiling_layouts` needs `shell-layouts` over the classes with a swap binding (a); `examples_floating_placement` needs the example 2 shell over
-the classes (`workspaces`, `desks.workspaces` policy, `client_collection.added`); `anim_style_transitions` needs `shell-anim` over the classes
-(workspaces and layouts of the transition scenarios, today made through the table, allowance 11 of the style replay). (c) The gate for the
-`ext-workspace` change in a real session (above).
+**The replay.** The nine binding fixtures (`binding_priority`, `directed_gesture`, `dwindle_drag`, `gesture_cancel_on_close`, `pointer_move_resize`,
+`resize_limits`, `snap`, `split_resize_drag`, `tile_swap`) use the std bindings and stay with NpStdPolicy. `examples_tiling_layouts`,
+`examples_floating_placement` and `anim_style_transitions` are replayed by `tests/examples.rs` and `tests/anim_style.rs`, whose shells use the prelude and
+so run on the classes; the layouts fixture is replayed from Python too (`crates/gnoblin-runtime-python/tests/shells.rs`).
 
 #### NpStdDisplay (4 days)
 

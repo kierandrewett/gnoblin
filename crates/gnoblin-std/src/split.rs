@@ -4,14 +4,13 @@
 //! with the [`Split`] a drag that pressed a client at a point would move. A [`Divider`] says how the pointer's travel maps to a ratio:
 //! dragging `span` pixels along its [`SplitAxis`] moves `ratio` by one, in the direction `direction` says, and the layout holds the ratio to
 //! `min` and `max`. The [`SplitResizeBinding`](crate::SplitResizeBinding) is the drag that drives one.
-#![allow(unsafe_code)]
 
 use gnoblin_core::NodeId;
-use gnoblin_std_abi::{self as abi, GnoblinStdSplit};
 
 use crate::bindings::Point;
 use crate::client::AsClient;
 use crate::error::Result;
+use crate::objects as classes;
 use crate::workspace::Workspace;
 
 /// The pointer axis that carries a divider.
@@ -63,50 +62,47 @@ pub struct Split {
     pub cross: Option<Divider>,
 }
 
-fn axis_of(raw: u32) -> SplitAxis {
-    if raw == abi::STD_AXIS_Y {
-        SplitAxis::Y
-    } else {
-        SplitAxis::X
+fn axis_of(axis: classes::SplitAxis) -> SplitAxis {
+    match axis {
+        classes::SplitAxis::Horizontal => SplitAxis::X,
+        classes::SplitAxis::Vertical => SplitAxis::Y,
     }
 }
 
-fn raw_axis(axis: SplitAxis) -> u32 {
+fn class_axis(axis: SplitAxis) -> classes::SplitAxis {
     match axis {
-        SplitAxis::X => abi::STD_AXIS_X,
-        SplitAxis::Y => abi::STD_AXIS_Y,
+        SplitAxis::X => classes::SplitAxis::Horizontal,
+        SplitAxis::Y => classes::SplitAxis::Vertical,
     }
 }
 
 impl Split {
-    /// The table's description of this split.
-    pub(crate) fn to_raw(self) -> GnoblinStdSplit {
+    /// The class's description of this split.
+    pub(crate) fn to_class(self) -> classes::LayoutSplit {
         let cross = self.cross;
-        GnoblinStdSplit {
-            size: size_of::<GnoblinStdSplit>() as u32,
-            flags: if cross.is_some() { abi::STD_SPLIT_CROSS } else { 0 },
+        classes::LayoutSplit {
             token: self.token,
-            axis: raw_axis(self.divider.axis),
+            axis: class_axis(self.divider.axis),
             direction: if self.divider.direction < 0.0 { -1 } else { 1 },
             span: self.divider.span,
             min: self.divider.min,
             max: self.divider.max,
             ratio: self.divider.ratio,
-            cross_axis: cross.map_or(0, |c| raw_axis(c.axis)),
+            cross_axis: cross.map(|c| class_axis(c.axis)),
             cross_direction: cross.map_or(1, |c| if c.direction < 0.0 { -1 } else { 1 }),
-            cross_span: cross.map_or(0.0, |c| c.span),
+            cross_span: cross.map_or(1.0, |c| c.span),
             cross_min: cross.map_or(0.0, |c| c.min),
-            cross_max: cross.map_or(0.0, |c| c.max),
-            cross_ratio: cross.map_or(0.0, |c| c.ratio),
+            cross_max: cross.map_or(1.0, |c| c.max),
+            cross_ratio: cross.map_or(0.5, |c| c.ratio),
         }
     }
 
-    /// A split from the table's description.
-    fn from_raw(raw: &GnoblinStdSplit) -> Split {
-        let divider = |axis: u32, direction: i32, span: f64, min: f64, max: f64, ratio: f64| Divider {
+    /// A split from the class's description.
+    fn from_class(raw: &classes::LayoutSplit) -> Split {
+        let divider = |axis: classes::SplitAxis, direction: i64, span: f64, min: f64, max: f64, ratio: f64| Divider {
             axis: axis_of(axis),
             span,
-            direction: f64::from(direction.signum()),
+            direction: direction.signum() as f64,
             min,
             max,
             ratio,
@@ -114,9 +110,9 @@ impl Split {
         Split {
             token: raw.token,
             divider: divider(raw.axis, raw.direction, raw.span, raw.min, raw.max, raw.ratio),
-            cross: (raw.flags & abi::STD_SPLIT_CROSS != 0).then(|| {
+            cross: raw.cross_axis.map(|axis| {
                 divider(
-                    raw.cross_axis,
+                    axis,
                     raw.cross_direction,
                     raw.cross_span,
                     raw.cross_min,
@@ -136,25 +132,11 @@ impl Workspace {
     ///
     /// The workspace is gone, or the generation retired.
     pub fn find_split(&self, client: impl AsClient, at: Point) -> Result<Option<Split>> {
-        let std = self.std();
-        let mut raw = Split {
-            token: 0,
-            divider: Divider {
-                axis: SplitAxis::X,
-                span: 1.0,
-                direction: 1.0,
-                min: 0.0,
-                max: 1.0,
-                ratio: 0.0,
-            },
-            cross: None,
-        }
-        .to_raw();
         let NodeId(id) = client.client_id();
-        // SAFETY: `workspace_find_split` fills the struct it is given up to its `size`; `raw` is a live local.
-        let found =
-            std.check(unsafe { (std.api().workspace_find_split)(std.ctx(), self.raw(), id, at.x, at.y, &mut raw) })?;
-        Ok((found == 1).then(|| Split::from_raw(&raw)))
+        Ok(self
+            .object()
+            .find_split(&id.to_string(), at.x, at.y)?
+            .map(|split| Split::from_class(&split)))
     }
 
     /// Moves the dividers of `split` (the drag the layout named by its token) to `ratio` and, when it has a second one, `cross_ratio`.
@@ -164,11 +146,7 @@ impl Workspace {
     ///
     /// The workspace is gone, a ratio is not finite, or the generation retired.
     pub fn set_split(&self, split: &Split, ratio: f64, cross_ratio: Option<f64>) -> Result<()> {
-        let std = self.std();
-        let cross = cross_ratio.unwrap_or(f64::NAN);
-        // SAFETY: `workspace_set_split` takes the context, a workspace handle, a token and two numbers.
-        std.check(unsafe { (std.api().workspace_set_split)(std.ctx(), self.raw(), split.token, ratio, cross) })
-            .map(|_| ())
+        Ok(self.object().set_split(split.token, ratio, cross_ratio)?)
     }
 
     /// Puts the dividers of `split` back as they were when the layout returned them: a drag that was cancelled.
@@ -177,9 +155,6 @@ impl Workspace {
     ///
     /// The workspace is gone, or the generation retired.
     pub fn reset_split(&self, split: &Split) -> Result<()> {
-        let std = self.std();
-        // SAFETY: `workspace_reset_split` takes the context, a workspace handle and a token.
-        std.check(unsafe { (std.api().workspace_reset_split)(std.ctx(), self.raw(), split.token) })
-            .map(|_| ())
+        Ok(self.object().reset_split(split.token)?)
     }
 }

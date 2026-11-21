@@ -10,12 +10,10 @@
 use gnoblin_core::{ErrorKind, NodeId, Rect, Window};
 
 use crate::api::Std;
-use crate::collection::{Collection, Member};
+use crate::collection::{Member, listen_one};
 use crate::error::{Error, Result};
-use crate::query::Query;
 use crate::subscription::Subscription;
 use crate::workspace::Workspace;
-use gnoblin_std_abi as abi;
 
 /// How the compositor answers a window's frame callbacks: see [`Client::set_frame_policy`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -243,11 +241,10 @@ impl Client {
     ///
     /// The window is not a client of the compositor, or the generation retired.
     pub fn workspace(&self) -> Result<Option<Workspace>> {
-        let mut workspace = 0;
-        // SAFETY: `client_workspace` writes one handle through the pointer it is given, a live local.
-        self.std
-            .check(unsafe { (self.std.api().client_workspace)(self.std.ctx(), self.window.id().0, &mut workspace) })?;
-        Ok((workspace != 0).then(|| Workspace::from_handle(&self.std, workspace)))
+        Ok(self
+            .state()?
+            .workspace()?
+            .map(|object| Workspace::from_object(&self.std, object)))
     }
 
     /// Moves the client to `workspace`: `true` when it moved, `false` when it was refused (the client is fullscreen, a dialog, already
@@ -257,11 +254,7 @@ impl Client {
     ///
     /// The window is not a client of the compositor, or the generation retired.
     pub fn move_to_workspace(&self, workspace: &Workspace) -> Result<bool> {
-        // SAFETY: `client_move_to_workspace` takes the context, a window id and a workspace handle.
-        let moved = self.std.check(unsafe {
-            (self.std.api().client_move_to_workspace)(self.std.ctx(), self.window.id().0, workspace.raw())
-        })?;
-        Ok(moved == 1)
+        Ok(self.state()?.move_to_workspace(workspace.object())?)
     }
 
     /// Whether the shell marked the client floating: a layout leaves it where it is.
@@ -270,11 +263,7 @@ impl Client {
     ///
     /// The window is not a client of the compositor, or the generation retired.
     pub fn is_floating(&self) -> Result<bool> {
-        // SAFETY: `client_is_floating` takes the context and a window id.
-        let floating = self
-            .std
-            .check(unsafe { (self.std.api().client_is_floating)(self.std.ctx(), self.window.id().0) })?;
-        Ok(floating == 1)
+        Ok(self.state()?.floating()?)
     }
 
     /// Marks the client floating, or tiled again: a layout leaves a floating client where it is.
@@ -283,17 +272,7 @@ impl Client {
     ///
     /// The window is not a client of the compositor, or the generation retired.
     pub fn set_floating(&self, floating: bool) -> Result<()> {
-        // SAFETY: `client_set_floating` takes the context, a window id and a flag.
-        self.std
-            .check(unsafe {
-                (self.std.api().client_set_floating)(self.std.ctx(), self.window.id().0, u32::from(floating))
-            })
-            .map(|_| ())
-    }
-
-    /// A live selection that holds only this client, which the `on_*` methods of a client listen through.
-    fn alone(&self) -> Result<Collection<Client>> {
-        Collection::<Client>::root(&self.std)?.where_(&Query::new().is("id", self.window.id().0.to_string()))
+        Ok(self.state()?.set_floating(floating)?)
     }
 
     /// Calls `f` with this client's new title when it changes.
@@ -305,7 +284,16 @@ impl Client {
     where
         F: FnMut(&Client, &str) + 'static,
     {
-        self.alone()?.on_title_changed(move |client, title| f(client, title))
+        listen_one(&self.std, self.window.id().0, move |handlers, filter, std| {
+            handlers.on_title_changed = Some(Box::new(move |client, title| {
+                if let Some(id) = client.id().ok().filter(|id| filter(id, false))
+                    && let Some(client) = id.parse().ok().and_then(|raw| Client::from_raw_id(&std, raw))
+                {
+                    f(&client, &title);
+                }
+                Ok(())
+            }));
+        })
     }
 
     /// Calls `f` with `true` when this client gains the keyboard and `false` when it loses it.
@@ -317,8 +305,16 @@ impl Client {
     where
         F: FnMut(&Client, bool) + 'static,
     {
-        self.alone()?
-            .on_focus_changed(move |client, focused| f(client, focused))
+        listen_one(&self.std, self.window.id().0, move |handlers, filter, std| {
+            handlers.on_focus_changed = Some(Box::new(move |client, focused| {
+                if let Some(id) = client.id().ok().filter(|id| filter(id, false))
+                    && let Some(client) = id.parse().ok().and_then(|raw| Client::from_raw_id(&std, raw))
+                {
+                    f(&client, focused);
+                }
+                Ok(())
+            }));
+        })
     }
 
     /// Calls `f` when this client's window closes.
@@ -330,19 +326,22 @@ impl Client {
     where
         F: FnMut(&Client) + 'static,
     {
-        self.alone()?.on_closed(move |client| f(client))
+        listen_one(&self.std, self.window.id().0, move |handlers, filter, std| {
+            handlers.on_closed = Some(Box::new(move |client| {
+                if let Some(id) = client.id().ok().filter(|id| filter(id, true))
+                    && let Some(client) = id.parse().ok().and_then(|raw| Client::from_raw_id(&std, raw))
+                {
+                    f(&client);
+                }
+                Ok(())
+            }));
+        })
     }
 }
 
 impl Member for Client {
-    const KIND: u32 = abi::STD_COLLECTION_CLIENTS;
-
-    fn from_raw(std: &Std, raw: u64) -> Option<Client> {
-        Client::from_raw_id(std, raw)
-    }
-
-    fn raw(&self) -> u64 {
-        self.window.id().0
+    fn from_key(std: &Std, key: &str) -> Option<Client> {
+        Client::from_raw_id(std, key.parse().ok()?)
     }
 
     fn key(&self) -> String {

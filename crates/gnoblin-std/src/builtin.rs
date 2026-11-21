@@ -7,7 +7,11 @@
 #![allow(unsafe_code)]
 
 use gnoblin_core::Rect;
-use gnoblin_core_abi::GnoblinStr;
+use gnoblin_core_abi::{self as abi_core, GnoblinStr};
+use gnoblin_object as go;
+use gnoblin_object::client::Api;
+use gnoblin_object::typed::FromVal;
+use gnoblin_std_abi::layouts::{LAYOUT_KINDS, LayoutKindDesc, ValueDesc, ValueShape};
 use gnoblin_std_abi::{
     GnoblinStdOption, GnoblinStdRect, GnoblinStdRingSlot, STD_VALUE_BOOL, STD_VALUE_ENUM, STD_VALUE_NODE,
     STD_VALUE_NONE, STD_VALUE_NUMBER, STD_VALUE_TEXT,
@@ -15,6 +19,7 @@ use gnoblin_std_abi::{
 
 use crate::api::Std;
 use crate::error::{Error, ErrorKind, Result};
+use crate::objects::{self as classes, Objects};
 use crate::workspace::Workspace;
 
 /// One value of a built-in layout's or binding's option, argument or answer.
@@ -72,16 +77,6 @@ impl LayoutValue {
         raw
     }
 
-    fn from_record(raw: &GnoblinStdOption) -> LayoutValue {
-        match raw.kind {
-            STD_VALUE_BOOL => LayoutValue::Bool(raw.flag != 0),
-            STD_VALUE_NUMBER => LayoutValue::Number(raw.number),
-            STD_VALUE_ENUM => LayoutValue::Enum(raw.number as u32),
-            STD_VALUE_NODE => LayoutValue::Node(raw.node),
-            _ => LayoutValue::None,
-        }
-    }
-
     /// The number, when it is one.
     pub fn number(&self) -> Option<f64> {
         match self {
@@ -118,20 +113,102 @@ impl BuiltinLayout {
     }
 }
 
+/// The kind of built-in layout `kind` (a `STD_BUILTIN_*` number) names.
+fn kind_desc(kind: u32) -> Result<&'static LayoutKindDesc> {
+    LAYOUT_KINDS.iter().find(|desc| desc.id == kind).ok_or_else(|| {
+        Error::new(
+            ErrorKind::NoSuchMember,
+            format!("no built-in layout has the number {kind}"),
+        )
+    })
+}
+
+/// The class of a built-in kind.
+fn class_of_kind(api: Api, desc: &LayoutKindDesc) -> Result<go::ClassId> {
+    Ok(api.class(&format!("{}_layout", desc.name))?)
+}
+
+/// A value of the class protocol for an option, argument or answer described by `desc`.
+fn val_of(desc: &ValueDesc, value: &LayoutValue) -> Result<go::Val> {
+    let wrong = || Error::new(ErrorKind::Type, "a value of the wrong kind for the option");
+    Ok(match value {
+        LayoutValue::None => go::Val::None,
+        LayoutValue::Bool(flag) => go::Val::Bool(*flag),
+        LayoutValue::Number(number) => match desc.ty {
+            ValueShape::Int => go::Val::Int(*number as i64),
+            ValueShape::Number => go::Val::Double(*number),
+            _ => return Err(wrong()),
+        },
+        LayoutValue::Enum(member) => go::Val::Enum {
+            class: 0,
+            value: member + 1,
+        },
+        LayoutValue::Node(node) => go::Val::Text(node.to_string()),
+        LayoutValue::Text(text) => go::Val::Text(text.clone()),
+    })
+}
+
+/// What the class protocol answered, as a [`LayoutValue`].
+fn value_of(desc: &ValueDesc, val: &go::Val) -> LayoutValue {
+    match (val, &desc.ty) {
+        (go::Val::Bool(flag), _) => LayoutValue::Bool(*flag),
+        (go::Val::Int(number), _) => LayoutValue::Number(*number as f64),
+        (go::Val::Uint(number), _) => LayoutValue::Number(*number as f64),
+        (go::Val::Double(number), _) => LayoutValue::Number(*number),
+        (go::Val::Enum { value, .. }, _) => LayoutValue::Enum(value.saturating_sub(1)),
+        (go::Val::Text(text), ValueShape::Node) => text.parse().map_or(LayoutValue::None, LayoutValue::Node),
+        (go::Val::Text(text), _) => LayoutValue::Text(text.clone()),
+        (go::Val::Node(node), _) => LayoutValue::Node(*node),
+        _ => LayoutValue::None,
+    }
+}
+
+impl BuiltinLayout {
+    /// The layout as an object of its class, which a workspace takes.
+    pub(crate) fn make(&self, objects: &Objects) -> Result<classes::Layout> {
+        let api = objects.api();
+        let desc = kind_desc(self.kind)?;
+        let class = class_of_kind(api, desc)?;
+        let mut inits = Vec::new();
+        for (name, value) in &self.options {
+            let option = desc.options.iter().find(|option| option.name == *name).ok_or_else(|| {
+                Error::new(
+                    ErrorKind::NoSuchMember,
+                    format!("the {} layout has no option `{name}`", desc.name),
+                )
+            })?;
+            inits.push((
+                api.member(class, abi_core::MEMBER_PROPERTY, name)?,
+                val_of(&option.value, value)?,
+            ));
+        }
+        let object = go::client::Object::create(api, class, &inits)?;
+        // The layout value takes over the reference this object holds.
+        let layout = <classes::Layout as FromVal<Objects>>::from_val(objects, &object.val())?;
+        std::mem::forget(object);
+        Ok(layout)
+    }
+}
+
 impl Workspace {
-    /// Gives the workspace the built-in layout `kind`, with the options set (the library's defaults for the rest).
-    ///
-    /// # Errors
-    ///
-    /// The kind or an option is unknown, a value has the wrong type or is out of range, or the generation retired.
-    pub(crate) fn install_builtin(&self, layout: &BuiltinLayout) -> Result<()> {
-        let records: Vec<GnoblinStdOption> = layout.options.iter().map(|(name, value)| value.record(name)).collect();
-        let std = self.std();
-        // SAFETY: the records and the names they borrow are live for the call; the library copies what it keeps.
-        std.check(unsafe {
-            (std.api().workspace_set_layout_kind)(std.ctx(), self.raw(), layout.kind, records.as_ptr(), records.len())
-        })
-        .map(|_| ())
+    /// The built-in layout the workspace has, its kind and its object.
+    fn builtin(&self) -> Result<(&'static LayoutKindDesc, go::Obj, go::ClassId)> {
+        let objects = self.std().objects()?;
+        let api = objects.api();
+        let layout = self
+            .object()
+            .layout()?
+            .ok_or_else(|| Error::new(ErrorKind::Refused, "the workspace has no layout"))?;
+        let class = api.class_of(layout.handle().handle())?;
+        for desc in LAYOUT_KINDS {
+            if class_of_kind(api, desc)? == class {
+                return Ok((desc, layout.handle().handle(), class));
+            }
+        }
+        Err(Error::new(
+            ErrorKind::Refused,
+            "the workspace's layout is not a built-in one",
+        ))
     }
 
     /// The `STD_BUILTIN_*` kind of the workspace's layout, or `None` for the floating layout and a layout of the shell's own.
@@ -140,11 +217,7 @@ impl Workspace {
     ///
     /// The workspace is gone, or the generation retired.
     pub fn layout_kind(&self) -> Result<Option<u32>> {
-        let std = self.std();
-        let mut kind = 0;
-        // SAFETY: `workspace_layout_kind` writes one number to the pointer it is given.
-        std.check(unsafe { (std.api().workspace_layout_kind)(std.ctx(), self.raw(), &mut kind) })?;
-        Ok((kind != 0).then_some(kind))
+        Ok(self.builtin().ok().map(|(desc, ..)| desc.id))
     }
 
     /// Changes one option of the workspace's built-in layout: the tree it keeps is kept, and the workspace computes again.
@@ -154,11 +227,16 @@ impl Workspace {
     /// The layout is not a built-in one, the option is unknown, the value has the wrong type or is out of range, or the generation
     /// retired.
     pub fn set_layout_option(&self, name: &str, value: LayoutValue) -> Result<()> {
-        let record = value.record(name);
-        let std = self.std();
-        // SAFETY: the record and the name it borrows are live for the call.
-        std.check(unsafe { (std.api().workspace_layout_set)(std.ctx(), self.raw(), &record) })
-            .map(|_| ())
+        let (desc, obj, class) = self.builtin()?;
+        let api = self.std().objects()?.api();
+        let option = desc.options.iter().find(|option| option.name == name).ok_or_else(|| {
+            Error::new(
+                ErrorKind::NoSuchMember,
+                format!("the {} layout has no option `{name}`", desc.name),
+            )
+        })?;
+        let member = api.member(class, abi_core::MEMBER_PROPERTY, name)?;
+        Ok(api.set(obj, member, &val_of(&option.value, &value)?)?)
     }
 
     /// One option of the workspace's built-in layout.
@@ -167,13 +245,16 @@ impl Workspace {
     ///
     /// The layout is not a built-in one, the option is unknown, or the generation retired.
     pub fn layout_option(&self, name: &str) -> Result<LayoutValue> {
-        let std = self.std();
-        let mut out = LayoutValue::None.record("");
-        // SAFETY: `workspace_layout_get` reads `name.len()` bytes and fills the record it is given up to its size.
-        std.check(unsafe {
-            (std.api().workspace_layout_get)(std.ctx(), self.raw(), name.as_ptr(), name.len(), &mut out)
+        let (desc, obj, class) = self.builtin()?;
+        let api = self.std().objects()?.api();
+        let option = desc.options.iter().find(|option| option.name == name).ok_or_else(|| {
+            Error::new(
+                ErrorKind::NoSuchMember,
+                format!("the {} layout has no option `{name}`", desc.name),
+            )
         })?;
-        Ok(LayoutValue::from_record(&out))
+        let member = api.member(class, abi_core::MEMBER_PROPERTY, name)?;
+        Ok(value_of(&option.value, &api.get(obj, member)?))
     }
 
     /// Runs an action of the workspace's built-in layout and returns what it answers ([`LayoutValue::None`] when it answers nothing).
@@ -184,22 +265,33 @@ impl Workspace {
     /// The layout is not a built-in one, the action is unknown, an argument is missing, of the wrong type or out of range, or the
     /// generation retired.
     pub fn layout_act(&self, action: &str, args: &[(&str, LayoutValue)]) -> Result<LayoutValue> {
-        let records: Vec<GnoblinStdOption> = args.iter().map(|(name, value)| value.record(name)).collect();
-        let std = self.std();
-        let mut out = LayoutValue::None.record("");
-        // SAFETY: the records, the names they borrow and `action` are live for the call; `out` is filled up to its size.
-        std.check(unsafe {
-            (std.api().workspace_layout_act)(
-                std.ctx(),
-                self.raw(),
-                action.as_ptr(),
-                action.len(),
-                records.as_ptr(),
-                records.len(),
-                &mut out,
+        let (desc, obj, class) = self.builtin()?;
+        let api = self.std().objects()?.api();
+        let act = desc.actions.iter().find(|act| act.name == action).ok_or_else(|| {
+            Error::new(
+                ErrorKind::NoSuchMember,
+                format!("the {} layout has no action `{action}`", desc.name),
             )
         })?;
-        Ok(LayoutValue::from_record(&out))
+        let answer = |val: &go::Val| {
+            act.returns
+                .as_ref()
+                .map_or(LayoutValue::None, |returns| value_of(returns, val))
+        };
+        if act.is_reading() {
+            let member = api.member(class, abi_core::MEMBER_PROPERTY, action)?;
+            return Ok(answer(&api.get(obj, member)?));
+        }
+        let mut given = Vec::with_capacity(act.args.len());
+        for arg in act.args {
+            let value = args.iter().find(|(name, _)| *name == arg.name).map(|(_, value)| value);
+            given.push(match value {
+                Some(value) => val_of(&arg.value, value)?,
+                None => go::Val::None,
+            });
+        }
+        let member = api.member(class, abi_core::MEMBER_METHOD, action)?;
+        Ok(answer(&api.call(obj, member, &given)?))
     }
 }
 
@@ -316,15 +408,22 @@ mod tests {
     use gnoblin_std_abi::layouts::{LAYOUT_KINDS, ValueShape};
 
     #[test]
-    fn every_value_round_trips_through_its_record() {
-        for value in [
-            LayoutValue::None,
-            LayoutValue::Bool(true),
-            LayoutValue::Number(2.5),
-            LayoutValue::Enum(3),
-            LayoutValue::Node(9),
+    fn every_value_round_trips_through_the_class_protocol() {
+        use gnoblin_std_abi::layouts::LowerBound;
+        let desc = |ty| ValueDesc {
+            ty,
+            optional: true,
+            min: LowerBound::Free,
+        };
+        for (shape, value) in [
+            (ValueShape::Bool, LayoutValue::Bool(true)),
+            (ValueShape::Number, LayoutValue::Number(2.5)),
+            (ValueShape::Enum(&[]), LayoutValue::Enum(3)),
+            (ValueShape::Node, LayoutValue::Node(9)),
+            (ValueShape::Number, LayoutValue::None),
         ] {
-            assert_eq!(LayoutValue::from_record(&value.record("x")), value);
+            let desc = desc(shape);
+            assert_eq!(value_of(&desc, &val_of(&desc, &value).expect("a value")), value);
         }
     }
 

@@ -118,11 +118,7 @@ impl Output {
     ///
     /// The generation retired.
     pub fn workspace(&self) -> Result<Option<Workspace>> {
-        let mut workspace = 0;
-        // SAFETY: `output_workspace` writes one handle through the pointer it is given, a live local.
-        self.std
-            .check(unsafe { (self.std.api().output_workspace)(self.std.ctx(), self.node.id().0, &mut workspace) })?;
-        Ok((workspace != 0).then(|| Workspace::from_handle(&self.std, workspace)))
+        Workspace::of_output(&self.std, self.node.id().0)
     }
 
     /// Shows `workspace` on this output (see [`Workspace::show_on`]).

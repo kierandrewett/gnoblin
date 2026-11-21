@@ -1,16 +1,13 @@
 //! The desktop as a whole: the root collections, and the policies that decide how outputs share workspaces.
-#![allow(unsafe_code)]
 
 use gnoblin_core::{Gnoblin, Window};
-use gnoblin_core_abi::GnoblinStr;
-use gnoblin_std_abi as abi;
-use gnoblin_std_abi::{GnoblinStdOutputPolicy, GnoblinStdWorkspacePolicy};
 
 use crate::api::Std;
 use crate::client::Client;
 use crate::collection::Collection;
 use crate::error::Result;
-use crate::layout::{FloatingLayout, RawLayout};
+use crate::layout::FloatingLayout;
+use crate::objects as classes;
 use crate::output::Output;
 use crate::workspace::Workspace;
 
@@ -92,7 +89,7 @@ impl Std {
     ///
     /// The generation retired.
     pub fn clients(&self) -> Result<Collection<Client>> {
-        Collection::root(self)
+        Collection::all(self)
     }
 
     /// Every connected output.
@@ -110,7 +107,7 @@ impl Std {
     ///
     /// The generation retired.
     pub fn workspaces(&self) -> Result<Collection<Workspace>> {
-        Collection::root(self)
+        Collection::list(self)
     }
 
     /// The client of a core window.
@@ -125,20 +122,15 @@ impl Std {
     /// The generation retired.
     pub fn set_output_policy(&self, policy: OutputPolicy) -> Result<()> {
         let (mode, lead) = match &policy {
-            OutputPolicy::Separate => (abi::STD_OUTPUTS_SEPARATE, 0),
-            OutputPolicy::Duplicate { lead } => {
-                (abi::STD_OUTPUTS_DUPLICATE, lead.as_ref().map_or(0, |lead| lead.id().0))
-            }
-            OutputPolicy::Extend { lead } => (abi::STD_OUTPUTS_EXTEND, lead.as_ref().map_or(0, |lead| lead.id().0)),
+            OutputPolicy::Separate => (classes::OutputPolicyMode::Separate, None),
+            OutputPolicy::Duplicate { lead } => (
+                classes::OutputPolicyMode::Duplicate,
+                lead.as_ref().map(|lead| lead.id().0),
+            ),
+            OutputPolicy::Extend { lead } => (classes::OutputPolicyMode::Extend, lead.as_ref().map(|lead| lead.id().0)),
         };
-        let raw = GnoblinStdOutputPolicy {
-            size: size_of::<GnoblinStdOutputPolicy>() as u32,
-            mode,
-            lead,
-        };
-        // SAFETY: `policy_outputs` reads the struct for the call.
-        self.check(unsafe { (self.api().policy_outputs)(self.ctx(), &raw) })
-            .map(|_| ())
+        let desks = classes::Desks::get(&self.objects()?)?;
+        Ok(desks.set_outputs(&classes::OutputPolicy { mode, lead })?)
     }
 
     /// Sets where workspaces come from.
@@ -148,21 +140,20 @@ impl Std {
     /// The generation retired, or a gap is not a finite number of at least 0.
     pub fn set_workspace_policy(&self, policy: WorkspacePolicy) -> Result<()> {
         let (mode, per_output) = match policy {
-            WorkspacePolicy::Manual => (abi::STD_WORKSPACES_MANUAL, PerOutput::default()),
-            WorkspacePolicy::PerOutput(options) => (abi::STD_WORKSPACES_PER_OUTPUT, options),
+            WorkspacePolicy::Manual => (classes::WorkspacePolicyMode::Manual, PerOutput::default()),
+            WorkspacePolicy::PerOutput(options) => (classes::WorkspacePolicyMode::PerOutput, options),
         };
-        let layout = RawLayout::new(per_output.layout, self);
-        let raw = GnoblinStdWorkspacePolicy {
-            size: size_of::<GnoblinStdWorkspacePolicy>() as u32,
+        let desks = classes::Desks::get(&self.objects()?)?;
+        Ok(desks.set_workspaces(&classes::WorkspacePolicy {
             mode,
-            name_prefix: GnoblinStr::borrowed(&per_output.prefix),
-            gap_inner: per_output.gaps.0,
-            gap_outer: per_output.gaps.1,
-            layout: layout.spec(),
-        };
-        // SAFETY: `policy_workspaces` reads the struct, the prefix and the (floating) layout spec for the call and adopts nothing.
-        self.check(unsafe { (self.api().policy_workspaces)(self.ctx(), &raw) })
-            .map(|_| ())
+            name_prefix: per_output.prefix.clone(),
+            gaps: Some(classes::Gaps {
+                inner: per_output.gaps.0,
+                outer: per_output.gaps.1,
+            }),
+            placement: per_output.layout.place_mode(),
+            cascade_step: per_output.layout.cascade_step_value(),
+        })?)
     }
 
     /// One floating workspace for every output: adds one now for each output there is, and one more for each that appears.

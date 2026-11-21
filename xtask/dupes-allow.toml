@@ -3255,3 +3255,45 @@ left = "gnoblin-core-impl::FingerSample"
 right = "gnoblin-std-impl::GestureSample"
 kind = "same-shape"
 reason = "the core's gesture matcher and the std library's own matcher both keep what the fingers have done since the begin; the std one goes when the std binds through the core's matcher, and std does not depend on the core's implementation crate"
+
+[[allow]]
+left = "gnoblin-example-native-workspaces::Columns"
+right = "gnoblin-example-rust-layout::Columns"
+kind = "same-name"
+reason = "each example's own equal-columns layout; an example stands alone and names no other example"
+
+[[allow]]
+left = "gnoblin-example-native-workspaces::Columns"
+right = "gnoblin-std::Columns"
+kind = "same-name"
+reason = "the example's layout of equal columns is not the grid's column count of the library"
+
+[[allow]]
+left = "gnoblin-example-native-workspaces::Held"
+right = "gnoblin-service-privacy::Held"
+kind = "same-name"
+reason = "the divider drag an example holds is not a privacy hold"
+
+[[allow]]
+left = "gnoblin-input-eis::Origin"
+right = "gnoblin-std::Origin"
+kind = "same-name"
+reason = "where a collection of clients comes from is not where an input event came from"
+
+[[allow]]
+left = "gnoblin-output::Source"
+right = "gnoblin-std::Source"
+kind = "same-name"
+reason = "what backs a collection is not what an output mode comes from"
+
+[[allow]]
+left = "gnoblin-shell-discovery::Source"
+right = "gnoblin-std::Source"
+kind = "same-name"
+reason = "what backs a collection is not a discovery tier"
+
+[[allow]]
+left = "gnoblin-std::Source"
+right = "gnoblin-std-impl::Source"
+kind = "same-name"
+reason = "the SDK's backing of a collection and the library's own scene, collection and menu sources are different things on the two sides of the ABI"

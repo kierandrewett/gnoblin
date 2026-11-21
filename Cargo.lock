@@ -1647,6 +1647,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-example-native-workspaces"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
+]
+
+[[package]]
 name = "gnoblin-example-no-workspaces"
 version = "0.2.0-alpha.0"
 dependencies = [

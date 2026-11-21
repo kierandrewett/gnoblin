@@ -264,7 +264,12 @@ fn normalise(run: Run) -> Run {
         steps: run
             .steps
             .into_iter()
-            .map(|(name, lines)| (name, lines.iter().map(|line| rename(line)).collect()))
+            // The library writes the seat's `active_workspace` for a shell that makes workspaces through the classes, which the shell of
+            // this scenario now does; the TypeScript run has no such write (allowance of the replay).
+            .map(|(name, lines)| {
+                let kept = lines.iter().filter(|line| !line.contains(" key=active_workspace "));
+                (name, kept.map(|line| rename(line)).collect())
+            })
             .collect(),
         // The TypeScript query names the key `appId` where the native one names it `app_id`: the origin of a style layer shows it.
         log: run

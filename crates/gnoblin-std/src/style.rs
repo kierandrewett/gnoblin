@@ -670,6 +670,6 @@ impl Collection<Client> {
     ///
     /// The generation retired.
     pub fn style(&self) -> Result<Style> {
-        Style::scope(self.std_ref(), abi::STD_STYLE_SCOPE_COLLECTION, self.raw_id())
+        Style::scope(self.std_ref(), abi::STD_STYLE_SCOPE_COLLECTION, self.raw_id()?)
     }
 }

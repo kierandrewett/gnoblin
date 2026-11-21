@@ -5,8 +5,8 @@
 //! language's layouts behave alike); a layout answers with where each tiled window goes.
 //!
 //! Two kinds exist. [`FloatingLayout`] is the library's own: a window is placed once when it joins and is left where the user puts it.
-//! Anything that implements [`Layout`] is a layout of the shell's: the SDK hands the library a table of C functions that call the
-//! trait object (the same table a scripting runtime fills with closures), so the library's pass cannot tell them apart.
+//! Anything that implements [`Layout`] is a layout of the shell's: the SDK makes an object of the interface `layout` whose handlers call
+//! the trait object (the same interface a scripting runtime fills with closures), so the library's pass cannot tell them apart.
 //!
 //! ```ignore
 //! struct Columns;
@@ -24,23 +24,20 @@
 //!
 //! What a layout may do inside [`Layout::compute`] is read the context and answer. It runs outside any lock of the library, so it may
 //! call back into the SDK (to ask for another pass with [`Workspace::invalidate`], say).
-#![allow(unsafe_code)]
 
-use core::ffi::c_void;
 use std::cell::RefCell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::rc::Rc;
 
-use gnoblin_core::{NodeId, Rect};
-use gnoblin_core_abi as core_abi;
-use gnoblin_std_abi::{
-    self as abi, GnoblinStdLayoutContext, GnoblinStdLayoutSpec, GnoblinStdLayoutVtable, GnoblinStdPlacement,
-    GnoblinStdRect,
-};
+use gnoblin_core::Rect;
+use gnoblin_object as go;
 
 use crate::api::Std;
 use crate::bindings::Point;
 use crate::builtin::BuiltinLayout;
 use crate::client::Client;
+use crate::error::Result;
+use crate::objects as classes;
 use crate::split::Split;
 use crate::workspace::Workspace;
 
@@ -93,15 +90,15 @@ impl FloatingLayout {
         self
     }
 
-    pub(crate) fn raw_placement(&self) -> u32 {
+    pub(crate) fn place_mode(&self) -> classes::PlaceMode {
         match self.placement {
-            FloatPlacement::Smart => abi::STD_PLACE_SMART,
-            FloatPlacement::Center => abi::STD_PLACE_CENTER,
-            FloatPlacement::Cascade => abi::STD_PLACE_CASCADE,
+            FloatPlacement::Smart => classes::PlaceMode::Smart,
+            FloatPlacement::Center => classes::PlaceMode::Center,
+            FloatPlacement::Cascade => classes::PlaceMode::Cascade,
         }
     }
 
-    pub(crate) fn raw_step(&self) -> f64 {
+    pub(crate) fn cascade_step_value(&self) -> f64 {
         self.cascade_step
     }
 }
@@ -342,315 +339,154 @@ impl<L: Layout> IntoLayout for L {
     }
 }
 
-// ---- the table the library calls ---------------------------------------------------------------------------------------------
+// ---- the classes ----------------------------------------------------------------------------------------------------------------
 
-/// A layout of the shell's behind the library's `user` pointer.
-struct Boxed {
-    std: Std,
-    layout: RefCell<Box<dyn Layout>>,
+fn rect_of(rect: &classes::LayoutRect) -> Rect {
+    Rect::new(rect.x, rect.y, rect.width, rect.height)
 }
 
-fn rect_of(raw: &GnoblinStdRect) -> Rect {
-    Rect::new(raw.x, raw.y, raw.width, raw.height)
+fn rect_out(rect: Rect) -> classes::LayoutRect {
+    classes::LayoutRect {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+    }
+}
+
+/// The client a text id names.
+fn client_of(std: &Std, id: &str) -> go::Res<Client> {
+    id.parse()
+        .ok()
+        .and_then(|raw| Client::from_raw_id(std, raw))
+        .ok_or_else(|| go::Fail::type_error(format!("`{id}` is not a client's id")))
 }
 
 /// The context the library passed, as the shell's type.
-///
-/// # Safety
-///
-/// `cx` must be a valid pointer to the context of a running `compute` or hook, whose `children` are valid for it.
-unsafe fn context(std: &Std, cx: &GnoblinStdLayoutContext) -> LayoutContext {
-    let children = if cx.children.is_null() || cx.n_children == 0 {
-        &[]
-    } else {
-        // SAFETY: the library lends `n_children` ids at `children` until the call returns.
-        unsafe { std::slice::from_raw_parts(cx.children, cx.n_children) }
-    };
-    let client = |id: u64| Client::new(std, std.gnoblin().window_handle(NodeId(id)));
-    LayoutContext {
-        workspace: Workspace::from_handle(std, cx.workspace),
-        children: children.iter().map(|id| client(*id)).collect(),
+fn context(std: &Std, cx: &classes::LayoutContext) -> go::Res<LayoutContext> {
+    Ok(LayoutContext {
+        workspace: Workspace::of_id(std, &cx.workspace).map_err(|error| go::Fail::err(error.to_string()))?,
+        children: cx
+            .children
+            .iter()
+            .map(|id| client_of(std, id))
+            .collect::<go::Res<Vec<_>>>()?,
         area: rect_of(&cx.area),
-        gap_inner: cx.gap_inner,
-        gap_outer: cx.gap_outer,
-        focused: (cx.focused != 0).then(|| client(cx.focused)),
+        gap_inner: cx.inner_gap,
+        gap_outer: cx.outer_gap,
+        focused: cx.focused.as_deref().map(|id| client_of(std, id)).transpose()?,
+    })
+}
+
+/// A placement as the class's record.
+fn placement_out(placement: &Placement) -> classes::LayoutPlacement {
+    classes::LayoutPlacement {
+        node: placement.client.window().id().0.to_string(),
+        bounds: placement.bounds.map(rect_out),
+        visible: placement.visible,
+        tiled: placement.tiled,
+        z: placement.z,
+        rotation: Some(placement.rotation.to_vec()),
+        scale: Some(placement.scale.to_vec()),
+        offset_x: placement.offset.map(|(x, _)| x),
+        offset_y: placement.offset.map(|(_, y)| y),
     }
 }
 
-unsafe extern "C" fn compute_tramp(user: *mut c_void, cx: *const GnoblinStdLayoutContext) -> i32 {
-    // SAFETY: `user` is the `Boxed` leaked by `RawLayout`; the library passes it back unchanged on the shell thread and frees it only
-    // through `drop_boxed`, after the layout is replaced or the generation retires.
-    let boxed = unsafe { &*user.cast::<Boxed>() };
-    // SAFETY: the library passes a context valid until this call returns, or null.
-    let Some(cx) = (unsafe { cx.as_ref() }) else {
-        return core_abi::E_ERR;
+/// Runs a hook of the shell's layout. A panic in it is the library's error, not the process's.
+fn guarded<R>(work: impl FnOnce() -> R) -> go::Res<R> {
+    catch_unwind(AssertUnwindSafe(work)).map_err(|_| go::Fail::err("the layout panicked"))
+}
+
+/// The hooks of a layout of the shell's, as the class's handlers. The hooks the trait has a default for are given always, as the
+/// library's pass calls them whether or not the shell defined them; `client_removed` only when the layout hands the keyboard on itself.
+fn handlers(std: &Std, layout: Box<dyn Layout>, removal: bool) -> classes::LayoutHandlers {
+    let shared = Rc::new(RefCell::new(layout));
+    let compute = {
+        let (layout, std) = (Rc::clone(&shared), std.clone());
+        Box::new(move |cx: classes::LayoutContext| {
+            let context = context(&std, &cx)?;
+            let placements = guarded(|| layout.borrow_mut().compute(&context))?;
+            Ok(placements.iter().map(placement_out).collect())
+        })
     };
-    let outcome = catch_unwind(AssertUnwindSafe(|| {
-        // SAFETY: `cx` is the library's context for this call.
-        let context = unsafe { context(&boxed.std, cx) };
-        let placements = boxed.layout.borrow_mut().compute(&context);
-        for placement in &placements {
-            let mut flags = 0;
-            if placement.bounds.is_some() {
-                flags |= abi::STD_PLACEMENT_BOUNDS;
-            }
-            if !placement.visible {
-                flags |= abi::STD_PLACEMENT_HIDDEN;
-            }
-            if placement.tiled {
-                flags |= abi::STD_PLACEMENT_TILED;
-            }
-            if placement.offset.is_some() {
-                flags |= abi::STD_PLACEMENT_OFFSET;
-            }
-            let bounds = placement.bounds.unwrap_or_default();
-            let (offset_x, offset_y) = placement.offset.unwrap_or_default();
-            let raw = GnoblinStdPlacement {
-                size: size_of::<GnoblinStdPlacement>() as u32,
-                flags,
-                node: placement.client.window().id().0,
-                bounds: GnoblinStdRect {
-                    x: bounds.x,
-                    y: bounds.y,
-                    width: bounds.width,
-                    height: bounds.height,
-                },
-                z: placement.z,
-                rotation_x: placement.rotation[0],
-                rotation_y: placement.rotation[1],
-                rotation_z: placement.rotation[2],
-                scale_x: placement.scale[0],
-                scale_y: placement.scale[1],
-                scale_z: placement.scale[2],
-                offset_x,
-                offset_y,
-            };
-            // SAFETY: `emit` and `sink` are the library's for this `compute` call; `raw` is a live local.
-            let code = unsafe { (cx.emit)(cx.sink, &raw) };
-            if code != core_abi::E_OK {
-                return code;
-            }
+    let client_added = {
+        let (layout, std) = (Rc::clone(&shared), std.clone());
+        Box::new(move |cx: classes::LayoutContext, id: String| {
+            let (context, client) = (context(&std, &cx)?, client_of(&std, &id)?);
+            guarded(|| layout.borrow_mut().client_added(&client, &context))
+        }) as Box<dyn FnMut(classes::LayoutContext, String) -> go::Res<()>>
+    };
+    let client_removed = removal.then(|| {
+        let (layout, std) = (Rc::clone(&shared), std.clone());
+        Box::new(move |cx: classes::LayoutContext, id: String| {
+            let (context, client) = (context(&std, &cx)?, client_of(&std, &id)?);
+            guarded(|| layout.borrow_mut().client_removed(&client, &context))
+        }) as Box<dyn FnMut(classes::LayoutContext, String) -> go::Res<()>>
+    });
+    let area_changed = {
+        let layout = Rc::clone(&shared);
+        Box::new(move |old: classes::LayoutRect, new: classes::LayoutRect| {
+            guarded(|| layout.borrow_mut().area_changed(rect_of(&old), rect_of(&new)))
+        })
+    };
+    let clients_swapped = {
+        let (layout, std) = (Rc::clone(&shared), std.clone());
+        Box::new(move |a: String, b: String| {
+            let (a, b) = (client_of(&std, &a)?, client_of(&std, &b)?);
+            guarded(|| layout.borrow_mut().clients_swapped(&a, &b))
+        })
+    };
+    let revision = {
+        let layout = Rc::clone(&shared);
+        Box::new(move || guarded(|| layout.borrow().revision()))
+    };
+    let find_split = {
+        let (layout, std) = (Rc::clone(&shared), std.clone());
+        Box::new(move |id: String, x: f64, y: f64| {
+            let client = client_of(&std, &id)?;
+            let found = guarded(|| layout.borrow_mut().find_split(&client, Point { x, y }))?;
+            Ok(found.map(|split| split.to_class()).into_iter().collect())
+        })
+    };
+    let move_split = {
+        let layout = Rc::clone(&shared);
+        Box::new(move |token: u64, ratio: f64, cross: Option<f64>| {
+            guarded(|| layout.borrow_mut().set_split(token, ratio, cross))
+        })
+    };
+    let reset_split = {
+        let layout = shared;
+        Box::new(move |token: u64| guarded(|| layout.borrow_mut().reset_split(token)))
+    };
+    classes::LayoutHandlers {
+        compute,
+        client_added: Some(client_added),
+        client_removed,
+        area_changed: Some(area_changed),
+        clients_swapped: Some(clients_swapped),
+        revision: Some(revision),
+        find_split: Some(find_split),
+        move_split: Some(move_split),
+        reset_split: Some(reset_split),
+    }
+}
+
+/// A layout as the object a workspace takes.
+pub(crate) fn make(std: &Std, spec: LayoutSpec) -> Result<classes::Layout> {
+    let objects = std.objects()?;
+    match spec {
+        LayoutSpec::Floating(floating) => {
+            let layout = classes::FloatingLayout::new(&objects)?;
+            layout.set_placement(floating.place_mode())?;
+            layout.set_cascade_step(floating.cascade_step_value())?;
+            // The layout value takes over the reference the class object holds.
+            let taken =
+                <classes::Layout as go::typed::FromVal<classes::Objects>>::from_val(&objects, &layout.handle().val())?;
+            std::mem::forget(layout);
+            Ok(taken)
         }
-        core_abi::E_OK
-    }));
-    outcome.unwrap_or(core_abi::E_PANIC)
-}
-
-unsafe extern "C" fn client_added_tramp(user: *mut c_void, cx: *const GnoblinStdLayoutContext, client: u64) {
-    // SAFETY: as for `compute_tramp`.
-    let (Some(boxed), Some(cx)) = (unsafe { user.cast::<Boxed>().as_ref() }, unsafe { cx.as_ref() }) else {
-        return;
-    };
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        // SAFETY: `cx` is the library's context for this call.
-        let context = unsafe { context(&boxed.std, cx) };
-        let client = Client::new(&boxed.std, boxed.std.gnoblin().window_handle(NodeId(client)));
-        boxed.layout.borrow_mut().client_added(&client, &context);
-    }));
-}
-
-unsafe extern "C" fn client_removed_tramp(user: *mut c_void, cx: *const GnoblinStdLayoutContext, client: u64) {
-    // SAFETY: as for `compute_tramp`.
-    let (Some(boxed), Some(cx)) = (unsafe { user.cast::<Boxed>().as_ref() }, unsafe { cx.as_ref() }) else {
-        return;
-    };
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        // SAFETY: `cx` is the library's context for this call.
-        let context = unsafe { context(&boxed.std, cx) };
-        let client = Client::new(&boxed.std, boxed.std.gnoblin().window_handle(NodeId(client)));
-        boxed.layout.borrow_mut().client_removed(&client, &context);
-    }));
-}
-
-unsafe extern "C" fn area_changed_tramp(user: *mut c_void, old: *const GnoblinStdRect, new: *const GnoblinStdRect) {
-    // SAFETY: as for `compute_tramp`; the rectangles are the library's locals for this call.
-    let (Some(boxed), Some(old), Some(new)) = (
-        unsafe { user.cast::<Boxed>().as_ref() },
-        unsafe { old.as_ref() },
-        unsafe { new.as_ref() },
-    ) else {
-        return;
-    };
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        boxed.layout.borrow_mut().area_changed(rect_of(old), rect_of(new));
-    }));
-}
-
-unsafe extern "C" fn clients_swapped_tramp(user: *mut c_void, a: u64, b: u64) {
-    // SAFETY: as for `compute_tramp`.
-    let Some(boxed) = (unsafe { user.cast::<Boxed>().as_ref() }) else {
-        return;
-    };
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        let client = |id: u64| Client::new(&boxed.std, boxed.std.gnoblin().window_handle(NodeId(id)));
-        boxed.layout.borrow_mut().clients_swapped(&client(a), &client(b));
-    }));
-}
-
-unsafe extern "C" fn revision_tramp(user: *mut c_void) -> u64 {
-    // SAFETY: as for `compute_tramp`.
-    let Some(boxed) = (unsafe { user.cast::<Boxed>().as_ref() }) else {
-        return 0;
-    };
-    catch_unwind(AssertUnwindSafe(|| boxed.layout.borrow().revision())).unwrap_or(0)
-}
-
-unsafe extern "C" fn find_split_tramp(
-    user: *mut c_void,
-    client: u64,
-    x: f64,
-    y: f64,
-    out: *mut abi::GnoblinStdSplit,
-) -> i32 {
-    // SAFETY: as for `compute_tramp`; `out` is the library's local for this call.
-    let (Some(boxed), Some(out)) = (unsafe { user.cast::<Boxed>().as_ref() }, unsafe { out.as_mut() }) else {
-        return core_abi::E_ERR;
-    };
-    let outcome = catch_unwind(AssertUnwindSafe(|| {
-        let client = Client::new(&boxed.std, boxed.std.gnoblin().window_handle(NodeId(client)));
-        match boxed.layout.borrow_mut().find_split(&client, Point { x, y }) {
-            Some(split) => {
-                *out = split.to_raw();
-                1
-            }
-            None => 0,
-        }
-    }));
-    outcome.unwrap_or(core_abi::E_PANIC)
-}
-
-unsafe extern "C" fn set_split_tramp(user: *mut c_void, token: u64, ratio: f64, cross_ratio: f64) {
-    // SAFETY: as for `compute_tramp`.
-    let Some(boxed) = (unsafe { user.cast::<Boxed>().as_ref() }) else {
-        return;
-    };
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        // A NaN says the split has no second divider.
-        let cross = (!cross_ratio.is_nan()).then_some(cross_ratio);
-        boxed.layout.borrow_mut().set_split(token, ratio, cross);
-    }));
-}
-
-unsafe extern "C" fn reset_split_tramp(user: *mut c_void, token: u64) {
-    // SAFETY: as for `compute_tramp`.
-    let Some(boxed) = (unsafe { user.cast::<Boxed>().as_ref() }) else {
-        return;
-    };
-    let _ = catch_unwind(AssertUnwindSafe(|| boxed.layout.borrow_mut().reset_split(token)));
-}
-
-/// Frees the layout behind a `user` pointer. The library calls it exactly once, when the layout is replaced or the generation retires.
-unsafe extern "C" fn drop_boxed(user: *mut c_void) {
-    // SAFETY: `user` is the `Box<Boxed>` leaked by `RawLayout::new` and the library calls this exactly once.
-    drop(unsafe { Box::from_raw(user.cast::<Boxed>()) });
-}
-
-/// The functions every layout of the shell's has.
-const BASE: GnoblinStdLayoutVtable = GnoblinStdLayoutVtable {
-    size: size_of::<GnoblinStdLayoutVtable>() as u32,
-    reserved: 0,
-    compute: compute_tramp,
-    client_added: Some(client_added_tramp),
-    client_removed: None,
-    area_changed: Some(area_changed_tramp),
-    clients_swapped: Some(clients_swapped_tramp),
-    revision: Some(revision_tramp),
-    find_split: Some(find_split_tramp),
-    set_split: Some(set_split_tramp),
-    reset_split: Some(reset_split_tramp),
-};
-
-/// The table of a layout that does not hand the keyboard on itself.
-static VTABLE: GnoblinStdLayoutVtable = BASE;
-
-/// The table of a layout that overrides `client_removed`: the library leaves the keyboard to it.
-static VTABLE_REMOVAL: GnoblinStdLayoutVtable = GnoblinStdLayoutVtable {
-    client_removed: Some(client_removed_tramp),
-    ..BASE
-};
-
-/// A layout as the library's table function takes it, with the box behind `user` reclaimed if the library does not adopt it.
-pub(crate) struct RawLayout {
-    spec: GnoblinStdLayoutSpec,
-    owned: Option<*mut Boxed>,
-    /// A built-in layout is given through `workspace_set_layout_kind`, not through the spec.
-    builtin: Option<BuiltinLayout>,
-}
-
-impl RawLayout {
-    /// Makes the table argument for `layout`.
-    pub(crate) fn new(layout: impl IntoLayout, std: &Std) -> RawLayout {
-        let mut spec = GnoblinStdLayoutSpec {
-            size: size_of::<GnoblinStdLayoutSpec>() as u32,
-            kind: abi::STD_LAYOUT_FLOATING,
-            placement: abi::STD_PLACE_SMART,
-            reserved: 0,
-            cascade_step: 0.0,
-            vtable: core::ptr::null(),
-            user: core::ptr::null_mut(),
-            drop_user: None,
-        };
-        match layout.into_layout() {
-            LayoutSpec::Floating(floating) => {
-                spec.placement = floating.raw_placement();
-                spec.cascade_step = floating.raw_step();
-                RawLayout {
-                    spec,
-                    owned: None,
-                    builtin: None,
-                }
-            }
-            LayoutSpec::Builtin(builtin) => {
-                // The spec stays the floating layout: a workspace made with it takes the kind right after.
-                RawLayout {
-                    spec,
-                    owned: None,
-                    builtin: Some(builtin),
-                }
-            }
-            LayoutSpec::Foreign { layout, removal } => {
-                let boxed = Box::into_raw(Box::new(Boxed {
-                    std: std.clone(),
-                    layout: RefCell::new(layout),
-                }));
-                spec.kind = abi::STD_LAYOUT_FOREIGN;
-                spec.vtable = if removal {
-                    &raw const VTABLE_REMOVAL
-                } else {
-                    &raw const VTABLE
-                };
-                spec.user = boxed.cast();
-                spec.drop_user = Some(drop_boxed);
-                RawLayout {
-                    spec,
-                    owned: Some(boxed),
-                    builtin: None,
-                }
-            }
-        }
-    }
-
-    /// The table argument.
-    pub(crate) fn spec(&self) -> *const GnoblinStdLayoutSpec {
-        &raw const self.spec
-    }
-
-    /// The built-in layout this value names, if it names one.
-    pub(crate) fn builtin(&self) -> Option<&BuiltinLayout> {
-        self.builtin.as_ref()
-    }
-
-    /// The library took the layout: it owns the box now.
-    pub(crate) fn adopted(mut self) {
-        self.owned = None;
-    }
-}
-
-impl Drop for RawLayout {
-    fn drop(&mut self) {
-        if let Some(boxed) = self.owned.take() {
-            // SAFETY: the library did not adopt the layout (a call that fails has not taken `user`), so nothing else owns the box.
-            drop(unsafe { Box::from_raw(boxed) });
-        }
+        LayoutSpec::Builtin(builtin) => builtin.make(&objects),
+        LayoutSpec::Foreign { layout, removal } => Ok(handlers(std, layout, removal).implement(&objects)?),
     }
 }

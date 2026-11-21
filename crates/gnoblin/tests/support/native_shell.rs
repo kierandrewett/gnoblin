@@ -244,6 +244,8 @@ pub struct StdShells {
     pub menus: PathBuf,
     /// Example 31: the not-responding alert, the lock screen, the launcher and the overview.
     pub shell_ui: PathBuf,
+    /// Example 34: two workspaces, a layout for each of the library's kinds and one of the shell's own, and a divider dragged with a pointer.
+    pub workspaces: PathBuf,
 }
 
 /// Builds the std examples into the shells' target directory. Built once per test binary.
@@ -288,6 +290,8 @@ fn build_std_shells() -> Result<StdShells, String> {
             "gnoblin-example-native-menus",
             "-p",
             "gnoblin-example-native-shell-ui",
+            "-p",
+            "gnoblin-example-native-workspaces",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -312,6 +316,7 @@ fn build_std_shells() -> Result<StdShells, String> {
         frame: debug.join("libnative_frame.so"),
         menus: debug.join("libnative_menus.so"),
         shell_ui: debug.join("libnative_shell_ui.so"),
+        workspaces: debug.join("libnative_workspaces.so"),
     })
 }
 

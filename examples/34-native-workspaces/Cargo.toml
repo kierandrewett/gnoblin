@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-example-native-workspaces"
+description = "Example 34: a native shell that makes workspaces, tiles their windows with each layout of the library and one of its own, and drags the divider with a pointer binding."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "native_workspaces"
+crate-type = ["cdylib"]
+
+# The shell depends on the std SDK and the core SDK and nothing else. The workspaces, the layouts and the divider go through the typed
+# classes of the library's catalog (`gnoblin_std::objects`); the chords and the drag are bindings on the seat's input context of the core.
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+gnoblin-std = { path = "../../crates/gnoblin-std" }
+
+[lints]
+workspace = true

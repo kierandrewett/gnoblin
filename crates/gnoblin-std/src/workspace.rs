@@ -4,25 +4,33 @@
 //! calls each one's layout when it changes. A workspace is shown by an output (one workspace per output, or one stretched over several:
 //! see [`OutputPolicy`](crate::OutputPolicy)). Removing a workspace, or a window from one, never closes the window.
 //!
+//! A `Workspace` is a name for the class `workspace` of the object protocol (`crate::objects::Workspace`): every call goes through the
+//! generated class, so a shell in Rust, Python or TypeScript sees one set of workspaces.
+//!
 //! ```ignore
 //! let main = Workspace::new("main")?;            // made and added, with the default floating layout
 //! g.on_client_created(move |window| { main.add(window).ok(); })?;
 //! ```
-#![allow(unsafe_code)]
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 use std::time::Duration;
 
 use gnoblin_core::NodeId;
-use gnoblin_core_abi::GnoblinStr;
-use gnoblin_std_abi::{GnoblinStdShow, GnoblinStdWorkspace, GnoblinStdWorkspaceInfo, GnoblinStdWorkspaceSpec};
 
 use crate::api::Std;
 use crate::client::{AsClient, Client};
 use crate::collection::{Collection, Member};
-use crate::error::Result;
-use crate::layout::{FloatingLayout, IntoLayout, RawLayout};
+use crate::error::{Error, ErrorKind, Result};
+use crate::layout::{FloatingLayout, IntoLayout, LayoutSpec};
+use crate::objects as classes;
 use crate::output::Output;
-use gnoblin_std_abi as abi;
+
+thread_local! {
+    /// The workspaces this shell made, by id, for the ones that are not in the list.
+    static MADE: RefCell<HashMap<String, Rc<classes::Workspace>>> = RefCell::new(HashMap::new());
+}
 
 /// How a workspace is shown.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -65,15 +73,23 @@ pub struct WorkspaceInfo {
 }
 
 /// A workspace. Cheap to clone and compare. A workspace is the shell's own and stays usable after it leaves the list.
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub struct Workspace {
     std: Std,
-    id: GnoblinStdWorkspace,
+    object: Rc<classes::Workspace>,
+}
+
+impl PartialEq for Workspace {
+    fn eq(&self, other: &Workspace) -> bool {
+        self.std == other.std && self.object.handle().handle() == other.object.handle().handle()
+    }
 }
 
 impl std::fmt::Debug for Workspace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Workspace").field(&self.id).finish()
+        f.debug_tuple("Workspace")
+            .field(&self.object.handle().handle())
+            .finish()
     }
 }
 
@@ -82,7 +98,7 @@ pub struct WorkspaceBuilder {
     std: Std,
     id: String,
     name: Option<String>,
-    layout: Option<RawLayout>,
+    layout: Option<LayoutSpec>,
     gaps: (f64, f64),
 }
 
@@ -97,7 +113,7 @@ impl WorkspaceBuilder {
     /// The layout: [`FloatingLayout`] (the default) or any [`Layout`](crate::Layout).
     #[must_use]
     pub fn layout(mut self, layout: impl IntoLayout) -> WorkspaceBuilder {
-        self.layout = Some(RawLayout::new(layout, &self.std));
+        self.layout = Some(layout.into_layout());
         self
     }
 
@@ -114,30 +130,20 @@ impl WorkspaceBuilder {
     ///
     /// The id is empty or a gap is not a finite number of at least 0.
     pub fn create(self) -> Result<Workspace> {
-        let layout = match self.layout {
-            Some(layout) => layout,
-            None => RawLayout::new(FloatingLayout::default(), &self.std),
-        };
-        let built = layout.builtin().cloned();
-        let spec = GnoblinStdWorkspaceSpec {
-            size: size_of::<GnoblinStdWorkspaceSpec>() as u32,
-            reserved: 0,
-            id: GnoblinStr::borrowed(&self.id),
-            name: GnoblinStr::borrowed(self.name.as_deref().unwrap_or("")),
-            gap_inner: self.gaps.0,
-            gap_outer: self.gaps.1,
-            layout: layout.spec(),
-        };
-        let mut id = 0;
-        // SAFETY: `spec`, the strings it borrows and the layout's table are live for the call; the library copies what it keeps and,
-        // on success, adopts the layout's `user`.
-        let rc = unsafe { (self.std.api().workspace_new)(self.std.ctx(), &spec, &mut id) };
-        self.std.check(rc)?;
-        layout.adopted();
-        let workspace = Workspace::from_handle(&self.std, id);
-        if let Some(builtin) = built {
-            workspace.install_builtin(&builtin)?;
+        if self.id.is_empty() {
+            return Err(Error::new(ErrorKind::Refused, "a workspace needs an id"));
         }
+        let objects = self.std.objects()?;
+        let object = classes::Workspace::new(&objects, &self.id)?;
+        let object = Rc::new(object);
+        MADE.with(|made| made.borrow_mut().insert(self.id.clone(), Rc::clone(&object)));
+        let workspace = Workspace { std: self.std, object };
+        if let Some(name) = &self.name {
+            workspace.set_name(name)?;
+        }
+        workspace.set_gaps(self.gaps.0, self.gaps.1)?;
+        let layout = self.layout.unwrap_or(LayoutSpec::Floating(FloatingLayout::default()));
+        workspace.give_layout(layout)?;
         Ok(workspace)
     }
 
@@ -154,12 +160,40 @@ impl WorkspaceBuilder {
 }
 
 impl Workspace {
-    pub(crate) fn from_handle(std: &Std, id: GnoblinStdWorkspace) -> Workspace {
-        Workspace { std: std.clone(), id }
+    /// The workspace of the class object `object`.
+    pub(crate) fn from_object(std: &Std, object: classes::Workspace) -> Workspace {
+        Workspace {
+            std: std.clone(),
+            object: Rc::new(object),
+        }
     }
 
-    pub(crate) fn raw(&self) -> GnoblinStdWorkspace {
-        self.id
+    /// The workspace the library keeps under `id`: one in the list, or one this shell made and has not added yet.
+    pub(crate) fn of_id(std: &Std, id: &str) -> Result<Workspace> {
+        let objects = std.objects()?;
+        if let Some(object) = classes::Workspaces::get(&objects)?.by_id(id)? {
+            return Ok(Workspace::from_object(std, object));
+        }
+        MADE.with(|made| made.borrow().get(id).cloned())
+            .map(|object| Workspace {
+                std: std.clone(),
+                object,
+            })
+            .ok_or_else(|| Error::new(ErrorKind::NoSuchNode, format!("no workspace `{id}`")))
+    }
+
+    /// The workspace that the output `output` (a node number) shows, or `None`.
+    pub(crate) fn of_output(std: &Std, output: u64) -> Result<Option<Workspace>> {
+        let objects = std.objects()?;
+        let list = classes::Workspaces::get(&objects)?;
+        Ok(list
+            .of_output(output)?
+            .map(|object| Workspace::from_object(std, object)))
+    }
+
+    /// The class object.
+    pub(crate) fn object(&self) -> &classes::Workspace {
+        &self.object
     }
 
     pub(crate) fn std(&self) -> &Std {
@@ -202,38 +236,17 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn info(&self) -> Result<WorkspaceInfo> {
-        let mut raw = GnoblinStdWorkspaceInfo {
-            size: size_of::<GnoblinStdWorkspaceInfo>() as u32,
-            attached: 0,
-            id: GnoblinStr::EMPTY,
-            name: GnoblinStr::EMPTY,
-            index: -1,
-            active: 0,
-            reserved: 0,
-            output: 0,
-            gap_inner: 0.0,
-            gap_outer: 0.0,
-        };
-        // SAFETY: `workspace_info` fills `raw` up to the `size` set; the strings it lends are copied before the next call.
-        self.std
-            .check(unsafe { (self.std.api().workspace_info)(self.std.ctx(), self.id, &mut raw) })?;
-        let text = |raw: &GnoblinStr| {
-            if raw.ptr.is_null() || raw.len == 0 {
-                String::new()
-            } else {
-                // SAFETY: the library lends `len` bytes at `ptr` until the next call into it on this thread.
-                String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(raw.ptr, raw.len) }).into_owned()
-            }
-        };
+        let gaps = self.object.gaps()?.unwrap_or_default();
+        let output = self.object.output()?;
         Ok(WorkspaceInfo {
-            id: text(&raw.id),
-            name: text(&raw.name),
-            index: usize::try_from(raw.index).ok(),
-            in_list: raw.attached != 0,
-            active: raw.active != 0,
-            output: (raw.output != 0).then_some(NodeId(raw.output)),
-            gap_inner: raw.gap_inner,
-            gap_outer: raw.gap_outer,
+            id: self.object.id()?,
+            name: self.object.name()?,
+            index: usize::try_from(self.object.index()?).ok(),
+            in_list: self.object.attached()?,
+            active: self.object.active()?,
+            output: (output != 0).then_some(NodeId(output)),
+            gap_inner: gaps.inner,
+            gap_outer: gaps.outer,
         })
     }
 
@@ -243,7 +256,7 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn id(&self) -> Result<String> {
-        Ok(self.info()?.id)
+        Ok(self.object.id()?)
     }
 
     /// The name people see.
@@ -252,7 +265,7 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn name(&self) -> Result<String> {
-        Ok(self.info()?.name)
+        Ok(self.object.name()?)
     }
 
     /// Sets the name people see.
@@ -261,10 +274,7 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn set_name(&self, name: &str) -> Result<()> {
-        // SAFETY: `workspace_set_name` reads `len` bytes at `name` for the call.
-        self.std
-            .check(unsafe { (self.std.api().workspace_set_name)(self.std.ctx(), self.id, name.as_ptr(), name.len()) })
-            .map(|_| ())
+        Ok(self.object.set_name(name)?)
     }
 
     /// The position in the list, or `None` while the workspace is not in it.
@@ -273,7 +283,7 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn index(&self) -> Result<Option<usize>> {
-        Ok(self.info()?.index)
+        Ok(usize::try_from(self.object.index()?).ok())
     }
 
     /// Whether an output shows this workspace. With several outputs, several workspaces are active.
@@ -282,7 +292,7 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn is_active(&self) -> Result<bool> {
-        Ok(self.info()?.active)
+        Ok(self.object.active()?)
     }
 
     /// The output that shows this workspace, or `None` while none does.
@@ -291,7 +301,8 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn output(&self) -> Result<Option<Output>> {
-        Ok(self.info()?.output.and_then(|node| Output::from_raw(&self.std, node.0)))
+        let output = self.object.output()?;
+        Ok((output != 0).then(|| Output::from_raw(&self.std, output)).flatten())
     }
 
     /// The gap between tiles and the gap between the tiles and the edge of the area: `(inner, outer)`.
@@ -300,8 +311,8 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn gaps(&self) -> Result<(f64, f64)> {
-        let info = self.info()?;
-        Ok((info.gap_inner, info.gap_outer))
+        let gaps = self.object.gaps()?.unwrap_or_default();
+        Ok((gaps.inner, gaps.outer))
     }
 
     /// Sets the gaps, in logical pixels; the workspace computes again.
@@ -310,10 +321,7 @@ impl Workspace {
     ///
     /// A gap is not a finite number of at least 0.
     pub fn set_gaps(&self, inner: f64, outer: f64) -> Result<()> {
-        // SAFETY: `workspace_set_gaps` takes the context, a workspace handle and two numbers.
-        self.std
-            .check(unsafe { (self.std.api().workspace_set_gaps)(self.std.ctx(), self.id, inner, outer) })
-            .map(|_| ())
+        Ok(self.object.set_gaps(&classes::Gaps { inner, outer })?)
     }
 
     /// Gives the workspace another layout. The windows stay where they are until it computes.
@@ -322,15 +330,13 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn set_layout(&self, layout: impl IntoLayout) -> Result<()> {
-        let raw = RawLayout::new(layout, &self.std);
-        if let Some(builtin) = raw.builtin() {
-            return self.install_builtin(builtin);
-        }
-        // SAFETY: the layout's table and `user` are live for the call; on success the library adopts `user`.
-        let rc = unsafe { (self.std.api().workspace_set_layout)(self.std.ctx(), self.id, raw.spec()) };
-        self.std.check(rc)?;
-        raw.adopted();
-        Ok(())
+        self.give_layout(layout.into_layout())
+    }
+
+    fn give_layout(&self, spec: LayoutSpec) -> Result<()> {
+        // The workspace holds the layout it is given.
+        let layout = crate::layout::make(&self.std, spec)?;
+        Ok(self.object.set_layout(&layout)?)
     }
 
     /// Tells the workspace that its layout changed in a way the layout's revision did not show: it computes again.
@@ -339,10 +345,7 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn invalidate(&self) -> Result<()> {
-        // SAFETY: `workspace_invalidate` takes the context and a workspace handle.
-        self.std
-            .check(unsafe { (self.std.api().workspace_invalidate)(self.std.ctx(), self.id) })
-            .map(|_| ())
+        Ok(self.object.invalidate()?)
     }
 
     /// The workspace's clients, which the shell may change: [`add`](Workspace::add), [`remove`](Workspace::remove) and
@@ -352,11 +355,11 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn clients(&self) -> Result<Collection<Client>> {
-        let mut collection = 0;
-        // SAFETY: `workspace_clients` writes one handle through the pointer it is given, a live local.
-        self.std
-            .check(unsafe { (self.std.api().workspace_clients)(self.std.ctx(), self.id, &mut collection) })?;
-        Ok(Collection::from_raw(self.std.clone(), collection))
+        let clients = self
+            .object
+            .clients()?
+            .ok_or_else(|| Error::new(ErrorKind::Failed, "the workspace has no clients"))?;
+        Ok(Collection::of_workspace(&self.std, &self.object.id()?, clients))
     }
 
     /// Adds a client to the workspace: it leaves the one it was on. The layout is told it arrived.
@@ -365,11 +368,7 @@ impl Workspace {
     ///
     /// The workspace is not in the list, or the client is gone.
     pub fn add(&self, client: impl AsClient) -> Result<()> {
-        let clients = self.clients()?;
-        // SAFETY: `collection_add` takes the context, a collection and a member id.
-        self.std
-            .check(unsafe { (self.std.api().collection_add)(self.std.ctx(), clients.raw_id(), client.client_id().0) })
-            .map(|_| ())
+        self.clients()?.add(client)
     }
 
     /// Takes a client off the workspace: `true` when it was there. The client is not closed and is on no workspace until it is given
@@ -379,12 +378,7 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn remove(&self, client: impl AsClient) -> Result<bool> {
-        let clients = self.clients()?;
-        // SAFETY: `collection_remove` takes the context, a collection and a member id.
-        let removed = self.std.check(unsafe {
-            (self.std.api().collection_remove)(self.std.ctx(), clients.raw_id(), client.client_id().0)
-        })?;
-        Ok(removed == 1)
+        self.clients()?.remove(client)
     }
 
     /// Trades the places of two clients in the workspace's order; its layout hears of it.
@@ -393,13 +387,7 @@ impl Workspace {
     ///
     /// A client is not on the workspace.
     pub fn swap(&self, a: impl AsClient, b: impl AsClient) -> Result<()> {
-        let clients = self.clients()?;
-        // SAFETY: `collection_swap` takes the context, a collection and two member ids.
-        self.std
-            .check(unsafe {
-                (self.std.api().collection_swap)(self.std.ctx(), clients.raw_id(), a.client_id().0, b.client_id().0)
-            })
-            .map(|_| ())
+        self.clients()?.swap(a, b)
     }
 
     /// Adds the workspace to the list and gives it the windows that wait for one.
@@ -408,10 +396,7 @@ impl Workspace {
     ///
     /// A workspace with the same id is in the list already.
     pub fn add_to_list(&self) -> Result<()> {
-        // SAFETY: `workspace_add` takes the context and a workspace handle.
-        self.std
-            .check(unsafe { (self.std.api().workspace_add)(self.std.ctx(), self.id) })
-            .map(|_| ())
+        Ok(classes::Workspaces::get(&self.std.objects()?)?.add(&self.object)?)
     }
 
     /// Takes the workspace out of the list: `true` when it left, `false` when it was refused (the last workspace stays). Its windows
@@ -421,11 +406,7 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn remove_from_list(&self) -> Result<bool> {
-        // SAFETY: `workspace_remove` takes the context and a workspace handle.
-        let removed = self
-            .std
-            .check(unsafe { (self.std.api().workspace_remove)(self.std.ctx(), self.id) })?;
-        Ok(removed == 1)
+        Ok(classes::Workspaces::get(&self.std.objects()?)?.remove(&self.object)?)
     }
 
     /// Shows the workspace on the output under the pointer (the primary output when no pointer says), at once.
@@ -443,7 +424,7 @@ impl Workspace {
     ///
     /// As for [`show`](Workspace::show).
     pub fn show_with(&self, options: ShowOptions) -> Result<()> {
-        self.show_raw(options, 0)
+        self.show_raw(options, None)
     }
 
     /// Shows the workspace on `output`, swapping it with the one that output showed.
@@ -452,21 +433,16 @@ impl Workspace {
     ///
     /// As for [`show`](Workspace::show).
     pub fn show_on(&self, output: &Output, options: ShowOptions) -> Result<()> {
-        self.show_raw(options, output.id().0)
+        self.show_raw(options, Some(output.id().0))
     }
 
-    fn show_raw(&self, options: ShowOptions, output: u64) -> Result<()> {
-        let show = GnoblinStdShow {
-            size: size_of::<GnoblinStdShow>() as u32,
-            reserved: 0,
-            duration_ms: options.duration.as_secs_f64() * 1000.0,
+    fn show_raw(&self, options: ShowOptions, output: Option<u64>) -> Result<()> {
+        let show = classes::ShowOptions {
+            duration: options.duration.as_secs_f64() * 1000.0,
             progress: options.progress,
             output,
         };
-        // SAFETY: `workspace_show` reads the struct for the call.
-        self.std
-            .check(unsafe { (self.std.api().workspace_show)(self.std.ctx(), self.id, &show) })
-            .map(|_| ())
+        Ok(self.object.show(Some(&show))?)
     }
 
     /// Moves the keyboard `step` windows along the workspace's windows, in the order they are listed: 1 to the next, -1 to the
@@ -476,22 +452,13 @@ impl Workspace {
     ///
     /// The generation retired.
     pub fn walk(&self, step: i64) -> Result<()> {
-        // SAFETY: `workspace_walk` takes the context, a workspace handle and a step.
-        self.std
-            .check(unsafe { (self.std.api().workspace_walk)(self.std.ctx(), self.id, step) })
-            .map(|_| ())
+        Ok(self.object.walk(step)?)
     }
 }
 
 impl Member for Workspace {
-    const KIND: u32 = abi::STD_COLLECTION_WORKSPACES;
-
-    fn from_raw(std: &Std, raw: u64) -> Option<Workspace> {
-        Some(Workspace::from_handle(std, raw))
-    }
-
-    fn raw(&self) -> u64 {
-        self.id
+    fn from_key(std: &Std, key: &str) -> Option<Workspace> {
+        Workspace::of_id(std, key).ok()
     }
 
     fn key(&self) -> String {

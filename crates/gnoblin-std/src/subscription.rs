@@ -2,10 +2,31 @@
 
 #![allow(unsafe_code)]
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use gnoblin_std_abi::GnoblinStdReg;
 
 use crate::api::Std;
-use crate::error::Result;
+use crate::error::{Error, ErrorKind, Result};
+
+/// What ends a registration made through the object protocol: it runs once.
+type Undo = Rc<RefCell<Option<Box<dyn FnOnce() -> Result<()>>>>>;
+
+thread_local! {
+    /// The registrations of the object protocol, held for the life of the thread: a listener of the protocol ends when it is dropped,
+    /// and a [`Subscription`] that is dropped must not end it.
+    static HELD: RefCell<Vec<Undo>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The registration behind a [`Subscription`].
+#[derive(Clone)]
+enum Reg {
+    /// A listener of the std library's function table.
+    Table(Std, GnoblinStdReg),
+    /// A listener of the object protocol.
+    Object(Undo),
+}
 
 /// A listener the library holds for this generation. It lasts until the generation retires, or until
 /// [`unsubscribe`](Subscription::unsubscribe).
@@ -15,13 +36,22 @@ use crate::error::Result;
 /// [`scoped`](Subscription::scoped) is the guard that does unsubscribe on drop.
 #[derive(Clone)]
 pub struct Subscription {
-    std: Std,
-    reg: GnoblinStdReg,
+    reg: Reg,
 }
 
 impl Subscription {
     pub(crate) fn new(std: Std, reg: GnoblinStdReg) -> Subscription {
-        Subscription { std, reg }
+        Subscription {
+            reg: Reg::Table(std, reg),
+        }
+    }
+
+    /// A registration of the object protocol, which `undo` ends. The closure owns what has to stay alive for the registration to
+    /// last: the listeners, which end when they are dropped.
+    pub(crate) fn from_undo(undo: impl FnOnce() -> Result<()> + 'static) -> Subscription {
+        let undo: Undo = Rc::new(RefCell::new(Some(Box::new(undo))));
+        HELD.with(|held| held.borrow_mut().push(Rc::clone(&undo)));
+        Subscription { reg: Reg::Object(undo) }
     }
 
     /// Removes the listener. Its closure is dropped now, or when the delivery that is running returns. Removing it twice, or after
@@ -31,8 +61,18 @@ impl Subscription {
     ///
     /// The listener was removed already, or the generation retired.
     pub fn unsubscribe(self) -> Result<()> {
-        // SAFETY: `remove` takes only the registration handle.
-        self.std.check(unsafe { (self.std.api().remove)(self.reg) }).map(|_| ())
+        match self.reg {
+            // SAFETY: `remove` takes only the registration handle.
+            Reg::Table(std, reg) => std.check(unsafe { (std.api().remove)(reg) }).map(|_| ()),
+            Reg::Object(undo) => {
+                let end = undo.borrow_mut().take();
+                HELD.with(|held| held.borrow_mut().retain(|kept| !Rc::ptr_eq(kept, &undo)));
+                match end {
+                    Some(end) => end(),
+                    None => Err(Error::new(ErrorKind::Stale, "the listener was removed already")),
+                }
+            }
+        }
     }
 
     /// A guard that unsubscribes when it is dropped.
@@ -43,7 +83,10 @@ impl Subscription {
 
 impl std::fmt::Debug for Subscription {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Subscription").field("reg", &self.reg).finish()
+        match &self.reg {
+            Reg::Table(_, reg) => f.debug_struct("Subscription").field("reg", reg).finish(),
+            Reg::Object(_) => f.debug_struct("Subscription").finish_non_exhaustive(),
+        }
     }
 }
 

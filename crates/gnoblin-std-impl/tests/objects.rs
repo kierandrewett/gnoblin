@@ -11,9 +11,10 @@
 //! 1. A fixture whose script drags with a pointer chord or makes a gesture is not replayed: a drag or a gesture is a binding, and the
 //!    binding classes are the policy and input lanes' (NpStdPolicy, NpCoreInput). The divider a split-resize drag moves is covered
 //!    from the object protocol by `modular::native_objects` (`find_split`, `set_split`, `reset_split` of a workspace).
-//! 2. The fixtures `examples_tiling_layouts`, `examples_floating_placement` and `anim_style_transitions` come from scenarios that need a
-//!    fixture shell of their own (the layouts shell with a swap binding, the example 2 shell, the transitions shell); they are not
-//!    replayed through the objects yet.
+//! 2. The fixtures `examples_tiling_layouts`, `examples_floating_placement` and `anim_style_transitions` come from scenarios with fixture
+//!    shells of their own (the layouts shell, the example 2 shell, the transitions shell). Those shells use the prelude of `gnoblin-std`,
+//!    which calls the classes, so `examples.rs` and `anim_style.rs` replay them through the classes; the layouts fixture also has a Python
+//!    replay in `crates/gnoblin-runtime-python/tests/shells.rs`.
 //! 3. A number is the fixture's within 1e-9 of its size: the carousel's depth differs from the TypeScript run's in the last binary digit
 //!    (`-1559.3945806691095` and `-1559.3945806691097`), which the shell's decimal output and the fixture's JSON both carry as they were.
 

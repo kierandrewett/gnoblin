@@ -31,6 +31,7 @@ mod native_shell_ui;
 mod native_std;
 mod native_style;
 mod native_ui;
+mod native_workspaces;
 mod no_std;
 mod no_workspaces;
 mod script_binding;
