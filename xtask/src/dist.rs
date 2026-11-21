@@ -162,7 +162,7 @@ enum Generated {
     TypesConfig,
 }
 
-/// What the session installs. The optional packages (ananicy rules, the GeoClue authorisation file)
+/// What the session installs. The GeoClue authorisation file (`data/geoclue/`)
 /// and the man pages are not in this table: their install paths belong to the distribution.
 const ITEMS: &[InstallItem] = &[
     InstallItem::File {

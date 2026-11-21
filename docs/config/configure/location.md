@@ -18,6 +18,19 @@ GeoClue does not ask, and the app receives location up to the policy's accuracy 
 
 The policy applies to every app, with or without a request.
 
+## Allow the agent in GeoClue
+
+GeoClue accepts only the agents its `[agent]` `whitelist` names. Gnoblin registers as `gnoblin`, so the system needs a
+drop-in that keeps GeoClue's stock agents and adds it. `data/geoclue/50-gnoblin.conf` in the source tree is that drop-in:
+copy it to `/etc/geoclue/conf.d/50-gnoblin.conf`.
+
+```ini
+[agent]
+whitelist=geoclue-demo-agent;gnome-shell;io.elementary.desktop.agent-geoclue2;sm.puri.Phosh;lipstick;gnoblin
+```
+
+GeoClue applies a `conf.d` value as an override, so the line repeats the stock identifiers.
+
 ## Stop the GeoClue demo agent
 
 GeoClue accepts one agent for each user. On Fedora the `geoclue-demo-agent`
