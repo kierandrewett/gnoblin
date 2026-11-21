@@ -1,0 +1,76 @@
+# The public surface of the `display` module of the `gnoblin.std` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-std-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+enum | output_transform | values normal rotate-90 rotate-180 rotate-270 flipped flipped-90 flipped-180 flipped-270 | 0.2.0
+enum | position_kind | values absolute right_of left_of above below | 0.2.0
+enum | present_mode | values single mirror span | 0.2.0
+
+member | display.id | property string rw | 0.2.0
+member | display.implicit | property bool ro | 0.2.0
+member | display.listed | property bool ro | 0.2.0
+member | display.mode | property enum:present_mode rw | 0.2.0
+member | display.outputs | property list<uint> ro | 0.2.0
+member | display.selectors | property list<object:display_selector> ro | 0.2.0
+member | display.viewport | property object:viewport rw | 0.2.0
+member | display_manager.add_display | method (display:object:display) | 0.2.0
+member | display_manager.add_profile | method (profile:object:output_profile) | 0.2.0
+member | display_manager.applied | signal (output:uint, error:string) | 0.2.0
+member | display_manager.changed | signal () | 0.2.0
+member | display_manager.clear_displays | method () | 0.2.0
+member | display_manager.display_at | method (x:double, y:double) -> object:display? | 0.2.0
+member | display_manager.display_named | method (id:string) -> object:display? | 0.2.0
+member | display_manager.displays | property list<object:display> ro | 0.2.0
+member | display_manager.noted | signal (text:string) | 0.2.0
+member | display_manager.profile_named | method (id:string) -> object:output_profile? | 0.2.0
+member | display_manager.profiles | property list<object:output_profile> ro | 0.2.0
+member | display_manager.reflow | method () | 0.2.0
+member | display_manager.remove_display | method (display:object:display) -> bool | 0.2.0
+member | display_manager.remove_profile | method (profile:object:output_profile) -> bool | 0.2.0
+member | display_manager.replace_display | method (old:object:display, next:object:display) | 0.2.0
+member | display_manager.restore | method (token:uint) | 0.2.0
+member | display_manager.snapshot | method () -> uint | 0.2.0
+member | display_selector.output | property uint rw,optional | 0.2.0
+member | display_selector.profile | property object:output_profile rw,optional | 0.2.0
+member | output_match.connector | property string rw,optional | 0.2.0
+member | output_match.make | property string rw,optional | 0.2.0
+member | output_match.model | property string rw,optional | 0.2.0
+member | output_match.serial | property string rw,optional | 0.2.0
+member | output_position.align | property string rw,optional | 0.2.0
+member | output_position.kind | property enum:position_kind rw | 0.2.0
+member | output_position.output | property uint rw,optional | 0.2.0
+member | output_position.profile | property object:output_profile rw,optional | 0.2.0
+member | output_position.x | property int rw,optional | 0.2.0
+member | output_position.y | property int rw,optional | 0.2.0
+member | output_profile.format_mode | function (width:double, height:double, refresh_rate:double) -> string | 0.2.0
+member | output_profile.id | property string rw | 0.2.0
+member | output_profile.listed | property bool ro | 0.2.0
+member | output_profile.match | property object:output_match ro | 0.2.0
+member | output_profile.settings | property object:profile_settings rw | 0.2.0
+member | profile_settings.enabled | property bool rw,optional | 0.2.0
+member | profile_settings.mode | property string rw,optional | 0.2.0
+member | profile_settings.position | property object:output_position rw,optional | 0.2.0
+member | profile_settings.scale | property double rw,optional | 0.2.0
+member | profile_settings.supersample | property double rw,optional | 0.2.0
+member | profile_settings.transform | property enum:output_transform rw,optional | 0.2.0
+member | profile_settings.vrr | property bool rw,optional | 0.2.0
+member | viewport.camera | property object:scene_node rw | 0.2.0
+member | viewport.clear_color | property string rw | 0.2.0
+member | viewport.content | property object:workspace rw,optional | 0.2.0
+member | viewport.display | property object:display ro,optional | 0.2.0
+
+object | display | base none retained ctor(selectors) | 0.2.0
+object | display_manager | base none service | 0.2.0
+object | display_selector | base none record | 0.2.0
+object | output_match | base none record | 0.2.0
+object | output_position | base none record | 0.2.0
+object | output_profile | base none retained ctor(match) | 0.2.0
+object | profile_settings | base none record | 0.2.0
+object | viewport | base none retained | 0.2.0

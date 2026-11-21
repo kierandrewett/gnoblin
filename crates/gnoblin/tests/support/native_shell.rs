@@ -248,6 +248,8 @@ pub struct StdShells {
     pub workspaces: PathBuf,
     /// Example 32: the window policy: focus, the requests of windows, the keyboard move and resize, the drags and the workspace slide.
     pub policy: PathBuf,
+    /// Example 33: output profiles, displays and viewports: the displays listed, a profile applied, a display added and removed.
+    pub displays: PathBuf,
 }
 
 /// Builds the std examples into the shells' target directory. Built once per test binary.
@@ -296,6 +298,8 @@ fn build_std_shells() -> Result<StdShells, String> {
             "gnoblin-example-native-workspaces",
             "-p",
             "gnoblin-example-native-policy",
+            "-p",
+            "gnoblin-example-native-displays",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -322,6 +326,7 @@ fn build_std_shells() -> Result<StdShells, String> {
         shell_ui: debug.join("libnative_shell_ui.so"),
         workspaces: debug.join("libnative_workspaces.so"),
         policy: debug.join("libnative_policy.so"),
+        displays: debug.join("libnative_displays.so"),
     })
 }
 

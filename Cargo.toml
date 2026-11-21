@@ -145,6 +145,7 @@ members = [
     "examples/29-native-menus",
     "examples/30-native-pointer",
     "examples/31-native-shell-ui",
+    "examples/33-native-displays",
     "examples/34-native-workspaces",
     "examples/32-native-policy",
     "xtask",

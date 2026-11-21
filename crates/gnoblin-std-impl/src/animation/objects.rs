@@ -207,11 +207,13 @@ fn roll_back(ctx: GnoblinCtx) {
         rollback,
         styles,
         workspaces,
+        displays,
     } = undo;
     {
         let mut st = std.st.borrow_mut();
         st.styles.restore(styles);
         st.restore_workspaces(workspaces);
+        st.restore_displays_value(displays, true);
     }
     // The layouts a transition's callback gave are dropped outside every borrow: dropping one runs the shell's `drop_user`.
     std.drain();

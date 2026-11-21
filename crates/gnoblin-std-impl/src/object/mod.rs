@@ -52,6 +52,7 @@ fn build() -> Library {
     crate::style::objects::register(&mut builder);
     crate::animation::objects::register(&mut builder);
     crate::workspace_objects::register(&mut builder);
+    crate::display_objects::register(&mut builder);
     crate::frame::register(&mut builder);
     crate::shell::register(&mut builder);
     crate::lock::register(&mut builder);

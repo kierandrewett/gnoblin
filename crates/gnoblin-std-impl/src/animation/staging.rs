@@ -19,6 +19,7 @@ use std::rc::Rc;
 use gnoblin_core::{Gnoblin, NodeId, Value};
 use gnoblin_object::Callable;
 
+use crate::displays::DisplaysSnapshot;
 use crate::error::{Fail, Res};
 use crate::style::cascade::StyleSnapshot;
 use crate::workspace::WorkspaceSnapshot;
@@ -195,6 +196,8 @@ pub(crate) struct Undo {
     pub(crate) styles: StyleSnapshot,
     /// The workspaces' layouts, gaps and names as they were when staging began.
     pub(crate) workspaces: WorkspaceSnapshot,
+    /// What the displays and their viewports held when staging began.
+    pub(crate) displays: DisplaysSnapshot,
 }
 
 impl std::fmt::Debug for Undo {

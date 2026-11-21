@@ -98,6 +98,24 @@ pub(crate) fn workspace_id(cx: &Cx<'_>, value: &gnoblin_object::Val) -> Res<Stri
     look(cx.ctx(), |st| st.workspace(handle).map(|ws| ws.id.clone()))
 }
 
+/// The library's handle of the workspace an object of the class `workspace` stands for.
+///
+/// # Errors
+///
+/// The value is not a workspace of this generation.
+pub(crate) fn workspace_handle(cx: &Cx<'_>, value: &gnoblin_object::Val) -> Res<Id> {
+    cx.with_state(value.object()?, |held: &mut workspaces::WorkspaceRef| held.id())
+}
+
+/// The object of the workspace the library calls `handle`, as a value to hand out.
+///
+/// # Errors
+///
+/// The library has no such workspace.
+pub(crate) fn workspace_value(cx: &mut Cx<'_>, handle: Id) -> Res<gnoblin_object::Val> {
+    workspaces::workspace_val(cx, handle)
+}
+
 /// The node a client value (its node number as text) names, for a class of another module that takes one.
 ///
 /// # Errors

@@ -67,6 +67,16 @@ pub fn rust_ident(name: &str) -> String {
     }
 }
 
+/// A Rust identifier for a property or a field: a keyword is a raw identifier (`match` becomes `r#match`). The words that cannot be raw
+/// (`self`, `Self`, `super`, `crate`) get the trailing underscore of [`rust_ident`]. Helper names derive from the name without the `r#`.
+pub fn raw_ident(name: &str) -> String {
+    if RUST_KEYWORDS.contains(&name) && !matches!(name, "self" | "Self" | "super" | "crate") {
+        format!("r#{name}")
+    } else {
+        rust_ident(name)
+    }
+}
+
 const PYTHON_KEYWORDS: &[&str] = &[
     "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del",
     "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal",
@@ -244,6 +254,9 @@ mod tests {
         assert_eq!(snake("GnoblinStdEvent"), "gnoblin_std_event");
 
         assert_eq!(rust_ident("type"), "type_");
+        assert_eq!(raw_ident("match"), "r#match");
+        assert_eq!(raw_ident("self"), "self_");
+        assert_eq!(raw_ident("title"), "title");
         assert_eq!(python_ident("from"), "from_");
         assert_eq!(ts_ident("default"), "default_");
         assert_eq!(ts_ident("title"), "title");

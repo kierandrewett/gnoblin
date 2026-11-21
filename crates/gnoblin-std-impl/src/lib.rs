@@ -41,6 +41,7 @@ mod client_state;
 mod collection;
 mod desks;
 mod display_api;
+mod display_objects;
 mod displays;
 mod error;
 mod events;

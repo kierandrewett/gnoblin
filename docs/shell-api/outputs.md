@@ -354,6 +354,34 @@ gnoblin.displays.add(spanned);
 - **A mirror** ends with the display. A reload whose config does not declare it does not undo it: apply
   `output.mirror(null)` for that.
 
+## The same displays from the generated classes
+
+A shell in Rust, TypeScript or Python reaches profiles, displays and viewports through generated classes. The library keeps the lists and
+makes the checks; the classes pass what the shell writes to it.
+
+- `DisplayManager.get()` is the service. It holds the lists `displays` and `profiles`.
+    - Change them with `addProfile`, `removeProfile`, `addDisplay`, `removeDisplay`, `replaceDisplay` and `clearDisplays`.
+    - Look one up with `profileNamed`, `displayNamed` or `displayAt(x, y)`.
+    - `changed` fires when a list changes or a display presents other outputs.
+    - `applied(output, error)` fires when the compositor answers a profile's request.
+    - `noted(text)` carries each sentence of the diagnostics.
+- `OutputProfile(match)` takes the record `{ connector, make, model, serial }`.
+    - Set `settings` to ask for something. It takes `mode`, `scale`, `supersample`, `transform`, `vrr`, `position` and `enabled`, and replaces
+      every key.
+    - The class function `formatMode(width, height, refreshRate)` writes a mode from its parts.
+    - `id` is the match written out until you set one. It cannot change while the profile is in the manager.
+- `Display(selectors)` takes records that each name a `profile` or an `output` (its node number).
+    - Set `id`, `mode` and `viewport` after it is made.
+    - `outputs` lists the nodes it presents now.
+    - `implicit` is true for a display the library made.
+- `Viewport` has `content`, `camera` and `clearColor`, and `display` is the display that shows it. Assigning `content` on a display's viewport
+  shows the workspace there, as `workspace.show` does.
+
+The checks refuse the same values as the TypeScript classes: a scale outside 0.5 to 4, a match with no key, a display with nothing to
+present, a second display over an output that has one, and a position that depends on itself.
+
+Example 33 lists the displays, applies a profile, adds a display of its own and removes it.
+
 ## Cameras
 
 A viewport looks at its content through a camera, `Camera2D` or `Camera3D`. Both are scene nodes, so a

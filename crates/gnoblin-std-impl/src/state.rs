@@ -285,6 +285,7 @@ impl Std {
             for notice in notices {
                 self.deliver(&notice);
                 crate::workspace_objects::announce(self, &notice);
+                crate::display_objects::announce(self, &notice);
             }
         }
         self.draining.set(false);
@@ -400,6 +401,7 @@ pub(crate) fn retire(ctx: GnoblinCtx) {
         // Each binding's `drop_user` runs while the shell's code is still mapped.
         crate::bindings::retire(&std);
         crate::workspace_objects::retired(std.st.borrow().ctx);
+        crate::display_objects::retired(std.st.borrow().ctx);
         let (regs, workspaces, graveyard) = {
             let mut st = std.st.borrow_mut();
             // The generation ends its hold on the compositor: the `tween` nodes of the transitions still running go.

@@ -206,6 +206,7 @@ impl State {
             rollback,
             styles: self.styles.snapshot(),
             workspaces: self.snapshot_workspaces(),
+            displays: self.snapshot_displays_value(),
         });
         Ok(())
     }

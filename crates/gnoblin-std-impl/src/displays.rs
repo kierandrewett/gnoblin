@@ -25,6 +25,9 @@ use crate::turn::schedule;
 /// A profile or a display, by the library's own id.
 pub(crate) type Hid = u64;
 
+/// A viewport, by the library's own id.
+pub(crate) type Vid = u64;
+
 /// Which hardware a profile is for: every key given must match.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Match {
@@ -109,6 +112,8 @@ pub(crate) struct DisplayRec {
     pub(crate) wanted: Option<Id>,
     /// The workspace last assigned or last seen shown.
     pub(crate) content: Option<Id>,
+    /// The viewport the display shows, once the shell has one for it.
+    pub(crate) viewport: Option<Vid>,
     /// The mirrors this display made: output and what it mirrors.
     mirrored: Vec<(NodeId, NodeId)>,
     /// The output this display spans from, while it does.
@@ -122,6 +127,10 @@ pub(crate) struct Displays {
     pub(crate) profile_list: Vec<Hid>,
     pub(crate) displays: HashMap<Hid, DisplayRec>,
     pub(crate) display_list: Vec<Hid>,
+    /// The viewports the shell made, by the library's own id.
+    pub(crate) viewports: HashMap<Vid, ViewportRec>,
+    /// How many displays were named `display-N` for want of an id.
+    pub(crate) numbered: u64,
     /// Who presents each output, as the last reflow settled it.
     owners: HashMap<NodeId, Hid>,
     /// The display the library made for each output it made one for.
@@ -131,11 +140,30 @@ pub(crate) struct Displays {
     /// The sentences already told, once per generation.
     said: HashSet<String>,
     /// What `display_snapshot` kept, by token.
-    snapshots: HashMap<u64, Vec<DisplaySaved>>,
+    snapshots: HashMap<u64, DisplaysSnapshot>,
 }
 
-/// What a snapshot keeps of one display: its handle, the workspace it waits to show and the one it last showed.
-type DisplaySaved = (Hid, Option<Id>, Option<Id>);
+/// A viewport: a workspace seen through a camera.
+#[derive(Debug)]
+pub(crate) struct ViewportRec {
+    /// The workspace last assigned or last seen shown.
+    pub(crate) content: Option<Id>,
+    /// The object of the camera, once one is given or made.
+    pub(crate) camera: Option<u64>,
+    /// The colour behind the content.
+    pub(crate) clear_color: String,
+    /// The display that shows the viewport.
+    pub(crate) display: Option<Hid>,
+}
+
+/// What a snapshot keeps: for each display the workspace it waits to show and the one it last showed, for each viewport its camera and its
+/// colour, and the workspace each desk shows.
+#[derive(Debug, Default)]
+pub(crate) struct DisplaysSnapshot {
+    displays: Vec<(Hid, Option<Id>, Option<Id>)>,
+    viewports: Vec<(Vid, Option<u64>, String)>,
+    desks: Vec<(u64, Option<Id>)>,
+}
 
 const RECOMMENDED_SUPERSAMPLE: [f64; 3] = [1.0, 2.0, 4.0];
 
@@ -224,7 +252,7 @@ impl State {
     }
 
     /// A sentence for the shell's diagnostics, once.
-    fn note(&mut self, text: String) {
+    pub(crate) fn note(&mut self, text: String) {
         if !self.disp.said.insert(text.clone()) {
             return;
         }
@@ -264,17 +292,21 @@ impl State {
         if let Some(rec) = self.disp.profiles.get_mut(&profile) {
             rec.settings = settings;
         }
-        if self.profile_cycle(profile) {
+        if let Some(through) = self.profile_cycle(profile) {
             if let Some(rec) = self.disp.profiles.get_mut(&profile) {
                 rec.settings = before;
             }
-            return Err(Fail::type_error("a profile cannot be placed relative to itself"));
+            let own = self.disp.profiles.get(&profile).map_or("", |rec| rec.id.as_str());
+            let via = self.disp.profiles.get(&through).map_or("", |rec| rec.id.as_str());
+            return Err(Fail::type_error(format!(
+                "OutputProfile \"{own}\".position: placed relative to itself through \"{via}\""
+            )));
         }
         Ok(())
     }
 
-    /// Whether following the relative positions from `profile` comes back to it.
-    fn profile_cycle(&self, profile: Hid) -> bool {
+    /// The profile that following the relative positions from `profile` comes back to, if it does.
+    fn profile_cycle(&self, profile: Hid) -> Option<Hid> {
         let mut seen = HashSet::from([profile]);
         let mut at = profile;
         while let Some(Position::Relative {
@@ -283,11 +315,11 @@ impl State {
         }) = self.disp.profiles.get(&at).and_then(|rec| rec.settings.position)
         {
             if !seen.insert(next) {
-                return true;
+                return Some(next);
             }
             at = next;
         }
-        false
+        None
     }
 
     pub(crate) fn add_profile(&mut self, profile: Hid) -> Res<bool> {
@@ -541,6 +573,7 @@ impl State {
                 content: wanted,
                 mirrored: Vec::new(),
                 span_lead: None,
+                viewport: None,
             },
         );
         handle
@@ -557,7 +590,8 @@ impl State {
         let rec = self.display(display)?;
         if mode == abi::STD_PRESENT_SINGLE && rec.selectors.len() > 1 {
             return Err(Fail::type_error(format!(
-                "\"single\" presents one output; use \"mirror\" or \"span\" for {}",
+                "Display \"{}\".mode: \"single\" presents one output; use \"mirror\" or \"span\" for {}",
+                rec.id,
                 rec.selectors.len()
             )));
         }
@@ -615,7 +649,15 @@ impl State {
 
     /// Fails when `display` clashes with a display of the script that is not in `leaving`.
     fn check_add(&self, display: Hid, leaving: &HashSet<Hid>) -> Res<()> {
-        let id = self.display(display)?.id.clone();
+        let rec = self.display(display)?;
+        if rec.mode == abi::STD_PRESENT_SINGLE && rec.selectors.len() > 1 {
+            return Err(Fail::type_error(format!(
+                "Display \"{}\".mode: \"single\" presents one output; use \"mirror\" or \"span\" for {}",
+                rec.id,
+                rec.selectors.len()
+            )));
+        }
+        let id = rec.id.clone();
         for other in &self.disp.display_list {
             let Some(held) = self.disp.displays.get(other) else {
                 continue;
@@ -673,6 +715,11 @@ impl State {
         self.disp.implicit.retain(|_, held| *held != display);
         let implicit = self.disp.displays.get(&display).is_some_and(|rec| rec.implicit);
         if implicit {
+            if let Some(vid) = self.disp.displays.get(&display).and_then(|rec| rec.viewport)
+                && let Some(viewport) = self.disp.viewports.get_mut(&vid)
+            {
+                viewport.display = None;
+            }
             self.disp.displays.remove(&display);
         } else if let Some(rec) = self.disp.displays.get_mut(&display) {
             rec.live.clear();
@@ -821,29 +868,60 @@ impl State {
             .unwrap_or_default()
     }
 
-    pub(crate) fn snapshot_displays(&mut self) -> u64 {
-        let token = state::next_id();
-        let kept = self
-            .disp
-            .displays
-            .iter()
-            .map(|(handle, rec)| (*handle, rec.wanted, rec.content))
-            .collect();
-        self.disp.snapshots.insert(token, kept);
-        token
+    /// What a transition that does not commit may have to put back: the workspace each display waits to show and the one it last showed,
+    /// and the camera and colour of each viewport.
+    pub(crate) fn snapshot_displays_value(&self) -> DisplaysSnapshot {
+        DisplaysSnapshot {
+            displays: self
+                .disp
+                .displays
+                .iter()
+                .map(|(handle, rec)| (*handle, rec.wanted, rec.content))
+                .collect(),
+            viewports: self
+                .disp
+                .viewports
+                .iter()
+                .map(|(vid, rec)| (*vid, rec.camera, rec.clear_color.clone()))
+                .collect(),
+            desks: self.desks.iter().map(|desk| (desk.id, desk.shown)).collect(),
+        }
     }
 
-    pub(crate) fn restore_displays(&mut self, token: u64) {
-        let Some(kept) = self.disp.snapshots.remove(&token) else {
-            return;
-        };
-        for (handle, wanted, content) in kept {
+    /// Puts back what [`State::snapshot_displays_value`] kept, for the displays and viewports that are still there. A transition that
+    /// fails puts back the desks too (`desks`): the workspace an assignment showed goes, and the one it hid returns.
+    pub(crate) fn restore_displays_value(&mut self, kept: DisplaysSnapshot, desks: bool) {
+        for (handle, wanted, content) in kept.displays {
             if let Some(rec) = self.disp.displays.get_mut(&handle) {
                 rec.wanted = wanted;
                 rec.content = content;
             }
         }
+        for (vid, camera, clear_color) in kept.viewports {
+            if let Some(rec) = self.disp.viewports.get_mut(&vid) {
+                rec.camera = camera;
+                rec.clear_color = clear_color;
+            }
+        }
+        if desks {
+            for (desk, shown) in kept.desks {
+                self.set_shown(desk, shown);
+            }
+        }
         self.reflow_displays();
+    }
+
+    pub(crate) fn snapshot_displays(&mut self) -> u64 {
+        let token = state::next_id();
+        let kept = self.snapshot_displays_value();
+        self.disp.snapshots.insert(token, kept);
+        token
+    }
+
+    pub(crate) fn restore_displays(&mut self, token: u64) {
+        if let Some(kept) = self.disp.snapshots.remove(&token) {
+            self.restore_displays_value(kept, false);
+        }
     }
 
     // ---- reconciling ---------------------------------------------------------------------------------------------------
@@ -941,6 +1019,7 @@ impl State {
                             content: None,
                             mirrored: Vec::new(),
                             span_lead: None,
+                            viewport: None,
                         },
                     );
                     self.disp.implicit.insert(*output, handle);

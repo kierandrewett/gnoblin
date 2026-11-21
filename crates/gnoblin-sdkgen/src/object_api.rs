@@ -30,7 +30,7 @@ use gnoblin_schema::{
 };
 
 use super::objects::{Member, check_foreign, slots_of, stem_of};
-use super::text::{pascal, rust_ident, snake};
+use super::text::{pascal, raw_ident, rust_ident, snake};
 use super::{Comment, File, SdkSpec, Target};
 
 /// Writes the typed Rust API.
@@ -81,8 +81,18 @@ fn member_ident(name: &str, export: &Option<String>) -> String {
     rust_ident(&export.clone().unwrap_or_else(|| snake(name)))
 }
 
+/// The name a property has before it is made an identifier: the helpers `set_<name>` and `on_<name>_changed` are built from it.
+fn property_stem(property: &Property) -> String {
+    property
+        .extras
+        .export
+        .rust
+        .clone()
+        .unwrap_or_else(|| snake(&property.name))
+}
+
 fn property_ident(property: &Property) -> String {
-    member_ident(&property.name, &property.extras.export.rust)
+    raw_ident(&property_stem(property))
 }
 
 impl<'a> Renderer<'a> {
@@ -650,7 +660,7 @@ impl go::typed::FromVal<Objects> for @Name@ {
         let id = format!("ids.p_{}", snake(&property.name));
         let schema = &property.name;
         if let Type::Callback(_) = property.ty {
-            let setter = format!("set_{ident}");
+            let setter = format!("set_{}", property_stem(property));
             claim(&setter)?;
             let param = self.param(&property.ty)?;
             let value = self.arg_expr("run", &property.ty, false)?;
@@ -667,7 +677,7 @@ impl go::typed::FromVal<Objects> for @Name@ {
             "    /// The property `{schema}`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library cannot read it.\n    pub fn {ident}(&self) -> go::Res<{getter}> {{\n        let ids = {ids}::of(&self.objects)?;\n        let value = self.objects.api.get(self.object.handle(), {id})?;\n        go::typed::FromVal::from_val(&self.objects, &value)\n    }}\n\n"
         );
         if !property.readonly {
-            let setter = format!("set_{ident}");
+            let setter = format!("set_{}", property_stem(property));
             claim(&setter)?;
             let param = self.param(&property.ty)?;
             let _ = write!(
@@ -675,7 +685,7 @@ impl go::typed::FromVal<Objects> for @Name@ {
                 "    /// Sets the property `{schema}`.\n    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    pub fn {setter}(&self, value: {param}) -> go::Res<()> {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value))\n    }}\n\n"
             );
             if property.animated {
-                let timed = format!("set_{ident}_timed");
+                let timed = format!("set_{}_timed", property_stem(property));
                 claim(&timed)?;
                 let _ = write!(
                     out,
@@ -683,7 +693,7 @@ impl go::typed::FromVal<Objects> for @Name@ {
                 );
             }
         }
-        let watch = format!("on_{ident}_changed");
+        let watch = format!("on_{}_changed", property_stem(property));
         claim(&watch)?;
         let owned = self.owned(&property.ty)?;
         let _ = write!(

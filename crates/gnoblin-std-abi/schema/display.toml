@@ -1,0 +1,528 @@
+# The `display` module of `gnoblin.std`: output profiles, logical displays and viewports, and the manager that keeps the lists of them.
+#
+# An output profile is a persistent selector for one monitor (by connector, make, model or serial) and the settings it gets when that
+# monitor is connected, and again when it returns. A display presents one viewport on one output (`single`), copies it to several
+# (`mirror`) or stretches it over their union (`span`); what it presents is named by profiles or by outputs. The library gives every
+# output that no display of the shell presents a `single` display of its own, so the list of displays always says what each monitor
+# shows. A viewport is a workspace seen through a camera.
+#
+# The library reconciles them with the connected outputs: it applies a profile when its monitor is connected, settles which display
+# presents which output, asks the compositor to mirror or span the outputs of a display, and shows a viewport's workspace on the
+# display's output. An output is named by its node number, as in the workspace module.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# ---- enums ---------------------------------------------------------------------------------------------------------------------------
+
+# How a display presents its outputs: one output (`single`), the first output copied to the others (`mirror`), or one workspace laid out
+# over the union of the outputs, which show a part each (`span`).
+[[enum]]
+name = "present_mode"
+since = "0.2.0"
+values = ["single", "mirror", "span"]
+
+# The transforms an output takes. `rotate-90`, `rotate-180` and `rotate-270` are the compositor's `90`, `180` and `270`.
+[[enum]]
+name = "output_transform"
+since = "0.2.0"
+values = ["normal", "rotate-90", "rotate-180", "rotate-270", "flipped", "flipped-90", "flipped-180", "flipped-270"]
+
+# Where a profile puts its output: at a pixel position, or against a side of another output.
+[[enum]]
+name = "position_kind"
+since = "0.2.0"
+values = ["absolute", "right_of", "left_of", "above", "below"]
+
+# ---- records -------------------------------------------------------------------------------------------------------------------------
+
+# Which hardware a profile is for. Every key given must match; at least one is required.
+[[object]]
+name = "output_match"
+since = "0.2.0"
+kind = "record"
+
+# The connector name (`DP-1`).
+[[object.property]]
+name = "connector"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The manufacturer as the monitor reports it.
+[[object.property]]
+name = "make"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The model name as the monitor reports it.
+[[object.property]]
+name = "model"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The serial number from the monitor's EDID identity.
+[[object.property]]
+name = "serial"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# Where a profile's output goes. `kind` says how: `absolute` takes `x` and `y` (whole numbers), and every other kind puts the output
+# against that side of the output of `profile` or of the output `output` (the node of a connected output), with `align` along the shared
+# edge: `top`, `center` or `bottom` beside it (`right_of`, `left_of`), `left`, `center` or `right` above or below it. A relative position
+# waits until the neighbour has been placed.
+[[object]]
+name = "output_position"
+since = "0.2.0"
+kind = "record"
+
+# How the position is given.
+[[object.property]]
+name = "kind"
+type = "enum:position_kind"
+since = "0.2.0"
+
+# For `absolute`: the horizontal position in logical pixels.
+[[object.property]]
+name = "x"
+type = "int"
+since = "0.2.0"
+optional = true
+
+# For `absolute`: the vertical position in logical pixels.
+[[object.property]]
+name = "y"
+type = "int"
+since = "0.2.0"
+optional = true
+
+# For a relative position: the profile whose output this one is placed against.
+[[object.property]]
+name = "profile"
+type = "object:output_profile"
+since = "0.2.0"
+optional = true
+
+# For a relative position: the node of the connected output this one is placed against, when no profile is named.
+[[object.property]]
+name = "output"
+type = "uint"
+since = "0.2.0"
+optional = true
+
+# For a relative position: where along the shared edge the output sits; left out, at the start of the edge.
+[[object.property]]
+name = "align"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# What a profile asks of its output. A key left out asks nothing. The library sends all of them as one request, and sends again only when
+# a key changed.
+[[object]]
+name = "profile_settings"
+since = "0.2.0"
+kind = "record"
+
+# `preferred` or `WIDTHxHEIGHT@HERTZ`, such as `3440x1440@144` (`format_mode` writes one).
+[[object.property]]
+name = "mode"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# From 0.5 to 4.
+[[object.property]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# Composes the output at this multiple of its mode, from 1 to 16. Values 1, 2 and 4 are recommended; another value is accepted with a
+# notice.
+[[object.property]]
+name = "supersample"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# Rotation and reflection to request.
+[[object.property]]
+name = "transform"
+type = "enum:output_transform"
+since = "0.2.0"
+optional = true
+
+# Asks for variable refresh rate. Accepted and reported as not applied: the backends have none.
+[[object.property]]
+name = "vrr"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Where the output goes.
+[[object.property]]
+name = "position"
+type = "object:output_position"
+since = "0.2.0"
+optional = true
+
+# `false` switches the output off.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# What a display presents: a profile (a persistent selector, which matches whichever monitor fits it) or an output (the node of a connected
+# one). Exactly one of the two is given.
+[[object]]
+name = "display_selector"
+since = "0.2.0"
+kind = "record"
+
+# The profile whose monitor is presented.
+[[object.property]]
+name = "profile"
+type = "object:output_profile"
+since = "0.2.0"
+optional = true
+
+# The node of the connected output that is presented.
+[[object.property]]
+name = "output"
+type = "uint"
+since = "0.2.0"
+optional = true
+
+# ---- the profile ---------------------------------------------------------------------------------------------------------------------
+
+# A persistent set of settings for a monitor, selected by its hardware details. It is inactive while no matching output is connected and
+# applies when one connects, including after a hotplug. The compositor applies settings as a transaction: if a mode or layout is
+# refused, the last good arrangement remains and the refusal is reported as a note naming `outputs.profiles.<id>.<key>`. A change to the
+# settings applies on the next turn. Removing a profile from the manager leaves the last arrangement in place.
+[[object]]
+name = "output_profile"
+since = "0.2.0"
+retained = true
+ctor = ["match"]
+
+# Which monitor the profile is for. Fixed at construction.
+[[object.property]]
+name = "match"
+type = "object:output_match"
+since = "0.2.0"
+readonly = true
+
+# The profile's name in the manager. Until one is given it is the `match` written out (`DP-1`, or `BOE/Panel/SN42`). It is not empty, and
+# it cannot change while the profile is in the manager.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+
+# What the profile asks of its output. Setting it replaces every key. A position that depends on itself through other profiles is refused.
+[[object.property]]
+name = "settings"
+type = "object:profile_settings"
+since = "0.2.0"
+
+# Whether the profile is in the manager's list.
+[[object.property]]
+name = "listed"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The text of a mode given as its parts, as `settings.mode` takes it: `WIDTHxHEIGHT@HERTZ`. The width and the height are whole numbers above
+# 0 and the refresh rate is a number above 0.
+[[object.method]]
+name = "format_mode"
+since = "0.2.0"
+function = true
+returns = "string"
+
+[[object.method.param]]
+name = "width"
+type = "double"
+
+[[object.method.param]]
+name = "height"
+type = "double"
+
+[[object.method.param]]
+name = "refresh_rate"
+type = "double"
+
+# ---- the viewport --------------------------------------------------------------------------------------------------------------------
+
+# A workspace seen through a camera. Assigning `content` on the viewport of a display shows that workspace there; reading it gives the
+# workspace shown now. A workspace is on one display at a time. A `camera3d` is accepted and kept, but the library reports that it draws
+# flat workspaces only.
+[[object]]
+name = "viewport"
+since = "0.2.0"
+retained = true
+
+# The workspace this viewport shows, or none. On a display's viewport it is what the display shows now: the workspace on its output, or
+# the one it last showed or was given while it has none. Assigning shows the workspace on the display, as `workspace.show` does, or keeps
+# it until the display has an output.
+[[object.property]]
+name = "content"
+type = "object:workspace"
+since = "0.2.0"
+optional = true
+
+# The camera, a `camera2d` or a `camera3d`. A viewport made without one has a `camera2d` with no zoom, pan or roll.
+[[object.property]]
+name = "camera"
+type = "object:scene_node"
+since = "0.2.0"
+
+# The colour behind the content, such as `#101820`. Kept and read back; nothing draws it yet.
+[[object.property]]
+name = "clear_color"
+type = "string"
+since = "0.2.0"
+default = "#000000"
+
+# The display that presents the viewport, or none while no display does.
+[[object.property]]
+name = "display"
+type = "object:display"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# ---- the display ---------------------------------------------------------------------------------------------------------------------
+
+# A logical presentation: one viewport shown on one output (`single`), copied to several (`mirror`) or stretched over their union
+# (`span`). An output belongs to one display at a time: the manager refuses a display that shares an output with another and names both.
+# With no matching output connected the display is parked and its workspace stays intact. The library makes a `single` display, named
+# `display-<connector>`, for every output no display of the shell presents, so the list always says what each monitor shows.
+[[object]]
+name = "display"
+since = "0.2.0"
+retained = true
+ctor = ["selectors"]
+
+# What the display presents, in the order it was given: profiles and outputs. At least one. Fixed at construction.
+[[object.property]]
+name = "selectors"
+type = "list<object:display_selector>"
+since = "0.2.0"
+readonly = true
+
+# The display's name in the manager. Until one is given it is `display-N`, counted in the order displays are made. It is not empty, and it
+# cannot change while the display is in the manager.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+
+# How the display presents its outputs; changing it takes effect on the next reconciliation. `single` presents one output.
+[[object.property]]
+name = "mode"
+type = "enum:present_mode"
+since = "0.2.0"
+default = "single"
+
+# The nodes of the connected outputs the display presents now, in selector order. Empty while the display is parked.
+[[object.property]]
+name = "outputs"
+type = "list<uint>"
+since = "0.2.0"
+readonly = true
+
+# The viewport the display shows. A display of the shell's own has one of its own. A viewport belongs to one display: assigning one that
+# another display shows is refused. The workspace the new viewport holds is the one the display shows from then on.
+[[object.property]]
+name = "viewport"
+type = "object:viewport"
+since = "0.2.0"
+
+# Whether the library made the display for an output that no display of the shell presents.
+[[object.property]]
+name = "implicit"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether the display is in the manager's list.
+[[object.property]]
+name = "listed"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# ---- the manager ---------------------------------------------------------------------------------------------------------------------
+
+# `gnoblin.displays` and `gnoblin.outputs.profiles`: the lists of displays and profiles, and what changes them. The library keeps the
+# lists equal to its own: it adds the displays it makes for outputs and takes them out with their outputs.
+[[object]]
+name = "display_manager"
+since = "0.2.0"
+kind = "service"
+
+# The displays in the list, in order: the shell's own and the library's.
+[[object.property]]
+name = "displays"
+type = "list<object:display>"
+since = "0.2.0"
+readonly = true
+
+# The profiles in the list, in the order they were added.
+[[object.property]]
+name = "profiles"
+type = "list<object:output_profile>"
+since = "0.2.0"
+readonly = true
+
+# Adds a profile. Refused when another profile in the list has its id.
+[[object.method]]
+name = "add_profile"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "profile"
+type = "object:output_profile"
+
+# Stops managing a profile; the compositor keeps the arrangement it applied last. Answers whether it was in the list.
+[[object.method]]
+name = "remove_profile"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "profile"
+type = "object:output_profile"
+
+# The profile in the list with this id, or none.
+[[object.method]]
+name = "profile_named"
+since = "0.2.0"
+returns = "object:output_profile"
+optional = true
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# Adds a display. Refused (busy) naming both displays when one of its outputs is presented by another display of the shell, and when
+# another display has its id.
+[[object.method]]
+name = "add_display"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "display"
+type = "object:display"
+
+# Removes a display of the shell's: its mirror and span end and each of its outputs gets a display of the library's. Answers whether it was
+# removed: a display of the library's own stays, and so does one that is not in the list.
+[[object.method]]
+name = "remove_display"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "display"
+type = "object:display"
+
+# Replaces `old` with `next` as one validated change. The displays that share an output with `next` leave, and `next` takes the place of
+# `old`. Nothing changes when the check fails.
+[[object.method]]
+name = "replace_display"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "old"
+type = "object:display"
+
+[[object.method.param]]
+name = "next"
+type = "object:display"
+
+# Removes every display of the shell's.
+[[object.method]]
+name = "clear_displays"
+since = "0.2.0"
+
+# The display in the list with this id, or none.
+[[object.method]]
+name = "display_named"
+since = "0.2.0"
+returns = "object:display"
+optional = true
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# The display under the point in the compositor's space, else the primary output's; none when no display has an output.
+[[object.method]]
+name = "display_at"
+since = "0.2.0"
+returns = "object:display"
+optional = true
+
+[[object.method.param]]
+name = "x"
+type = "double"
+
+[[object.method.param]]
+name = "y"
+type = "double"
+
+# Has the library apply the profiles and settle the displays now, as it does each turn.
+[[object.method]]
+name = "reflow"
+since = "0.2.0"
+
+# Keeps what a transition callback can change that is not a write to the tree: the workspace each display waits to show and the one it last
+# showed. Answers the token `restore` takes.
+[[object.method]]
+name = "snapshot"
+since = "0.2.0"
+returns = "uint"
+
+# Puts back what `snapshot` kept. The token is used up.
+[[object.method]]
+name = "restore"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "token"
+type = "uint"
+
+# A list changed, or a display presents other outputs.
+[[object.signal]]
+name = "changed"
+since = "0.2.0"
+
+# The compositor answered a request the library sent for the output `output`: `error` is empty when it took it, and the compositor's words
+# when it refused.
+[[object.signal]]
+name = "applied"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "uint"
+
+[[object.signal.field]]
+name = "error"
+type = "string"
+
+# A sentence for the shell's diagnostics: a request the compositor refused (`outputs.profiles.DP-1.scale: ...`), a setting the library does
+# not apply, a camera it cannot draw. Each is told once. The library writes each to the log as well.
+[[object.signal]]
+name = "noted"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "text"
+type = "string"

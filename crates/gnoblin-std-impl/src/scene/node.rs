@@ -380,3 +380,57 @@ pub(super) fn register(builder: &mut Builder) {
             ))
         });
 }
+
+/// What a display needs to know of a camera object: whether it draws flat, and whether a flat one is the identity view.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CameraState {
+    /// A `camera3d`.
+    Projected,
+    /// A `camera2d`; `identity` is true for no pan, zoom 1 and no roll.
+    Flat { identity: bool },
+}
+
+/// The camera an object is, or none when it is not a camera of this generation.
+pub(crate) fn camera_state(ctx: gnoblin_core_abi::GnoblinCtx, obj: gnoblin_object::Obj) -> Option<CameraState> {
+    let world = super::registry::find(ctx)?;
+    let (node, kind) = world
+        .entries
+        .borrow()
+        .iter()
+        .find(|(_, entry)| entry.obj == obj)
+        .map(|(node, entry)| (*node, entry.kind))?;
+    match kind {
+        Kind::Camera3D => Some(CameraState::Projected),
+        Kind::Camera2D => {
+            // Read through the scene's state: a `NodeHandle` that is dropped ends its node.
+            let at = |key: &str| match world.state.borrow().get(&world.g, node, key) {
+                Ok(Some(Prop::Number(value))) => value,
+                _ => 0.0,
+            };
+            Some(CameraState::Flat {
+                identity: at("x") == 0.0 && at("y") == 0.0 && at("zoom") == 1.0 && at("roll") == 0.0,
+            })
+        }
+        Kind::Node | Kind::View => None,
+    }
+}
+
+/// Makes a flat camera with no pan, zoom 1 and no roll, as a viewport has until it is given one.
+///
+/// # Errors
+///
+/// The scene cannot be attached to the tree.
+pub(crate) fn new_flat_camera(cx: &mut Cx<'_>) -> Res<gnoblin_object::Obj> {
+    let world = world_of(cx)?;
+    let node = world.make(Kind::Camera2D)?;
+    let obj = cx.spawn(
+        "camera2d",
+        NodeHandle {
+            world: std::rc::Rc::clone(&world),
+            node,
+            root: false,
+        },
+    )?;
+    world.adopt(node, obj, Kind::Camera2D, false);
+    Ok(obj)
+}

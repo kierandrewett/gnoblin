@@ -25,6 +25,8 @@ pub(crate) mod registry;
 pub(crate) mod table;
 mod view;
 
+pub(crate) use node::{CameraState, camera_state, new_flat_camera};
+
 use std::collections::HashMap;
 
 use gnoblin_core::{Gnoblin, NodeId};

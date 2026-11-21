@@ -1547,6 +1547,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-example-native-displays"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
+]
+
+[[package]]
 name = "gnoblin-example-native-frame"
 version = "0.2.0-alpha.0"
 dependencies = [

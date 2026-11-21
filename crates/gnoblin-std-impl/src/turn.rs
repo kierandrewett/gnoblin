@@ -75,6 +75,7 @@ pub(crate) fn turn(std: &Rc<Std>) {
     layout_pass(std, &g);
     std.st.borrow_mut().apply_styles();
     std.st.borrow_mut().publish_active_workspace();
+    crate::display_objects::frame(std);
     let wrote = std::mem::take(&mut std.st.borrow_mut().placements_written);
     if wrote {
         acknowledge_writes(std, &g);

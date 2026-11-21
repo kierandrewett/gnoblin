@@ -2202,6 +2202,39 @@ so run on the classes; the layouts fixture is replayed from Python too (`crates/
 - **Acceptance:** `modular::native_displays` from Python: a mirror and a span display, a profile applied on reconnect, a
   viewport showing a workspace. `displays` and `outputs` pass at NpFlip.
 
+**What exists.** `display.toml` declares the classes below, and `crates/gnoblin-std-impl/src/display_objects/` implements them over the
+library's own state (`displays.rs`), so the std table's `profile_*` and `display_*` functions, which the TypeScript library still calls,
+and the classes see one set of profiles and displays. Using any of these classes starts the library's desktop (`events::open`).
+
+- `output_profile` (retained, `ctor = ["match"]`): `match` (the record `output_match`: connector, make, model, serial), `id` (the match
+  written out until one is set; refused while the profile is listed), `settings` (the record `profile_settings`: mode, scale, supersample,
+  transform, vrr, position, enabled; setting it replaces every key), `listed`; the function `format_mode(width, height, refresh_rate)`. The
+  checks and their words are those of `display/output_profile.ts` and `outputRequest`: `OutputProfile "DP-1".scale must be a number from
+0.5 to 4`, a match with no key, a position that depends on itself (`placed relative to itself through "x"`), an align that does not fit
+  its side. A position is the record `output_position` (`kind`, then `x` and `y`, or a `profile` or an `output` node, and `align`).
+- `viewport` (retained): `content` (a workspace; on a display's viewport it is what the display shows now), `camera` (a `camera2d` or a
+  `camera3d`; a flat one with no pan, zoom or roll is made on first read), `clear_color`, `display`.
+- `display` (retained, `ctor = ["selectors"]`, a list of `display_selector` records, each a profile or an output node): `id` (`display-N`
+  in the order displays are made until one is set), `mode` (`present_mode`), `outputs` (the nodes it presents now), `viewport`, `implicit`,
+  `listed`. `viewport` is set after construction; a viewport belongs to one display.
+- `display_manager` (service): `displays`, `profiles`, `add_profile`, `remove_profile`, `profile_named`, `add_display`, `remove_display`,
+  `replace_display`, `clear_displays`, `display_named`, `display_at`, `reflow`, `snapshot`, `restore`, and the signals `changed`,
+  `applied(output, error)` and `noted(text)`. The library keeps one `single` display, `display-<connector>`, for every output no display of the
+  shell presents, and makes its object and its viewport when a shell asks.
+
+A failed transition puts back, with the styles and the workspaces, the workspace each desk shows, each display's waiting workspace, and each
+viewport's camera and colour (`DisplaysSnapshot` in `Undo`). The camera and colour notes (`not applied: camera3d ...`) are told once, from
+the turn, to a shell that made the manager: as the signal `noted` and as a log line.
+
+**The replay.** `crates/gnoblin-std-impl/tests/displays.rs` replays the cases of `crates/gnoblin-js/tests/displays.rs` (24 tests) as a shell
+over the object protocol, over the real core and library and the fake compositor. Allowances: (1) `activeDisplay` is the input context's, so
+the replay asks the manager's `display_at`; (2) a display's `id`, `mode` and `viewport` are set after construction, and a `single` display
+over two selectors is refused when it is added; (3) a mode given in parts is `format_mode`, and a transform is an enum, so a value outside
+the eight is refused by the protocol; (4) the supersample of a script's own `Output.apply` is the core's, and the profile's supersample is
+replayed. Example 33 (`examples/33-native-displays`, with `-ts` and `-py`) and `modular::native_displays` run the classes in a real session
+with the headless backend's one output: the list, a profile applied and read back, a display added and removed, and the refusals. A second
+output, for `mirror` and `span`, is the replay's.
+
 #### NpFlip (12 days): the serial point
 
 - **Owns:** `gnoblin-js/src/{stock.rs,shell/mod.rs}` (switch), the hand-written TypeScript still present.
