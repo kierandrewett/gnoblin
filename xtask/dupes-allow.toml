@@ -3249,3 +3249,9 @@ left = "gnoblin-std-impl::Point3"
 right = "gnoblin-types::Vec3"
 kind = "same-shape"
 reason = "the scene's arithmetic works on three numbers inside the library on the far side of the C ABI, where the shared geometry crate's vector is not a dependency of std and its operations are not the scene's (lengths, cross products, planes)"
+
+[[allow]]
+left = "gnoblin-core-impl::FingerSample"
+right = "gnoblin-std-impl::GestureSample"
+kind = "same-shape"
+reason = "the core's gesture matcher and the std library's own matcher both keep what the fingers have done since the begin; the std one goes when the std binds through the core's matcher, and std does not depend on the core's implementation crate"

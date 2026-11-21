@@ -12,6 +12,8 @@ released none
 callback | client_scope | (client:object:client) -> bool | 0.2.0
 callback | key_action | (event:object:binding_event) -> bool | 0.2.0
 
+enum | acceleration_profile | values default flat adaptive | 0.2.0
+enum | binding_phase | values start update end cancel | 0.2.0
 enum | binding_tier | values context layout device | 0.2.0
 enum | trigger_kind | values key pointer wheel gesture | 0.2.0
 
@@ -21,12 +23,15 @@ member | binding.id | property string ro | 0.2.0
 member | binding.parsed | property object:trigger ro | 0.2.0
 member | binding.priority | property double rw | 0.2.0
 member | binding.scope | property callback:client_scope rw | 0.2.0
+member | binding.threshold | property double rw | 0.2.0
 member | binding.tier | property enum:binding_tier ro | 0.2.0
 member | binding.trigger | property string rw | 0.2.0
 member | binding.unbind | method () | 0.2.0
 member | binding_collection.added | signal (binding:object:binding) | 0.2.0
 member | binding_collection.bind | method (trigger:string, action?:callback:key_action, options?:object:binding_options) -> object:binding | 0.2.0
 member | binding_collection.bind_binding | method (trigger:string, handler:object:key_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | binding_collection.bind_drag | method (trigger:string, handler:object:pointer_drag_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | binding_collection.bind_gesture | method (trigger:string, handler:object:gesture_binding, options?:object:binding_options) -> object:binding | 0.2.0
 member | binding_collection.clear | method () | 0.2.0
 member | binding_collection.find | method (id:string) -> object:binding? | 0.2.0
 member | binding_collection.has | method (id:string) -> bool | 0.2.0
@@ -36,14 +41,24 @@ member | binding_collection.owner | property string ro | 0.2.0
 member | binding_collection.remove | method (id:string) -> bool | 0.2.0
 member | binding_collection.removed | signal (binding:object:binding) | 0.2.0
 member | binding_collection.tier | property enum:binding_tier ro | 0.2.0
+member | binding_event.button | property uint rw,optional | 0.2.0
 member | binding_event.client | property object:client rw,optional | 0.2.0
 member | binding_event.context | property object:input_context rw | 0.2.0
 member | binding_event.delta_time | property double rw | 0.2.0
 member | binding_event.device | property object:device rw,optional | 0.2.0
+member | binding_event.drag_constraint | property string rw,optional | 0.2.0
+member | binding_event.dx | property double rw,optional | 0.2.0
+member | binding_event.dy | property double rw,optional | 0.2.0
+member | binding_event.edge_tiling | property bool rw,optional | 0.2.0
+member | binding_event.fingers | property uint rw,optional | 0.2.0
 member | binding_event.layout | property object:binding_collection rw,optional | 0.2.0
 member | binding_event.local_position | property object:input_point rw,optional | 0.2.0
 member | binding_event.modifiers | property list<string> rw | 0.2.0
+member | binding_event.phase | property enum:binding_phase rw,optional | 0.2.0
 member | binding_event.position | property object:input_point rw | 0.2.0
+member | binding_event.progress | property double rw,optional | 0.2.0
+member | binding_event.rotation | property double rw,optional | 0.2.0
+member | binding_event.scale | property double rw,optional | 0.2.0
 member | binding_event.timestamp | property double rw | 0.2.0
 member | binding_event.trigger | property string rw | 0.2.0
 member | binding_info.context | property string rw | 0.2.0
@@ -60,6 +75,7 @@ member | binding_options.enabled | property bool rw,optional | 0.2.0
 member | binding_options.id | property string rw,optional | 0.2.0
 member | binding_options.only | property bool rw,optional | 0.2.0
 member | binding_options.priority | property double rw,optional | 0.2.0
+member | binding_options.threshold | property double rw,optional | 0.2.0
 member | claim_info.device | property string rw | 0.2.0
 member | claim_info.id | property int rw | 0.2.0
 member | claim_info.pointer | property bool rw | 0.2.0
@@ -68,6 +84,8 @@ member | claim_info.trigger | property string rw | 0.2.0
 member | device.alive | property bool ro | 0.2.0
 member | device.bind | method (trigger:string, action?:callback:key_action, options?:object:binding_options) -> object:binding | 0.2.0
 member | device.bind_binding | method (trigger:string, handler:object:key_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | device.bind_drag | method (trigger:string, handler:object:pointer_drag_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | device.bind_gesture | method (trigger:string, handler:object:gesture_binding, options?:object:binding_options) -> object:binding | 0.2.0
 member | device.binding_only | property bool rw | 0.2.0
 member | device.bindings | property object:binding_collection ro | 0.2.0
 member | device.capabilities | property list<string> ro | 0.2.0
@@ -75,10 +93,16 @@ member | device.context | property object:input_context rw | 0.2.0
 member | device.enabled | property bool rw | 0.2.0
 member | device.id | property string ro | 0.2.0
 member | device.name | property string ro | 0.2.0
+member | gesture_binding.on_begin | method (event:object:binding_event) -> bool required | 0.2.0
+member | gesture_binding.on_cancel | method (event:object:binding_event) | 0.2.0
+member | gesture_binding.on_end | method (event:object:binding_event) | 0.2.0
+member | gesture_binding.on_update | method (event:object:binding_event) | 0.2.0
 member | input_context.alive | property bool ro | 0.2.0
 member | input_context.attach_layout | method (layout:object:binding_collection, owns?:callback:client_scope) | 0.2.0
 member | input_context.bind | method (trigger:string, action?:callback:key_action, options?:object:binding_options) -> object:binding | 0.2.0
 member | input_context.bind_binding | method (trigger:string, handler:object:key_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | input_context.bind_drag | method (trigger:string, handler:object:pointer_drag_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | input_context.bind_gesture | method (trigger:string, handler:object:gesture_binding, options?:object:binding_options) -> object:binding | 0.2.0
 member | input_context.bindings | property object:binding_collection ro | 0.2.0
 member | input_context.builtin_motion | property bool rw | 0.2.0
 member | input_context.claims | method () -> list<object:claim_info> | 0.2.0
@@ -104,12 +128,51 @@ member | input_manager.contexts | property list<object:input_context> ro | 0.2.0
 member | input_manager.device_added | signal (device:object:device) | 0.2.0
 member | input_manager.device_removed | signal (device:object:device) | 0.2.0
 member | input_manager.devices | property list<object:device> ro | 0.2.0
+member | input_manager.document | property string ro | 0.2.0
+member | input_manager.document_revision | property uint ro | 0.2.0
+member | input_manager.find_context | method (name:string) -> object:input_context? | 0.2.0
+member | input_manager.find_device | method (id:string) -> object:device? | 0.2.0
 member | input_manager.focused_client | property object:client ro | 0.2.0
 member | input_manager.primary | property object:input_context ro | 0.2.0
 member | input_manager.remove_context | method (context:object:input_context) -> bool | 0.2.0
 member | input_point.x | property double rw | 0.2.0
 member | input_point.y | property double rw | 0.2.0
 member | key_binding.on_press | method (event:object:binding_event) -> bool required | 0.2.0
+member | keyboard.alive | property bool ro | 0.2.0
+member | keyboard.bind | method (trigger:string, action?:callback:key_action, options?:object:binding_options) -> object:binding | 0.2.0
+member | keyboard.bind_binding | method (trigger:string, handler:object:key_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | keyboard.bind_drag | method (trigger:string, handler:object:pointer_drag_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | keyboard.bind_gesture | method (trigger:string, handler:object:gesture_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | keyboard.binding_only | property bool rw | 0.2.0
+member | keyboard.bindings | property object:binding_collection ro | 0.2.0
+member | keyboard.capabilities | property list<string> ro | 0.2.0
+member | keyboard.context | property object:input_context rw | 0.2.0
+member | keyboard.enabled | property bool rw | 0.2.0
+member | keyboard.id | property string ro | 0.2.0
+member | keyboard.name | property string ro | 0.2.0
+member | keyboard.repeat_delay | property uint rw,optional | 0.2.0
+member | keyboard.repeat_rate | property double rw,optional | 0.2.0
+member | keyboard.reset | method (name:string) | 0.2.0
+member | mouse.acceleration | property enum:acceleration_profile rw,optional | 0.2.0
+member | mouse.alive | property bool ro | 0.2.0
+member | mouse.bind | method (trigger:string, action?:callback:key_action, options?:object:binding_options) -> object:binding | 0.2.0
+member | mouse.bind_binding | method (trigger:string, handler:object:key_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | mouse.bind_drag | method (trigger:string, handler:object:pointer_drag_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | mouse.bind_gesture | method (trigger:string, handler:object:gesture_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | mouse.binding_only | property bool rw | 0.2.0
+member | mouse.bindings | property object:binding_collection ro | 0.2.0
+member | mouse.capabilities | property list<string> ro | 0.2.0
+member | mouse.context | property object:input_context rw | 0.2.0
+member | mouse.enabled | property bool rw | 0.2.0
+member | mouse.id | property string ro | 0.2.0
+member | mouse.name | property string ro | 0.2.0
+member | mouse.natural_scroll | property bool rw,optional | 0.2.0
+member | mouse.reset | method (name:string) | 0.2.0
+member | mouse.sensitivity | property double rw,optional | 0.2.0
+member | pointer_drag_binding.on_cancel | method (event:object:binding_event) | 0.2.0
+member | pointer_drag_binding.on_end | method (event:object:binding_event) | 0.2.0
+member | pointer_drag_binding.on_start | method (event:object:binding_event) -> bool required | 0.2.0
+member | pointer_drag_binding.on_update | method (event:object:binding_event) | 0.2.0
 member | seat_settings.auto_raise | property bool rw | 0.2.0
 member | seat_settings.auto_raise_delay | property double rw | 0.2.0
 member | seat_settings.builtin_motion | property bool rw | 0.2.0
@@ -119,6 +182,47 @@ member | seat_settings.focus_mode | property string rw | 0.2.0
 member | seat_settings.focus_new_windows | property string rw | 0.2.0
 member | seat_settings.raise_on_click | property bool rw | 0.2.0
 member | seat_settings.reduced_motion | property bool rw | 0.2.0
+member | tablet.alive | property bool ro | 0.2.0
+member | tablet.bind | method (trigger:string, action?:callback:key_action, options?:object:binding_options) -> object:binding | 0.2.0
+member | tablet.bind_binding | method (trigger:string, handler:object:key_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | tablet.bind_drag | method (trigger:string, handler:object:pointer_drag_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | tablet.bind_gesture | method (trigger:string, handler:object:gesture_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | tablet.binding_only | property bool rw | 0.2.0
+member | tablet.bindings | property object:binding_collection ro | 0.2.0
+member | tablet.capabilities | property list<string> ro | 0.2.0
+member | tablet.context | property object:input_context rw | 0.2.0
+member | tablet.enabled | property bool rw | 0.2.0
+member | tablet.id | property string ro | 0.2.0
+member | tablet.name | property string ro | 0.2.0
+member | touchpad.acceleration | property enum:acceleration_profile rw,optional | 0.2.0
+member | touchpad.alive | property bool ro | 0.2.0
+member | touchpad.bind | method (trigger:string, action?:callback:key_action, options?:object:binding_options) -> object:binding | 0.2.0
+member | touchpad.bind_binding | method (trigger:string, handler:object:key_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | touchpad.bind_drag | method (trigger:string, handler:object:pointer_drag_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | touchpad.bind_gesture | method (trigger:string, handler:object:gesture_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | touchpad.binding_only | property bool rw | 0.2.0
+member | touchpad.bindings | property object:binding_collection ro | 0.2.0
+member | touchpad.capabilities | property list<string> ro | 0.2.0
+member | touchpad.context | property object:input_context rw | 0.2.0
+member | touchpad.enabled | property bool rw | 0.2.0
+member | touchpad.id | property string ro | 0.2.0
+member | touchpad.name | property string ro | 0.2.0
+member | touchpad.natural_scroll | property bool rw,optional | 0.2.0
+member | touchpad.reset | method (name:string) | 0.2.0
+member | touchpad.sensitivity | property double rw,optional | 0.2.0
+member | touchpad.tap_to_click | property bool rw,optional | 0.2.0
+member | touchscreen.alive | property bool ro | 0.2.0
+member | touchscreen.bind | method (trigger:string, action?:callback:key_action, options?:object:binding_options) -> object:binding | 0.2.0
+member | touchscreen.bind_binding | method (trigger:string, handler:object:key_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | touchscreen.bind_drag | method (trigger:string, handler:object:pointer_drag_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | touchscreen.bind_gesture | method (trigger:string, handler:object:gesture_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | touchscreen.binding_only | property bool rw | 0.2.0
+member | touchscreen.bindings | property object:binding_collection ro | 0.2.0
+member | touchscreen.capabilities | property list<string> ro | 0.2.0
+member | touchscreen.context | property object:input_context rw | 0.2.0
+member | touchscreen.enabled | property bool rw | 0.2.0
+member | touchscreen.id | property string ro | 0.2.0
+member | touchscreen.name | property string ro | 0.2.0
 member | trigger.action | property string rw,optional | 0.2.0
 member | trigger.button | property string rw,optional | 0.2.0
 member | trigger.direction | property string rw,optional | 0.2.0
@@ -139,11 +243,18 @@ object | binding_info | base none record | 0.2.0
 object | binding_options | base none record | 0.2.0
 object | claim_info | base none record | 0.2.0
 object | device | base none | 0.2.0
+object | gesture_binding | base none interface | 0.2.0
 object | input_context | base none ctor(name) | 0.2.0
 object | input_hit | base none record | 0.2.0
 object | input_manager | base none service | 0.2.0
 object | input_point | base none record | 0.2.0
 object | key_binding | base none interface | 0.2.0
+object | keyboard | base device | 0.2.0
+object | mouse | base device | 0.2.0
+object | pointer_drag_binding | base none interface | 0.2.0
 object | seat_settings | base none record | 0.2.0
+object | tablet | base device | 0.2.0
+object | touchpad | base device | 0.2.0
+object | touchscreen | base device | 0.2.0
 object | trigger | base none record | 0.2.0
 object | triggers | base none | 0.2.0

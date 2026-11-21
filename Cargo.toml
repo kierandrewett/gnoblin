@@ -142,6 +142,7 @@ members = [
     "examples/27-native-frame",
     "examples/28-native-input",
     "examples/29-native-menus",
+    "examples/30-native-pointer",
     "examples/31-native-shell-ui",
     "xtask",
 ]

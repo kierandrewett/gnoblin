@@ -62,6 +62,8 @@ pub struct Shells {
     pub services: PathBuf,
     /// Example 28: key chords on the seat's input context of the core, in generation 1.
     pub input: PathBuf,
+    /// Example 30: a pointer drag, a click and a swipe on the seat's input context of the core, in generation 1.
+    pub pointer: PathBuf,
 }
 
 /// Builds the shells into a target directory of their own, so this does not wait for the lock of the one the test run holds.
@@ -104,6 +106,8 @@ fn build_shells() -> Result<Shells, String> {
             "gnoblin-example-native-services",
             "-p",
             "gnoblin-example-native-input",
+            "-p",
+            "gnoblin-example-native-pointer",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -125,10 +129,11 @@ fn build_shells() -> Result<Shells, String> {
         model: debug.join("libnative_model.so"),
         services: debug.join("libnative_services.so"),
         input: debug.join("libnative_input.so"),
+        pointer: debug.join("libnative_pointer.so"),
     })
 }
 
-/// Example 28 built twice from its one source, as generations 1 and 2 of a shell that is rebuilt while it runs.
+/// An example built twice from its one source, as generations 1 and 2 of a shell that is rebuilt while it runs.
 pub struct InputGenerations {
     /// As it is.
     pub v1: PathBuf,
@@ -138,28 +143,40 @@ pub struct InputGenerations {
 
 /// Builds example 28 for a reload test. Built once per test binary.
 pub fn input_generations() -> &'static InputGenerations {
-    static BUILT: LazyLock<Result<InputGenerations, String>> = LazyLock::new(build_input_generations);
+    static BUILT: LazyLock<Result<InputGenerations, String>> =
+        LazyLock::new(|| build_generations("28-native-input", "native_input"));
     match &*BUILT {
         Ok(built) => built,
         Err(message) => panic!("cannot build example 28: {message}"),
     }
 }
 
-fn build_input_generations() -> Result<InputGenerations, String> {
+/// Builds example 30 for a reload test. Built once per test binary.
+pub fn pointer_generations() -> &'static InputGenerations {
+    static BUILT: LazyLock<Result<InputGenerations, String>> =
+        LazyLock::new(|| build_generations("30-native-pointer", "native_pointer"));
+    match &*BUILT {
+        Ok(built) => built,
+        Err(message) => panic!("cannot build example 30: {message}"),
+    }
+}
+
+/// Builds the example `directory` (its library is `lib`) as generation 1, and again with `GENERATION` edited to 2.
+fn build_generations(directory: &str, lib: &str) -> Result<InputGenerations, String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
         .map_err(|error| error.to_string())?;
-    let scratch = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("input-{}", std::process::id()));
+    let scratch = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("{lib}-{}", std::process::id()));
     let project = scratch.join("project");
     fs::create_dir_all(project.join("src")).map_err(|error| error.to_string())?;
     let source =
-        fs::read_to_string(root.join("examples/28-native-input/src/lib.rs")).map_err(|error| error.to_string())?;
+        fs::read_to_string(root.join(format!("examples/{directory}/src/lib.rs"))).map_err(|error| error.to_string())?;
     fs::write(
         project.join("Cargo.toml"),
         format!(
-            "[package]\nname = \"native-input-project\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = false\n\n\
-             [lib]\nname = \"native_input\"\ncrate-type = [\"cdylib\"]\n\n\
+            "[package]\nname = \"{lib}-project\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = false\n\n\
+             [lib]\nname = \"{lib}\"\ncrate-type = [\"cdylib\"]\n\n\
              [dependencies]\ngnoblin-core = {{ path = \"{}\" }}\n\n[workspace]\n",
             root.join("crates/gnoblin-core").display()
         ),
@@ -185,13 +202,15 @@ fn build_input_generations() -> Result<InputGenerations, String> {
             return Err(format!("{name}: {}", String::from_utf8_lossy(&output.stderr)));
         }
         let built = out.join(format!("{name}.so"));
-        fs::copy(target.join("debug/libnative_input.so"), &built).map_err(|error| error.to_string())?;
+        fs::copy(target.join(format!("debug/lib{lib}.so")), &built).map_err(|error| error.to_string())?;
         Ok(built)
     };
     let v1 = build("v1", &source)?;
     let v2_source = source.replace("const GENERATION: u32 = 1;", "const GENERATION: u32 = 2;");
     if v2_source == source {
-        return Err("example 28 no longer has the constant this test edits".to_owned());
+        return Err(format!(
+            "example {directory} no longer has the constant this test edits"
+        ));
     }
     let v2 = build("v2", &v2_source)?;
     Ok(InputGenerations { v1, v2 })
@@ -1252,6 +1271,20 @@ impl Typist {
         self.key(KEY_LEFTMETA, false);
         self.queue.roundtrip(&mut Typing).expect("the keys are delivered");
     }
+
+    /// Presses `Super` and keeps it down: a pointer button pressed now is a button pressed with `Super`.
+    pub fn hold_super(&mut self) {
+        self.key(KEY_LEFTMETA, true);
+        self.keyboard.modifiers(MOD_SUPER, 0, 0, 0);
+        self.queue.roundtrip(&mut Typing).expect("the keys are delivered");
+    }
+
+    /// Lets `Super` go.
+    pub fn release_super(&mut self) {
+        self.keyboard.modifiers(0, 0, 0, 0);
+        self.key(KEY_LEFTMETA, false);
+        self.queue.roundtrip(&mut Typing).expect("the keys are delivered");
+    }
 }
 
 /// A virtual pointer on the session's own socket, as a remote-control client moves and clicks the session's pointer: the one door into a
@@ -1303,5 +1336,18 @@ impl Pointer {
             self.pointer.frame();
         }
         self.queue.roundtrip(&mut Typing).expect("the click is delivered");
+    }
+
+    /// Presses (`true`) or lets go of (`false`) `button`, which stays as it is until the next call.
+    pub fn button(&mut self, button: u32, pressed: bool) {
+        let state = if pressed {
+            wl_pointer::ButtonState::Pressed
+        } else {
+            wl_pointer::ButtonState::Released
+        };
+        self.clock += 10;
+        self.pointer.button(self.clock, button, state);
+        self.pointer.frame();
+        self.queue.roundtrip(&mut Typing).expect("the button is delivered");
     }
 }

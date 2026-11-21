@@ -141,6 +141,11 @@ fn pumped_world(ctx: GnoblinCtx, events: &[ShellEvent]) {
     }
 }
 
+/// The generation is ending, and the shell's code is still mapped: what its bindings began and did not finish ends, and the hooks hear it.
+pub(crate) fn end_inflight(ctx: GnoblinCtx) {
+    input::end_inflight(ctx);
+}
+
 /// The generation ended: its model is dropped.
 pub(crate) fn forget(ctx: GnoblinCtx) {
     WORLDS.with(|worlds| worlds.borrow_mut().remove(&ctx));

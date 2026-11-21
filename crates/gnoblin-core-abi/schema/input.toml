@@ -26,6 +26,18 @@ name = "trigger_kind"
 since = "0.2.0"
 values = ["key", "pointer", "wheel", "gesture"]
 
+# The step of a drag or a gesture that an event reports. A gesture's first step is `start`, as a drag's is.
+[[enum]]
+name = "binding_phase"
+since = "0.2.0"
+values = ["start", "update", "end", "cancel"]
+
+# How a pointer or a touchpad moves the pointer: the compositor's own curve, no curve, or the curve that follows the speed.
+[[enum]]
+name = "acceleration_profile"
+since = "0.2.0"
+values = ["default", "flat", "adaptive"]
+
 # A binding's function: it handles the press and answers `true`, or declines it with `false`, which gives the press to the next candidate.
 [[callback]]
 name = "key_action"
@@ -271,6 +283,78 @@ type = "object:binding_collection"
 since = "0.2.0"
 optional = true
 
+# Which step of a drag or a gesture this event is. A key press and a click have none.
+[[object.property]]
+name = "phase"
+type = "enum:binding_phase"
+since = "0.2.0"
+optional = true
+
+# A drag: the number of the button that was pressed (1 left, 2 middle, 3 right). Only for a drag and a click of a pointer button.
+[[object.property]]
+name = "button"
+type = "uint"
+since = "0.2.0"
+optional = true
+
+# A drag: how far the pointer is from the place of the press. A gesture: how far the centre of the fingers went since the gesture began,
+# in touchpad units. Only for a drag and a gesture.
+[[object.property]]
+name = "dx"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# As `dx`, for the vertical way.
+[[object.property]]
+name = "dy"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# A gesture: how many fingers touch the pad.
+[[object.property]]
+name = "fingers"
+type = "uint"
+since = "0.2.0"
+optional = true
+
+# A pinch: the size of the pinch compared with its start. 1 when the fingers have not moved apart or together.
+[[object.property]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# A gesture: the turn of the fingers since the gesture began, in radians.
+[[object.property]]
+name = "rotation"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# A gesture: how far it has gone for the trigger, from 0 to 1. A trigger with a direction counts only that way. A swipe is whole at 400
+# touchpad units, a pinch at a change of 0.5 in `scale`.
+[[object.property]]
+name = "progress"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# A drag: the seat's `drag_constraint`, `work_area` or `minimum_strip`. It says how far a moved window may leave the screen.
+[[object.property]]
+name = "drag_constraint"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# A drag: the seat's `edge_tiling`. True when a drop at the edge of the screen tiles the window.
+[[object.property]]
+name = "edge_tiling"
+type = "bool"
+since = "0.2.0"
+optional = true
+
 # What `bind` takes beside the trigger and the action.
 [[object]]
 name = "binding_options"
@@ -306,6 +390,13 @@ type = "bool"
 since = "0.2.0"
 optional = true
 
+# How far the pointer must go from the press before a drag starts, in logical pixels. 4 when it is left out. Only for a drag.
+[[object.property]]
+name = "threshold"
+type = "double"
+since = "0.2.0"
+optional = true
+
 # Handles the presses of a key chord. A shell implements it to give a binding a state of its own; `bind` takes a function for the plain case.
 [[object]]
 name = "key_binding"
@@ -318,6 +409,100 @@ name = "on_press"
 since = "0.2.0"
 returns = "bool"
 required = true
+
+[[object.method.param]]
+name = "event"
+type = "object:binding_event"
+
+# Follows a pointer drag from its start to its end. A shell implements it to give a drag a state of its own; `bind` takes a function for the
+# plain case, which is called for each step with `phase` set. The drag starts when the pointer has gone `threshold` pixels from the press. The
+# candidates of a press are asked in the order of the tiers and priorities; the first that answers `true` to `on_start` has the drag, and one
+# that answers `false` leaves it to the next. A binding that throws in `on_update` has lost the drag and is told `on_cancel`.
+[[object]]
+name = "pointer_drag_binding"
+since = "0.2.0"
+kind = "interface"
+
+# The pointer has gone far enough. `position` is where the press was. Answer `false` to decline the drag.
+[[object.method]]
+name = "on_start"
+since = "0.2.0"
+returns = "bool"
+required = true
+
+[[object.method.param]]
+name = "event"
+type = "object:binding_event"
+
+# The pointer moved. `position` is where it is, and `dx` and `dy` say how far it is from the press.
+[[object.method]]
+name = "on_update"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "event"
+type = "object:binding_event"
+
+# The button was let go.
+[[object.method]]
+name = "on_end"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "event"
+type = "object:binding_event"
+
+# The compositor ended the drag, the window under it closed, the binding was removed, or the shell was reloaded.
+[[object.method]]
+name = "on_cancel"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "event"
+type = "object:binding_event"
+
+# Follows a touchpad gesture from its start to its end. A trigger with a direction (`Swipe3Left`) waits until the fingers have gone far
+# enough to have a direction: a swipe is 12 touchpad units, a pinch a change of 0.1 in `scale`. Only a gesture that went that way is
+# offered to the binding. The first candidate that answers `true` to `on_begin` has the gesture, and one that answers `false` leaves it
+# to the next.
+[[object]]
+name = "gesture_binding"
+since = "0.2.0"
+kind = "interface"
+
+# The gesture is decided. Answer `false` to decline it.
+[[object.method]]
+name = "on_begin"
+since = "0.2.0"
+returns = "bool"
+required = true
+
+[[object.method.param]]
+name = "event"
+type = "object:binding_event"
+
+# The fingers moved.
+[[object.method]]
+name = "on_update"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "event"
+type = "object:binding_event"
+
+# The fingers left the pad.
+[[object.method]]
+name = "on_end"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "event"
+type = "object:binding_event"
+
+# The compositor ended the gesture, the window under it closed, the binding was removed, or the shell was reloaded.
+[[object.method]]
+name = "on_cancel"
+since = "0.2.0"
 
 [[object.method.param]]
 name = "event"
@@ -353,6 +538,12 @@ readonly = true
 # Which of two bindings of one trigger in one tier runs first: the higher number.
 [[object.property]]
 name = "priority"
+type = "double"
+since = "0.2.0"
+
+# How far the pointer must go from the press before a drag starts, in logical pixels. It is read when a press happens. Only a drag uses it.
+[[object.property]]
+name = "threshold"
 type = "double"
 since = "0.2.0"
 
@@ -452,6 +643,44 @@ type = "string"
 [[object.method.param]]
 name = "handler"
 type = "object:key_binding"
+
+[[object.method.param]]
+name = "options"
+type = "object:binding_options"
+optional = true
+
+# Binds an object the shell implements to a drag: `trigger` must be a pointer drag such as `Super+MouseLeft+Drag`. Otherwise as `bind`.
+[[object.method]]
+name = "bind_drag"
+since = "0.2.0"
+returns = "object:binding"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "handler"
+type = "object:pointer_drag_binding"
+
+[[object.method.param]]
+name = "options"
+type = "object:binding_options"
+optional = true
+
+# Binds an object the shell implements to a touchpad gesture: `trigger` must be a gesture such as `Swipe3Left`. Otherwise as `bind`.
+[[object.method]]
+name = "bind_gesture"
+since = "0.2.0"
+returns = "object:binding"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "handler"
+type = "object:gesture_binding"
 
 [[object.method.param]]
 name = "options"
@@ -802,6 +1031,173 @@ name = "options"
 type = "object:binding_options"
 optional = true
 
+# Binds an object the shell implements to a drag for this device. As `binding_collection.bind_drag` on its `bindings`.
+[[object.method]]
+name = "bind_drag"
+since = "0.2.0"
+returns = "object:binding"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "handler"
+type = "object:pointer_drag_binding"
+
+[[object.method.param]]
+name = "options"
+type = "object:binding_options"
+optional = true
+
+# Binds an object the shell implements to a touchpad gesture for this device. As `binding_collection.bind_gesture` on its `bindings`.
+[[object.method]]
+name = "bind_gesture"
+since = "0.2.0"
+returns = "object:binding"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "handler"
+type = "object:gesture_binding"
+
+[[object.method.param]]
+name = "options"
+type = "object:binding_options"
+optional = true
+
+# A keyboard, also one with a pointing stick. Its repeat settings are those of every keyboard: the compositor reads them once for the kind. A
+# write is checked at once and joins the `document` of the input manager. A setting that is not written reads none, and `reset` gives one back.
+[[object]]
+name = "keyboard"
+since = "0.2.0"
+kind = "handle"
+base = "device"
+
+# Key repeats for each second, from 0.1 to 1000, or none for the system's. The document holds the time between two repeats, in whole
+# milliseconds, as `input.keyboard.repeat-interval`.
+[[object.property]]
+name = "repeat_rate"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# Milliseconds a key is held before it repeats, a whole number from 1 to 10000, or none for the system's. The document holds it as
+# `input.keyboard.delay`.
+[[object.property]]
+name = "repeat_delay"
+type = "uint"
+since = "0.2.0"
+optional = true
+
+# Takes the setting `name` (`repeat_rate` or `repeat_delay`) back to the system's. Refused for another name.
+[[object.method]]
+name = "reset"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+# A mouse, a trackball or a pointing stick: any pointer that is not a touchpad. Its settings are those of every such pointer.
+[[object]]
+name = "mouse"
+since = "0.2.0"
+kind = "handle"
+base = "device"
+
+# Pointer speed from -1 (slowest) to 1, or none for the system's. The document holds it as `input.mouse.speed`.
+[[object.property]]
+name = "sensitivity"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The acceleration curve, or none for the system's. The document holds it as `input.mouse.accel-profile`.
+[[object.property]]
+name = "acceleration"
+type = "enum:acceleration_profile"
+since = "0.2.0"
+optional = true
+
+# Reverses the scroll direction, or none for the system's. The document holds it as `input.mouse.natural-scroll`.
+[[object.property]]
+name = "natural_scroll"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Takes the setting `name` (`sensitivity`, `acceleration` or `natural_scroll`) back to the system's. Refused for another name.
+[[object.method]]
+name = "reset"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+# A touchpad: a device that reports gestures. Its settings are those of every touchpad.
+[[object]]
+name = "touchpad"
+since = "0.2.0"
+kind = "handle"
+base = "device"
+
+# As `mouse.sensitivity`, for `input.touchpad.speed`.
+[[object.property]]
+name = "sensitivity"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# As `mouse.acceleration`, for `input.touchpad.accel-profile`.
+[[object.property]]
+name = "acceleration"
+type = "enum:acceleration_profile"
+since = "0.2.0"
+optional = true
+
+# As `mouse.natural_scroll`, for `input.touchpad.natural-scroll`.
+[[object.property]]
+name = "natural_scroll"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Makes a tap act as a click, or none for the system's. The document holds it as `input.touchpad.tap-to-click`.
+[[object.property]]
+name = "tap_to_click"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Takes the setting `name` (`sensitivity`, `acceleration`, `natural_scroll` or `tap_to_click`) back to the system's. Refused for another name.
+[[object.method]]
+name = "reset"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+# A touch screen. The compositor has no setting for one: its calibration belongs to the seat.
+[[object]]
+name = "touchscreen"
+since = "0.2.0"
+kind = "handle"
+base = "device"
+
+# A tool or a pad of a drawing tablet. The compositor keys tablet settings by vendor and product, which a device does not carry, so it has no
+# setting.
+[[object]]
+name = "tablet"
+since = "0.2.0"
+kind = "handle"
+base = "device"
+
 # An input context: the bindings of a group of devices and the claims they make on the seat. The compositor reports one for each seat; a
 # shell makes more with a name and adds them to `contexts`, and they hold the devices of the first seat. Context bindings apply to all the
 # devices held. Pointer and keyboard focus stay the seat's.
@@ -923,6 +1319,44 @@ type = "string"
 [[object.method.param]]
 name = "handler"
 type = "object:key_binding"
+
+[[object.method.param]]
+name = "options"
+type = "object:binding_options"
+optional = true
+
+# Binds an object the shell implements to a drag for this context. As `binding_collection.bind_drag` on its `bindings`.
+[[object.method]]
+name = "bind_drag"
+since = "0.2.0"
+returns = "object:binding"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "handler"
+type = "object:pointer_drag_binding"
+
+[[object.method.param]]
+name = "options"
+type = "object:binding_options"
+optional = true
+
+# Binds an object the shell implements to a touchpad gesture for this context. As `binding_collection.bind_gesture` on its `bindings`.
+[[object.method]]
+name = "bind_gesture"
+since = "0.2.0"
+returns = "object:binding"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "handler"
+type = "object:gesture_binding"
 
 [[object.method.param]]
 name = "options"
@@ -1066,6 +1500,43 @@ returns = "bool"
 [[object.method.param]]
 name = "context"
 type = "object:input_context"
+
+# The device with this id, or none. A device that was unplugged is not found.
+[[object.method]]
+name = "find_device"
+since = "0.2.0"
+optional = true
+returns = "object:device"
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# The context with this name, or none.
+[[object.method]]
+name = "find_context"
+since = "0.2.0"
+optional = true
+returns = "object:input_context"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+# The settings the shell wrote to devices, as the JSON text of the sections of the configuration document that hold them
+# (`{"input":{"mouse":{"speed":0.5}}}`). `{}` when none is written. The host commits it to the compositor.
+[[object.property]]
+name = "document"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# A number that grows with each change of a device setting. The host commits `document` again when it has grown since the last commit.
+[[object.property]]
+name = "document_revision"
+type = "uint"
+since = "0.2.0"
+readonly = true
 
 # A device was plugged in.
 [[object.signal]]

@@ -32,6 +32,17 @@ pub(super) fn focus(seat: u64) -> u64 {
     read(seat, "focus").node()
 }
 
+/// The seat's `drag_constraint`, `work_area` or `minimum_strip`, as the compositor configured it. Any other text is passed on as it is.
+pub(super) fn drag_constraint(seat: u64) -> String {
+    let text = read(seat, "drag_constraint").string();
+    if text.is_empty() { "work_area".to_owned() } else { text }
+}
+
+/// The seat's `edge_tiling`: whether a drop at the edge of the screen tiles a window.
+pub(super) fn edge_tiling(seat: u64) -> bool {
+    read(seat, "edge_tiling").flag()
+}
+
 /// The devices of a seat, one `id:name:caps` item each.
 pub(super) fn devices(seat: u64) -> Vec<String> {
     match read(seat, "device") {

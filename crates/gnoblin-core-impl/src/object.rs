@@ -80,6 +80,8 @@ fn user_of(ctx: GnoblinCtx) -> *mut c_void {
 
 unsafe extern "C" fn retire(user: *mut c_void) {
     let ctx = user as usize as GnoblinCtx;
+    // What the bindings began and did not finish is ended while the shell's code is mapped and its objects are still held.
+    let _ = std::panic::catch_unwind(|| crate::model::end_inflight(ctx));
     LIB.with(|lib| lib.retire(ctx));
     crate::model::forget(ctx);
 }

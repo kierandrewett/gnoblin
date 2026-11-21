@@ -54,13 +54,18 @@ fn press(cx: &Cx<'_>, context: Obj, claim: &ClaimEntry) {
 }
 
 /// Calls a closure with `args`, each object in them handed out as a listener's is.
-fn call_closure(cx: &Cx<'_>, closure: &Closure, args: Vec<Val>) -> Res<Val> {
+pub(super) fn call_closure(cx: &Cx<'_>, closure: &Closure, args: Vec<Val>) -> Res<Val> {
     args.iter().for_each(|arg| cx.hand_out(arg));
     closure.call(0, &args)
 }
 
 /// Whether the registration and its binding apply to the window `client`.
-fn applies(cx: &Cx<'_>, registration: &BindingRegistration, scope: Option<&Closure>, client: Option<Obj>) -> bool {
+pub(super) fn applies(
+    cx: &Cx<'_>,
+    registration: &BindingRegistration,
+    scope: Option<&Closure>,
+    client: Option<Obj>,
+) -> bool {
     let layout = registration.tier == super::BindingTier::Layout;
     if layout && client.is_none() {
         return false;
@@ -191,6 +196,8 @@ fn run(cx: &Cx<'_>, context: Obj, spec_key: &str, device: &str, client: Option<O
                 Err(fail) => Err(fail),
             },
             BindingAction::Handler(handler) => call_handler(cx, context, &registration, handler, client),
+            // A drag and a gesture are followed by their own matchers, which a key chord does not reach.
+            BindingAction::Drag(_) | BindingAction::Gesture(_) => continue,
         };
         // A throw is that binding's answer: it handled the press, badly. Only a `false` declines.
         match outcome {

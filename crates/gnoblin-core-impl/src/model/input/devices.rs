@@ -1,12 +1,81 @@
 //! `device`: an input device of a seat, and the roster a seat context keeps of the devices the seat reports. A device belongs to one context
 //! at a time and carries the bindings that match only its own events; they run before a layout's and the context's.
 
-use gnoblin_object::server::{Builder, Cx};
+use gnoblin_object::server::{Builder, ClassBuilder, Cx};
 use gnoblin_object::{Fail, Obj, Res, Val};
 
-use super::binding::{bind_closure, bind_handler, follow, new_collection, unfollow, wants_only};
+use super::binding::{
+    bind_closure, bind_drag, bind_gesture, bind_handler, follow, new_collection, unfollow, wants_only,
+};
 use super::context::{check_device_name, make_binding_only, release_binding_only};
+use super::settings::{self, DeviceSetting};
 use super::{BindingTier, InputDevice, Life, seat, with};
+
+/// What a device is, from what the seat says it can do. The class it has in the catalog follows: the settings of a kind are the kind's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::model) enum InputDeviceKind {
+    /// A device that is none of the others, a lid switch.
+    Device,
+    Keyboard,
+    Mouse,
+    Touchpad,
+    Touchscreen,
+    Tablet,
+}
+
+impl InputDeviceKind {
+    /// The kind a device with these capabilities (the words of the seat's device list) is: a tablet tool or pad, a touch screen, a
+    /// touchpad (it reports gestures), a keyboard (also one with a pointing stick) or a mouse (any other pointer).
+    pub(super) fn of(capabilities: &[String]) -> InputDeviceKind {
+        let has = |name: &str| capabilities.iter().any(|held| held == name);
+        if has("tablet-tool") || has("tablet-pad") {
+            InputDeviceKind::Tablet
+        } else if has("touch") {
+            InputDeviceKind::Touchscreen
+        } else if has("gesture") {
+            InputDeviceKind::Touchpad
+        } else if has("keyboard") {
+            InputDeviceKind::Keyboard
+        } else if has("pointer") {
+            InputDeviceKind::Mouse
+        } else {
+            InputDeviceKind::Device
+        }
+    }
+
+    /// The name of its class in the catalog.
+    fn class(self) -> &'static str {
+        match self {
+            InputDeviceKind::Device => "device",
+            InputDeviceKind::Keyboard => "keyboard",
+            InputDeviceKind::Mouse => "mouse",
+            InputDeviceKind::Touchpad => "touchpad",
+            InputDeviceKind::Touchscreen => "touchscreen",
+            InputDeviceKind::Tablet => "tablet",
+        }
+    }
+
+    /// The name a refusal gives the class.
+    pub(super) fn title(self) -> &'static str {
+        match self {
+            InputDeviceKind::Device => "Device",
+            InputDeviceKind::Keyboard => "Keyboard",
+            InputDeviceKind::Mouse => "Mouse",
+            InputDeviceKind::Touchpad => "Touchpad",
+            InputDeviceKind::Touchscreen => "Touchscreen",
+            InputDeviceKind::Tablet => "Tablet",
+        }
+    }
+
+    /// The group of the document's `input` section that holds the settings of the kind.
+    pub(super) fn group(self) -> &'static str {
+        match self {
+            InputDeviceKind::Keyboard => "keyboard",
+            InputDeviceKind::Touchpad => "touchpad",
+            _ => "mouse",
+        }
+    }
+}
 
 /// The devices a context holds. A seat context holds the devices of the seat that no other context took; one a shell made holds the
 /// devices it was given.
@@ -153,7 +222,8 @@ pub(super) fn sync_devices(cx: &Cx<'_>, context: Obj) {
 }
 
 fn make_device(cx: &Cx<'_>, context: Obj, id: &str, name: &str, capabilities: Vec<String>) -> Res<Obj> {
-    let device = cx.spawn("device", ())?;
+    let kind = InputDeviceKind::of(&capabilities);
+    let device = cx.spawn(kind.class(), ())?;
     cx.hold(device)?;
     let bindings = new_collection(cx, BindingTier::Device, name)?;
     with(cx.ctx(), |table| {
@@ -163,6 +233,7 @@ fn make_device(cx: &Cx<'_>, context: Obj, id: &str, name: &str, capabilities: Ve
                 id: id.to_owned(),
                 name: name.to_owned(),
                 capabilities,
+                kind,
                 alive: true,
                 context,
                 bindings,
@@ -179,7 +250,7 @@ fn move_device(cx: &Cx<'_>, from: Obj, device: Obj, to: Obj) -> Res<()> {
         table
             .devices
             .get(&device)
-            .map(|held| format!("Device#{}.context", held.id))
+            .map(|held| format!("{}#{}.context", held.kind.title(), held.id))
     })
     .unwrap_or_default();
     let (to_life, to_seat, from_seat, to_name, name) = with(cx.ctx(), |table| {
@@ -242,24 +313,39 @@ fn read<R>(cx: &Cx<'_>, work: impl FnOnce(&InputDevice) -> R) -> Res<R> {
     with(cx.ctx(), |table| table.devices.get(&me).map(work)).ok_or_else(|| Fail::stale("the device is gone"))
 }
 
+/// What a call of `bind` of a device binds.
+#[derive(Clone, Copy)]
+enum Binds {
+    Function,
+    Press,
+    Drag,
+    Gesture,
+}
+
 /// The `bind` of a device: `only` first makes it binding-only.
-fn bind_device(cx: &Cx<'_>, args: &[Val], handler: bool) -> Res<Val> {
+fn bind_device(cx: &Cx<'_>, args: &[Val], binds: Binds) -> Res<Val> {
     let me = cx.me();
     let (context, name) = holder(cx, me)?;
     let bindings = read(cx, |device| device.bindings)?;
     if wants_only(cx, args.get(2))? {
         make_binding_only(cx, context, &name)?;
     }
-    if handler {
-        bind_handler(cx, bindings, args)
-    } else {
-        bind_closure(cx, bindings, args)
+    match binds {
+        Binds::Function => bind_closure(cx, bindings, args),
+        Binds::Press => bind_handler(cx, bindings, args),
+        Binds::Drag => bind_drag(cx, bindings, args),
+        Binds::Gesture => bind_gesture(cx, bindings, args),
     }
 }
 
-pub(super) fn register(builder: &mut Builder) {
-    let _ = builder
-        .class::<()>("device")
+/// What the device is called in a refusal: its class and id, as `Mouse#2`.
+fn title(cx: &Cx<'_>) -> Res<String> {
+    read(cx, |device| format!("{}#{}", device.kind.title(), device.id))
+}
+
+/// The members every class of a device has.
+fn base(class: ClassBuilder<'_, ()>) -> ClassBuilder<'_, ()> {
+    class
         .ctor(|_, _| Err(Fail::refused("a device is reported by the seat")))
         .get("id", |_, cx| read(cx, |device| Val::Text(device.id.clone())))
         .get("name", |_, cx| read(cx, |device| Val::Text(device.name.clone())))
@@ -274,17 +360,17 @@ pub(super) fn register(builder: &mut Builder) {
             if value.bool()? {
                 return Ok(());
             }
-            let id = read(cx, |device| device.id.clone())?;
             Err(Fail::unsupported(format!(
-                "Device#{id}.enabled: the compositor cannot disable one device; make it binding-only to keep its keys from clients"
+                "{}.enabled: the compositor cannot disable one device; make it binding-only to keep its keys from clients",
+                title(cx)?
             )))
         })
         .get("context", |_, cx| cx.handout(read(cx, |device| device.context)?))
         .set("context", |_, cx, value| {
             let me = cx.me();
-            let (alive, id) = read(cx, |device| (device.alive, device.id.clone()))?;
+            let alive = read(cx, |device| device.alive)?;
             if !alive {
-                return Err(Fail::stale(format!("Device#{id}.context: the device was unplugged")));
+                return Err(Fail::stale(format!("{}.context: the device was unplugged", title(cx)?)));
             }
             let to = value.object()?;
             let (from, _) = holder(cx, me)?;
@@ -309,6 +395,84 @@ pub(super) fn register(builder: &mut Builder) {
                 Ok(())
             }
         })
-        .method("bind", |_, cx, args| bind_device(cx, args, false))
-        .method("bind_binding", |_, cx, args| bind_device(cx, args, true));
+        .method("bind", |_, cx, args| bind_device(cx, args, Binds::Function))
+        .method("bind_binding", |_, cx, args| bind_device(cx, args, Binds::Press))
+        .method("bind_drag", |_, cx, args| bind_device(cx, args, Binds::Drag))
+        .method("bind_gesture", |_, cx, args| bind_device(cx, args, Binds::Gesture))
+}
+
+/// The property `name` of a class of device, which is `setting` of the ledger: the setting is the kind's, not the device's.
+fn ledger_property<'a>(
+    class: ClassBuilder<'a, ()>,
+    name: &'static str,
+    setting: DeviceSetting,
+) -> ClassBuilder<'a, ()> {
+    class
+        .get(name, move |_, cx| settings::read(cx, setting))
+        .set(name, move |_, cx, value| settings::write(cx, cx.me(), setting, &value))
+}
+
+/// The `reset` of a class of device: takes the setting `name` back to the system's, for a name the class has.
+fn resettable<'a>(
+    class: ClassBuilder<'a, ()>,
+    names: &'static [(&'static str, DeviceSetting)],
+) -> ClassBuilder<'a, ()> {
+    class.method("reset", move |_, cx, args| {
+        let name = args[0].text()?;
+        let Some((_, setting)) = names.iter().find(|(known, _)| *known == name) else {
+            return Err(Fail::type_error(format!("{}.reset: no setting `{name}`", title(cx)?)));
+        };
+        settings::write(cx, cx.me(), *setting, &Val::None).map(|()| Val::None)
+    })
+}
+
+pub(super) fn register(builder: &mut Builder) {
+    let _ = base(builder.class::<()>("device"));
+    let keyboard = ledger_property(
+        base(builder.class::<()>("keyboard")),
+        "repeat_rate",
+        DeviceSetting::RepeatRate,
+    );
+    let keyboard = ledger_property(keyboard, "repeat_delay", DeviceSetting::RepeatDelay);
+    let _ = resettable(
+        keyboard,
+        &[
+            ("repeat_rate", DeviceSetting::RepeatRate),
+            ("repeat_delay", DeviceSetting::RepeatDelay),
+        ],
+    );
+    let mouse = ledger_property(
+        base(builder.class::<()>("mouse")),
+        "sensitivity",
+        DeviceSetting::MouseSensitivity,
+    );
+    let mouse = ledger_property(mouse, "acceleration", DeviceSetting::MouseAcceleration);
+    let mouse = ledger_property(mouse, "natural_scroll", DeviceSetting::MouseNaturalScroll);
+    let _ = resettable(
+        mouse,
+        &[
+            ("sensitivity", DeviceSetting::MouseSensitivity),
+            ("acceleration", DeviceSetting::MouseAcceleration),
+            ("natural_scroll", DeviceSetting::MouseNaturalScroll),
+        ],
+    );
+    let touchpad = ledger_property(
+        base(builder.class::<()>("touchpad")),
+        "sensitivity",
+        DeviceSetting::TouchpadSensitivity,
+    );
+    let touchpad = ledger_property(touchpad, "acceleration", DeviceSetting::TouchpadAcceleration);
+    let touchpad = ledger_property(touchpad, "natural_scroll", DeviceSetting::TouchpadNaturalScroll);
+    let touchpad = ledger_property(touchpad, "tap_to_click", DeviceSetting::TapToClick);
+    let _ = resettable(
+        touchpad,
+        &[
+            ("sensitivity", DeviceSetting::TouchpadSensitivity),
+            ("acceleration", DeviceSetting::TouchpadAcceleration),
+            ("natural_scroll", DeviceSetting::TouchpadNaturalScroll),
+            ("tap_to_click", DeviceSetting::TapToClick),
+        ],
+    );
+    let _ = base(builder.class::<()>("touchscreen"));
+    let _ = base(builder.class::<()>("tablet"));
 }

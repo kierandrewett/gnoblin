@@ -7,10 +7,65 @@ use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{Closure, Fail, Obj, Res, Val};
 
 use super::super::values::fields_of;
-use super::trigger::ParsedTrigger;
+use super::trigger::{ParsedTrigger, TriggerClass};
 use super::{
     BindingAction, BindingRec, BindingSet, BindingTier, ContextFollow, InputTable, parse_trigger, trigger_value, with,
 };
+
+/// How far the pointer goes from the press before a drag starts, when a binding says nothing.
+pub(super) const DEFAULT_THRESHOLD: f64 = 4.0;
+
+impl BindingAction {
+    /// The object of the shell the binding holds, if it holds one.
+    pub(super) fn object(&self) -> Option<Obj> {
+        match self {
+            BindingAction::Handler(object) | BindingAction::Drag(object) | BindingAction::Gesture(object) => {
+                Some(*object)
+            }
+            BindingAction::Swallow | BindingAction::Closure(_) => None,
+        }
+    }
+}
+
+/// Refuses a trigger the action cannot serve: an object that handles a press is not for a drag or a gesture, and the object of a drag or of
+/// a gesture is for that kind of trigger only. A function serves every trigger the compositor can claim.
+fn check_action(what: &str, action: &BindingAction, parsed: &ParsedTrigger) -> Res<()> {
+    let drag = parsed.kind == TriggerClass::Pointer && parsed.action == Some("drag");
+    let gesture = parsed.kind == TriggerClass::Gesture;
+    match action {
+        BindingAction::Handler(_) if drag || gesture => Err(Fail::type_error(format!(
+            "{what}.bind_binding: \"{}\" is a {}; bind {} with {}",
+            parsed.text,
+            if drag { "drag" } else { "gesture" },
+            if drag {
+                "a pointer_drag_binding"
+            } else {
+                "a gesture_binding"
+            },
+            if drag { "bind_drag" } else { "bind_gesture" },
+        ))),
+        BindingAction::Drag(_) if !drag => Err(Fail::type_error(format!(
+            "{what}.bind_drag: \"{}\" is not a drag; a drag is a pointer button with `Drag`, as `Super+MouseLeft+Drag`",
+            parsed.text
+        ))),
+        BindingAction::Gesture(_) if !gesture => Err(Fail::type_error(format!(
+            "{what}.bind_gesture: \"{}\" is not a gesture; a gesture is `Swipe` or `Pinch` and a finger count, as `Swipe3Left`",
+            parsed.text
+        ))),
+        _ => Ok(()),
+    }
+}
+
+/// A threshold is a distance: a finite number, not below 0.
+fn check_threshold(id: &str, threshold: f64) -> Res<()> {
+    if threshold.is_finite() && threshold >= 0.0 {
+        Ok(())
+    } else {
+        Err(Fail::type_error(format!(
+            "Binding \"{id}\" threshold must be a finite number of at least 0"
+        )))
+    }
+}
 
 /// What `bind` takes beside the trigger and the action.
 #[derive(Default)]
@@ -19,6 +74,7 @@ struct BindOptions {
     priority: Option<f64>,
     enabled: Option<bool>,
     only: Option<bool>,
+    threshold: Option<f64>,
 }
 
 pub(super) fn wants_only(cx: &Cx<'_>, options: Option<&Val>) -> Res<bool> {
@@ -39,6 +95,7 @@ fn options_of(cx: &Cx<'_>, options: Option<&Val>) -> Res<BindOptions> {
             "priority" => read.priority = Some(value.double()?),
             "enabled" => read.enabled = Some(value.bool()?),
             "only" => read.only = Some(value.bool()?),
+            "threshold" => read.threshold = Some(value.double()?),
             _ => {}
         }
     }
@@ -202,9 +259,12 @@ pub(super) fn bind_in(
         )));
     }
     let parsed = parse_trigger(trigger, &format!("{what}.bind"))?;
-    if parsed.kind == super::trigger::TriggerClass::Pointer && parsed.action == Some("drag") {
+    let drag = parsed.kind == TriggerClass::Pointer && parsed.action == Some("drag");
+    check_action(&what, &action, &parsed)?;
+    let threshold = options.threshold.unwrap_or(DEFAULT_THRESHOLD);
+    if options.threshold.is_some() && !drag {
         return Err(Fail::type_error(format!(
-            "{what}.bind: \"{}\" is a drag; a drag needs the hooks of a drag binding, not a function",
+            "{what}.bind: threshold is for a drag, and \"{}\" is not one",
             parsed.text
         )));
     }
@@ -224,6 +284,7 @@ pub(super) fn bind_in(
             "Binding \"{id}\" priority must be a finite number"
         )));
     }
+    check_threshold(&id, threshold)?;
     let rec = BindingRec {
         id,
         written: trigger.to_owned(),
@@ -231,6 +292,7 @@ pub(super) fn bind_in(
         priority,
         enabled: options.enabled.unwrap_or(true),
         scope: None,
+        threshold,
         action,
         collection: Some(collection),
     };
@@ -241,16 +303,13 @@ pub(super) fn bind_in(
 fn add(cx: &Cx<'_>, collection: Obj, rec: BindingRec) -> Res<Obj> {
     let obj = cx.spawn("binding", BindingState::default())?;
     cx.hold(obj)?;
-    if let BindingAction::Handler(handler) = &rec.action
-        && let Err(fail) = cx.hold(*handler)
+    let handler = rec.action.object();
+    if let Some(handler) = handler
+        && let Err(fail) = cx.hold(handler)
     {
         cx.unhold(obj);
         return Err(fail);
     }
-    let handler = match &rec.action {
-        BindingAction::Handler(handler) => Some(*handler),
-        _ => None,
-    };
     let (id, text, priority) = (rec.id.clone(), rec.parsed.text.clone(), rec.priority);
     let placed = with(cx.ctx(), |table| -> Res<Vec<FollowPlan>> {
         if table.collections.get(&collection).is_some_and(|held| {
@@ -358,8 +417,7 @@ pub(super) fn remove_binding(cx: &Cx<'_>, binding: Obj) -> Option<BindingRec> {
         Some((rec, collection))
     })?;
     cx.emit_on(collection, "removed", vec![cx.object_value(binding)]);
-    if let BindingAction::Handler(handler) = &rec.action {
-        let handler = *handler;
+    if let Some(handler) = rec.action.object() {
         cx.later_on(handler, move |cx| cx.unhold(handler));
     }
     cx.later_on(binding, move |cx| cx.unhold(binding));
@@ -374,6 +432,12 @@ fn retrigger(cx: &Cx<'_>, binding: Obj, text: &str) -> Res<()> {
         return Ok(());
     };
     let parsed = parse_trigger(text, &format!("Binding \"{id}\" trigger"))?;
+    let action = with(cx.ctx(), |table| {
+        table.bindings.get(&binding).map(|rec| rec.action.clone())
+    });
+    if let Some(action) = action {
+        check_action(&format!("Binding \"{id}\""), &action, &parsed)?;
+    }
     let moved = with(
         cx.ctx(),
         |table| -> Res<Option<(String, ParsedTrigger, Vec<FollowPlan>)>> {
@@ -540,21 +604,37 @@ pub(super) fn bind_closure(cx: &Cx<'_>, collection: Obj, args: &[Val]) -> Res<Va
 
 /// The `bind_binding` of a collection, a context and a device.
 pub(super) fn bind_handler(cx: &Cx<'_>, collection: Obj, args: &[Val]) -> Res<Val> {
+    bind_object(cx, collection, args, "bind_binding", "on_press", BindingAction::Handler)
+}
+
+/// The `bind_drag` of a collection, a context and a device.
+pub(super) fn bind_drag(cx: &Cx<'_>, collection: Obj, args: &[Val]) -> Res<Val> {
+    bind_object(cx, collection, args, "bind_drag", "on_start", BindingAction::Drag)
+}
+
+/// The `bind_gesture` of a collection, a context and a device.
+pub(super) fn bind_gesture(cx: &Cx<'_>, collection: Obj, args: &[Val]) -> Res<Val> {
+    bind_object(cx, collection, args, "bind_gesture", "on_begin", BindingAction::Gesture)
+}
+
+/// Binds an object the shell implements: it must implement `required`, the method that tells the binding is there.
+fn bind_object(
+    cx: &Cx<'_>,
+    collection: Obj,
+    args: &[Val],
+    call: &str,
+    required: &str,
+    action: fn(Obj) -> BindingAction,
+) -> Res<Val> {
     let handler = args[1].object()?;
     let class = cx.class_of(handler)?;
-    let method = cx.member_of(class, abi::MEMBER_METHOD, "on_press")?;
+    let method = cx.member_of(class, abi::MEMBER_METHOD, required)?;
     if !cx.shell(handler)?.has(method) {
-        return Err(Fail::type_error(
-            "bind_binding: the handler does not implement `on_press`",
-        ));
+        return Err(Fail::type_error(format!(
+            "{call}: the handler does not implement `{required}`"
+        )));
     }
-    let obj = bind_in(
-        cx,
-        collection,
-        args[0].text()?,
-        BindingAction::Handler(handler),
-        args.get(2),
-    )?;
+    let obj = bind_in(cx, collection, args[0].text()?, action(handler), args.get(2))?;
     cx.handout(obj)
 }
 
@@ -607,6 +687,15 @@ pub(super) fn register(builder: &mut Builder) {
                 return Err(Fail::type_error("Binding priority must be a finite number"));
             }
             state.edit(cx, |rec| rec.priority = priority)
+        })
+        .get("threshold", |state, cx| {
+            state.read(cx, |rec| Val::Double(rec.threshold))
+        })
+        .set("threshold", |state, cx, value| {
+            let threshold = value.double()?;
+            let id = state.read(cx, |rec| rec.id.clone())?;
+            check_threshold(&id, threshold)?;
+            state.edit(cx, |rec| rec.threshold = threshold)
         })
         .get("enabled", |state, cx| state.read(cx, |rec| Val::Bool(rec.enabled)))
         .set("enabled", |state, cx, value| {
@@ -684,6 +773,8 @@ pub(super) fn register(builder: &mut Builder) {
         })
         .method("bind", |_, cx, args| bind_closure(cx, cx.me(), args))
         .method("bind_binding", |_, cx, args| bind_handler(cx, cx.me(), args))
+        .method("bind_drag", |_, cx, args| bind_drag(cx, cx.me(), args))
+        .method("bind_gesture", |_, cx, args| bind_gesture(cx, cx.me(), args))
         .method("find", |_, cx, args| match find(cx, cx.me(), args[0].text()?) {
             Some(binding) => cx.handout(binding),
             None => Ok(Val::None),

@@ -1784,12 +1784,12 @@ behind the releases of the old one's, in the one transaction. The matcher keeps 
 claims through `listen::claim_with`, which is the claim of the ABI with a native handler, so the claims of a staged generation follow the same rule.
 `tests/input.rs` stages a second generation with `host::stage_generation`, shows that the compositor is told of one claim only while it is staged and
 that a staged generation hears nothing, takes it over with `host::take_over`, and reads the calls the compositor got: the old claim goes, the new one
-follows, and the compositor refuses nothing. The seam for part 2 is the `Matcher` trait in `model/input/mod.rs`. A claim's event is told to every
+follows, and the compositor refuses nothing. The seam of the matchers is the `Matcher` trait in `model/input/mod.rs`. A claim's event is told to every
 matcher (`claim_event`), a registration that goes is told first (`retire`), a window that is gone (`cancel_on`, called from the model's
-`release_client`) and a context that ends (`cancel_all`). The key matcher is the only one now and keeps nothing in flight. NpCoreInputB adds a field
-to `Matchers`, a line in `Matchers::each` and its own state, which these calls end; a binding's `Action` gains the variants of its hooks, and `bind_in`
-stops refusing a drag. Ending an input at a reload calls the shell, so it must run before the old generation retires: NpCoreInputB puts that on the
-shutdown hook of the object library (`first_use` in `object.rs`), where the shell's code is still mapped.
+`release_client`) and a context that ends (`cancel_all`). The key, pointer and gesture matchers are the fields of `Matchers`, and each pointer or gesture
+matcher keeps its own state in flight, which these calls end. A binding's `Action` has the variants of the hooks, and `bind_in` accepts a drag. Ending an
+input at a reload calls the shell, so it runs before the old generation retires: `end_inflight` is on the shutdown hook of the object library (`object.rs`),
+where the shell's code is still mapped.
 
 **What differs from the first draft of the table.** `on_release` is not a member: a key claim has no grab, so no release reaches the shell, and the
 TypeScript matcher ignored the release it was never sent. `active_display` is not a member of the core's context: it is `std.displayManager`'s, and the
@@ -1809,6 +1809,20 @@ here. `modular::native_input` runs example 29 (`examples/28-native-input`, Rust 
 and then the one that handles it, three bindings stand on two claims, and a reload (the library swapped under `--watch`, the file saved again) hands
 `Super+b` from generation 1 to generation 2, which runs it once while generation 1 hears nothing. A TypeScript shell reaches the same classes through
 the generated objects at NpFlip.
+
+**What exists (parts 2 to 4, slice B).** The pointer and gesture matchers are `model/input/{pointer,gesture}.rs`, and `hooks.rs` holds what they share. A
+function bound to a drag is called for each step with `binding_event.phase` set, and answers `false` at `start` to decline. A function bound to a swipe or a
+pinch runs once, at the end, when the gesture went far enough. An object implements `pointer_drag_binding` (`on_start`, `on_update`, `on_end`, `on_cancel`) or
+`gesture_binding` and is bound with `bind_drag` or `bind_gesture`. `binding.threshold` is the distance before a drag starts. The core does not know a work area:
+the events carry `drag_constraint` and `edge_tiling`, and the standard library adds the work area. `end_inflight`, called from the shutdown hook in `object.rs`
+before the old generation retires, ends every drag and gesture in flight with its `cancel`. The device classes are `keyboard`, `mouse`, `touchpad`,
+`touchscreen` and `tablet`, picked from the capabilities. The settings of a kind are one ledger: `input_manager.document` is its JSON text and
+`document_revision` grows with each change. A property cannot carry none, so `reset(name)` gives a setting back. The core has no way to commit the document to the
+compositor, so the host that commits it reads `document`. `tests/input.rs` has 26 tests: they replay `input_drags` and the three tiling fixtures, and add the closure
+path with its cancel on close, click and drag, a drag in flight at a takeover, and the device classes. `modular::native_pointer` runs example 30
+(`examples/30-native-pointer`, Rust and Python) in a real session: a virtual keyboard holds `Super` and a virtual pointer drags with the left button, so the
+function logs `start`, `update` and `end`; the right button is a click; a reload while a drag is going gives generation 1 the `cancel` and generation 2 hears
+nothing of it, then follows a drag of its own.
 
 #### NpPyRuntime (8 days)
 

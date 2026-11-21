@@ -1,5 +1,5 @@
-//! `input`: the input matcher of the core. A shell binds a trigger on an input context; the library claims the chord on the seat, shares one
-//! claim between the bindings of one trigger, and runs the right binding when the chord is pressed.
+//! `input`: the input matcher of the core. A shell binds a trigger on an input context; the library claims the chord, the pointer button or the
+//! gesture on the seat, shares one claim between the bindings of one trigger, and runs the right binding when the input happens.
 //!
 //! `design/native-std-port.md` (lane NpCoreInput) is the contract and `data/js/gnoblin-core/{bindings,input}/*` the behaviour it ports:
 //!
@@ -7,17 +7,21 @@
 //! - [`binding`]: the `binding` and `binding_collection` classes, and the rules a collection keeps (ids, conflicts, who follows it);
 //! - [`claims`]: the claims a context holds on its seat and the registrations that stand on them, in the order of precedence;
 //! - [`context`]: the `input_context` class, one for each seat and one for each context a shell makes;
-//! - [`devices`]: the `device` class and the roster a seat context keeps of the devices the seat reports;
+//! - [`devices`] and [`settings`]: the `device` classes and the roster a seat context keeps of the devices the seat reports, and the ledger
+//!   of the settings a shell wrote to them;
 //! - [`manager`]: the `input_manager` service, the contexts it holds and how a claim's events find their context;
-//! - [`keys`]: the key matcher. [`Matcher`] is the seam the pointer-drag and gesture matchers plug into.
+//! - [`keys`], [`pointer`] and [`gesture`]: the matchers of a key chord, of a pointer button (a click or a drag) and of a touchpad gesture,
+//!   and [`hooks`], which they share. [`Matcher`] is the seam they plug into.
 //!
 //! One [`InputTable`] holds all the state of a generation. A reload hands a chord from one generation to the next without this module doing
 //! anything of its own: a generation that is only staged keeps its claims in the session and the session sends them when it takes over,
-//! behind the releases of the old generation's, in one transaction. What the old generation was in the middle of is the matchers' to end
-//! ([`Matcher::cancel_all`] runs when a context ends and when the generation does).
+//! behind the releases of the old generation's, in one transaction. What the old generation was in the middle of is the matchers' to end: a
+//! drag or a gesture that is under way ends when a window closes, a binding goes, a context ends ([`Matcher::cancel_all`]), and when the
+//! generation does ([`end_inflight`], from the shutdown hook of the object library).
 //!
-//! Nothing here calls the shell while the table is borrowed: a binding's function, an `on_press` and a scope run from a turn
-//! ([`gnoblin_object::server::Cx::later`]) on what the table said, and the table is looked at again after each call.
+//! Nothing here calls the shell while the table or the matchers are borrowed: a binding's function, a hook and a scope run from a turn
+//! ([`gnoblin_object::server::Cx::later`]) on what the table said, and the table is looked at again after each call. The one call that is
+//! not from a turn is the `cancel` of a generation that ends, which no turn would follow.
 
 use std::collections::HashMap;
 
@@ -32,9 +36,13 @@ mod binding;
 mod claims;
 mod context;
 mod devices;
+mod gesture;
+mod hooks;
 mod keys;
 mod manager;
+mod pointer;
 mod seat;
+mod settings;
 mod trigger;
 
 use trigger::{ParsedTrigger, SeatClaim};
@@ -66,6 +74,10 @@ pub(super) enum BindingAction {
     Closure(Closure),
     /// An object the shell implements (`key_binding`), held for as long as the binding is.
     Handler(Obj),
+    /// An object the shell implements (`pointer_drag_binding`), held for as long as the binding is.
+    Drag(Obj),
+    /// An object the shell implements (`gesture_binding`), held for as long as the binding is.
+    Gesture(Obj),
 }
 
 /// One binding of a collection.
@@ -78,6 +90,8 @@ pub(super) struct BindingRec {
     pub enabled: bool,
     /// Which windows the binding applies to, when it has a say.
     pub scope: Option<Closure>,
+    /// How far the pointer must go from the press before a drag starts. Only a drag uses it.
+    pub threshold: f64,
     pub action: BindingAction,
     /// The collection that holds it, none once it was unbound.
     pub collection: Option<Obj>,
@@ -188,6 +202,8 @@ pub(super) struct InputDevice {
     pub id: String,
     pub name: String,
     pub capabilities: Vec<String>,
+    /// The class its capabilities make it.
+    pub kind: devices::InputDeviceKind,
     pub alive: bool,
     /// The context that holds it.
     pub context: Obj,
@@ -196,7 +212,8 @@ pub(super) struct InputDevice {
 }
 
 /// What a matcher is told of: the claims' events and the end of what its bindings run. The key matcher keeps nothing in flight; the
-/// matchers of a pointer drag and of a touchpad gesture do, and an in-flight input ends here, whatever ends it.
+/// matchers of a pointer drag and of a touchpad gesture do, and an in-flight input ends here, whatever ends it: the compositor, a window
+/// that closes, a binding that goes, a context that ends, or the generation (which ends them at once, from [`end_inflight`]).
 pub(super) trait Matcher {
     /// A claim of `context` reported `notice`. A matcher answers the kinds of event it owns and ignores the rest.
     fn claim_event(&mut self, cx: &Cx<'_>, context: Obj, claim: &ClaimEntry, notice: &ClaimNotice);
@@ -217,11 +234,15 @@ pub(super) trait Matcher {
 #[derive(Default)]
 struct Matchers {
     keys: keys::KeyMatcher,
+    pointer: pointer::PointerMatcher,
+    gesture: gesture::GestureMatcher,
 }
 
 impl Matchers {
     fn each(&mut self, mut work: impl FnMut(&mut dyn Matcher)) {
         work(&mut self.keys);
+        work(&mut self.pointer);
+        work(&mut self.gesture);
     }
 }
 
@@ -245,6 +266,8 @@ pub(super) struct InputTable {
     pub devices: HashMap<Obj, InputDevice>,
     /// The context that holds each claim, by the claim's id.
     pub routes: HashMap<i64, Obj>,
+    /// What a shell wrote to the settings of the devices.
+    pub settings: settings::SettingsLedger,
 }
 
 thread_local! {
@@ -255,6 +278,11 @@ thread_local! {
 /// Runs `work` on the table of the generation `ctx`. `work` must not call the shell or reach the table again.
 fn with<R>(ctx: GnoblinCtx, work: impl FnOnce(&mut InputTable) -> R) -> R {
     INPUT.with(|input| input.with(ctx, work))
+}
+
+/// Runs `work` on the matchers of the generation `ctx`. `work` must not call the shell.
+fn with_matchers<R>(ctx: GnoblinCtx, work: impl FnOnce(&mut Matchers) -> R) -> R {
+    MATCHERS.with(|matchers| matchers.with(ctx, work))
 }
 
 /// Runs `work` on each matcher of the generation `ctx`.
@@ -283,6 +311,24 @@ fn claim_event(cx: &Cx<'_>, notice: &ClaimNotice) {
 /// A window is gone: what the matchers run on it ends.
 pub(super) fn client_gone(cx: &Cx<'_>, client: Obj) {
     matchers(cx.ctx(), |matcher| matcher.cancel_on(cx, client));
+}
+
+/// The generation is going: every drag and gesture its bindings run ends now, with the `cancel` of its hooks, so the binding that took it
+/// is told while the shell's code is still mapped. The next generation hears nothing of what the old one had begun. A turn queued for later
+/// would never run, so this calls the shell at once.
+pub(crate) fn end_inflight(ctx: GnoblinCtx) {
+    let Some(manager) = with(ctx, |table| (table.manager != 0).then_some(table.manager)) else {
+        return;
+    };
+    let _ = crate::object::run_in(ctx, manager, |cx| {
+        let (presses, runs) = with_matchers(ctx, |held| (held.pointer.take_inflight(), held.gesture.take_inflight()));
+        for press in presses {
+            pointer::cancel(cx, &press, true);
+        }
+        for run in runs {
+            gesture::cancel(cx, &run, true);
+        }
+    });
 }
 
 /// What a pump of the tree link brought: the seats and devices are looked at again.

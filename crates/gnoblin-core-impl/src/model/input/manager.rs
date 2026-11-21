@@ -222,6 +222,39 @@ pub(super) fn register(builder: &mut Builder) {
                 None => Ok(Val::None),
             }
         })
+        .get("document", |_, cx| {
+            Ok(Val::Text(with(cx.ctx(), |table| table.settings.document())))
+        })
+        .get("document_revision", |_, cx| {
+            Ok(Val::Uint(with(cx.ctx(), |table| table.settings.revision())))
+        })
+        .method("find_device", |_, cx, args| {
+            let id = args[0].text()?.to_owned();
+            sync(cx);
+            let found = with(cx.ctx(), |table| {
+                table
+                    .devices
+                    .iter()
+                    .find(|(_, held)| held.alive && held.id == id)
+                    .map(|(obj, _)| *obj)
+            });
+            match found {
+                Some(device) => cx.handout(device),
+                None => Ok(Val::None),
+            }
+        })
+        .method("find_context", |_, cx, args| {
+            let name = args[0].text()?.to_owned();
+            let found = all(cx).into_iter().find(|context| {
+                with(cx.ctx(), |table| {
+                    table.contexts.get(context).is_some_and(|held| held.name == name)
+                })
+            });
+            match found {
+                Some(context) => cx.handout(context),
+                None => Ok(Val::None),
+            }
+        })
         .method("add_context", |_, cx, args| {
             add_context(cx, args[0].object()?).map(|()| Val::None)
         })

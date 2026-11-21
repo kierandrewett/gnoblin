@@ -1601,6 +1601,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-example-native-pointer"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+]
+
+[[package]]
 name = "gnoblin-example-native-scene"
 version = "0.2.0-alpha.0"
 dependencies = [

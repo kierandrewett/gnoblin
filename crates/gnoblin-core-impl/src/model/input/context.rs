@@ -7,7 +7,7 @@ use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{Closure, Fail, Obj, Res, Val};
 
 use super::super::values::record;
-use super::binding::{bind_closure, bind_handler, follow, new_collection, unfollow};
+use super::binding::{bind_closure, bind_drag, bind_gesture, bind_handler, follow, new_collection, unfollow};
 use super::keys::{bounds_of, focused_client};
 use super::{BindingTier, ClaimEntry, ContextRec, InputTable, Life, claims, devices, matchers, seat, with};
 
@@ -128,24 +128,32 @@ fn point(cx: &Cx<'_>, x: f64, y: f64) -> Res<Val> {
     record(cx, "input_point", vec![("x", Val::Double(x)), ("y", Val::Double(y))])
 }
 
-/// The topmost window whose bounds hold the point.
-fn hit_test(cx: &Cx<'_>, x: f64, y: f64) -> Res<Val> {
+/// The topmost window whose bounds hold the point, and the corner of its bounds.
+pub(super) fn hit_client(cx: &Cx<'_>, x: f64, y: f64) -> Option<(Obj, f64, f64)> {
     for client in seat::stack(cx).into_iter().rev() {
         let Some((left, top, width, height, shown)) = bounds_of(cx, client) else {
             continue;
         };
         if shown && x >= left && x < left + width && y >= top && y < top + height {
-            return record(
-                cx,
-                "input_hit",
-                vec![
-                    ("client", cx.handout(client)?),
-                    ("local_position", point(cx, x - left, y - top)?),
-                ],
-            );
+            return Some((client, left, top));
         }
     }
-    Ok(Val::None)
+    None
+}
+
+/// The topmost window whose bounds hold the point.
+fn hit_test(cx: &Cx<'_>, x: f64, y: f64) -> Res<Val> {
+    let Some((client, left, top)) = hit_client(cx, x, y) else {
+        return Ok(Val::None);
+    };
+    record(
+        cx,
+        "input_hit",
+        vec![
+            ("client", cx.handout(client)?),
+            ("local_position", point(cx, x - left, y - top)?),
+        ],
+    )
 }
 
 /// Each registered binding and its rank among the bindings of the same trigger.
@@ -378,6 +386,10 @@ pub(super) fn register(builder: &mut Builder) {
         .method("bind", |_, cx, args| bind_closure(cx, own_of(cx, cx.me())?, args))
         .method("bind_binding", |_, cx, args| {
             bind_handler(cx, own_of(cx, cx.me())?, args)
+        })
+        .method("bind_drag", |_, cx, args| bind_drag(cx, own_of(cx, cx.me())?, args))
+        .method("bind_gesture", |_, cx, args| {
+            bind_gesture(cx, own_of(cx, cx.me())?, args)
         })
         .method("is_binding_only", |_, cx, args| {
             let me = cx.me();

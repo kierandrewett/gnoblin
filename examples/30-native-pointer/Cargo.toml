@@ -1,0 +1,20 @@
+[package]
+name = "gnoblin-example-native-pointer"
+description = "Example 30: a native shell that binds a pointer drag, a click and a touchpad swipe on the seat's input context of libgnoblin-core, with a drag that is cancelled when the shell is reloaded."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "native_pointer"
+crate-type = ["cdylib"]
+
+# The shell depends on the core SDK and nothing else. The classes it uses (`gnoblin_core::objects`) are written at build time from the
+# library's catalog and call the library through its object table.
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+
+[lints]
+workspace = true
