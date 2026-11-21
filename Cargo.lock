@@ -1608,6 +1608,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-example-native-policy"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
+]
+
+[[package]]
 name = "gnoblin-example-native-scene"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1766,6 +1774,14 @@ name = "gnoblin-fixture-shell-plus"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core",
+]
+
+[[package]]
+name = "gnoblin-fixture-shell-policy"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
 ]
 
 [[package]]

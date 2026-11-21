@@ -61,6 +61,7 @@ pub(crate) fn ui_for(ctx: GnoblinCtx) -> Res<Rc<Ui>> {
         menus: RefCell::new(crate::menus::State::default()),
         shell: RefCell::new(crate::shell::ShellWorld::default()),
         lock: RefCell::new(crate::lock::LockWorld::default()),
+        policy: RefCell::new(crate::policy::PolicyWorld::default()),
     });
     UIS.with(|uis| uis.borrow_mut().insert(ctx, Rc::clone(&ui)));
     if let Err(fail) = super::input::subscribe(&ui) {

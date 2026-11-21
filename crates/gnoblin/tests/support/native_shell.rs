@@ -246,6 +246,8 @@ pub struct StdShells {
     pub shell_ui: PathBuf,
     /// Example 34: two workspaces, a layout for each of the library's kinds and one of the shell's own, and a divider dragged with a pointer.
     pub workspaces: PathBuf,
+    /// Example 32: the window policy: focus, the requests of windows, the keyboard move and resize, the drags and the workspace slide.
+    pub policy: PathBuf,
 }
 
 /// Builds the std examples into the shells' target directory. Built once per test binary.
@@ -292,6 +294,8 @@ fn build_std_shells() -> Result<StdShells, String> {
             "gnoblin-example-native-shell-ui",
             "-p",
             "gnoblin-example-native-workspaces",
+            "-p",
+            "gnoblin-example-native-policy",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -317,6 +321,7 @@ fn build_std_shells() -> Result<StdShells, String> {
         menus: debug.join("libnative_menus.so"),
         shell_ui: debug.join("libnative_shell_ui.so"),
         workspaces: debug.join("libnative_workspaces.so"),
+        policy: debug.join("libnative_policy.so"),
     })
 }
 

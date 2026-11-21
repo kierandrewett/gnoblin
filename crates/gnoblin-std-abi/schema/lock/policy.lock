@@ -9,10 +9,23 @@
 # to the version that ships, and from then on its entries are frozen.
 released none
 
+callback | gesture_run | (event:object:gesture_event) | 0.2.0
+
+enum | client_request_kind | values maximize unmaximize fullscreen unfullscreen minimize unminimize close raise lower activate move resize menu | 0.2.0
 enum | focus_event_kind | values added enter motion leave press | 0.2.0
 enum | focus_mode | values click sloppy follow-mouse | 0.2.0
 enum | new_window_policy | values allow prevent | 0.2.0
+enum | pinch_way | values in out | 0.2.0
+enum | reposition_mode | values move resize | 0.2.0
+enum | resize_grip | values quadrant nearest top_left top_right bottom_left bottom_right | 0.2.0
+enum | swipe_way | values left right up down | 0.2.0
 
+member | client_request.client | property string ro | 0.2.0
+member | client_request.handle | method () | 0.2.0
+member | client_request.handled | property bool ro | 0.2.0
+member | client_request.kind | property enum:client_request_kind ro | 0.2.0
+member | client_request.x | property double ro | 0.2.0
+member | client_request.y | property double ro | 0.2.0
 member | focus_action.clear | property bool rw | 0.2.0
 member | focus_action.focus | property bool rw | 0.2.0
 member | focus_action.focus_after | property double rw,optional | 0.2.0
@@ -26,16 +39,195 @@ member | focus_event.kind | property enum:focus_event_kind rw | 0.2.0
 member | focus_policy.focus_decision | function (settings:object:focus_settings, event:object:focus_event) -> object:focus_action | 0.2.0
 member | focus_policy.hover_focus | function (settings:object:focus_settings, hovering:bool, entered:bool) -> bool | 0.2.0
 member | focus_policy.leave_clears | function (settings:object:focus_settings) -> bool | 0.2.0
+member | focus_policy.now | property callback:time_source rw | 0.2.0
 member | focus_policy.opens_focused | function (settings:object:focus_settings, from_launcher:bool) -> bool | 0.2.0
+member | focus_policy.rest_delay | property double ro | 0.2.0
 member | focus_policy.rest_focus | function (settings:object:focus_settings) -> bool | 0.2.0
+member | focus_policy.settings | property object:focus_settings ro | 0.2.0
+member | focus_policy.start | method () | 0.2.0
+member | focus_policy.started | property bool ro | 0.2.0
+member | focus_policy.stop | method () | 0.2.0
 member | focus_settings.auto_raise | property bool rw | 0.2.0
 member | focus_settings.auto_raise_delay | property double rw | 0.2.0
 member | focus_settings.change_on_pointer_rest | property bool rw | 0.2.0
 member | focus_settings.mode | property enum:focus_mode rw | 0.2.0
 member | focus_settings.new_windows | property enum:new_window_policy rw | 0.2.0
 member | focus_settings.raise_on_click | property bool rw | 0.2.0
+member | gesture_event.dx | property double rw | 0.2.0
+member | gesture_event.dy | property double rw | 0.2.0
+member | gesture_event.fingers | property uint rw | 0.2.0
+member | gesture_event.progress | property double rw | 0.2.0
+member | gesture_event.rotation | property double rw | 0.2.0
+member | gesture_event.scale | property double rw | 0.2.0
+member | gesture_event.trigger | property string rw | 0.2.0
+member | gesture_event.x | property double rw | 0.2.0
+member | gesture_event.y | property double rw | 0.2.0
+member | gestures.action_names | property list<string> ro | 0.2.0
+member | gestures.direction | function (dx:double, dy:double, threshold?:double) -> object:swipe_direction? | 0.2.0
+member | gestures.pinch_threshold | property double ro | 0.2.0
+member | gestures.run | method (action:string) | 0.2.0
+member | gestures.swipe_threshold | property double ro | 0.2.0
+member | kept_rects.floating | property object:layout_rect rw,optional | 0.2.0
+member | kept_rects.windowed | property object:layout_rect rw,optional | 0.2.0
+member | move_binding.install | method (context?:string) | 0.2.0
+member | move_binding.installed | property bool ro | 0.2.0
+member | move_binding.priority | property double rw | 0.2.0
+member | move_binding.snap | property bool rw | 0.2.0
+member | move_binding.snap_margin | property double rw | 0.2.0
+member | move_binding.trigger | property string rw | 0.2.0
+member | move_binding.uninstall | method () | 0.2.0
+member | pinch_action_binding.clear | method (way:enum:pinch_way) | 0.2.0
+member | pinch_action_binding.install | method (context?:string) | 0.2.0
+member | pinch_action_binding.installed | property bool ro | 0.2.0
+member | pinch_action_binding.priority | property double rw | 0.2.0
+member | pinch_action_binding.set_action | method (way:enum:pinch_way, action:string) | 0.2.0
+member | pinch_action_binding.set_function | method (way:enum:pinch_way, run:callback:gesture_run) | 0.2.0
+member | pinch_action_binding.threshold | property double rw | 0.2.0
+member | pinch_action_binding.trigger | property string rw | 0.2.0
+member | pinch_action_binding.uninstall | method () | 0.2.0
+member | policy_binding.install | method (context?:string) | 0.2.0
+member | policy_binding.installed | property bool ro | 0.2.0
+member | policy_binding.priority | property double rw | 0.2.0
+member | policy_binding.uninstall | method () | 0.2.0
+member | reposition_grab.add | method (child:object:canvas) | 0.2.0
+member | reposition_grab.alive | property bool ro | 0.2.0
+member | reposition_grab.arrange_default | method () | 0.2.0
+member | reposition_grab.behaviour | property object:widget rw | 0.2.0
+member | reposition_grab.children | property list<object:canvas> rw | 0.2.0
+member | reposition_grab.clear_height | method () | 0.2.0
+member | reposition_grab.clear_width | method () | 0.2.0
+member | reposition_grab.client | property string ro | 0.2.0
+member | reposition_grab.contains | method (other:object:canvas) -> bool | 0.2.0
+member | reposition_grab.direction | property enum:direction rw | 0.2.0
+member | reposition_grab.failures | property uint ro | 0.2.0
+member | reposition_grab.fill | property string rw | 0.2.0
+member | reposition_grab.focus | method () | 0.2.0
+member | reposition_grab.focus_changed | signal (focused:bool) | 0.2.0
+member | reposition_grab.focused | property bool ro | 0.2.0
+member | reposition_grab.from | property object:layout_rect ro | 0.2.0
+member | reposition_grab.gap | property double rw | 0.2.0
+member | reposition_grab.gone | signal () | 0.2.0
+member | reposition_grab.grow | property double rw | 0.2.0
+member | reposition_grab.height | property double rw | 0.2.0
+member | reposition_grab.input | property bool rw | 0.2.0
+member | reposition_grab.invalidate | method () | 0.2.0
+member | reposition_grab.key | signal (event:object:ui_key_event) | 0.2.0
+member | reposition_grab.mode | property enum:reposition_mode ro | 0.2.0
+member | reposition_grab.mount | method (parent:uint) | 0.2.0
+member | reposition_grab.mount_top | method () | 0.2.0
+member | reposition_grab.natural_height | property double ro | 0.2.0
+member | reposition_grab.natural_width | property double ro | 0.2.0
+member | reposition_grab.node | property uint ro | 0.2.0
+member | reposition_grab.on_key | property callback:key_handler rw | 0.2.0
+member | reposition_grab.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | reposition_grab.opacity | property double rw | 0.2.0
+member | reposition_grab.padding | property double rw | 0.2.0
+member | reposition_grab.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | reposition_grab.parent | property object:canvas ro | 0.2.0
+member | reposition_grab.placement | property enum:placement rw | 0.2.0
+member | reposition_grab.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | reposition_grab.radius | property double rw | 0.2.0
+member | reposition_grab.remove | method (child:object:canvas) | 0.2.0
+member | reposition_grab.secure | property bool rw | 0.2.0
+member | reposition_grab.snapped | property object:client_snap ro,optional | 0.2.0
+member | reposition_grab.step | method (dx:double, dy:double) | 0.2.0
+member | reposition_grab.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | reposition_grab.visible | property bool rw | 0.2.0
+member | reposition_grab.width | property double rw | 0.2.0
+member | reposition_grab.x | property double rw | 0.2.0
+member | reposition_grab.y | property double rw | 0.2.0
+member | repositioning.begin | method (client:string, mode:enum:reposition_mode) -> bool | 0.2.0
+member | repositioning.current | property string ro,optional | 0.2.0
+member | repositioning.ended | signal (client:string, kept:bool) | 0.2.0
+member | repositioning.finish | method (keep:bool) -> bool | 0.2.0
+member | repositioning.grab | property object:reposition_grab ro,optional | 0.2.0
+member | repositioning.key_step | property double ro | 0.2.0
+member | repositioning.min_height | property double ro | 0.2.0
+member | repositioning.min_width | property double ro | 0.2.0
+member | repositioning.start | method () | 0.2.0
+member | repositioning.started | property bool ro | 0.2.0
+member | request_listener.on_request | method (request:object:client_request) required | 0.2.0
+member | resize_binding.grip | property enum:resize_grip rw | 0.2.0
+member | resize_binding.install | method (context?:string) | 0.2.0
+member | resize_binding.installed | property bool ro | 0.2.0
+member | resize_binding.priority | property double rw | 0.2.0
+member | resize_binding.trigger | property string rw | 0.2.0
+member | resize_binding.uninstall | method () | 0.2.0
+member | snap.edge_zone | function (x:double, y:double, area:object:layout_rect, margin?:double) -> object:snap_edge? | 0.2.0
+member | snap.margin | property double ro | 0.2.0
+member | snap.tile_rect | function (zone:enum:snap_zone, area:object:layout_rect) -> object:layout_rect | 0.2.0
+member | snap_edge.zone | property enum:snap_zone rw | 0.2.0
+member | split_resize_binding.install | method (context?:string) | 0.2.0
+member | split_resize_binding.installed | property bool ro | 0.2.0
+member | split_resize_binding.priority | property double rw | 0.2.0
+member | split_resize_binding.trigger | property string rw | 0.2.0
+member | split_resize_binding.uninstall | method () | 0.2.0
+member | swap_binding.install | method (context?:string) | 0.2.0
+member | swap_binding.installed | property bool ro | 0.2.0
+member | swap_binding.priority | property double rw | 0.2.0
+member | swap_binding.trigger | property string rw | 0.2.0
+member | swap_binding.uninstall | method () | 0.2.0
+member | swipe_action_binding.clear | method (way:enum:swipe_way) | 0.2.0
+member | swipe_action_binding.install | method (context?:string) | 0.2.0
+member | swipe_action_binding.installed | property bool ro | 0.2.0
+member | swipe_action_binding.priority | property double rw | 0.2.0
+member | swipe_action_binding.set_action | method (way:enum:swipe_way, action:string) | 0.2.0
+member | swipe_action_binding.set_function | method (way:enum:swipe_way, run:callback:gesture_run) | 0.2.0
+member | swipe_action_binding.threshold | property double rw | 0.2.0
+member | swipe_action_binding.trigger | property string rw | 0.2.0
+member | swipe_action_binding.uninstall | method () | 0.2.0
+member | swipe_direction.way | property enum:swipe_way rw | 0.2.0
+member | window_state.add_listener | method (listener:object:request_listener, client?:string) | 0.2.0
+member | window_state.answer | method (client:string, kind:enum:client_request_kind) | 0.2.0
+member | window_state.begin_move | method (client:string) -> bool | 0.2.0
+member | window_state.begin_resize | method (client:string) -> bool | 0.2.0
+member | window_state.drag_limit_ms | property double ro | 0.2.0
+member | window_state.dragging | property bool ro | 0.2.0
+member | window_state.enter_fullscreen | method (client:string) -> bool | 0.2.0
+member | window_state.keep | method (client:string, rects:object:kept_rects) | 0.2.0
+member | window_state.kept | method (client:string) -> object:kept_rects | 0.2.0
+member | window_state.leave_fullscreen | method (client:string) -> bool | 0.2.0
+member | window_state.lower | method (client:string) | 0.2.0
+member | window_state.maximise | method (client:string) -> bool | 0.2.0
+member | window_state.minimise | method (client:string) -> bool | 0.2.0
+member | window_state.now | property callback:time_source rw | 0.2.0
+member | window_state.present | method (client:string) -> bool | 0.2.0
+member | window_state.raise | method (client:string) | 0.2.0
+member | window_state.remove_listener | method (listener:object:request_listener) | 0.2.0
+member | window_state.resize_corner_zone | property double ro | 0.2.0
+member | window_state.start | method () | 0.2.0
+member | window_state.started | property bool ro | 0.2.0
+member | window_state.unmaximise | method (client:string) -> bool | 0.2.0
+member | window_state.unminimise | method (client:string) -> bool | 0.2.0
+member | workspace_slide_binding.commit | property double rw | 0.2.0
+member | workspace_slide_binding.duration | property double rw | 0.2.0
+member | workspace_slide_binding.install | method (context?:string) | 0.2.0
+member | workspace_slide_binding.installed | property bool ro | 0.2.0
+member | workspace_slide_binding.priority | property double rw | 0.2.0
+member | workspace_slide_binding.travel | property double rw | 0.2.0
+member | workspace_slide_binding.trigger | property string rw | 0.2.0
+member | workspace_slide_binding.uninstall | method () | 0.2.0
 
+object | client_request | base none | 0.2.0
 object | focus_action | base none record | 0.2.0
 object | focus_event | base none record | 0.2.0
 object | focus_policy | base none service | 0.2.0
 object | focus_settings | base none record | 0.2.0
+object | gesture_event | base none record | 0.2.0
+object | gestures | base none service | 0.2.0
+object | kept_rects | base none record | 0.2.0
+object | move_binding | base policy_binding | 0.2.0
+object | pinch_action_binding | base policy_binding | 0.2.0
+object | policy_binding | base none | 0.2.0
+object | reposition_grab | base box | 0.2.0
+object | repositioning | base none service | 0.2.0
+object | request_listener | base none interface | 0.2.0
+object | resize_binding | base policy_binding | 0.2.0
+object | snap | base none service | 0.2.0
+object | snap_edge | base none record | 0.2.0
+object | split_resize_binding | base policy_binding | 0.2.0
+object | swap_binding | base policy_binding | 0.2.0
+object | swipe_action_binding | base policy_binding | 0.2.0
+object | swipe_direction | base none record | 0.2.0
+object | window_state | base none service | 0.2.0
+object | workspace_slide_binding | base policy_binding | 0.2.0

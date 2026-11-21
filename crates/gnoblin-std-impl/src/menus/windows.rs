@@ -130,10 +130,10 @@ pub(crate) fn default_entries(ui: &Ui, client: u64) -> Vec<Entry> {
         Entry::gap(),
     ];
     let mut shown = Entry::of("Move", MenuAction::MoveWithKeys);
-    shown.enabled = floating && menus.move_with_keys.is_some();
+    shown.enabled = floating && (menus.move_with_keys.is_some() || crate::policy::repositions(ui));
     entries.push(shown);
     let mut shown = Entry::of("Resize", MenuAction::ResizeWithKeys);
-    shown.enabled = floating && menus.resize_with_keys.is_some();
+    shown.enabled = floating && (menus.resize_with_keys.is_some() || crate::policy::repositions(ui));
     entries.push(shown);
     let mut above = Entry::of("Always on top", MenuAction::ToggleAbove);
     above.checked = menus.above.contains(&client);
@@ -202,10 +202,14 @@ pub(crate) fn act(ui: &Rc<Ui>, client: u64, action: &MenuAction) {
                     menus.resize_with_keys.clone()
                 }
             };
-            if let Some(run) = run
-                && let Err(fail) = run.call(0, &[Val::Text(client.to_string())])
-            {
-                ui.warn(&format!("the keyboard move or resize threw: {fail}"));
+            match run {
+                Some(run) => {
+                    if let Err(fail) = run.call(0, &[Val::Text(client.to_string())]) {
+                        ui.warn(&format!("the keyboard move or resize threw: {fail}"));
+                    }
+                }
+                // No function of the shell's: the policy's own keyboard modes, when they were started.
+                None => crate::policy::begin_reposition(ui, client, *action == MenuAction::ResizeWithKeys),
             }
         }
         MenuAction::ToggleAbove => {

@@ -119,10 +119,12 @@ Change what the menu offers by giving the service a `MenuProvider`:
 - `defaultItems(client)` is the stock list, so a provider can add to it.
 - `show(client, x, y)` opens the menu in place of the library's card.
 
-Two members of the service start the keyboard modes of the stock Move and Resize entries. An entry whose function is missing is shown dim.
+The stock Move and Resize entries start a keyboard mode, where the arrow keys move or resize the window, Return keeps the place and Escape puts the window back. The entries are dim until a mode can start. Start the library's own modes with `Repositioning.get().start()`, or give the service a function of your own:
 
-- `moveWithKeys` starts the keyboard move mode.
-- `resizeWithKeys` starts the keyboard resize mode.
+- `moveWithKeys` starts the keyboard move mode in place of the library's.
+- `resizeWithKeys` starts the keyboard resize mode in place of the library's.
+
+Example 32 (`examples/32-native-policy`, with `-ts` and `-py`) starts the library's window policy, including these modes.
 
 `WindowMenus.current` is the open card. Listen to `currentChanged` to hear a card open, and to the card's `closed` signal to hear it close.
 

@@ -409,6 +409,21 @@ pub(crate) fn std_layouts(shell: &Path) -> i32 {
     0
 }
 
+/// The text of the claim for the pointer chord `chord`: the old library's spelling (`Super+Button1`) is its own claim, and the core's
+/// matcher claims `<Super>Button1`.
+fn claim_text(comp: &FakeCompositor, chord: &str) -> String {
+    if comp.find_claim(chord).is_some() {
+        return chord.to_owned();
+    }
+    match chord.rsplit_once('+') {
+        Some((modifiers, button)) => format!(
+            "{}{button}",
+            modifiers.split('+').map(|name| format!("<{name}>")).collect::<String>()
+        ),
+        None => chord.to_owned(),
+    }
+}
+
 /// One whole pointer drag of the claimed chord `chord`: the press at `from`, the motion through `path`, and the release at the last
 /// point (or `phase` as the last step instead, `cancel` to have the compositor end it).
 pub(crate) fn drag(
@@ -419,6 +434,8 @@ pub(crate) fn drag(
     path: &[(f64, f64)],
     last: &str,
 ) {
+    let text = claim_text(comp, chord);
+    let chord = text.as_str();
     let claim = comp.claim_id(chord);
     comp.pointer_chord(claim, chord, "start", from, from);
     pump(module);

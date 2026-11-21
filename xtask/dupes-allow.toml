@@ -3297,3 +3297,27 @@ left = "gnoblin-std::Source"
 right = "gnoblin-std-impl::Source"
 kind = "same-name"
 reason = "the SDK's backing of a collection and the library's own scene, collection and menu sources are different things on the two sides of the ABI"
+
+[[allow]]
+left = "gnoblin-fixture-shell-objects::Current"
+right = "gnoblin-fixture-shell-policy::Current"
+kind = "same-name"
+reason = "the policy fixture shell is the objects fixture shell with the stock drags and the probe bindings added, and keeps its layout bookkeeping as it was"
+
+[[allow]]
+left = "gnoblin-fixture-shell-objects::ObjectsShell"
+right = "gnoblin-fixture-shell-policy::ObjectsShell"
+kind = "same-name"
+reason = "the policy fixture shell is the objects fixture shell with the stock drags and the probe bindings added"
+
+[[allow]]
+left = "gnoblin-fixture-shell-policy::DragSet"
+right = "gnoblin-fixture-shell-tiling::Drags"
+kind = "same-shape"
+reason = "both fixture shells pick the drags a layout brings (swap and split resize, move and resize, none); one binds the table's drags, the other the policy classes"
+
+[[allow]]
+left = "gnoblin-fixture-shell-policy::Counter"
+right = "gnoblin-fixture-shell-tiling::GestureProbe"
+kind = "near-shape"
+reason = "both fixture shells probe the core's gesture matcher with the same writes; one binds through the table, the other through the core's typed classes"

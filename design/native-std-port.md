@@ -2055,6 +2055,44 @@ and `crates/gnoblin/tests/js_lock*.rs`.
   `window_state`, move and resize by keyboard, snap zones, a swipe sliding workspaces. Cases of `stock_focus`, `window_policy`,
   `client_requests`, `reposition` and `input` are replayed against it through the Python harness before the flip.
 
+**What exists.** `policy.toml` declares the classes below and `crates/gnoblin-std-impl/src/policy/` implements them over the toolkit's
+per-generation state (`Ui`), which hears the compositor. Each piece that watches the desktop is a service with a `start` and does nothing
+before it, so a shell with a policy of its own starts none of them and two policies never answer one request.
+
+- `focus_policy` (service): the pure `focus_decision`, `opens_focused`, `hover_focus`, `rest_focus` and `leave_clears`, and with `start` the
+  wiring: a window that opens takes focus as the seat says (a window the shell found already open does not), the pointer's enter, motion, leave
+  and press on a window click, hover and clear focus, raise on click and auto raise run, and the pointer rest and the delayed raise are timers
+  of the toolkit's frame. `settings` reads the seat (`hover` is `sloppy`, `hover-strict` is `follow-mouse`). `now` is the clock of the timers.
+- `window_state` (service) and `client_request`, `request_listener`: a request a window makes goes to the listeners of that window, then to the
+  listeners of every window, in the order they were added. The first that calls `handle` answers it. If none does, the stock answer runs
+  (`answer`, `maximise`, `unmaximise`, `enter_fullscreen`, `leave_fullscreen`, `minimise`, `unminimise`, `present`, `raise`, `lower`,
+  `begin_move`, `begin_resize`). A `menu` request a listener handled does not open the window menu. A move or resize request starts the stock
+  drag, which follows the seat's pointer until a button edge or `drag_limit_ms`. `kept` and `keep` carry the rectangles a window returns to
+  across a reload. A listener that throws is reported and skipped.
+- `repositioning` and `reposition_grab`: the keyboard move and resize. `begin` makes a canvas that holds the keyboard; the arrow keys move
+  or resize by `key_step`, Return, Enter or Space keep the place, Escape puts the window back (snapped again if it was snapped), a window that
+  closes ends it with the window put back, and a lock ends it with the window kept. The window menu's Move and Resize use it when the shell
+  gave no `move_with_keys` or `resize_with_keys` function and the service was started.
+- `snap`: `edge_zone` and `tile_rect`. A window is snapped by `client_state.snap_to`.
+- `move_binding`, `resize_binding`, `swap_binding`, `split_resize_binding`, `swipe_action_binding`, `pinch_action_binding` and
+  `workspace_slide_binding` extend `policy_binding`. `install(context?)` makes an object that implements the core's `pointer_drag_binding` or
+  `gesture_binding` and binds it on the named input context (the first seat's when none is named); `uninstall` takes it off. The matching is
+  the core's. The std drag rules (`bindings/steps.rs`) run for the drag, and the work area comes from the library. The slide follows the
+  fingers by writing the windows' `x`, finishes through `show_workspace` and settles back through a transition. `gestures` has the five named
+  actions (`workspace.next`, `workspace.previous`, `window.close`, `window.minimise`, `window.toggle-maximise`) and `direction`.
+
+`crates/gnoblin-std-impl/tests/policy.rs` holds 40 cases of the TypeScript tests (`stock_focus`, `window_policy`, `client_requests`,
+`reposition` and `input`) that this module answers, through the object protocol over the real core. `tests/policy_replay.rs` plays the scripts of the
+nine `tiling_*` fixtures that drag or make a gesture to `shell-policy`, which binds the classes and the probe bindings of `shell-tiling`.
+Example 32 and `modular::native_policy` run the policy from Rust, TypeScript and Python in a real session: a client asks to go fullscreen
+(a listener of the shell takes it), to maximise (the stock answer fills the work area) and to leave maximised.
+
+**Differences from the table of 4.4**, for the owner: `focus_policy` has `start` and `stop`, not `attach`; `client_request.handle` is `take` in
+Rust, because every Rust object has a `handle`; the constants (`SNAP_MARGIN`, `REPOSITION_STEP`, the thresholds) are read-only properties of
+their services, because the catalog has no constants; `on_swipe` and `on_pinch` are `set_action`, `set_function` and `clear` on the binding
+objects, because a catalog function cannot take a map of callbacks; a binding installs by name on a context and is not scoped to a layout, so
+swap and split resize decline for a window that is not tiled.
+
 #### NpStdObjects (12 days)
 
 - **Owns:** `gnoblin-std-impl/src/{workspace,desks,policy,client_state,collection,fit,floating}.rs`, catalog `workspace.toml`, the

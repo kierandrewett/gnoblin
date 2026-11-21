@@ -1,9 +1,12 @@
-# The `policy` module of `gnoblin.std`: the focus policy's decisions.
+# The `policy` module of `gnoblin.std`: what the desktop does with focus, with the requests a window makes of the shell, with a window the
+# keyboard moves, with the edges a dragged window snaps to, with the touchpad gestures that run actions and slide workspaces, and the pointer
+# drags the library runs itself.
 #
-# The decisions are pure functions of the settings and one event, so they are static functions of `focus_policy` that need no
-# desktop. `focus_decision` is what the TypeScript library's `focusDecision` answers; `opens_focused`, `hover_focus`, `rest_focus`
-# and `leave_clears` are its small predicates. The class's handle (the wiring that listens to a collection of clients and keeps the
-# two timers) is added by the lane that ports the policy.
+# Each piece that watches the desktop is a service with a `start`, and does nothing before it: a shell that has its own policy never starts the
+# library's, so two policies never answer one request. The focus decisions are pure functions of the settings and one event, so they are static
+# functions of `focus_policy` that need no desktop; `focus_decision` is what the TypeScript library's `focusDecision` answers. A window is named
+# by its node number as text, as it is everywhere in this namespace. A binding is made, then installed on an input context of `gnoblin.model` (the
+# first seat's, when none is named), and it stays installed until it is uninstalled.
 namespace = "gnoblin.std"
 version = "0.2.0"
 local = true
@@ -159,6 +162,45 @@ name = "focus_policy"
 since = "0.2.0"
 kind = "service"
 
+# Whether `start` ran.
+[[object.property]]
+name = "started"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The settings in force: what the seat publishes, in the library's words (the seat's `hover` is `sloppy` and `hover-strict` is `follow-mouse`).
+# Read on every event, so a change applies at once. A tree with no seat has the documented defaults.
+[[object.property]]
+name = "settings"
+type = "object:focus_settings"
+since = "0.2.0"
+readonly = true
+
+# How long a pointer rest takes to focus a window under `change_on_pointer_rest`, in milliseconds.
+[[object.property]]
+name = "rest_delay"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The clock the two timers (a rest that focuses, a delayed raise) run by, in milliseconds. Left out, the toolkit's.
+[[object.property]]
+name = "now"
+type = "callback:time_source"
+since = "0.2.0"
+
+# Starts the policy: a window that opens takes focus as the settings say, the pointer entering, moving over, leaving and pressing a window
+# focuses, raises and clears as the settings say, and the two timers run. A window the shell found already open is left alone.
+[[object.method]]
+name = "start"
+since = "0.2.0"
+
+# Stops the policy and forgets what it waited for.
+[[object.method]]
+name = "stop"
+since = "0.2.0"
+
 # What to do about `event` under `settings`.
 [[object.method]]
 name = "focus_decision"
@@ -230,3 +272,975 @@ returns = "bool"
 [[object.method.param]]
 name = "settings"
 type = "object:focus_settings"
+
+# ---- the requests a window makes ---------------------------------------------------------------------------------------------------------
+
+# Every request the compositor passes on from a window or a taskbar. `menu` is answered by the window menu (`window_menus`).
+[[enum]]
+name = "client_request_kind"
+since = "0.2.0"
+values = [
+    "maximize",
+    "unmaximize",
+    "fullscreen",
+    "unfullscreen",
+    "minimize",
+    "unminimize",
+    "close",
+    "raise",
+    "lower",
+    "activate",
+    "move",
+    "resize",
+    "menu",
+]
+
+# A request a window made of the shell. A listener answers it by calling `handle`; the first that does gets it, and the stock answer does not
+# run. The library makes it for each request and gives it to the listeners; one a shell keeps is a request that is over.
+[[object]]
+name = "client_request"
+since = "0.2.0"
+
+# What the window asks for.
+[[object.property]]
+name = "kind"
+type = "enum:client_request_kind"
+since = "0.2.0"
+readonly = true
+
+# The window that asked.
+[[object.property]]
+name = "client"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Where a `menu` request is anchored, in the compositor's logical pixels; 0 for every other kind.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The vertical place of a `menu` request's anchor; 0 for every other kind.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# Whether a listener has answered the request.
+[[object.property]]
+name = "handled"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Takes the request: no later listener hears it and the stock answer does not run. In Rust it is `take`, because every object of the SDK has a
+# `handle` of its own.
+[[object.method]]
+name = "handle"
+since = "0.2.0"
+export = { rust = "take" }
+
+# What a shell implements to hear the requests of windows before the stock answer.
+[[object]]
+name = "request_listener"
+since = "0.2.0"
+kind = "interface"
+
+# A window made `request`. Call `request.handle()` to answer it. A listener that throws is reported and skipped.
+[[object.method]]
+name = "on_request"
+since = "0.2.0"
+required = true
+
+[[object.method.param]]
+name = "request"
+type = "object:client_request"
+
+# The rectangles a window goes back to when it stops being maximised or fullscreen.
+[[object]]
+name = "kept_rects"
+since = "0.2.0"
+kind = "record"
+
+# The floating rectangle that leaving maximised restores; left out when none was kept.
+[[object.property]]
+name = "floating"
+type = "object:layout_rect"
+since = "0.2.0"
+optional = true
+
+# The windowed rectangle that leaving fullscreen restores; left out when none was kept.
+[[object.property]]
+name = "windowed"
+type = "object:layout_rect"
+since = "0.2.0"
+optional = true
+
+# The stock answers to the requests of windows: maximise, fullscreen, minimise, activate, raise, lower and close, and the pointer drags that a
+# `move` or `resize` request starts. A listener (`add_listener`) hears each request first, a window's own listeners before the listeners of every
+# window, in the order they were added. Nothing answers before `start`.
+[[object]]
+name = "window_state"
+since = "0.2.0"
+kind = "service"
+
+# Whether `start` ran.
+[[object.property]]
+name = "started"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether a drag that a request started is following the pointer.
+[[object.property]]
+name = "dragging"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# How near two sides of a window a resize request's pointer must be for the corner between them to move, in pixels.
+[[object.property]]
+name = "resize_corner_zone"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# A drag that a request started ends after this long even when no button edge arrives, in milliseconds.
+[[object.property]]
+name = "drag_limit_ms"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The clock the drag's limit runs by, in milliseconds. Left out, the toolkit's.
+[[object.property]]
+name = "now"
+type = "callback:time_source"
+since = "0.2.0"
+
+# Starts answering the requests of windows.
+[[object.method]]
+name = "start"
+since = "0.2.0"
+
+# Adds a listener for the requests of one window, or (with no `client`) of every window. The service holds it until it is removed.
+[[object.method]]
+name = "add_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:request_listener"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+optional = true
+
+# Removes a listener, from every list it was added to.
+[[object.method]]
+name = "remove_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:request_listener"
+
+# Answers `kind` for `client` as the stock policy does. A listener that handled a request may call it.
+[[object.method]]
+name = "answer"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+[[object.method.param]]
+name = "kind"
+type = "enum:client_request_kind"
+
+# Fills the work area and keeps the floating rectangle; a snapped window is unsnapped first. Refused (false) when the window is maximised or
+# fullscreen already.
+[[object.method]]
+name = "maximise"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Leaves maximised and returns the floating rectangle. Refused (false) when the window is not maximised.
+[[object.method]]
+name = "unmaximise"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Covers the whole output, bars included, and goes last among its siblings. The rectangle it had is kept for `leave_fullscreen`. Refused
+# (false) when the window is fullscreen already.
+[[object.method]]
+name = "enter_fullscreen"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Returns the rectangle the window had before it went fullscreen. Refused (false) when it is not fullscreen.
+[[object.method]]
+name = "leave_fullscreen"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Hides the window and hands the keyboard to the topmost sibling still showing, or to nobody. A window that did not hold the keyboard leaves it
+# where it is. Refused (false) when the window is minimised already.
+[[object.method]]
+name = "minimise"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Shows the window again. The keyboard goes to it only when nothing holds it. Refused (false) when it is not minimised.
+[[object.method]]
+name = "unminimise"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# An activation: brings a minimised window back, focuses and raises it. A window on a workspace that is not showing is left alone. Answers
+# whether it ran.
+[[object.method]]
+name = "present"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Puts the window last among the windows of its workspace, below a fullscreen window.
+[[object.method]]
+name = "raise"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Puts the window first among the windows of its workspace.
+[[object.method]]
+name = "lower"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Starts the stock move drag of `client`, following the seat's pointer. False when none starts: the window is tiled, fullscreen, maximised or
+# gone, or the tree has no seat.
+[[object.method]]
+name = "begin_move"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Starts the stock resize drag of `client`. The corner or the side is chosen from where the pointer is.
+[[object.method]]
+name = "begin_resize"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# The rectangles `client` returns to when it leaves maximised or fullscreen. They live here, so a shell that reloads reads them before it goes
+# and keeps them in the next generation.
+[[object.method]]
+name = "kept"
+since = "0.2.0"
+returns = "object:kept_rects"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Gives `client` back the rectangles `kept` took.
+[[object.method]]
+name = "keep"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+[[object.method.param]]
+name = "rects"
+type = "object:kept_rects"
+
+# ---- keyboard move and resize ------------------------------------------------------------------------------------------------------------
+
+# What the arrow keys do to the window of a keyboard mode: `move` carries it, `resize` changes its size.
+[[enum]]
+name = "reposition_mode"
+since = "0.2.0"
+values = ["move", "resize"]
+
+# The line that holds the keyboard while a window is moved or resized with it. It draws what the keys do. Return, Enter or Space keeps the new
+# place; Escape puts the window back; every other key is taken and does nothing.
+[[object]]
+name = "reposition_grab"
+since = "0.2.0"
+base = "box"
+
+# Whether the arrow keys move or resize the window.
+[[object.property]]
+name = "mode"
+type = "enum:reposition_mode"
+since = "0.2.0"
+readonly = true
+
+# The window being moved or resized.
+[[object.property]]
+name = "client"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The rectangle that `finish(false)` restores.
+[[object.property]]
+name = "from"
+type = "object:layout_rect"
+since = "0.2.0"
+readonly = true
+
+# The snap the window had when the mode began; `finish(false)` snaps it again.
+[[object.property]]
+name = "snapped"
+type = "object:client_snap"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# One arrow key: the window moves, or grows or shrinks, by `dx` and `dy` pixels.
+[[object.method]]
+name = "step"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "dx"
+type = "double"
+
+[[object.method.param]]
+name = "dy"
+type = "double"
+
+# The keyboard move and resize mode of the shell: at most one window is repositioned at a time. It holds the keyboard until it ends, and ends
+# when the window closes (the window goes back where it was) or the session locks (the window keeps its place). Only a floating window on the
+# shown workspace can be repositioned; a snapped one is unsnapped first.
+[[object]]
+name = "repositioning"
+since = "0.2.0"
+kind = "service"
+
+# Whether `start` ran.
+[[object.property]]
+name = "started"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The window being repositioned; left out when none is.
+[[object.property]]
+name = "current"
+type = "string"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# The line that holds the keyboard while the mode runs; left out when none does.
+[[object.property]]
+name = "grab"
+type = "object:reposition_grab"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# How far an arrow key moves or resizes the window, in pixels.
+[[object.property]]
+name = "key_step"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The least width a resize keeps, in pixels.
+[[object.property]]
+name = "min_width"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The least height a resize keeps, in pixels.
+[[object.property]]
+name = "min_height"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# Starts watching for the window going and the session locking.
+[[object.method]]
+name = "start"
+since = "0.2.0"
+
+# Starts the mode for `client`. The mode that ran ends first, keeping where its window is. False for a window that is fullscreen, maximised,
+# tiled, gone or not showing, and before `start`.
+[[object.method]]
+name = "begin"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+[[object.method.param]]
+name = "mode"
+type = "enum:reposition_mode"
+
+# Ends the mode. With `keep` the window stays where it is and that is the rectangle it floats at; without, it goes back to where the mode found
+# it, snapped again if it was. False when no mode was running.
+[[object.method]]
+name = "finish"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "keep"
+type = "bool"
+
+# The mode ended.
+[[object.signal]]
+name = "ended"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "string"
+
+[[object.signal.field]]
+name = "kept"
+type = "bool"
+
+# ---- snapping ----------------------------------------------------------------------------------------------------------------------------
+
+# The edge a pointer is near: `zone` is where a window dropped there tiles to.
+[[object]]
+name = "snap_edge"
+since = "0.2.0"
+kind = "record"
+
+# The zone of the edge.
+[[object.property]]
+name = "zone"
+type = "enum:snap_zone"
+since = "0.2.0"
+
+# Where a dragged window tiles to. The edges are the pointer's: left and right win over top at a corner. A window is snapped with
+# `client_state.snap_to`; it is off unless the seat's `edge_tiling` is true.
+[[object]]
+name = "snap"
+since = "0.2.0"
+kind = "service"
+
+# How near an edge the pointer must be to name it, in pixels.
+[[object.property]]
+name = "margin"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The edge the point is within `margin` pixels of in `area` (4 left out); none when it is near none.
+[[object.method]]
+name = "edge_zone"
+since = "0.2.0"
+function = true
+returns = "object:snap_edge"
+optional = true
+
+[[object.method.param]]
+name = "x"
+type = "double"
+
+[[object.method.param]]
+name = "y"
+type = "double"
+
+[[object.method.param]]
+name = "area"
+type = "object:layout_rect"
+
+[[object.method.param]]
+name = "margin"
+type = "double"
+optional = true
+
+# The rectangle a window tiles to in `zone` of `area`, before its frame's room is taken off: the halves are whole pixels.
+[[object.method]]
+name = "tile_rect"
+since = "0.2.0"
+function = true
+returns = "object:layout_rect"
+
+[[object.method.param]]
+name = "zone"
+type = "enum:snap_zone"
+
+[[object.method.param]]
+name = "area"
+type = "object:layout_rect"
+
+# ---- pointer drags and touchpad gestures -------------------------------------------------------------------------------------------------
+
+# What the bindings of this module share. A binding is installed on an input context of the core, and stays installed (its object lives) until
+# `uninstall` or the end of the shell's generation.
+[[object]]
+name = "policy_binding"
+since = "0.2.0"
+
+# Among the bindings of one trigger the higher priority is asked first, and one that declines leaves the drag or the gesture to the next. Two
+# bindings of one trigger and one priority are refused when the second is installed.
+[[object.property]]
+name = "priority"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Whether the binding is installed.
+[[object.property]]
+name = "installed"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Installs the binding on the input context named `context` (the first seat's when none is named). Refused when it is installed already, when
+# the context is not there, or when the matcher refuses the trigger.
+[[object.method]]
+name = "install"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "context"
+type = "string"
+optional = true
+
+# Takes the binding off its context. Does nothing when it is not installed. A drag or a gesture in flight is cancelled.
+[[object.method]]
+name = "uninstall"
+since = "0.2.0"
+
+# Drags the window under the pointer with it. The window's frame is held inside the work area as the seat's `drag_constraint` says, the
+# rectangle it floats at is remembered, and a drop on a screen edge snaps the window there when the seat's `edge_tiling` is on. A window that is
+# fullscreen or maximised declines.
+[[object]]
+name = "move_binding"
+since = "0.2.0"
+base = "policy_binding"
+
+# The pointer drag that starts the binding.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+default = "Super+MouseLeft+Drag"
+
+# Whether a drop on a screen edge snaps the window (left and right take half the work area, top all of it).
+[[object.property]]
+name = "snap"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# How near a screen edge, in pixels, the pointer must be for a drop to snap the window.
+[[object.property]]
+name = "snap_margin"
+type = "double"
+since = "0.2.0"
+default = 4.0
+
+# How a resize drag picks the side or the corner it takes hold of.
+[[enum]]
+name = "resize_grip"
+since = "0.2.0"
+values = ["quadrant", "nearest", "top_left", "top_right", "bottom_left", "bottom_right"]
+
+# Resizes the window under the pointer by the side or the corner the grip names. A resize stops at the window's own least and greatest size (100
+# by 80 below when it has none), and the rectangle it floats at is remembered.
+[[object]]
+name = "resize_binding"
+since = "0.2.0"
+base = "policy_binding"
+
+# The pointer drag that starts the binding.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+default = "Super+MouseRight+Drag"
+
+# Which side or corner a resize takes hold of: the corner of the quadrant the press landed in, the edge nearest the press, or a corner.
+[[object.property]]
+name = "grip"
+type = "enum:resize_grip"
+since = "0.2.0"
+default = "quadrant"
+
+# Swaps a tiled window with the tile it is dropped on: the pointer takes hold of a tile and the release decides.
+[[object]]
+name = "swap_binding"
+since = "0.2.0"
+base = "policy_binding"
+
+# The pointer drag that starts the binding.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+default = "Super+MouseLeft+Drag"
+
+# Moves the divider of a tiling layout nearest the press by as far as the pointer travels, so the tiles on both sides follow it while the pointer
+# is down. The layout decides which divider that is; one with no divider (a grid, a monocle) declines. A release keeps the ratio and a cancel puts
+# it back. When the layout offers a second divider on the other axis the same drag moves both.
+[[object]]
+name = "split_resize_binding"
+since = "0.2.0"
+base = "policy_binding"
+
+# The pointer drag that starts the binding.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+default = "Super+MouseRight+Drag"
+
+# What a gesture's function is told: the last event of the gesture.
+[[object]]
+name = "gesture_event"
+since = "0.2.0"
+kind = "record"
+
+# The trigger that matched, such as `Swipe3`.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+
+# How many fingers touch the pad.
+[[object.property]]
+name = "fingers"
+type = "uint"
+since = "0.2.0"
+
+# How far the centre of the fingers went since the gesture began, in touchpad units.
+[[object.property]]
+name = "dx"
+type = "double"
+since = "0.2.0"
+
+# As `dx`, for the vertical way.
+[[object.property]]
+name = "dy"
+type = "double"
+since = "0.2.0"
+
+# A pinch: the size of the pinch compared with its start; 1 for a swipe.
+[[object.property]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+
+# The turn of the fingers since the gesture began, in radians.
+[[object.property]]
+name = "rotation"
+type = "double"
+since = "0.2.0"
+
+# How far the gesture has gone for the trigger, from 0 to 1.
+[[object.property]]
+name = "progress"
+type = "double"
+since = "0.2.0"
+
+# The pointer in the compositor's logical space.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+# The vertical place of the pointer.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+# What a gesture runs when it ends: a function the shell gives, in place of a named action.
+[[callback]]
+name = "gesture_run"
+since = "0.2.0"
+
+[[callback.param]]
+name = "event"
+type = "object:gesture_event"
+
+# The way a swipe went, by the longer axis of the gesture.
+[[enum]]
+name = "swipe_way"
+since = "0.2.0"
+values = ["left", "right", "up", "down"]
+
+# The way a pinch went: `in` when the fingers come together, `out` when they spread.
+[[enum]]
+name = "pinch_way"
+since = "0.2.0"
+values = ["in", "out"]
+
+# The way a swipe went.
+[[object]]
+name = "swipe_direction"
+since = "0.2.0"
+kind = "record"
+
+# The way.
+[[object.property]]
+name = "way"
+type = "enum:swipe_way"
+since = "0.2.0"
+
+# The touchpad gestures that run actions, and the five stock actions. A named action is one of `workspace.next`, `workspace.previous`,
+# `window.close`, `window.minimise` (also spelt `window.minimize`) and `window.toggle-maximise`; each acts on the workspace under the pointer or
+# on the window with the keyboard. The stock default binds one gesture, the three-finger workspace slide (`workspace_slide_binding`): a gesture
+# bound at its trigger shares the claim, so use four fingers to keep both.
+[[object]]
+name = "gestures"
+since = "0.2.0"
+kind = "service"
+
+# The shortest swipe an action binding acts on, in touchpad units.
+[[object.property]]
+name = "swipe_threshold"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# How far from 1 a pinch's scale must be for an action binding to act on it.
+[[object.property]]
+name = "pinch_threshold"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The names an action may go by.
+[[object.property]]
+name = "action_names"
+type = "list<string>"
+since = "0.2.0"
+readonly = true
+
+# Runs the named stock action. A name that is not one is refused.
+[[object.method]]
+name = "run"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "action"
+type = "string"
+
+# The way a gesture has gone: `left`, `right`, `up` or `down` by its longer axis, or none while it has moved less than `threshold` (48 left out)
+# touchpad units. A tie goes to the horizontal axis.
+[[object.method]]
+name = "direction"
+since = "0.2.0"
+function = true
+returns = "object:swipe_direction"
+optional = true
+
+[[object.method.param]]
+name = "dx"
+type = "double"
+
+[[object.method.param]]
+name = "dy"
+type = "double"
+
+[[object.method.param]]
+name = "threshold"
+type = "double"
+optional = true
+
+# A binding that runs `action` or a function when a swipe ends, for the way it went. A cancelled swipe runs nothing.
+[[object]]
+name = "swipe_action_binding"
+since = "0.2.0"
+base = "policy_binding"
+
+# The gesture that starts the binding.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+default = "Swipe3"
+
+# The shortest swipe that counts, in touchpad units.
+[[object.property]]
+name = "threshold"
+type = "double"
+since = "0.2.0"
+default = 48.0
+
+# Runs the named stock action when a swipe ends going `way`. A name that is not an action is refused.
+[[object.method]]
+name = "set_action"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "way"
+type = "enum:swipe_way"
+
+[[object.method.param]]
+name = "action"
+type = "string"
+
+# Runs `run` when a swipe ends going `way`.
+[[object.method]]
+name = "set_function"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "way"
+type = "enum:swipe_way"
+
+[[object.method.param]]
+name = "run"
+type = "callback:gesture_run"
+
+# Leaves the way with no action.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "way"
+type = "enum:swipe_way"
+
+# A binding that runs `action` or a function when a pinch ends: `out` when the contacts spread to at least 1 + `threshold` of their start, `in`
+# when they gathered to at most 1 - `threshold`.
+[[object]]
+name = "pinch_action_binding"
+since = "0.2.0"
+base = "policy_binding"
+
+# The gesture that starts the binding.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+default = "Pinch2"
+
+# How far the scale must be from 1 to count.
+[[object.property]]
+name = "threshold"
+type = "double"
+since = "0.2.0"
+default = 0.12
+
+# Runs the named stock action when a pinch ends going `way`. A name that is not an action is refused.
+[[object.method]]
+name = "set_action"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "way"
+type = "enum:pinch_way"
+
+[[object.method.param]]
+name = "action"
+type = "string"
+
+# Runs `run` when a pinch ends going `way`.
+[[object.method]]
+name = "set_function"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "way"
+type = "enum:pinch_way"
+
+[[object.method.param]]
+name = "run"
+type = "callback:gesture_run"
+
+# Leaves the way with no action.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "way"
+type = "enum:pinch_way"
+
+# A touchpad swipe that slides to the next or the previous workspace and follows the fingers while they move. Fingers moving right bring the
+# previous workspace in from the left, fingers moving left the next one from the right. Lifting after `commit` of `travel` finishes the slide from
+# where the fingers left it; lifting sooner, or a cancel, slides back. A swipe that is more vertical than horizontal, or that has no workspace to
+# reveal, moves nothing.
+[[object]]
+name = "workspace_slide_binding"
+since = "0.2.0"
+base = "policy_binding"
+
+# The gesture that starts the binding.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+default = "Swipe3"
+
+# How far fingers move for a slide of one whole workspace, in touchpad units.
+[[object.property]]
+name = "travel"
+type = "double"
+since = "0.2.0"
+default = 400.0
+
+# The share of a slide at which lifting the fingers finishes it, from 0 to 1.
+[[object.property]]
+name = "commit"
+type = "double"
+since = "0.2.0"
+default = 0.25
+
+# Milliseconds a whole slide takes; a slide finished part way takes what is left of it.
+[[object.property]]
+name = "duration"
+type = "double"
+since = "0.2.0"
+default = 250.0

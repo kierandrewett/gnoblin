@@ -309,6 +309,7 @@ pub(crate) enum Special {
     Menu(Box<crate::menus::MenuPart>),
     Shell(crate::shell::ShellPart),
     Password(Box<crate::lock::PasswordPart>),
+    Reposition(Box<crate::policy::GrabPart>),
 }
 
 /// The members of the `widget` interface, by id: what a shell that implements it is asked.
@@ -494,6 +495,8 @@ pub(crate) struct Ui {
     pub(crate) shell: RefCell<crate::shell::ShellWorld>,
     /// The stock lock screen (`crate::lock`).
     pub(crate) lock: RefCell<crate::lock::LockWorld>,
+    /// The window policy: focus, the requests of windows and the keyboard move and resize (`crate::policy`).
+    pub(crate) policy: RefCell<crate::policy::PolicyWorld>,
 }
 
 /// The ids of the classes and members of the object library that the toolkit calls by name, resolved once.

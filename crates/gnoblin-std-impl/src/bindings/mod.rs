@@ -24,6 +24,8 @@ mod gesture;
 mod step_api;
 pub(crate) mod steps;
 
+pub(crate) use self::drags::RuleDrag;
+pub(crate) use self::gesture::way_past;
 pub(crate) use self::step_api::{drag_clamp, drag_resize, drag_step, drag_tile, drag_zone, gesture_way};
 
 use core::ffi::c_void;
@@ -50,7 +52,6 @@ use crate::state::{Id, NodeId, State, Std, next_id};
 use crate::table::{call_reg, read_ext};
 use crate::turn::schedule;
 
-use self::drags::RuleDrag;
 use self::gesture::{GestureTrigger, progress_of, way_of};
 use self::steps::DragRule;
 

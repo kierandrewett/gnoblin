@@ -114,6 +114,8 @@ impl Ui {
             return;
         }
         let Some(cid) = self.w.borrow().by_node.get(&raw.node).copied() else {
+            // Not a canvas of ours: the pointer's edges on a window are the policy's.
+            crate::policy::on_window_event(self, raw);
             return;
         };
         if raw.kind == "key" {
@@ -145,7 +147,10 @@ impl Ui {
                 self.warn(&format!("onUiRequest threw: {fail}"));
             }
         }
-        menus::on_request(self, raw.node, &raw.request, raw.x, raw.y);
+        // The stock answers come after the shell's own hooks; a menu request that a listener of the policy handled does not open the menu.
+        if !crate::policy::on_request(self, raw.node, &raw.request, raw.x, raw.y) {
+            menus::on_request(self, raw.node, &raw.request, raw.x, raw.y);
+        }
     }
 
     /// A `ui_pointer_event` record, in the coordinates of the canvas whose handler runs.
@@ -259,7 +264,8 @@ impl Ui {
             let mut stopped = entry::on_key(self, cid, raw)
                 || menus::on_key(self, cid, raw)
                 || crate::shell::key(self, cid, raw)
-                || crate::lock::key(self, cid, raw);
+                || crate::lock::key(self, cid, raw)
+                || crate::policy::on_key(self, cid, raw);
             let record = self.key_record(raw, target_obj);
             if !stopped && let Some(done) = self.hook_call(cid, |ids| ids.on_key, std::slice::from_ref(&record)) {
                 match done {

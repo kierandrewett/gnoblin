@@ -94,13 +94,13 @@ struct HeldDrag {
 }
 
 /// One of the library's drags as a binding: a rule, and what the drag in flight kept.
-pub(super) struct RuleDrag {
+pub(crate) struct RuleDrag {
     rule: DragRule,
     held: Option<HeldDrag>,
 }
 
 impl RuleDrag {
-    pub(super) fn new(rule: DragRule) -> RuleDrag {
+    pub(crate) fn new(rule: DragRule) -> RuleDrag {
         RuleDrag { rule, held: None }
     }
 

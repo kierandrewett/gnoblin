@@ -56,6 +56,7 @@ members = [
     "crates/gnoblin-std-impl/fixtures/shell-bindings",
     "crates/gnoblin-std-impl/fixtures/shell-layouts",
     "crates/gnoblin-std-impl/fixtures/shell-objects",
+    "crates/gnoblin-std-impl/fixtures/shell-policy",
     "crates/gnoblin-std-impl/fixtures/shell-tiling",
     "crates/gnoblin-shell-host",
     "crates/gnoblin-macros",
@@ -145,6 +146,7 @@ members = [
     "examples/30-native-pointer",
     "examples/31-native-shell-ui",
     "examples/34-native-workspaces",
+    "examples/32-native-policy",
     "xtask",
 ]
 # `extensions/` packages are separate workspaces with their own lockfiles and target dirs (design/xr-extension.md).

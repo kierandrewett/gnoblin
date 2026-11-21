@@ -56,6 +56,7 @@ mod menus;
 mod nodes;
 mod object;
 mod objects;
+mod policy;
 mod providers;
 mod scene;
 mod shell;

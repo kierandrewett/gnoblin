@@ -1,0 +1,103 @@
+//! The window policy of the native std: what the desktop does with focus, with the requests a window makes, with a window the keyboard moves,
+//! with the edges a dragged window snaps to, and with the touchpad gestures and pointer drags that act on windows and workspaces.
+//!
+//! Each piece that watches the desktop is a service with a `start`, and does nothing before it, so a shell that has a policy of its own never
+//! starts this one and two policies never answer one request:
+//!
+//! - `focus`: `focus_policy`, the focus modes, raise on click and auto raise, and the timers they need;
+//! - `requests`: `window_state`, the router of the requests a window makes (the first listener that handles one answers it, the stock policy
+//!   last) and the stock answers (maximise, fullscreen, minimise, activate, raise, lower, close, and the drags a move or resize request starts);
+//! - `reposition`: `repositioning`, the keyboard move and resize modes;
+//! - `snap`: where a dragged window tiles to;
+//! - `drags`: the pointer drags the library runs itself (`move_binding`, `resize_binding`, `swap_binding`, `split_resize_binding`);
+//! - `gesture_actions` and `slide`: the touchpad gestures that run actions, and the three-finger workspace slide;
+//! - `binding`: what those bindings share, and how one becomes a binding of the core's input matcher;
+//! - `stack`: the windows as a stack, and who holds the keyboard.
+//!
+//! The toolkit (`crate::ui`) is what hears the compositor, so the policy hangs on its frame and its events: the requests of windows, the
+//! pointer's edges on windows, the keys of the grab, and the frame that runs the timers.
+
+mod binding;
+mod drags;
+mod focus;
+mod gesture_actions;
+mod reposition;
+mod requests;
+mod slide;
+mod snap;
+mod stack;
+
+use std::rc::Rc;
+
+use gnoblin_object::server::Builder;
+
+pub(crate) use reposition::GrabPart;
+
+use crate::ui::{CanvasEvent, Cid, Ui};
+
+/// What the policy keeps for one generation.
+#[derive(Default)]
+pub(crate) struct PolicyWorld {
+    focus: focus::Focus,
+    requests: requests::WindowRequests,
+    reposition: reposition::KeyMode,
+}
+
+/// Implements the classes of the policy.
+pub(crate) fn register(builder: &mut Builder) {
+    focus::register(builder);
+    requests::register(builder);
+    reposition::register(builder);
+    snap::register(builder);
+    binding::register_base(builder);
+    drags::register(builder);
+    gesture_actions::register(builder);
+    slide::register(builder);
+}
+
+/// A request a window made. Answers whether a listener handled it, which the window menu respects: a `menu` request a listener answered
+/// does not open the menu.
+pub(crate) fn on_request(ui: &Rc<Ui>, node: u64, request: &str, x: f64, y: f64) -> bool {
+    requests::on_request(ui, node, request, x, y)
+}
+
+/// A pointer edge on a window (`enter`, `motion`, `leave`, `press`, `release`).
+pub(crate) fn on_window_event(ui: &Rc<Ui>, raw: &CanvasEvent) {
+    if !matches!(raw.kind.as_str(), "enter" | "motion" | "leave" | "press" | "release") {
+        return;
+    }
+    requests::pointer_edge(ui, &raw.kind);
+    focus::on_pointer(ui, raw.node, &raw.kind);
+}
+
+/// A key for the canvas that holds the keyboard while a window is moved or resized. Answers whether the key was used up.
+pub(crate) fn on_key(ui: &Rc<Ui>, cid: Cid, raw: &CanvasEvent) -> bool {
+    reposition::on_key(ui, cid, raw)
+}
+
+/// The toolkit's frame: the timers that are due, the drag a request started follows the pointer, and a mode that ends with its window ends.
+pub(crate) fn turn(ui: &Rc<Ui>) {
+    reposition::watch(ui);
+    focus::turn(ui);
+    requests::turn(ui);
+}
+
+/// How long until the policy needs a turn, in milliseconds.
+pub(crate) fn wake_in(ui: &Ui) -> Option<u64> {
+    [focus::wake_in(ui), requests::wake_in(ui)].into_iter().flatten().min()
+}
+
+/// Whether the toolkit has to run every frame for the policy.
+pub(crate) fn polls(ui: &Ui) -> bool {
+    reposition::polls(ui)
+}
+
+/// Whether the keyboard modes can be started: the window menu uses them for its Move and Resize.
+pub(crate) fn repositions(ui: &Ui) -> bool {
+    reposition::started(ui)
+}
+
+/// The window menu's Move (`resize` false) and Resize start the keyboard mode.
+pub(crate) fn begin_reposition(ui: &Rc<Ui>, client: u64, resize: bool) {
+    reposition::begin_from_menu(ui, client, resize);
+}

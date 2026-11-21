@@ -60,6 +60,7 @@ impl Ui {
         }
         crate::shell::turn(self);
         crate::frame::turn(self);
+        crate::policy::turn(self);
         let roots = self.w.borrow().roots();
         for root in roots {
             self.update(root);
@@ -412,13 +413,14 @@ impl Ui {
             crate::frame::wake_in(self),
             crate::shell::wake_in(self),
             crate::lock::wake_in(self),
+            crate::policy::wake_in(self),
         ]
         .into_iter()
         .flatten()
         {
             wake = Some(wake.map_or(delay, |held| held.min(delay)));
         }
-        if menus::polls(self) {
+        if menus::polls(self) || crate::policy::polls(self) {
             wake = Some(wake.map_or(FRAME_MS, |held| held.min(FRAME_MS)));
         }
         if let Some(old) = self.timer.borrow_mut().take() {

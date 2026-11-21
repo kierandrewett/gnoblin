@@ -6,7 +6,6 @@
 #![allow(unsafe_code)]
 
 pub(crate) mod entry_model;
-mod focus;
 pub(crate) mod record;
 
 use gnoblin_core::LogLevel;
@@ -46,7 +45,7 @@ pub(crate) static API: GnoblinObjectApi = api_table::<Std>(CATALOG_HASH);
 fn build() -> Library {
     let mut builder = Builder::new(&CATALOG);
     entry_model::register(&mut builder);
-    focus::register(&mut builder);
+    crate::policy::register(&mut builder);
     crate::ui::register(&mut builder);
     crate::menus::register(&mut builder);
     crate::scene::register(&mut builder);
