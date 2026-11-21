@@ -266,6 +266,8 @@ fn run(language: &Language) {
         "d",
         |window| near(window.height, fourth),
     );
+    // The marker line is written by a process the listener spawns, so it can land after the placement was seen.
+    wait_marker(&mut session, &marker, "second:d");
     assert_eq!(lines_of(&marker, "second:d"), 1, "{}", session.log_text());
 
     // A fix loads as the next generation.
