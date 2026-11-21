@@ -43,17 +43,15 @@
 #### Command line and tooling
 
 - The isolated shell now logs under the role `shell` instead of `runtime`, shown as `shell/component` on the console, `gnoblin-shell` in the journal, `GNOBLIN_ROLE=shell`, and selectable with `gnoblinctl log --role shell`; older records keep `runtime`.
-- Patches are now grouped into topic directories, each patch project's `series` file sets apply order, and `scripts/manage-patches.py` gains `renumber` and `path` commands plus stricter `check`.
 
 #### Packaging and install
 
-- Running `scripts/prepare-release.sh` now sets the version only in `src/gnoblin-version.json`.
-- The Nix package and module now live in `nix/` instead of `packaging/nix/`, and the flake's outputs are unchanged.
 - Packages now accept pre-release versions: the source bundle keeps the SemVer spelling (`0.1.13-nightly.…`), while RPM packages use `0.1.13~nightly.…`, and release versions are unchanged.
 
 #### Documentation and tests
 
 - The JavaScript shell's frame stages are now listed in a table with their ordering requirements recorded and tested, with no change in behaviour.
+- The location settings page now says how to allow the `gnoblin` agent in GeoClue's `[agent]` whitelist, with the drop-in at `data/geoclue/50-gnoblin.conf`.
 
 ### Added
 
@@ -443,3 +441,8 @@
 - Adds a deterministic test for the portal's IPC thread deferral, confirming consent offers are served before a deadline and that queued graph events and dialog answers are applied in the order they were read.
 - Fixes the EIS real-client pointer tests so they target the window's drawn rectangle rather than its configured geometry, so pointer events land on the surface again.
 - Flaky shell VM tests now wait for the state they assert instead of fixed frame counts or the shell's `placed` flag before reading results.
+
+### Removed
+
+- The Mutter-based product is no longer in this tree: the C overlay and its embedded Lua configuration, the Mutter patch series and submodules, the CMake and Meson build, the Mutter-era packaging, test suites and workflows, and their design notes. The product and its history stay on `main`, and the parity workflow still builds it from a pinned `main` commit.
+- `gnoblinctl config migrate`, which converted a Lua configuration, and `cargo xtask layout`, which checked the removed trees.
