@@ -1,0 +1,149 @@
+# The public surface of the `input` module of the `gnoblin.model` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-core-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+callback | client_scope | (client:object:client) -> bool | 0.2.0
+callback | key_action | (event:object:binding_event) -> bool | 0.2.0
+
+enum | binding_tier | values context layout device | 0.2.0
+enum | trigger_kind | values key pointer wheel gesture | 0.2.0
+
+member | binding.alive | property bool ro | 0.2.0
+member | binding.enabled | property bool rw | 0.2.0
+member | binding.id | property string ro | 0.2.0
+member | binding.parsed | property object:trigger ro | 0.2.0
+member | binding.priority | property double rw | 0.2.0
+member | binding.scope | property callback:client_scope rw | 0.2.0
+member | binding.tier | property enum:binding_tier ro | 0.2.0
+member | binding.trigger | property string rw | 0.2.0
+member | binding.unbind | method () | 0.2.0
+member | binding_collection.added | signal (binding:object:binding) | 0.2.0
+member | binding_collection.bind | method (trigger:string, action?:callback:key_action, options?:object:binding_options) -> object:binding | 0.2.0
+member | binding_collection.bind_binding | method (trigger:string, handler:object:key_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | binding_collection.clear | method () | 0.2.0
+member | binding_collection.find | method (id:string) -> object:binding? | 0.2.0
+member | binding_collection.has | method (id:string) -> bool | 0.2.0
+member | binding_collection.length | property uint ro | 0.2.0
+member | binding_collection.list | method () -> list<object:binding> | 0.2.0
+member | binding_collection.owner | property string ro | 0.2.0
+member | binding_collection.remove | method (id:string) -> bool | 0.2.0
+member | binding_collection.removed | signal (binding:object:binding) | 0.2.0
+member | binding_collection.tier | property enum:binding_tier ro | 0.2.0
+member | binding_event.client | property object:client rw,optional | 0.2.0
+member | binding_event.context | property object:input_context rw | 0.2.0
+member | binding_event.delta_time | property double rw | 0.2.0
+member | binding_event.device | property object:device rw,optional | 0.2.0
+member | binding_event.layout | property object:binding_collection rw,optional | 0.2.0
+member | binding_event.local_position | property object:input_point rw,optional | 0.2.0
+member | binding_event.modifiers | property list<string> rw | 0.2.0
+member | binding_event.position | property object:input_point rw | 0.2.0
+member | binding_event.timestamp | property double rw | 0.2.0
+member | binding_event.trigger | property string rw | 0.2.0
+member | binding_info.context | property string rw | 0.2.0
+member | binding_info.device | property string rw,optional | 0.2.0
+member | binding_info.enabled | property bool rw | 0.2.0
+member | binding_info.id | property string rw | 0.2.0
+member | binding_info.kind | property enum:trigger_kind rw | 0.2.0
+member | binding_info.layout | property string rw,optional | 0.2.0
+member | binding_info.owner | property enum:binding_tier rw | 0.2.0
+member | binding_info.priority | property double rw | 0.2.0
+member | binding_info.rank | property uint rw | 0.2.0
+member | binding_info.trigger | property string rw | 0.2.0
+member | binding_options.enabled | property bool rw,optional | 0.2.0
+member | binding_options.id | property string rw,optional | 0.2.0
+member | binding_options.only | property bool rw,optional | 0.2.0
+member | binding_options.priority | property double rw,optional | 0.2.0
+member | claim_info.device | property string rw | 0.2.0
+member | claim_info.id | property int rw | 0.2.0
+member | claim_info.pointer | property bool rw | 0.2.0
+member | claim_info.refs | property uint rw | 0.2.0
+member | claim_info.trigger | property string rw | 0.2.0
+member | device.alive | property bool ro | 0.2.0
+member | device.bind | method (trigger:string, action?:callback:key_action, options?:object:binding_options) -> object:binding | 0.2.0
+member | device.bind_binding | method (trigger:string, handler:object:key_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | device.binding_only | property bool rw | 0.2.0
+member | device.bindings | property object:binding_collection ro | 0.2.0
+member | device.capabilities | property list<string> ro | 0.2.0
+member | device.context | property object:input_context rw | 0.2.0
+member | device.enabled | property bool rw | 0.2.0
+member | device.id | property string ro | 0.2.0
+member | device.name | property string ro | 0.2.0
+member | input_context.alive | property bool ro | 0.2.0
+member | input_context.attach_layout | method (layout:object:binding_collection, owns?:callback:client_scope) | 0.2.0
+member | input_context.bind | method (trigger:string, action?:callback:key_action, options?:object:binding_options) -> object:binding | 0.2.0
+member | input_context.bind_binding | method (trigger:string, handler:object:key_binding, options?:object:binding_options) -> object:binding | 0.2.0
+member | input_context.bindings | property object:binding_collection ro | 0.2.0
+member | input_context.builtin_motion | property bool rw | 0.2.0
+member | input_context.claims | method () -> list<object:claim_info> | 0.2.0
+member | input_context.clear_focus | method () | 0.2.0
+member | input_context.describe_bindings | method () -> list<object:binding_info> | 0.2.0
+member | input_context.detach_layout | method (layout:object:binding_collection) | 0.2.0
+member | input_context.devices | property list<object:device> ro | 0.2.0
+member | input_context.focused_client | property object:client ro | 0.2.0
+member | input_context.hit_test | method (position:object:input_point) -> object:input_hit? | 0.2.0
+member | input_context.id | property string ro | 0.2.0
+member | input_context.is_binding_only | method (name:string) -> bool | 0.2.0
+member | input_context.make_binding_only | method (name:string) | 0.2.0
+member | input_context.name | property string ro | 0.2.0
+member | input_context.pointer | property object:input_point ro | 0.2.0
+member | input_context.release_binding_only | method (name:string) -> bool | 0.2.0
+member | input_context.scripted | property bool ro | 0.2.0
+member | input_context.seat | property uint ro | 0.2.0
+member | input_context.settings | property object:seat_settings ro | 0.2.0
+member | input_hit.client | property object:client rw | 0.2.0
+member | input_hit.local_position | property object:input_point rw | 0.2.0
+member | input_manager.add_context | method (context:object:input_context) | 0.2.0
+member | input_manager.contexts | property list<object:input_context> ro | 0.2.0
+member | input_manager.device_added | signal (device:object:device) | 0.2.0
+member | input_manager.device_removed | signal (device:object:device) | 0.2.0
+member | input_manager.devices | property list<object:device> ro | 0.2.0
+member | input_manager.focused_client | property object:client ro | 0.2.0
+member | input_manager.primary | property object:input_context ro | 0.2.0
+member | input_manager.remove_context | method (context:object:input_context) -> bool | 0.2.0
+member | input_point.x | property double rw | 0.2.0
+member | input_point.y | property double rw | 0.2.0
+member | key_binding.on_press | method (event:object:binding_event) -> bool required | 0.2.0
+member | seat_settings.auto_raise | property bool rw | 0.2.0
+member | seat_settings.auto_raise_delay | property double rw | 0.2.0
+member | seat_settings.builtin_motion | property bool rw | 0.2.0
+member | seat_settings.edge_tiling | property bool rw | 0.2.0
+member | seat_settings.focus_change_on_pointer_rest | property bool rw | 0.2.0
+member | seat_settings.focus_mode | property string rw | 0.2.0
+member | seat_settings.focus_new_windows | property string rw | 0.2.0
+member | seat_settings.raise_on_click | property bool rw | 0.2.0
+member | seat_settings.reduced_motion | property bool rw | 0.2.0
+member | trigger.action | property string rw,optional | 0.2.0
+member | trigger.button | property string rw,optional | 0.2.0
+member | trigger.direction | property string rw,optional | 0.2.0
+member | trigger.fingers | property uint rw,optional | 0.2.0
+member | trigger.gesture | property string rw,optional | 0.2.0
+member | trigger.key | property string rw,optional | 0.2.0
+member | trigger.kind | property enum:trigger_kind rw | 0.2.0
+member | trigger.modifiers | property list<string> rw | 0.2.0
+member | trigger.text | property string rw | 0.2.0
+member | triggers.check | function (trigger:string, what?:string) -> string | 0.2.0
+member | triggers.claim_text | function (trigger:string, what?:string) -> string | 0.2.0
+member | triggers.parse | function (trigger:string, what?:string) -> object:trigger | 0.2.0
+
+object | binding | base none | 0.2.0
+object | binding_collection | base none | 0.2.0
+object | binding_event | base none record | 0.2.0
+object | binding_info | base none record | 0.2.0
+object | binding_options | base none record | 0.2.0
+object | claim_info | base none record | 0.2.0
+object | device | base none | 0.2.0
+object | input_context | base none ctor(name) | 0.2.0
+object | input_hit | base none record | 0.2.0
+object | input_manager | base none service | 0.2.0
+object | input_point | base none record | 0.2.0
+object | key_binding | base none interface | 0.2.0
+object | seat_settings | base none record | 0.2.0
+object | trigger | base none record | 0.2.0
+object | triggers | base none | 0.2.0

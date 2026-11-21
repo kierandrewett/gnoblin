@@ -83,6 +83,7 @@ member | gnoblin.find_clients | method (query?:object:client_query) -> list<obje
 member | gnoblin.find_outputs | method (query?:object:output_query) -> list<object:output> | 0.2.0
 member | gnoblin.focus | property object:focus_history ro | 0.2.0
 member | gnoblin.idle | property object:idle ro | 0.2.0
+member | gnoblin.input | property object:input_manager ro | 0.2.0
 member | gnoblin.launches | property object:launches ro | 0.2.0
 member | gnoblin.lock | property object:session_lock ro | 0.2.0
 member | gnoblin.now | method () -> double | 0.2.0

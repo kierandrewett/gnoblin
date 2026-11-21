@@ -619,6 +619,7 @@ impl World {
         }
         self.preexisting.retain(|member| *member != obj);
         super::properties::dispose_of(cx, obj);
+        super::input::client_gone(cx, obj);
         let all: Vec<Obj> = held.into_iter().chain(roots).collect();
         emit_member(cx, obj, &all, "closed", vec![cx.object_value(obj)]);
         for coll in &all {

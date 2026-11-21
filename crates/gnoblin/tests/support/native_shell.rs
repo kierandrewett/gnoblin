@@ -57,6 +57,8 @@ pub struct Shells {
     pub model: PathBuf,
     /// Example 23: the session services of the core: a program, an idle watch, a launch that times out, the session lock.
     pub services: PathBuf,
+    /// Example 28: key chords on the seat's input context of the core, in generation 1.
+    pub input: PathBuf,
 }
 
 /// Builds the shells into a target directory of their own, so this does not wait for the lock of the one the test run holds.
@@ -97,6 +99,8 @@ fn build_shells() -> Result<Shells, String> {
             "gnoblin-example-native-model",
             "-p",
             "gnoblin-example-native-services",
+            "-p",
+            "gnoblin-example-native-input",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -117,7 +121,77 @@ fn build_shells() -> Result<Shells, String> {
         plus: debug.join("libshell_plus.so"),
         model: debug.join("libnative_model.so"),
         services: debug.join("libnative_services.so"),
+        input: debug.join("libnative_input.so"),
     })
+}
+
+/// Example 28 built twice from its one source, as generations 1 and 2 of a shell that is rebuilt while it runs.
+pub struct InputGenerations {
+    /// As it is.
+    pub v1: PathBuf,
+    /// `GENERATION` edited to 2.
+    pub v2: PathBuf,
+}
+
+/// Builds example 28 for a reload test. Built once per test binary.
+pub fn input_generations() -> &'static InputGenerations {
+    static BUILT: LazyLock<Result<InputGenerations, String>> = LazyLock::new(build_input_generations);
+    match &*BUILT {
+        Ok(built) => built,
+        Err(message) => panic!("cannot build example 28: {message}"),
+    }
+}
+
+fn build_input_generations() -> Result<InputGenerations, String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let scratch = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("input-{}", std::process::id()));
+    let project = scratch.join("project");
+    fs::create_dir_all(project.join("src")).map_err(|error| error.to_string())?;
+    let source =
+        fs::read_to_string(root.join("examples/28-native-input/src/lib.rs")).map_err(|error| error.to_string())?;
+    fs::write(
+        project.join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"native-input-project\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = false\n\n\
+             [lib]\nname = \"native_input\"\ncrate-type = [\"cdylib\"]\n\n\
+             [dependencies]\ngnoblin-core = {{ path = \"{}\" }}\n\n[workspace]\n",
+            root.join("crates/gnoblin-core").display()
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    fs::copy(root.join("Cargo.lock"), project.join("Cargo.lock")).map_err(|error| error.to_string())?;
+    // The shells' own target directory: the SDK is compiled once for all of them.
+    let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("native-shells");
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let out = scratch.join("out");
+    fs::create_dir_all(&out).map_err(|error| error.to_string())?;
+    let build = |name: &str, edited: &str| -> Result<PathBuf, String> {
+        // Cargo compares modification times, so let a second pass between two writes of the one file.
+        std::thread::sleep(Duration::from_millis(1100));
+        fs::write(project.join("src/lib.rs"), edited).map_err(|error| error.to_string())?;
+        let output = Command::new(&cargo)
+            .current_dir(&project)
+            .args(["build", "--offline"])
+            .env("CARGO_TARGET_DIR", &target)
+            .output()
+            .map_err(|error| format!("cannot run cargo: {error}"))?;
+        if !output.status.success() {
+            return Err(format!("{name}: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+        let built = out.join(format!("{name}.so"));
+        fs::copy(target.join("debug/libnative_input.so"), &built).map_err(|error| error.to_string())?;
+        Ok(built)
+    };
+    let v1 = build("v1", &source)?;
+    let v2_source = source.replace("const GENERATION: u32 = 1;", "const GENERATION: u32 = 2;");
+    if v2_source == source {
+        return Err("example 28 no longer has the constant this test edits".to_owned());
+    }
+    let v2 = build("v2", &v2_source)?;
+    Ok(InputGenerations { v1, v2 })
 }
 
 // ---- the examples that link std ----------------------------------------------------------------------------------------

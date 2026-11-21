@@ -9,6 +9,7 @@
 //! - [`operation`]: the request an output's `apply` makes, and the timer;
 //! - [`properties`]: bindings that follow the properties a function reads;
 //! - [`listener`]: what `add_listener` does with a listener the shell implements;
+//! - [`input`]: the input matcher, its contexts, devices, bindings and claims;
 //! - the services of the session, each one object a generation makes on first use and a module of its own: [`session`] (the session, the
 //!   configuration reload and the build identity), [`process`], [`idle`], [`launches`], [`dialogs`] (and the polkit view of them),
 //!   [`lock`] (what a lock screen reads of the session lock), [`virtual_output`] and [`inset`]; [`glue`] is what they share.
@@ -32,6 +33,7 @@ mod dialogs;
 mod glue;
 mod gnoblin;
 mod idle;
+mod input;
 mod inset;
 mod launches;
 mod listener;
@@ -64,6 +66,7 @@ pub(crate) fn register(builder: &mut Builder) {
     process::register(builder);
     idle::register(builder);
     launches::register(builder);
+    input::register(builder);
     dialogs::register(builder);
     lock::register(builder);
     virtual_output::register(builder);
@@ -110,6 +113,11 @@ fn world_booted(cx: &Cx<'_>, ctx: GnoblinCtx) {
 
 /// What a pump of the tree link brought: the model reads it as one batch and queues the events it implies.
 pub(crate) fn pumped(ctx: GnoblinCtx, events: &[ShellEvent]) {
+    pumped_world(ctx, events);
+    input::pumped(ctx);
+}
+
+fn pumped_world(ctx: GnoblinCtx, events: &[ShellEvent]) {
     let Some(root) = WORLDS.with(|worlds| worlds.borrow().get(&ctx).map(|world| world.client_root)) else {
         return;
     };
@@ -141,6 +149,7 @@ pub(crate) fn forget(ctx: GnoblinCtx) {
     process::forget(ctx);
     idle::forget(ctx);
     launches::forget(ctx);
+    input::forget(ctx);
     dialogs::forget(ctx);
     lock::forget(ctx);
 }

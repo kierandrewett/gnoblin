@@ -4,6 +4,9 @@
 //! client and tells the shell instead; a claim lasts until its [`Subscription`] is removed or the generation retires, and a
 //! reload hands a chord from the old generation to the new one without the compositor ever seeing it claimed twice.
 //!
+//! These functions claim a chord and call back for each event: the compositor's claims, one for each call. A shell that wants the input
+//! matcher (a context for each seat, tiers, priority and decline, claims shared between bindings) uses `ModelRoot::input` of the object model.
+//!
 //! ```ignore
 //! g.bind("<Super>Return", || { g.spawn("foot").ok(); })?;
 //! g.bind_pointer("<Super>Button1", |drag| { /* move a window by drag.dx, drag.dy */ })?;

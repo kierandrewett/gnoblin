@@ -19,6 +19,7 @@ mod document;
 mod js_esm;
 mod motion;
 mod native_frame;
+mod native_input;
 mod native_model;
 mod native_object;
 mod native_objects;

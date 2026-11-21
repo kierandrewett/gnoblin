@@ -1751,6 +1751,65 @@ last watch ends. The `js` field of the build identity is `quickjs-ng` for a Java
   the pressed window closes (the closure path of the open item in 5.3), a chord handed from one generation to the next. The
   `input` and `input_devices` tests are the TypeScript half at NpFlip.
 
+The lane has four parts. Each has one owner and its own acceptance, and nothing of the lane's scope is outside them.
+
+| Part                                 | Owner        | Does                                                                                                                                                                                     | Acceptance                                                                                                                                                                              |
+| ------------------------------------ | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Key side of the matcher           | NpCoreInputA | The trigger grammar, binding collections, claims and their sharing, tiers, priority, decline, key chords, contexts for each seat, the device roster and `binding_only`, seat reads       | `tests/input.rs` replays `input_grammar` and `input_chords`; `modular::native_input` (Rust and Python): tier order, priority, decline, shared claims                                    |
+| 2. Pointer and gesture matchers      | NpCoreInputB | `pointer.ts`, `gesture.ts`, `host.ts`: click versus drag, threshold, scope, the drag and gesture binding interfaces, the std drag rules, cancel when the window closes, the closure path | `tests/input.rs` replays `input_drags` and `tiling_{binding_priority,directed_gesture,gesture_cancel_on_close}`; `modular::native_input` adds a drag and a gesture from three languages |
+| 3. Device classes and settings       | NpCoreInputB | `devices.ts` and `input_list.ts`: the typed device classes (keyboard, mouse, touchpad, touchscreen, tablet), their settings ledger, the device lists                                     | The `input_devices` tests of the TypeScript half, replayed over the classes                                                                                                             |
+| 4. Handover of every matcher's state | NpCoreInputA | The mechanism: a claim a staged generation makes goes out when it takes over; the matchers' `Matcher` seam ends what is in flight. NpCoreInputB adds its matchers' state to it           | A: a chord handed from one generation to the next, in `tests/input.rs` and `modular::native_input`. B: a drag in flight at the takeover ends, with a test of its own                    |
+
+**What exists (part 1).** The key side of the matcher is native in `libgnoblin-core`: `crates/gnoblin-core-abi/schema/input.toml` declares it and
+`crates/gnoblin-core-impl/src/model/input/` serves it. `gnoblin.input` is the `input_manager` service: one `input_context` for each seat the
+compositor reports, then the contexts a shell added, and the devices of every context. A context has its own `binding_collection`; so has each
+device, and a shell makes more (a layout's) and gives them to `attach_layout` with a scope, a function that tells which windows the layout's bindings
+apply to. `bind(trigger, action, options)` takes a function that answers `false` to decline and any other answer to handle the press, or none to
+claim the trigger and swallow it; `bind_binding` takes an object the shell implements (`key_binding.on_press`). The options give an id (without one
+it is `bind-N:` and the canonical trigger, N counting in the generation), a priority and `enabled`. A binding handle reads and writes its `trigger`
+(a move to another trigger is refused, and the binding stays, when the text is not a trigger, when another binding of the collection has it at this
+priority, or when the compositor refuses the claim), `priority`, `enabled` and a `scope` of its own, and `unbind`s. `triggers.parse`, `check` and
+`claim_text` are the grammar as functions. The messages of every refusal are those of the TypeScript library, word for word.
+
+A press runs the candidates in the order tier (device, layout, context), priority, then the older binding. A claim for one device shadows the claim
+for every device, so the bindings made for every device stay candidates for that device's events, a tier later. A throw counts as handled. Bindings
+of one trigger and one device share one claim (`claims()` lists them with their references), and the last to go gives it up. A device is an object of
+the roster the seat context keeps from the seat's `device` list: `id`, `name`, `capabilities`, `alive`, `context` (a write moves the device to another
+context of the same seat), `bindings`, `enabled` and `binding_only`; the manager says `device_added` and `device_removed`. A seat that goes ends its
+context. `settings`, `builtin_motion`, `pointer`, `focused_client`, `hit_test` and `clear_focus` are the reads and writes of the seat that
+`context.ts` made.
+
+**The handover, and the seam of part 2.** The core holds a claim of a staged generation in the session and sends it when the generation takes over,
+behind the releases of the old one's, in the one transaction. The matcher keeps no state of its own that would need to cross: the module makes its
+claims through `listen::claim_with`, which is the claim of the ABI with a native handler, so the claims of a staged generation follow the same rule.
+`tests/input.rs` stages a second generation with `host::stage_generation`, shows that the compositor is told of one claim only while it is staged and
+that a staged generation hears nothing, takes it over with `host::take_over`, and reads the calls the compositor got: the old claim goes, the new one
+follows, and the compositor refuses nothing. The seam for part 2 is the `Matcher` trait in `model/input/mod.rs`. A claim's event is told to every
+matcher (`claim_event`), a registration that goes is told first (`retire`), a window that is gone (`cancel_on`, called from the model's
+`release_client`) and a context that ends (`cancel_all`). The key matcher is the only one now and keeps nothing in flight. NpCoreInputB adds a field
+to `Matchers`, a line in `Matchers::each` and its own state, which these calls end; a binding's `Action` gains the variants of its hooks, and `bind_in`
+stops refusing a drag. Ending an input at a reload calls the shell, so it must run before the old generation retires: NpCoreInputB puts that on the
+shutdown hook of the object library (`first_use` in `object.rs`), where the shell's code is still mapped.
+
+**What differs from the first draft of the table.** `on_release` is not a member: a key claim has no grab, so no release reaches the shell, and the
+TypeScript matcher ignored the release it was never sent. `active_display` is not a member of the core's context: it is `std.displayManager`'s, and the
+std adds it. `binding_collection.get` is `find`, because the Rust SDK has a `get` of its own. The layout side is explicit: the core does not know a
+workspace's layout, so the standard library attaches each layout in use with `attach_layout` and a scope, where the TypeScript manager read
+`hooks.layouts()`. A device's bindings and a scripted context's bindings follow the device as before. A new class that is a binding collection a shell
+made has the `layout` tier; the tier of a context's and a device's is theirs.
+
+**What is tested.** `crates/gnoblin-core-impl/tests/input.rs` (12 tests, over the object protocol and the fake compositor) replays the trigger grammar
+of `input_grammar` (27 spellings and 24 refusals, message for message, with the claim each asks for) and `input_chords` (the 8 claims in their order, the
+shared claim, a higher priority first, `unbind`, a lower priority after, a throwing binding, `false` that swallows and a returned `false` that declines,
+a layout before the context, a device before both and its decline falling through, `binding_only` claimed and given up), and adds claim sharing and
+release, a binding moved to another trigger (the new claim is made before the old one goes), a wheel refused with nothing left behind, an object the
+shell implements, a binding's scope, a context a shell made with devices moved between contexts, a device unplugged, a seat that goes and a second seat,
+the reads of the seat, and the handover. The `floating_bindings` step of `input_grammar` is the standard library's `FloatingLayout` and is not replayed
+here. `modular::native_input` runs example 28 (`examples/28-native-input`, Rust and Python) in a real session: `Super+a` runs the binding that declines
+and then the one that handles it, three bindings stand on two claims, and a reload (the library swapped under `--watch`, the file saved again) hands
+`Super+b` from generation 1 to generation 2, which runs it once while generation 1 hears nothing. A TypeScript shell reaches the same classes through
+the generated objects at NpFlip.
+
 #### NpPyRuntime (8 days)
 
 - **Owns:** `gnoblin-runtime-python/**`, `data/python/**` (deleted), `crates/gnoblin/tests/reload_scripts.rs`, `docs/python-shell.md`.

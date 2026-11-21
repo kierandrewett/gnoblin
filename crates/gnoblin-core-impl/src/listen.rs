@@ -114,7 +114,7 @@ pub(crate) fn on_node(
 
 /// The seat call a claim kind makes: its method, its second integer and its text (see `design/modular-framework.md` 5.9).
 fn claim_call(
-    spec: &GnoblinClaim,
+    spec: &ClaimSpec<'_>,
     subject: &str,
     device: &str,
     what: &str,
@@ -181,6 +181,70 @@ fn claim_call(
     }
 }
 
+/// What a claim asks of a seat: the fields of [`GnoblinClaim`] with the text borrowed.
+pub(crate) struct ClaimSpec<'a> {
+    pub kind: u32,
+    pub flags: u32,
+    pub fingers: i64,
+    pub subject: &'a str,
+    pub device: &'a str,
+    pub node: u64,
+}
+
+/// What a claim does with each event it hears.
+pub(crate) type ClaimHandler = Arc<dyn Fn(&crate::events::ClaimNotice) -> CallbackOutcome + Send + Sync>;
+
+/// Claims `spec` on `seat` for the generation of `ctx` and routes the events of the claim to `handler`. Answers the claim's id and the
+/// registration that owns it: removing the registration gives the claim up, and so does the generation's end. A claim of a staged
+/// generation is kept and sent when it takes over.
+///
+/// # Errors
+///
+/// The ABI code and the words of a claim that cannot be made: a bad spec, a node that is not a seat, a generation that is gone.
+pub(crate) fn claim_with(
+    ctx: GnoblinCtx,
+    seat: u64,
+    spec: &ClaimSpec<'_>,
+    handler: Option<ClaimHandler>,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+) -> Result<(i64, u64), (i32, String)> {
+    let what = "claim";
+    let owner = registry::owner_of(ctx, what).map_err(|code| (code, format!("{what}: the generation is gone")))?;
+    let call = claim_call(spec, spec.subject, spec.device, what)?;
+    let class = session::with(|session| session.tree_ref().map(|tree| tree.class_of(seat)))
+        .map_err(|(code, text)| (code, format!("claim: {text}")))?;
+    if class.as_deref() != Some("seat") {
+        return Err((
+            abi::E_NO_SUCH_NODE,
+            format!("claim: node {seat} is not a seat of the tree"),
+        ));
+    }
+    let id = session::with(session::Session::next_claim_id);
+    let active = is_active(owner);
+    session::with(|session| session.add_claim(id, seat, owner, call, active))?;
+    let has_handler = handler.is_some();
+    let cleanup: Release = Box::new(move || session::with(|session| session.release_claim(id)));
+    let subscription = Subscription {
+        matches: Box::new(move |event: &ShellEvent| {
+            has_handler && matches!(event, ShellEvent::Claim(notice) if notice.claim == id)
+        }),
+        call: Arc::new(move |event: &ShellEvent| match (event, &handler) {
+            (ShellEvent::Claim(notice), Some(handler)) => handler(notice),
+            _ => CallbackOutcome::Handled,
+        }),
+        cleanup: Some(cleanup),
+    };
+    match registry::subscribe(ctx, what, subscription, user, drop_user) {
+        Ok(reg) => Ok((id, reg)),
+        Err(code) => {
+            // The claim was made before the registration; with no registration to own it, it goes.
+            session::with(|session| session.release_claim(id));
+            Err((code, "claim: the generation cannot hold a registration".to_owned()))
+        }
+    }
+}
+
 /// `claim`.
 ///
 /// # Safety
@@ -195,9 +259,9 @@ pub(crate) unsafe fn claim(
     drop_user: Option<GnoblinDropFn>,
 ) -> GnoblinReg {
     let what = "claim";
-    let Ok(owner) = registry::owner_of(ctx, what) else {
+    if registry::owner_of(ctx, what).is_err() {
         return 0;
-    };
+    }
     // SAFETY: the caller guarantees `spec` is null or valid for the call.
     let Some(spec) = (unsafe { spec.as_ref() }) else {
         set_code_error(abi::E_ERR, "claim: a null claim");
@@ -227,44 +291,9 @@ pub(crate) unsafe fn claim(
             }
         }
     };
-    let call = match claim_call(spec, &subject, &device, what) {
-        Ok(call) => call,
-        Err((code, text)) => {
-            set_code_error(code, text);
-            return 0;
-        }
-    };
-    let is_seat =
-        session::with(|session| session.tree_ref().map(|tree| tree.class_of(seat))).map_err(|(code, text)| {
-            set_code_error(code, format!("claim: {text}"));
-        });
-    match is_seat {
-        Ok(Some(class)) if class == "seat" => {}
-        Ok(_) => {
-            set_code_error(
-                abi::E_NO_SUCH_NODE,
-                format!("claim: node {seat} is not a seat of the tree"),
-            );
-            return 0;
-        }
-        Err(()) => return 0,
-    }
-    let id = session::with(session::Session::next_claim_id);
-    let active = is_active(owner);
-    if let Err((code, text)) = session::with(|session| session.add_claim(id, seat, owner, call, active)) {
-        set_code_error(code, text);
-        return 0;
-    }
     let user_word = user as usize;
-    let cleanup: Release = Box::new(move || session::with(|session| session.release_claim(id)));
-    let subscription = Subscription {
-        matches: Box::new(move |event: &ShellEvent| {
-            cb.is_some() && matches!(event, ShellEvent::Claim(notice) if notice.claim == id)
-        }),
-        call: Arc::new(move |event: &ShellEvent| {
-            let (ShellEvent::Claim(notice), Some(cb)) = (event, cb) else {
-                return CallbackOutcome::Handled;
-            };
+    let handler: Option<ClaimHandler> = cb.map(|cb| -> ClaimHandler {
+        Arc::new(move |notice: &crate::events::ClaimNotice| {
             let raw = GnoblinClaimEvent {
                 size: size_of::<GnoblinClaimEvent>() as u32,
                 kind: notice.kind,
@@ -284,14 +313,20 @@ pub(crate) unsafe fn claim(
             // SAFETY: `cb` and `user_word` came from one `claim` call; `raw` and the strings it points at are live for the call.
             let rc = unsafe { cb(user_word as *mut c_void, &raw const raw) };
             registry::outcome_of(rc)
-        }),
-        cleanup: Some(cleanup),
+        })
+    });
+    let spec = ClaimSpec {
+        kind: spec.kind,
+        flags: spec.flags,
+        fingers: spec.fingers,
+        subject: &subject,
+        device: &device,
+        node: spec.node,
     };
-    match registry::subscribe(ctx, what, subscription, user, drop_user) {
-        Ok(reg) => encode(KIND_REG, reg),
-        Err(_) => {
-            // The claim was made before the registration; with no registration to own it, it goes.
-            session::with(|session| session.release_claim(id));
+    match claim_with(ctx, seat, &spec, handler, user, drop_user) {
+        Ok((_, reg)) => encode(KIND_REG, reg),
+        Err((code, text)) => {
+            set_code_error(code, text);
             0
         }
     }

@@ -931,6 +931,13 @@ type = "object:launches"
 since = "0.2.0"
 readonly = true
 
+# The input contexts of the seats and the bindings on them (`input` module).
+[[object.property]]
+name = "input"
+type = "object:input_manager"
+since = "0.2.0"
+readonly = true
+
 # Policy over the compositor's consent, passphrase and authentication dialogs (`dialogs` module).
 [[object.property]]
 name = "dialogs"

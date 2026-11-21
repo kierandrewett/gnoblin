@@ -1554,6 +1554,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-example-native-input"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+]
+
+[[package]]
 name = "gnoblin-example-native-linked"
 version = "0.2.0-alpha.0"
 dependencies = [

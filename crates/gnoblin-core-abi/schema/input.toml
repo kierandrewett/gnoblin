@@ -1,0 +1,1086 @@
+# The `input` module of `gnoblin.model`: the input matcher. A shell binds a trigger (`Super+Return`, `Super+Shift+1`) on an input context, and the
+# library claims the chord on the seat, shares one claim between the bindings of one trigger, and runs the right binding when the chord is
+# pressed.
+#
+# One context exists for each seat the compositor reports, and a shell may add contexts of its own that hold the devices of the first seat. A
+# binding belongs to a collection: the context's own, a device's, or a layout's. When a chord is pressed the candidates are the bindings that
+# match it, in this order: the tier first (a device's binding, then a layout's, then the context's), then the higher priority, then the older
+# binding. A binding that answers `false` declines, and the next candidate is tried; any other answer, or none, handles the press, and a throw
+# counts as handled. Two bindings of one collection cannot share a trigger at one priority.
+#
+# A reload hands a chord from one generation to the next: the new generation's claims are kept while it is staged and go out when it takes over,
+# behind the releases of the old one, so the compositor never holds a chord for nobody and never for both.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# Where a binding comes from. A device's binding runs before a layout's, and a layout's before the context's own.
+[[enum]]
+name = "binding_tier"
+since = "0.2.0"
+values = ["context", "layout", "device"]
+
+# What a trigger names.
+[[enum]]
+name = "trigger_kind"
+since = "0.2.0"
+values = ["key", "pointer", "wheel", "gesture"]
+
+# A binding's function: it handles the press and answers `true`, or declines it with `false`, which gives the press to the next candidate.
+[[callback]]
+name = "key_action"
+since = "0.2.0"
+returns = "bool"
+
+[[callback.param]]
+name = "event"
+type = "object:binding_event"
+
+# Tells whether a binding or a layout applies to a window. With no window under the input the answer is asked about none, and a binding that
+# has a scope does not match.
+[[callback]]
+name = "client_scope"
+since = "0.2.0"
+returns = "bool"
+
+[[callback.param]]
+name = "client"
+type = "object:client"
+
+# A point in the compositor's logical space.
+[[object]]
+name = "input_point"
+since = "0.2.0"
+kind = "record"
+
+# Horizontal position in logical pixels.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Vertical position in logical pixels.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# A trigger as the grammar reads it. `text` is the canonical spelling: modifiers in the order `Shift, Ctrl, Alt, Meta, Super, Hyper`, the key
+# name in its canonical case, so two spellings of one trigger have one text (`Ctrl+Alt+Delete` and `control+alt+delete`).
+[[object]]
+name = "trigger"
+since = "0.2.0"
+kind = "record"
+
+# The canonical spelling.
+[[object.property]]
+name = "text"
+type = "string"
+since = "0.2.0"
+
+# Which input the trigger names.
+[[object.property]]
+name = "kind"
+type = "enum:trigger_kind"
+since = "0.2.0"
+
+# The modifiers, in the canonical order, written `Shift`, `Ctrl`, `Alt`, `Meta`, `Super` and `Hyper`.
+[[object.property]]
+name = "modifiers"
+type = "list<string>"
+since = "0.2.0"
+
+# A key's keysym name in its canonical case, or `Super` for a lone tap of it. Only for a key.
+[[object.property]]
+name = "key"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# `MouseLeft`, `MouseMiddle` or `MouseRight`. Only for a pointer trigger.
+[[object.property]]
+name = "button"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# `click` or `drag`. Only for a pointer trigger.
+[[object.property]]
+name = "action"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# `up`, `down`, `left` or `right`. Only for a wheel trigger that names one.
+[[object.property]]
+name = "direction"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# `swipe` or `pinch`. Only for a gesture trigger.
+[[object.property]]
+name = "gesture"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The finger count, 2 to 5. Only for a gesture trigger.
+[[object.property]]
+name = "fingers"
+type = "uint"
+since = "0.2.0"
+optional = true
+
+# The grammar of triggers, one implementation for every language. A trigger is the string a user writes for an input:
+#
+#     trigger  := key | pointer | wheel | gesture
+#     key      := (modifier "+")* keyname        `Super+Shift+1`, `XF86AudioMute`; a lone `Super` is a tap
+#     pointer  := (modifier "+")* button ["+" ("Drag" | "Click")]    `Super+MouseLeft+Drag`, `MouseMiddle`
+#     wheel    := (modifier "+")* "Wheel" ["Up" | "Down" | "Left" | "Right"]
+#     gesture  := ("Swipe" | "Pinch") fingers(2-5) [direction]       `Swipe3Left`, `Pinch4In`
+#     modifier := Shift | Ctrl (Control, Primary) | Alt (Mod1) | Meta | Super (Logo) | Hyper
+#
+# Modifiers, button and action names are case-insensitive; key names are keysym names and keep their case, except that a single letter is the
+# key and not a shifted letter. A key is never a character that depends on the layout: `Super+1` and `Super+Shift+1` are two triggers, and
+# `Super+!` is refused (write `Super+Shift+1` or `Super+exclam`). A literal plus is `plus`. A refusal names the part that is wrong.
+[[object]]
+name = "triggers"
+since = "0.2.0"
+
+# Reads a trigger into its parts and canonical spelling. A spelling the grammar refuses is a type error that names the token. `what` names
+# the thing that holds the trigger, for the message; it is `trigger` when left out.
+[[object.method]]
+name = "parse"
+since = "0.2.0"
+function = true
+returns = "object:trigger"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "what"
+type = "string"
+optional = true
+
+# Refuses a trigger the grammar does not accept, as `parse` does, and answers its canonical spelling.
+[[object.method]]
+name = "check"
+since = "0.2.0"
+function = true
+returns = "string"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "what"
+type = "string"
+optional = true
+
+# The compositor's own spelling of the chord or gesture a trigger asks the seat for (`<Shift><Super>1`, `swipe3`), or an empty text for a trigger
+# the compositor has no claim for (a wheel). A drag and a click of one button share one claim.
+[[object.method]]
+name = "claim_text"
+since = "0.2.0"
+function = true
+returns = "string"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "what"
+type = "string"
+optional = true
+
+# What the library passes to a binding that handles a press.
+[[object]]
+name = "binding_event"
+since = "0.2.0"
+kind = "record"
+
+# The context the input came to.
+[[object.property]]
+name = "context"
+type = "object:input_context"
+since = "0.2.0"
+
+# The device the binding was made for, or none for a binding of every device.
+[[object.property]]
+name = "device"
+type = "object:device"
+since = "0.2.0"
+optional = true
+
+# The canonical trigger that matched.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+
+# When the input happened, in milliseconds on the session's clock.
+[[object.property]]
+name = "timestamp"
+type = "double"
+since = "0.2.0"
+
+# Seconds since the previous event of the input, at most 0.1, so a simulation that integrates it is not thrown by a stall. A press is the
+# first of its input, and reads 0.
+[[object.property]]
+name = "delta_time"
+type = "double"
+since = "0.2.0"
+
+# The modifiers of the trigger.
+[[object.property]]
+name = "modifiers"
+type = "list<string>"
+since = "0.2.0"
+
+# The pointer in the compositor's logical space.
+[[object.property]]
+name = "position"
+type = "object:input_point"
+since = "0.2.0"
+
+# The window with the keyboard focus, or none.
+[[object.property]]
+name = "client"
+type = "object:client"
+since = "0.2.0"
+optional = true
+
+# The pointer relative to the window's top-left corner. Only with a window.
+[[object.property]]
+name = "local_position"
+type = "object:input_point"
+since = "0.2.0"
+optional = true
+
+# The collection of the layout the binding came from. Only for a layout's binding.
+[[object.property]]
+name = "layout"
+type = "object:binding_collection"
+since = "0.2.0"
+optional = true
+
+# What `bind` takes beside the trigger and the action.
+[[object]]
+name = "binding_options"
+since = "0.2.0"
+kind = "record"
+
+# The binding's id, unique in its collection. Left out, it is `bind-N:` and the canonical trigger, with N counting from 1 in the generation.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# Which of two bindings of one trigger in one tier runs first: the higher number. 0 when it is left out.
+[[object.property]]
+name = "priority"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# Whether the matcher considers the binding. True when it is left out.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Only for a device's `bind`: true makes the device binding-only before the binding is made. False is refused, because it is not a way to
+# say nothing.
+[[object.property]]
+name = "only"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Handles the presses of a key chord. A shell implements it to give a binding a state of its own; `bind` takes a function for the plain case.
+[[object]]
+name = "key_binding"
+since = "0.2.0"
+kind = "interface"
+
+# A press of the trigger. Answer `false` to decline, which gives the press to the next candidate; any other answer handles it.
+[[object.method]]
+name = "on_press"
+since = "0.2.0"
+returns = "bool"
+required = true
+
+[[object.method.param]]
+name = "event"
+type = "object:binding_event"
+
+# One binding of a collection. The library keeps it until it is unbound, so the shell may let go of the object.
+[[object]]
+name = "binding"
+since = "0.2.0"
+kind = "handle"
+
+# Unique in the collection that holds the binding.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The trigger as it was written. Writing another one moves the binding to it: it is refused, and the binding stays, when the text is not a
+# trigger, when another binding of the collection has that trigger at this priority, or when the compositor refuses the claim.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+
+# The grammar's reading of `trigger`.
+[[object.property]]
+name = "parsed"
+type = "object:trigger"
+since = "0.2.0"
+readonly = true
+
+# Which of two bindings of one trigger in one tier runs first: the higher number.
+[[object.property]]
+name = "priority"
+type = "double"
+since = "0.2.0"
+
+# Whether the matcher considers the binding.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+
+# The tier of the collection that holds it.
+[[object.property]]
+name = "tier"
+type = "enum:binding_tier"
+since = "0.2.0"
+readonly = true
+
+# Asks which windows the binding applies to. It is called with the window that has the keyboard focus. A binding with a scope matches only
+# when a window has the focus and the scope accepts it; with none it matches whatever has the focus.
+[[object.property]]
+name = "scope"
+type = "callback:client_scope"
+since = "0.2.0"
+
+# Whether the binding is still in a collection.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Takes the binding out of its collection. A binding that is in none is left alone.
+[[object.method]]
+name = "unbind"
+since = "0.2.0"
+
+# The bindings of one holder, by id, in the order they were added: a context's own, a device's, or a layout's. A shell makes one with no
+# arguments to give a layout its bindings, and a context follows it with `attach_layout`.
+[[object]]
+name = "binding_collection"
+since = "0.2.0"
+kind = "handle"
+
+# How many bindings the collection holds.
+[[object.property]]
+name = "length"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The tier its bindings have in the contexts that follow it: `device` for a device's, `layout` for one a shell made, `context` for a context's.
+[[object.property]]
+name = "tier"
+type = "enum:binding_tier"
+since = "0.2.0"
+readonly = true
+
+# The name of the context or the device that owns the collection, empty for a collection a shell made.
+[[object.property]]
+name = "owner"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Binds `action` to `trigger` in the collection and answers the binding. A function that answers `false` declines the press. With no function
+# the trigger is claimed and swallowed: the press reaches no client and nothing runs. A trigger the grammar refuses is a type error; one a
+# binding of the collection already has at the same priority is refused as `already_exists`; one the compositor has no claim for (a wheel) is
+# `unsupported`. A refusal leaves the collection as it was.
+[[object.method]]
+name = "bind"
+since = "0.2.0"
+returns = "object:binding"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "action"
+type = "callback:key_action"
+optional = true
+
+[[object.method.param]]
+name = "options"
+type = "object:binding_options"
+optional = true
+
+# Binds an object the shell implements: its `on_press` runs when the chord is pressed. Otherwise as `bind`.
+[[object.method]]
+name = "bind_binding"
+since = "0.2.0"
+returns = "object:binding"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "handler"
+type = "object:key_binding"
+
+[[object.method.param]]
+name = "options"
+type = "object:binding_options"
+optional = true
+
+# The binding with this id, or none.
+[[object.method]]
+name = "find"
+since = "0.2.0"
+optional = true
+returns = "object:binding"
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# Whether a binding has this id.
+[[object.method]]
+name = "has"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# Takes the binding with this id out. False when there is none.
+[[object.method]]
+name = "remove"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# Takes every binding out.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+# The bindings, in the order they were added.
+[[object.method]]
+name = "list"
+since = "0.2.0"
+returns = "list<object:binding>"
+
+# A binding joined the collection.
+[[object.signal]]
+name = "added"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "binding"
+type = "object:binding"
+
+# A binding left the collection.
+[[object.signal]]
+name = "removed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "binding"
+type = "object:binding"
+
+# What `describe_bindings` says of one registered binding.
+[[object]]
+name = "binding_info"
+since = "0.2.0"
+kind = "record"
+
+# The name of the context that holds the binding.
+[[object.property]]
+name = "context"
+type = "string"
+since = "0.2.0"
+
+# The binding's id.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+
+# The trigger as it was written.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+
+# Which input the trigger names.
+[[object.property]]
+name = "kind"
+type = "enum:trigger_kind"
+since = "0.2.0"
+
+# Where the binding comes from.
+[[object.property]]
+name = "owner"
+type = "enum:binding_tier"
+since = "0.2.0"
+
+# The collection's owner, for a binding of a layout: empty when the binding is not a layout's or the collection has none.
+[[object.property]]
+name = "layout"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The device's name, or none for a binding of every device.
+[[object.property]]
+name = "device"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The binding's priority.
+[[object.property]]
+name = "priority"
+type = "double"
+since = "0.2.0"
+
+# Whether the binding is enabled.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+
+# 1 is the binding a press of the trigger reaches first; a binding that declines hands the press to rank 2.
+[[object.property]]
+name = "rank"
+type = "uint"
+since = "0.2.0"
+
+# A claim a context holds on its seat, and how many bindings stand on it.
+[[object]]
+name = "claim_info"
+since = "0.2.0"
+kind = "record"
+
+# The claim's id, as the core allocated it.
+[[object.property]]
+name = "id"
+type = "int"
+since = "0.2.0"
+
+# What it claims: `chord:` and the compositor's spelling of the chord, or `gesture:` and the kind and the finger count.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+
+# The device the claim is for, or an empty text for every device.
+[[object.property]]
+name = "device"
+type = "string"
+since = "0.2.0"
+
+# Whether the claim is for a pointer button.
+[[object.property]]
+name = "pointer"
+type = "bool"
+since = "0.2.0"
+
+# How many bindings use the claim. The last one to go gives it up.
+[[object.property]]
+name = "refs"
+type = "uint"
+since = "0.2.0"
+
+# The window management settings a seat publishes. A value is the schema's default until the compositor says otherwise.
+[[object]]
+name = "seat_settings"
+since = "0.2.0"
+kind = "record"
+
+# Whether the compositor tiles windows at screen edges.
+[[object.property]]
+name = "edge_tiling"
+type = "bool"
+since = "0.2.0"
+
+# `click`, `hover` or `hover-strict`.
+[[object.property]]
+name = "focus_mode"
+type = "string"
+since = "0.2.0"
+
+# `allow` or `prevent`.
+[[object.property]]
+name = "focus_new_windows"
+type = "string"
+since = "0.2.0"
+
+# Whether a focused window is raised when it is clicked.
+[[object.property]]
+name = "raise_on_click"
+type = "bool"
+since = "0.2.0"
+
+# Whether a window raises when the pointer rests on it.
+[[object.property]]
+name = "auto_raise"
+type = "bool"
+since = "0.2.0"
+
+# The delay before automatic raising, in milliseconds.
+[[object.property]]
+name = "auto_raise_delay"
+type = "double"
+since = "0.2.0"
+
+# Whether the pointer at rest can change the keyboard focus.
+[[object.property]]
+name = "focus_change_on_pointer_rest"
+type = "bool"
+since = "0.2.0"
+
+# The user asked for reduced motion: the shell's animations take no time.
+[[object.property]]
+name = "reduced_motion"
+type = "bool"
+since = "0.2.0"
+
+# Whether the compositor plays its own animations on window nodes. True until a shell turns it off.
+[[object.property]]
+name = "builtin_motion"
+type = "bool"
+since = "0.2.0"
+
+# The window under a point.
+[[object]]
+name = "input_hit"
+since = "0.2.0"
+kind = "record"
+
+# The topmost window whose bounds hold the point.
+[[object.property]]
+name = "client"
+type = "object:client"
+since = "0.2.0"
+
+# The point relative to the window's top-left corner.
+[[object.property]]
+name = "local_position"
+type = "object:input_point"
+since = "0.2.0"
+
+# An input device of a seat. A context holds the devices of its seat, or the devices it was given.
+[[object]]
+name = "device"
+since = "0.2.0"
+kind = "handle"
+
+# The id the compositor gave the device.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The name the device reports. The compositor matches it exactly against a claim for the device.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# What it can do: `keyboard`, `pointer`, `touchpad`, `touch`, `tablet` and so on, as the compositor lists them.
+[[object.property]]
+name = "capabilities"
+type = "list<string>"
+since = "0.2.0"
+readonly = true
+
+# False once the device was unplugged.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether the device is enabled. It always is: the compositor cannot disable one device, so writing false is refused as `unsupported` and
+# true changes nothing. Use `binding_only` to keep a device's keys from clients.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+
+# The context that holds the device. Writing another context of the same seat moves the device: its bindings, and the bindings that context made
+# for all its devices, start matching its events, and the old context's stop. Its binding-only claim goes with it. It is refused for a context
+# that is not in `contexts` and for one on another seat.
+[[object.property]]
+name = "context"
+type = "object:input_context"
+since = "0.2.0"
+
+# The device's own bindings: they run before a layout's and the context's.
+[[object.property]]
+name = "bindings"
+type = "object:binding_collection"
+since = "0.2.0"
+readonly = true
+
+# Whether the device is binding-only: its keys reach no client and fire only the bindings made for it or for every device, and a chord no
+# binding claims is dropped. Writing true or false makes or gives up the claim on the seat.
+[[object.property]]
+name = "binding_only"
+type = "bool"
+since = "0.2.0"
+
+# Binds `action` to `trigger` for this device. As `binding_collection.bind` on its `bindings`.
+[[object.method]]
+name = "bind"
+since = "0.2.0"
+returns = "object:binding"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "action"
+type = "callback:key_action"
+optional = true
+
+[[object.method.param]]
+name = "options"
+type = "object:binding_options"
+optional = true
+
+# Binds an object the shell implements for this device. As `binding_collection.bind_binding` on its `bindings`.
+[[object.method]]
+name = "bind_binding"
+since = "0.2.0"
+returns = "object:binding"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "handler"
+type = "object:key_binding"
+
+[[object.method.param]]
+name = "options"
+type = "object:binding_options"
+optional = true
+
+# An input context: the bindings of a group of devices and the claims they make on the seat. The compositor reports one for each seat; a
+# shell makes more with a name and adds them to `contexts`, and they hold the devices of the first seat. Context bindings apply to all the
+# devices held. Pointer and keyboard focus stay the seat's.
+[[object]]
+name = "input_context"
+since = "0.2.0"
+kind = "handle"
+ctor = ["name"]
+
+# The name: a context's identity among the contexts. A seat's is the seat's name. One line of text.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The same as `name`.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# False once the context was removed from `contexts` or its seat went.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The seat's node, or 0 while the context is in no list.
+[[object.property]]
+name = "seat"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Whether a shell made the context, as opposed to the compositor's seat.
+[[object.property]]
+name = "scripted"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The bindings added to the context itself.
+[[object.property]]
+name = "bindings"
+type = "object:binding_collection"
+since = "0.2.0"
+readonly = true
+
+# The devices the context holds. A context that is not in `contexts` holds none.
+[[object.property]]
+name = "devices"
+type = "list<object:device>"
+since = "0.2.0"
+readonly = true
+
+# The pointer in the compositor's logical space.
+[[object.property]]
+name = "pointer"
+type = "object:input_point"
+since = "0.2.0"
+readonly = true
+
+# The window with the keyboard focus, or none. It is read from the seat on each call.
+[[object.property]]
+name = "focused_client"
+type = "object:client"
+since = "0.2.0"
+readonly = true
+
+# The window management settings the seat publishes.
+[[object.property]]
+name = "settings"
+type = "object:seat_settings"
+since = "0.2.0"
+readonly = true
+
+# Whether the compositor plays its own animations on window nodes: the fade in when a window maps, the fade out when it closes, unmaps or hides,
+# and the tween of a placement towards its value. True until a shell turns it off, which it does once, at startup, when it animates windows itself.
+# It affects only the changes that start after the write. The compositor turns it on again when the shell lets go of the tree. Reduced motion
+# still turns every animation off.
+[[object.property]]
+name = "builtin_motion"
+type = "bool"
+since = "0.2.0"
+
+# Binds `action` to `trigger` for this context. As `binding_collection.bind` on its `bindings`.
+[[object.method]]
+name = "bind"
+since = "0.2.0"
+returns = "object:binding"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "action"
+type = "callback:key_action"
+optional = true
+
+[[object.method.param]]
+name = "options"
+type = "object:binding_options"
+optional = true
+
+# Binds an object the shell implements for this context. As `binding_collection.bind_binding` on its `bindings`.
+[[object.method]]
+name = "bind_binding"
+since = "0.2.0"
+returns = "object:binding"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+[[object.method.param]]
+name = "handler"
+type = "object:key_binding"
+
+[[object.method.param]]
+name = "options"
+type = "object:binding_options"
+optional = true
+
+# Whether the devices that report `name` are binding-only on this seat.
+[[object.method]]
+name = "is_binding_only"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+# Makes the devices that report `name` (a name from `devices`) binding-only: a key of theirs reaches no client and fires only the bindings made
+# for the device or for every device, and a chord no binding claims is dropped. Once is enough. It works before the device is plugged in.
+[[object.method]]
+name = "make_binding_only"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+# Gives the binding-only claim on `name` up, so its keys reach clients again. False when there was none.
+[[object.method]]
+name = "release_binding_only"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+# Each registered binding and its rank among the bindings of the same trigger.
+[[object.method]]
+name = "describe_bindings"
+since = "0.2.0"
+returns = "list<object:binding_info>"
+
+# The claims the context holds on its seat. Bindings of one trigger and one device share one claim.
+[[object.method]]
+name = "claims"
+since = "0.2.0"
+returns = "list<object:claim_info>"
+
+# The topmost window whose bounds hold `position`, or none.
+[[object.method]]
+name = "hit_test"
+since = "0.2.0"
+optional = true
+returns = "object:input_hit"
+
+[[object.method.param]]
+name = "position"
+type = "object:input_point"
+
+# Takes the keyboard focus from every window.
+[[object.method]]
+name = "clear_focus"
+since = "0.2.0"
+
+# Makes the bindings of `layout` (a collection a shell made) live for this context, for the windows `owns` accepts. Without `owns` they apply to
+# every window. Bindings the layout gains or loses later follow. A layout that is attached already is refused.
+[[object.method]]
+name = "attach_layout"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "layout"
+type = "object:binding_collection"
+
+[[object.method.param]]
+name = "owns"
+type = "callback:client_scope"
+optional = true
+
+# Stops the layout's bindings.
+[[object.method]]
+name = "detach_layout"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "layout"
+type = "object:binding_collection"
+
+# The input of the desktop: one context for each seat, followed by the contexts a shell added, and the devices of every context. It is one
+# object for each generation.
+[[object]]
+name = "input_manager"
+since = "0.2.0"
+kind = "service"
+
+# The first seat's context: the ordinary default. Refused when the compositor reports no seat.
+[[object.property]]
+name = "primary"
+type = "object:input_context"
+since = "0.2.0"
+readonly = true
+
+# Every context: the seats' first, then the shell's in the order it added them.
+[[object.property]]
+name = "contexts"
+type = "list<object:input_context>"
+since = "0.2.0"
+readonly = true
+
+# Every device of every context.
+[[object.property]]
+name = "devices"
+type = "list<object:device>"
+since = "0.2.0"
+readonly = true
+
+# The window with the keyboard focus of the first seat, or none.
+[[object.property]]
+name = "focused_client"
+type = "object:client"
+since = "0.2.0"
+readonly = true
+
+# Puts a context a shell made into `contexts`, over the first seat's devices. Refused when the name is taken, the context was removed, or the
+# compositor reports no seat. Adding a context that is there changes nothing.
+[[object.method]]
+name = "add_context"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "context"
+type = "object:input_context"
+
+# Takes a context a shell added out of `contexts`: its devices go back to their seat's context and its bindings stop. False for a context that
+# is not there. Refused for a seat's own context.
+[[object.method]]
+name = "remove_context"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "context"
+type = "object:input_context"
+
+# A device was plugged in.
+[[object.signal]]
+name = "device_added"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "device"
+type = "object:device"
+
+# A device was unplugged.
+[[object.signal]]
+name = "device_removed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "device"
+type = "object:device"

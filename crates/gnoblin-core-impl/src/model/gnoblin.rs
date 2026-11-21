@@ -148,6 +148,7 @@ pub(super) fn register(builder: &mut Builder) {
         .get("process", |_, cx| glue::service_value(cx.ctx(), "processes"))
         .get("idle", |_, cx| glue::service_value(cx.ctx(), "idle"))
         .get("launches", |_, cx| glue::service_value(cx.ctx(), "launches"))
+        .get("input", |_, cx| glue::service_value(cx.ctx(), "input_manager"))
         .get("dialogs", |_, cx| glue::service_value(cx.ctx(), "dialogs"))
         .get("authentication", |_, cx| {
             glue::service_value(cx.ctx(), "authentication")

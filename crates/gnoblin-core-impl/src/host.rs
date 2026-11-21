@@ -109,6 +109,22 @@ pub fn open_generation(label: &str, language: u32) -> Result<GnoblinCtx, String>
     Ok(ctx)
 }
 
+/// Opens a generation that is only staged, as the loader does for a reload while the old one still serves: its claims are kept and sent
+/// when [`take_over`] makes it the active one. `label` names it in the log.
+pub fn stage_generation(label: &str, language: u32) -> GnoblinCtx {
+    crate::registry::new_context(label, language, 1, false)
+}
+
+/// A staged generation takes over from the active one: the claims of the old generation are released and the new one's go out behind
+/// them in the same transaction. The old generation is ended with [`close_generation`] afterwards, as a reload does.
+///
+/// # Errors
+///
+/// The generation is not staged.
+pub fn take_over(ctx: GnoblinCtx) -> Result<(), String> {
+    crate::registry::activate(ctx)
+}
+
 /// Ends a generation [`open_generation`] made: its shutdown hooks run and everything it registered is removed. Returns how many
 /// registrations were removed.
 pub fn close_generation(ctx: GnoblinCtx) -> usize {
