@@ -34,16 +34,29 @@ fn position(session: &Gnoblin, needle: &str, nth: usize) -> Option<usize> {
         .map(|(at, _)| at)
 }
 
-/// The shell of generation `n` has bound its chords: it says how many claims its three bindings stand on and that it runs.
+/// How many claims the three bindings of the shell stand on: the two of `Super+a` share one.
+const CLAIMS: usize = 2;
+
+/// The shell of generation `n` (from 1) has bound its chords and the compositor holds them: the shell says how many claims its three bindings
+/// stand on and that it runs, and the compositor says it applied the claims of every generation so far and the releases of the ones before.
+///
+/// The shell's own lines are not enough. A script runs while its generation is only staged, so it says "running" before the old generation
+/// ended, and what the new one claims goes to the compositor when it takes over, in one transaction behind the old one's releases, which
+/// the compositor takes in a frame of its own. A chord pressed on the shell's line is the old generation's, or nobody's.
 #[track_caller]
-fn assert_generation_runs(session: &mut Gnoblin, n: u32) {
+fn assert_generation_runs(session: &mut Gnoblin, n: usize) {
     let holds = session.wait_log("the shell counts its claims", |line| {
         line.contains(&format!("input: generation {n} holds"))
     });
-    assert!(holds.text.contains("holds 2 claims for 3 bindings"), "{}", holds.text);
+    assert!(
+        holds.text.contains(&format!("holds {CLAIMS} claims for 3 bindings")),
+        "{}",
+        holds.text
+    );
     session.wait_log("the shell is running", |line| {
         line.contains(&format!("input: generation {n} is running"))
     });
+    session.wait_claims(CLAIMS * n, CLAIMS * (n - 1));
 }
 
 /// A press of `Super+a` runs the binding that declines and then the one that handles it, for the `nth` time (from 0).

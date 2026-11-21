@@ -633,6 +633,16 @@ impl State {
     /// A claim binds its chord in the router, so the router delivers it before any client; a gesture claim takes its
     /// gesture from the touchpad bindings; a device claim makes a keyboard binding-only; an unclaim removes any.
     pub(crate) fn apply_claims(&mut self, calls: Vec<TreeCall>) {
+        let made = calls
+            .iter()
+            .filter(|call| {
+                matches!(
+                    call.method.as_str(),
+                    "claim" | "claim_gesture" | "claim_device" | "claim_pointer"
+                )
+            })
+            .count();
+        let released = calls.iter().filter(|call| call.method == "unclaim").count();
         for call in calls {
             let Some(&id) = call.args.first() else {
                 log::warn!(area = "claim", method = %call.method, "a seat claim call has no id");
@@ -716,6 +726,14 @@ impl State {
                 }
                 Err(_) => log::warn!(area = "claim", "a seat claim's chord is already bound for that device"),
             }
+        }
+        // Said once the calls are in force. A shell's reload hands its chords over in one transaction (the old generation's releases, then
+        // the new one's claims), so it is one line, and a chord pressed after it is the new generation's.
+        if made + released > 0 {
+            log::info!(
+                area = "claim",
+                "the shell's seat claims were applied: {made} made, {released} released"
+            );
         }
     }
 

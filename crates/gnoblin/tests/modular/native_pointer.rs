@@ -27,16 +27,29 @@ fn count(session: &Gnoblin, needle: &str) -> usize {
     session.log().iter().filter(|line| line.text.contains(needle)).count()
 }
 
-/// The shell of generation `n` has bound its triggers: two buttons and a swipe stand on three claims for three bindings.
+/// How many claims the shell's three bindings stand on: the drag and the click on a button each, and the swipe.
+const CLAIMS: usize = 3;
+
+/// The shell of generation `n` (from 1) has bound its triggers and the compositor holds them: the shell says its three bindings stand on three
+/// claims and that it runs, and the compositor says it applied the claims of every generation so far and the releases of the ones before.
+///
+/// The shell's own lines are not enough. A script runs while its generation is only staged, so it says "running" before the old generation
+/// ended, and what the new one claims goes to the compositor when it takes over, in one transaction behind the old one's releases, which
+/// the compositor takes in a frame of its own. A press on the shell's line is the old generation's, or nobody's.
 #[track_caller]
-fn assert_generation_runs(session: &mut Gnoblin, n: u32) {
+fn assert_generation_runs(session: &mut Gnoblin, n: usize) {
     let holds = session.wait_log("the shell counts its claims", |line| {
         line.contains(&format!("pointer: generation {n} holds"))
     });
-    assert!(holds.text.contains("holds 3 claims for 3 bindings"), "{}", holds.text);
+    assert!(
+        holds.text.contains(&format!("holds {CLAIMS} claims for 3 bindings")),
+        "{}",
+        holds.text
+    );
     session.wait_log("the shell is running", |line| {
         line.contains(&format!("pointer: generation {n} is running"))
     });
+    session.wait_claims(CLAIMS * n, CLAIMS * (n - 1));
 }
 
 /// Waits until the log has `needle` `times` times.

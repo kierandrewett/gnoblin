@@ -1000,6 +1000,36 @@ impl Gnoblin {
         self.find(matches).expect("the line was there")
     }
 
+    /// How many seat claims the compositor has applied for the shell, and how many releases, summed over what it logged. It logs a line
+    /// once the calls are in force. The shell's own log of a claim comes before that: a shell sends its claims in a transaction, which the
+    /// compositor takes in a frame of its own, and a reload sends the old generation's releases and the new one's claims in one. A chord
+    /// pressed on the shell's line can be pressed before the compositor holds the claim, or while it still holds the old one.
+    pub fn claims_applied(&self) -> (usize, usize) {
+        let counts = |text: &str| -> Option<(usize, usize)> {
+            let (_, counts) = text.split_once("the shell's seat claims were applied: ")?;
+            let mut words = counts.split_whitespace();
+            let made = words.next()?.parse().ok()?;
+            let released = words.nth(1)?.parse().ok()?;
+            Some((made, released))
+        };
+        self.log()
+            .iter()
+            .filter_map(|line| counts(&line.text))
+            .fold((0, 0), |(made, released), (made_now, released_now)| {
+                (made + made_now, released + released_now)
+            })
+    }
+
+    /// Waits until the compositor has applied `made` seat claims for the shell in all, and `released` releases: the claims of a generation
+    /// that took over are in force, and the ones of the generation it replaced are gone.
+    #[track_caller]
+    pub fn wait_claims(&mut self, made: usize, released: usize) {
+        self.wait_for(
+            &format!("the compositor applies {made} seat claims and {released} releases"),
+            |session| session.claims_applied() == (made, released),
+        );
+    }
+
     /// Waits until the tree's socket accepts a connection, which is when the compositor serves.
     #[track_caller]
     pub fn wait_serving(&mut self) {
