@@ -10,6 +10,13 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The hardware backend (`compositor.backend = drm`): KMS through udev and libseat, libinput for input. On by default. A build
+# without it neither compiles nor links `gnoblin-backend-drm`, and selecting `drm` is refused with a named error
+# (`Error::DrmNotBuilt`); the nested and headless backends are unchanged.
+default = ["drm"]
+drm = ["dep:gnoblin-backend-drm"]
+
 [dependencies]
 # Text that must not leak (a seat claim's chord, a password): redacted `Debug`, wiped on drop.
 gnoblin-secret.workspace = true
@@ -22,8 +29,8 @@ gnoblin-wayland = { path = "../gnoblin-wayland" }
 # The backend trait and the backends this build selects between: headless, nested in
 # a parent compositor, and the hardware (DRM) backend.
 gnoblin-backend = { path = "../gnoblin-backend" }
-# The hardware backend `compositor.backend = drm` (and `auto` on a seated login session) starts.
-gnoblin-backend-drm = { path = "../gnoblin-backend-drm" }
+# The hardware backend `compositor.backend = drm` (and `auto` on a seated login session) starts. Optional: feature `drm`.
+gnoblin-backend-drm = { path = "../gnoblin-backend-drm", optional = true }
 gnoblin-render = { path = "../gnoblin-render" }
 # The Canvas painter: system fonts for text measurement and for drawing `Canvas` nodes.
 gnoblin-paint.workspace = true

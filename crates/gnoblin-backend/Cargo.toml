@@ -25,10 +25,9 @@ vulkan = ["dep:gnoblin-render-vulkan"]
 # The event-loop handle the backend contract registers its sources with. Pinned
 # workspace-wide (D7) with the `renderer_pixman` feature, which is the software path of the
 # Frame card and the reference renderer the headless backend uses. The hardware features
-# (`backend_drm`, `backend_gbm`, `backend_udev`, `backend_session_libseat`,
-# `backend_libinput`) come with the workspace pin too, because they are choices the whole
-# workspace has to make together. This crate links none of them: they belong to
-# `gnoblin-backend-drm`, and the nested and headless backends link no DRM code at all.
+# (`backend_drm`, `backend_gbm`) come with the workspace pin too: the nested backend's dmabuf
+# presenter allocates through GBM. The seat, udev and libinput features belong to
+# `gnoblin-backend-drm`, and the nested and headless backends link no DRM backend code at all.
 smithay.workspace = true
 # Outputs, events and targets are stated in the shared primitives.
 gnoblin-types.workspace = true

@@ -16,9 +16,9 @@ workspace = true
 
 [dependencies]
 # The DRM, libinput, libseat, udev and GBM bindings, and the event-loop handle the sources
-# register with. Pinned workspace-wide (D7) with the hardware features enabled, because they
-# are choices the whole workspace has to make together.
-smithay.workspace = true
+# register with. Pinned workspace-wide (D7); the features only this crate uses (udev, libseat,
+# libinput) are enabled here, so a build that leaves this crate out links none of them.
+smithay = { workspace = true, features = ["backend_udev", "backend_session_libseat", "backend_libinput"] }
 # Outputs, events and targets are stated in the shared primitives.
 gnoblin-types.workspace = true
 # A hardware output's EDID becomes the descriptor the layout engine and the mode list read.

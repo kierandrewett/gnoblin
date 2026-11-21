@@ -15,7 +15,8 @@
 //!    failing.
 //! 2. **A login session with a seat, and a DRM node** (`XDG_SEAT`, or a `libseat` seatd socket, plus a
 //!    `/dev/dri/card*`): `drm`. A display manager or a VT login with logind or seatd is how a session
-//!    starts on hardware, and it is the only case with no host display.
+//!    starts on hardware, and it is the only case with no host display. A build without the `drm` feature skips this
+//!    rule.
 //! 3. **Otherwise** `headless`: a session with nothing to draw on still has to run (CI, containers, services).
 //!
 //! `DISPLAY` alone (an X11 host) selects nothing: the nested backend is a Wayland client, and an X11 server cannot
@@ -267,7 +268,9 @@ pub fn select(
                     reason: "auto: a host Wayland compositor is serving the display",
                 });
             }
-            if host.seat && host.drm_node {
+            // A build without the `drm` feature has no hardware backend to pick, so a seated login session falls through to
+            // the next rule instead of being refused for a backend nobody asked for by name.
+            if cfg!(feature = "drm") && host.seat && host.drm_node {
                 return Ok(Selection {
                     backend: Backend::Drm,
                     reason: "auto: a login session with a seat and a DRM node",
@@ -393,10 +396,21 @@ mod tests {
         assert_eq!(name(select(&BackendSettings::default(), None, &host, always)), "nested");
     }
 
+    #[cfg(feature = "drm")]
     #[test]
     fn a_login_session_with_a_seat_and_a_node_is_drm() {
         let host = host(None, true, true);
         assert_eq!(name(select(&BackendSettings::default(), None, &host, always)), "drm");
+    }
+
+    #[cfg(not(feature = "drm"))]
+    #[test]
+    fn a_login_session_with_a_seat_and_a_node_is_headless_in_a_build_without_drm() {
+        let host = host(None, true, true);
+        assert_eq!(
+            name(select(&BackendSettings::default(), None, &host, always)),
+            "headless"
+        );
     }
 
     #[test]
@@ -417,7 +431,8 @@ mod tests {
     fn a_stale_host_display_is_not_a_host() {
         // WAYLAND_DISPLAY left over in an environment names a socket nobody serves.
         let host = host(Some("wayland-9"), true, true);
-        assert_eq!(name(select(&BackendSettings::default(), None, &host, never)), "drm");
+        let expected = if cfg!(feature = "drm") { "drm" } else { "headless" };
+        assert_eq!(name(select(&BackendSettings::default(), None, &host, never)), expected);
         let host = self::host(Some("wayland-9"), false, false);
         assert_eq!(
             name(select(&BackendSettings::default(), None, &host, never)),

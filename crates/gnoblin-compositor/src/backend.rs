@@ -28,6 +28,7 @@ use gnoblin_backend::Backend as BackendTrait;
 use gnoblin_backend::headless::{Headless, HeadlessConfig, HeadlessHandle};
 use gnoblin_backend::nested::{Nested, NestedConfig, NestedError};
 use gnoblin_backend::render::renderer::RendererKind;
+#[cfg(feature = "drm")]
 use gnoblin_backend_drm::{Drm, DrmError, RealModeset};
 use gnoblin_config::RendererChoice;
 use gnoblin_render_frame::frame::SecureTreatment;
@@ -108,6 +109,7 @@ fn refused(renderer: RendererChoice, backend: &'static str, reason: &'static str
 /// What a person does about a hardware backend that could not start. One line per kind of failure, because the
 /// answer differs: a machine with no seat wants a login session, a machine with no GPU wants another backend, and a
 /// GPU that refuses is a permissions problem.
+#[cfg(feature = "drm")]
 #[must_use]
 pub fn drm_hint(error: &DrmError) -> &'static str {
     use gnoblin_backend_drm::session::SessionError;
@@ -153,8 +155,9 @@ pub enum Backend {
     /// Direct rendering on the hardware: the GPU, its displays and libinput on the seat this process runs in.
     ///
     /// It scans out with the GLES renderer only, and a mode change on a real display stays off unless the process
-    /// sets `GNOBLIN_DRM_MODESET=1` ([`RealModeset`]). A machine that cannot start it is refused with the reason
-    /// ([`Error::Drm`]), never given another backend.
+    /// sets `GNOBLIN_DRM_MODESET=1` (`RealModeset`). A machine that cannot start it is refused with the reason
+    /// (`Error::Drm`), never given another backend. A build without the `drm` feature still has this value, because the
+    /// selection is data, and refuses it with [`Error::DrmNotBuilt`].
     Drm,
 }
 
@@ -169,8 +172,8 @@ impl Backend {
     ///
     /// # Errors
     ///
-    /// [`Error::Nested`] when the parent compositor cannot host the session, [`Error::Drm`] when the hardware
-    /// cannot be opened, and [`Error::RendererRefused`] when the backend cannot draw with the named renderer.
+    /// [`Error::Nested`] when the parent compositor cannot host the session, `Error::Drm` when the hardware
+    /// cannot be opened (`Error::DrmNotBuilt` in a build without the `drm` feature), and [`Error::RendererRefused`] when the backend cannot draw with the named renderer.
     pub fn build(
         self,
         renderer: RendererChoice,
@@ -228,6 +231,9 @@ impl Backend {
                     Err(error) => Err(Error::Nested(error)),
                 }
             }
+            #[cfg(not(feature = "drm"))]
+            Backend::Drm => Err(Error::DrmNotBuilt),
+            #[cfg(feature = "drm")]
             Backend::Drm => {
                 // The scan-out path is the GLES renderer. `auto` is that renderer here, and another named renderer
                 // is refused rather than replaced.
@@ -266,7 +272,9 @@ impl Backend {
 
 #[cfg(test)]
 mod tests {
-    use super::{Backend, drm_hint};
+    use super::Backend;
+    #[cfg(feature = "drm")]
+    use super::drm_hint;
     use crate::Error;
     use gnoblin_backend::nested::NestedConfig;
     use gnoblin_config::RendererChoice;
@@ -292,6 +300,20 @@ mod tests {
         );
     }
 
+    #[cfg(not(feature = "drm"))]
+    #[test]
+    fn a_build_without_the_drm_feature_refuses_the_hardware_backend_by_name() {
+        match Backend::Drm.build(RendererChoice::Auto, SecureTreatment::default()) {
+            Err(error @ Error::DrmNotBuilt) => assert_eq!(
+                error.to_string(),
+                "the drm backend cannot start: this build has no DRM backend; rebuild with feature drm"
+            ),
+            Err(other) => panic!("drm refused with the wrong error: {other}"),
+            Ok(_) => panic!("a build without the drm feature must not start the hardware backend"),
+        }
+    }
+
+    #[cfg(feature = "drm")]
     #[test]
     fn the_hardware_backend_scans_out_with_gles_only_and_refuses_another_renderer_by_name() {
         // Refused before the seat is touched, so this test never reaches hardware.
@@ -312,6 +334,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "drm")]
     #[test]
     fn every_drm_failure_names_the_way_out() {
         use gnoblin_backend_drm::DrmError;

@@ -109,7 +109,9 @@ use std::thread::JoinHandle;
 
 use gnoblin_wayland::{ControlHandle, LoopError, Server, StartupError};
 
-pub use backend::{Backend, OutputTap, drm_hint};
+#[cfg(feature = "drm")]
+pub use backend::drm_hint;
+pub use backend::{Backend, OutputTap};
 pub use backend_select::{
     SelectError as BackendSelectError, configure_from_environment as configure_backend_from_environment,
     configure_from_store as configure_backend_from_store,
@@ -369,7 +371,8 @@ impl Compositor {
     ///
     /// [`Error::Schema`] when the embedded schema cannot be loaded,
     /// [`Error::Ipc`] when the socket cannot be prepared or bound,
-    /// [`Error::Drm`] a machine that cannot start the hardware backend, and
+    /// `Error::Drm` a machine that cannot start the hardware backend (`Error::DrmNotBuilt` in a build without the `drm`
+    /// feature), and
     /// [`Error::Nested`] a parent compositor that cannot host the session. [`Error::Wayland`]
     /// when the Wayland session cannot start, and [`Error::Loop`] when the running loop fails.
     pub fn run(mut config: SessionConfig) -> Result<SessionEnd, Error> {
@@ -596,12 +599,17 @@ pub enum Error {
     Nested(NestedError),
     /// The hardware backend could not start. The step that failed is in the error and the way out is the hint, so
     /// the session is refused with what to do rather than started on another backend.
+    #[cfg(feature = "drm")]
     Drm {
         /// What could not be opened.
         error: gnoblin_backend_drm::DrmError,
         /// What to do about it ([`drm_hint`]).
         hint: &'static str,
     },
+    /// The session asked for the hardware backend, and this build was made without the `drm` feature, so none of its
+    /// code is in the process. Nothing else is started in its place.
+    #[cfg(not(feature = "drm"))]
+    DrmNotBuilt,
     /// The renderer the `compositor.renderer` setting names cannot be used by the selected
     /// backend. The setting is named, and the session does not start with another renderer in
     /// its place.
@@ -629,7 +637,13 @@ impl std::fmt::Display for Error {
             Error::Loop(error) => write!(formatter, "the Wayland session stopped: {error}"),
             Error::Model(error) => write!(formatter, "the object graph refused the session: {error}"),
             Error::Nested(error) => write!(formatter, "the nested session cannot start: {error}"),
+            #[cfg(feature = "drm")]
             Error::Drm { error, hint } => write!(formatter, "the drm backend cannot start: {error}; {hint}"),
+            #[cfg(not(feature = "drm"))]
+            Error::DrmNotBuilt => write!(
+                formatter,
+                "the drm backend cannot start: this build has no DRM backend; rebuild with feature drm"
+            ),
             Error::RendererRefused {
                 leaf,
                 renderer,

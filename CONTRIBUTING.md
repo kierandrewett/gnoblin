@@ -84,6 +84,15 @@ cargo xtask stage && cargo build -p gnoblin && target/debug/gnoblin --version
 
 `GNOBLIN_CORE_LIB_DIR=target/debug` links the real library (its linker name is staged too) instead of the stub. `GNOBLIN_RPATH` replaces the run path when `gnoblin` is built, and an empty value leaves none: a distribution package installs under `/usr`, which the loader searches. `just dist-check` builds the workspace, stages, installs into three temporary trees and runs `cargo xtask dist-check` on the build tree and on each (SONAME and exports of the core, `NEEDED` once, no `gnoblin_*` in a shell, every gnoblin library resolving inside the tree, links, header, `.pc`, manifest, the glibc floor, and `gnoblin --version` run with `LD_LIBRARY_PATH` unset); CI runs it. `design/status/dist.md` has the install layout.
 
+## Build features of the core library
+
+`gnoblin-core-impl` has one switch for the hardware backend, `drm`, on by default.
+
+- `cargo build -p gnoblin-core-impl --no-default-features` leaves out `gnoblin-backend-drm` and Smithay's udev, libseat and libinput features. The library then links no `libinput`, `libudev` or `libseat`.
+- The feature is forwarded: `gnoblin-core-impl/drm` turns on `gnoblin-compat-host/drm` and `gnoblin-compositor/drm`.
+- A crate that depends on one of them sets `default-features = false` to keep the switch working. Its default would turn the feature back on.
+- With the feature off, `compositor.backend = drm` is refused with `this build has no DRM backend; rebuild with feature drm`. `auto` does not pick it, and the nested and headless backends are unchanged.
+
 ## Full suite
 
 ```sh

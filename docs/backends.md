@@ -167,6 +167,17 @@ one, so a mode change on a monitor is refused with a message naming the switch u
 **Check it on your hardware.** The hardware backend depends on your GPU driver and your displays. The steps to
 confirm a session on real hardware are in [verify a desktop installation](real-hardware-verification.md).
 
+### A build without the hardware backend
+
+A package maker can build the core library without the hardware backend: `cargo build -p gnoblin-core-impl --no-default-features`
+switches off the `drm` feature. The library then holds no KMS, libinput, libudev or libseat code.
+
+- Choosing `drm` (`GNOBLIN_BACKEND=drm` or `compositor.backend = drm`) stops with `this build has no DRM backend; rebuild with feature drm`.
+- `auto` never picks `drm`.
+- The `nested` and `headless` backends work as before.
+
+The packages the project ships have the feature on.
+
 ## What each backend does
 
 A **refused** entry is deliberate, and every backend that refuses a request answers it the same way. Nothing is

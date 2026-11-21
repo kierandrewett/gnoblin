@@ -14,6 +14,11 @@ name = "gnoblin_core_impl"
 crate-type = ["cdylib", "rlib"]
 
 [features]
+# The hardware (DRM/KMS) backend, with libinput, udev and libseat behind it. On by default. A core built with
+# `--no-default-features` neither compiles nor links it: `compositor.backend = drm` is refused with a named error and the
+# nested and headless backends run as before.
+default = ["drm"]
+drm = ["gnoblin-compositor/drm", "gnoblin-compat-host/drm"]
 # Test only: adds the `gnoblin_test_main` export, the scenario driver the integration tests run through a launcher, and
 # turns the log console on. Never in a build that ships; `cargo xtask dist-check` rejects the export.
 test-driver = ["dep:gnoblin-testkit"]
@@ -34,8 +39,8 @@ gnoblin-provider-wire = { path = "../gnoblin-provider-wire" }
 gnoblin-log = { path = "../gnoblin-log", features = ["init"] }
 # The compositor, and what the compositor role of the launcher wires into it: the compat adapters, the power backend of the
 # services crate, and the shell it runs in process. The launcher reaches all of it only through `gnoblin_main` (M2.10).
-gnoblin-compositor = { path = "../gnoblin-compositor" }
-gnoblin-compat-host = { path = "../compat/gnoblin-compat-host" }
+gnoblin-compositor = { path = "../gnoblin-compositor", default-features = false }
+gnoblin-compat-host = { path = "../compat/gnoblin-compat-host", default-features = false }
 # The isolated shell role (`--role shell`) is a client of the compositor's socket: the version handshake, the inherited
 # descriptor the guardian hands it and the readiness reports.
 gnoblin-client = { path = "../gnoblin-client" }
