@@ -9,9 +9,15 @@ own, and aborts it: the library puts back the opacity, and the shell's rollback 
 
 from gnoblin import gnoblin
 from gnoblin.objects.std import (
+    BlurFilter,
+    Border,
+    BrightnessFilter,
     ClientStyle,
+    ContrastFilter,
     CornerRadius,
+    SaturateFilter,
     SceneNode,
+    ShaderFilter,
     Shadow,
     StyleProperty,
     Transition,
@@ -25,6 +31,45 @@ style.shadows = [Shadow(blur=8.0), Shadow(y=4.0, blur=20.0)]
 radius = style.corner_radius.all
 shadows = style.shadows
 gnoblin.log(f"style: corner radius {radius}, {len(shadows)} shadows, the first blur {shadows[0].blur}")
+
+# The value classes: every one is built with its defaults and with values of its own, and the library hands back what it was given.
+SHADER = "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }"
+style.borders = [Border(), Border(width=3, color="#ff0000", offset=-2, inset=True)]
+style.shadows = [Shadow(), Shadow(x=2, y=4, blur=20, spread=3, color="#112233", inset=True)]
+style.backdrop_filter = [
+    BlurFilter(),
+    BlurFilter(radius=20),
+    SaturateFilter(),
+    SaturateFilter(amount=1.5),
+    BrightnessFilter(),
+    BrightnessFilter(amount=0.5),
+    ContrastFilter(),
+    ContrastFilter(amount=1.25),
+]
+style.filter = [ShaderFilter(source=SHADER), ShaderFilter(source=SHADER, params=[0.5, 2])]
+
+
+def describe(entry):
+    kind = type(entry).__name__.removesuffix("Filter").lower()
+    if isinstance(entry, ShaderFilter):
+        return f"{kind} " + (",".join(f"{number:g}" for number in entry.params) or "-")
+    return f"{kind} {(entry.radius if isinstance(entry, BlurFilter) else entry.amount):g}"
+
+
+def flag(value):
+    return str(value).lower()
+
+
+gnoblin.log(
+    "style: value classes borders "
+    + " | ".join(f"{b.width:g} {b.color} {b.offset:g} {flag(b.inset)}" for b in style.borders)
+)
+gnoblin.log(
+    "style: value classes shadows "
+    + " | ".join(f"{s.x:g} {s.y:g} {s.blur:g} {s.spread:g} {s.color} {flag(s.inset)}" for s in style.shadows)
+)
+gnoblin.log("style: value classes backdrop filters " + " | ".join(describe(entry) for entry in style.backdrop_filter))
+gnoblin.log("style: value classes filters " + " | ".join(describe(entry) for entry in style.filter))
 
 probe = SceneNode(id="probe")
 rolled = []

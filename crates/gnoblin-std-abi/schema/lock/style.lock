@@ -142,7 +142,7 @@ object | border | base none record | 0.2.0
 object | border_list | base style_list | 0.2.0
 object | computed_style | base none record | 0.2.0
 object | corner_radius | base none record | 0.2.0
-object | filter | base none record | 0.2.0
+object | filter | base none record tag(kind) | 0.2.0
 object | filter_list | base style_list | 0.2.0
 object | shader | base none record | 0.2.0
 object | shadow | base none record | 0.2.0
@@ -152,3 +152,16 @@ object | style_list | base none | 0.2.0
 object | style_origin | base none record | 0.2.0
 object | style_query | base none record | 0.2.0
 object | style_values | base none record | 0.2.0
+
+variant | filter.blur_filter | tag blur | 0.2.0
+variant | filter.brightness_filter | tag brightness | 0.2.0
+variant | filter.contrast_filter | tag contrast | 0.2.0
+variant | filter.saturate_filter | tag saturate | 0.2.0
+variant | filter.shader_filter | tag shader | 0.2.0
+
+variant_field | filter.blur_filter.radius | property double rw,default=Double(12.0) field=amount | 0.2.0
+variant_field | filter.brightness_filter.amount | property double rw,default=Double(1.0) field=amount | 0.2.0
+variant_field | filter.contrast_filter.amount | property double rw,default=Double(1.0) field=amount | 0.2.0
+variant_field | filter.saturate_filter.amount | property double rw,default=Double(1.0) field=amount | 0.2.0
+variant_field | filter.shader_filter.params | property list<double> rw,default=List([]) field=shader.params | 0.2.0
+variant_field | filter.shader_filter.source | property string rw field=shader.source | 0.2.0

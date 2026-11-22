@@ -134,11 +134,14 @@ since = "0.2.0"
 optional = true
 
 # One entry of a `filter` or `backdrop_filter` list: what it does is its `kind`. Of a `backdrop_filter` a `blur` is the one the compositor
-# draws.
+# draws. A script does not build this record: it builds one of the variants below, a class of its own in each language (`BlurFilter`,
+# `SaturateFilter`, `BrightnessFilter`, `ContrastFilter`, `ShaderFilter`), and the list takes any of them. The record is what crosses the
+# wire, so a variant carries its values in the fields below: the `radius` of a blur and the `amount` of a grade are the `amount`.
 [[object]]
 name = "filter"
 since = "0.2.0"
 kind = "record"
+tag = "kind"
 
 # What the filter does.
 [[object.property]]
@@ -160,6 +163,83 @@ name = "shader"
 type = "object:shader"
 since = "0.2.0"
 optional = true
+
+# A Gaussian-style blur. Of a `backdrop_filter` it blurs what is behind the window.
+[[object.variant]]
+name = "blur_filter"
+tag = "blur"
+since = "0.2.0"
+
+# The blur radius in pixels, from 0 to 100.
+[[object.variant.property]]
+name = "radius"
+type = "double"
+since = "0.2.0"
+default = 12.0
+field = "amount"
+
+# The colour saturation: 1 changes nothing, 0 is grey, and 2 is the most.
+[[object.variant]]
+name = "saturate_filter"
+tag = "saturate"
+since = "0.2.0"
+
+# The gain from 0 to 2.
+[[object.variant.property]]
+name = "amount"
+type = "double"
+since = "0.2.0"
+default = 1.0
+field = "amount"
+
+# The brightness gain: 1 changes nothing.
+[[object.variant]]
+name = "brightness_filter"
+tag = "brightness"
+since = "0.2.0"
+
+# The gain from 0 to 2.
+[[object.variant.property]]
+name = "amount"
+type = "double"
+since = "0.2.0"
+default = 1.0
+field = "amount"
+
+# The contrast gain about mid grey: 1 changes nothing.
+[[object.variant]]
+name = "contrast_filter"
+tag = "contrast"
+since = "0.2.0"
+
+# The gain from 0 to 2.
+[[object.variant.property]]
+name = "amount"
+type = "double"
+since = "0.2.0"
+default = 1.0
+field = "amount"
+
+# A shader of the shell's own, drawn over the window: the `shader` record, as a filter.
+[[object.variant]]
+name = "shader_filter"
+tag = "shader"
+since = "0.2.0"
+
+# The WGSL source: not blank, at most 16 KiB.
+[[object.variant.property]]
+name = "source"
+type = "string"
+since = "0.2.0"
+field = "shader.source"
+
+# The numbers the source reads as `p[0]` to `p[7]`: at most 8, each finite. None by default.
+[[object.variant.property]]
+name = "params"
+type = "list<double>"
+since = "0.2.0"
+default = []
+field = "shader.params"
 
 # The radius of a window's corners in pixels, each 0 or more: one for all of them as `all`, or one for each corner as the four fields
 # (every one of them is then required). Giving `all` with a corner is refused.

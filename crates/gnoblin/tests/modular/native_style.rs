@@ -80,3 +80,54 @@ fn example_25_a_python_shell_styles_the_windows_and_its_aborted_transition_is_ro
     assert_the_style_is_set_and_the_transition_rolled_back(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
 }
+
+/// What the shell logged of the value classes it built. Every class was built with its defaults and with values of its own, handed to the
+/// library, and read back, and the three languages log the same words. F5: one name, field order and default in every language (a `Border`
+/// is 1 wide and white, a `Shadow` blurs 12 and is translucent black, a blur is 12, a grade is 1); F6: a list takes the variants' classes;
+/// F7: the library reads the records the classes encode (its own tests of the record fields are unchanged) and answers the same ones; F8:
+/// each entry reads back as the variant its tag says; F9: a value that is given stays (a `-2` offset, a `0.5` grade, `inset`), and the
+/// default of a field left out is applied once; F13: a shader's source and params cross as the part of the `shader` record they are, and a
+/// shader with no params reads back with none; F15: eight filters of five variants in one list each come back in their place.
+#[track_caller]
+fn assert_the_value_classes_read_back(session: &mut Gnoblin) {
+    let mut line_of = |what: &str| {
+        let prefix = format!("style: value classes {what} ");
+        let line = session.wait_log(what, |line| line.contains(&prefix));
+        let at = line.text.find(&prefix).expect("the prefix is in the line");
+        let rest = &line.text[at + prefix.len()..];
+        let rest = rest.split("  generation=").next().unwrap_or(rest);
+        (rest.trim_end_matches(" area=\"script\"").trim().to_owned(), line.text)
+    };
+    for (what, wanted) in [
+        ("borders", "1 #ffffff 0 false | 3 #ff0000 -2 true"),
+        ("shadows", "0 0 12 0 #00000080 false | 2 4 20 3 #112233 true"),
+        (
+            "backdrop filters",
+            "blur 12 | blur 20 | saturate 1 | saturate 1.5 | brightness 1 | brightness 0.5 | contrast 1 | contrast 1.25",
+        ),
+        ("filters", "shader - | shader 0.5,2"),
+    ] {
+        let (got, text) = line_of(what);
+        assert_eq!(got, wanted, "{text}");
+    }
+    assert!(session.exited().is_none(), "{}", session.log_text());
+}
+
+#[test]
+fn example_25_value_classes_with_defaults_read_back_from_a_std_shell() {
+    let mut session = start_std(&std_shells().style);
+    assert_the_value_classes_read_back(&mut session);
+}
+
+#[test]
+fn example_25_value_classes_with_defaults_read_back_from_a_typescript_shell() {
+    let (_dir, mut session) = script_session("25-native-style", "shell.ts");
+    assert_the_value_classes_read_back(&mut session);
+}
+
+#[test]
+fn example_25_value_classes_with_defaults_read_back_from_a_python_shell() {
+    let (_dir, mut session) = script_session("25-native-style", "shell.py");
+    assert_the_value_classes_read_back(&mut session);
+    assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
+}
