@@ -20,8 +20,8 @@ cargo build -p gnoblin-example-minimal-core-shell
 gnoblin ./target/debug/libminimal_core_shell.so
 ```
 
-A std shell (examples 2, 6, 9, 19 and 20) links `libgnoblin-std.so.1`. In a source tree run `cargo xtask stage` first, and put `target/debug` on
-`LD_LIBRARY_PATH` for the shell; an installed Gnoblin has the library where the loader looks.
+A Rust shell whose Layers column below says "Core, std" links `libgnoblin-std.so.1`. In a source tree run `cargo xtask stage` first, and put
+`target/debug` on `LD_LIBRARY_PATH` for the shell; an installed Gnoblin has the library where the loader looks.
 
 | #   | Directory                                                   | Language                 | Layers    | Run                                                                                                                                                                                                                             |
 | --- | ----------------------------------------------------------- | ------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
