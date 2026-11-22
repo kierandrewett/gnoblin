@@ -397,7 +397,7 @@ fn paint_ops_and_colours() {
                     ("y1", d(0.0)),
                     ("x2", d(30.0)),
                     ("y2", d(20.0)),
-                    ("size", d(2.0)),
+                    ("width", d(2.0)),
                     ("color", t("#0000ff")),
                 ],
             ),

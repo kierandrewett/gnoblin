@@ -258,7 +258,7 @@ type = "double"
 since = "0.2.0"
 optional = true
 
-# `rect` and `push-clip`: the width (default 0).
+# `rect` and `push-clip`: the width (default 0). `line`: the stroke width (default 1), as in the TypeScript op. A line does not read `size`.
 [[object.property]]
 name = "width"
 type = "double"
@@ -326,7 +326,7 @@ type = "double"
 since = "0.2.0"
 optional = true
 
-# `line`: the stroke width (default 1). `text`: the font size in pixels (default 14). `icon`: the icon size (default 16).
+# `text`: the font size in pixels (default 14). `icon`: the icon size (default 16). A `line` reads `width` and ignores this.
 [[object.property]]
 name = "size"
 type = "double"
@@ -347,7 +347,7 @@ type = "string"
 since = "0.2.0"
 optional = true
 
-# `text`: the font name (default `sans`).
+# `text`: the font name (default `sans`). A font name, like an icon name, is at most 65535 bytes: a longer one refuses the whole list.
 [[object.property]]
 name = "font"
 type = "string"

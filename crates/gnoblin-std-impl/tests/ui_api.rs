@@ -720,3 +720,45 @@ fn a_text_is_estimated_without_a_desktop_by_the_rule_a_text_falls_back_on() {
         .expect("the function");
     assert!(rig.api.call_static(class, member, &[t("x"), t("big")]).is_err());
 }
+
+#[test]
+fn a_line_op_takes_its_stroke_width_as_width_like_the_typescript_op() {
+    let rig = scratch();
+    let line = |given: &[(usize, Val)]| {
+        let mut all = vec![(9, d(0.0)), (10, d(0.0)), (11, d(5.0)), (12, d(6.0))];
+        all.extend_from_slice(given);
+        encoded(&rig, vec![paint_op(2, &all)]).expect("a line")
+    };
+    // 9 bytes of header, the tag, four ends, the width, the colour.
+    let width_of = |bytes: &[u8]| f32::from_le_bytes(bytes[9 + 1 + 16..9 + 1 + 20].try_into().expect("four bytes"));
+    assert_eq!(width_of(&line(&[(3, d(3.0))])), 3.0, "`width` is the stroke width");
+    assert_eq!(width_of(&line(&[])), 1.0, "a line that leaves it out is one pixel wide");
+    // `size` is the font and icon size: a line never read it in TypeScript, and a line that is given one has its default width.
+    assert_eq!(width_of(&line(&[(13, d(7.0))])), 1.0, "`size` is not a line's width");
+    assert_eq!(width_of(&line(&[(3, d(2.5)), (13, d(7.0))])), 2.5);
+}
+
+#[test]
+fn a_font_or_an_icon_name_over_65535_bytes_is_refused_before_it_corrupts_the_ops_after_it() {
+    let rig = scratch();
+    let long = "a".repeat(65536);
+    let edge = "a".repeat(65535);
+    let after = paint_op(1, &[(3, d(1.0)), (4, d(1.0))]);
+    for (what, bad) in [
+        ("a font", paint_op(3, &[(15, t("x")), (16, t(&long))])),
+        ("an icon name", paint_op(4, &[(17, t(&long))])),
+    ] {
+        let message = encoded(&rig, vec![after.clone(), bad, after.clone()]).expect_err(what);
+        assert!(
+            message.contains("draw op 2: a font or icon name is over 65535 bytes"),
+            "{what}: {message}"
+        );
+    }
+    // The longest name that fits is encoded whole, and the op after it starts where its length says it does: the tag of a rect, and a
+    // rect's 33 bytes. (The compositor's reader has a limit of its own for a name, 128 bytes, so it is not asked to read this list.)
+    let bytes = encoded(&rig, vec![paint_op(4, &[(17, t(&edge))]), after]).expect("the longest name");
+    let icon = 1 + 12 + 4 + 2 + 65535;
+    assert_eq!(bytes.len(), 9 + icon + 33);
+    assert_eq!(u16::from_le_bytes([bytes[9 + 17], bytes[9 + 18]]), 65535);
+    assert_eq!(bytes[9 + icon], 1, "the second op is a rect");
+}

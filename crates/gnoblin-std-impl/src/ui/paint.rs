@@ -132,6 +132,21 @@ fn text_of(fields: &[Val], index: usize, what: &str) -> Result<String, String> {
     }
 }
 
+/// The longest font or icon name the encoding can carry: its length is a `u16`.
+const MAX_NAME_BYTES: usize = u16::MAX as usize;
+
+/// A font or icon name, as it is to be encoded.
+///
+/// # Errors
+///
+/// The name is over 65535 bytes: its length does not fit the two bytes in front of it.
+fn name_of(name: &str) -> Result<String, String> {
+    if name.len() > MAX_NAME_BYTES {
+        return Err("a font or icon name is over 65535 bytes".to_owned());
+    }
+    Ok(name.to_owned())
+}
+
 /// One operation read from a `paint_op` record.
 fn read_op(record: &Val) -> Result<PaintOp, String> {
     let fields = record.record().map_err(|fail| fail.message)?;
@@ -157,7 +172,7 @@ fn read_op(record: &Val) -> Result<PaintOp, String> {
             y1: number(fields, at::Y1, 0.0)?,
             x2: number(fields, at::X2, 0.0)?,
             y2: number(fields, at::Y2, 0.0)?,
-            width: number(fields, at::SIZE, DEFAULT_LINE_WIDTH)?,
+            width: number(fields, at::WIDTH, DEFAULT_LINE_WIDTH)?,
             colour: colour_of(fields, at::COLOR, OPAQUE_WHITE)?,
         },
         kind::TEXT => PaintOp::Text {
@@ -166,7 +181,7 @@ fn read_op(record: &Val) -> Result<PaintOp, String> {
             size: number(fields, at::SIZE, DEFAULT_TEXT_SIZE)?,
             colour: colour_of(fields, at::COLOR, OPAQUE_WHITE)?,
             font: match field(fields, at::FONT) {
-                Some(value) => value.text().map_err(|fail| fail.message)?.to_owned(),
+                Some(value) => name_of(value.text().map_err(|fail| fail.message)?)?,
                 None => DEFAULT_FONT.to_owned(),
             },
             text: text_of(fields, at::TEXT, "text")?,
@@ -176,7 +191,7 @@ fn read_op(record: &Val) -> Result<PaintOp, String> {
             y: number(fields, at::Y, 0.0)?,
             size: number(fields, at::SIZE, DEFAULT_ICON_SIZE)?,
             colour: colour_of(fields, at::COLOR, OPAQUE_WHITE)?,
-            name: text_of(fields, at::NAME, "name")?,
+            name: name_of(&text_of(fields, at::NAME, "name")?)?,
         },
         kind::PUSH_CLIP => PaintOp::PushClip {
             x: number(fields, at::X, 0.0)?,
@@ -263,7 +278,7 @@ fn op_record(op: &PaintOp) -> Val {
                 (at::Y1, double(*y1)),
                 (at::X2, double(*x2)),
                 (at::Y2, double(*y2)),
-                (at::SIZE, double(*width)),
+                (at::WIDTH, double(*width)),
                 (at::COLOR, Val::Text(word(*colour))),
             ],
         ),
