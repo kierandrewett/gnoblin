@@ -28,14 +28,14 @@ Every name below is owned by one connection (`:1.2`). Object paths are the ones 
 
 | Name | Interfaces served | Object path | Adapter crate |
 | --- | --- | --- | --- |
-| `org.freedesktop.a11y.Manager` | `org.freedesktop.a11y.KeyboardMonitor`<br>`org.freedesktop.a11y.PointerLocator` | `/org/freedesktop/a11y/Manager`<br>`/org/freedesktop/a11y/Manager` | `gnoblin-compat-dbus-a11y-keyboard-monitor` |
+| `org.freedesktop.a11y.Manager` | `org.freedesktop.a11y.KeyboardMonitor`<br>`org.freedesktop.a11y.PointerLocator` | `/org/freedesktop/a11y/Manager`<br>`/org/freedesktop/a11y/Manager` | none |
 | `org.gnome.Mutter.ColorManager` | `org.gnome.Mutter.ColorManager` | `/org/gnome/Mutter/ColorManager` | none |
 | `org.gnome.Mutter.DisplayConfig` | `org.gnome.Mutter.DisplayConfig` | `/org/gnome/Mutter/DisplayConfig` | `gnoblin-compat-dbus-mutter-displayconfig` |
 | `org.gnome.Mutter.IdleMonitor` | `org.gnome.Mutter.IdleMonitor` | `/org/gnome/Mutter/IdleMonitor/Core` | `gnoblin-compat-dbus-mutter-idlemonitor` |
-| `org.gnome.Mutter.InputCapture` | `org.gnome.Mutter.Clipboard`<br>`org.gnome.Mutter.InputCapture`<br>`org.gnome.Mutter.InputCapture.Session` | `/org/gnome/Mutter/InputCapture/Session/<id>`<br>`/org/gnome/Mutter/InputCapture`<br>`/org/gnome/Mutter/InputCapture/Session/<id>` | `gnoblin-compat-dbus-mutter-clipboard`, `gnoblin-compat-dbus-mutter-inputcapture` |
+| `org.gnome.Mutter.InputCapture` | `org.gnome.Mutter.Clipboard`<br>`org.gnome.Mutter.InputCapture`<br>`org.gnome.Mutter.InputCapture.Session` | `/org/gnome/Mutter/InputCapture/Session/<id>`<br>`/org/gnome/Mutter/InputCapture`<br>`/org/gnome/Mutter/InputCapture/Session/<id>` | none |
 | `org.gnome.Mutter.InputMapping` | `org.gnome.Mutter.InputMapping` | `/org/gnome/Mutter/InputMapping` | none |
-| `org.gnome.Mutter.RemoteDesktop` | `org.gnome.Mutter.Clipboard`<br>`org.gnome.Mutter.RemoteDesktop`<br>`org.gnome.Mutter.RemoteDesktop.Session` | `/org/gnome/Mutter/RemoteDesktop/Session/<id>`<br>`/org/gnome/Mutter/RemoteDesktop`<br>`/org/gnome/Mutter/RemoteDesktop/Session/<id>` | `gnoblin-compat-dbus-mutter-clipboard`, `gnoblin-compat-dbus-mutter-remotedesktop` |
-| `org.gnome.Mutter.ScreenCast` | `org.gnome.Mutter.ScreenCast`<br>`org.gnome.Mutter.ScreenCast.Session`<br>`org.gnome.Mutter.ScreenCast.Stream` | `/org/gnome/Mutter/ScreenCast`<br>`/org/gnome/Mutter/ScreenCast/Session/<id>`<br>`/org/gnome/Mutter/ScreenCast/Stream/<id>` | `gnoblin-compat-dbus-mutter-screencast` |
+| `org.gnome.Mutter.RemoteDesktop` | `org.gnome.Mutter.Clipboard`<br>`org.gnome.Mutter.RemoteDesktop`<br>`org.gnome.Mutter.RemoteDesktop.Session` | `/org/gnome/Mutter/RemoteDesktop/Session/<id>`<br>`/org/gnome/Mutter/RemoteDesktop`<br>`/org/gnome/Mutter/RemoteDesktop/Session/<id>` | none |
+| `org.gnome.Mutter.ScreenCast` | `org.gnome.Mutter.ScreenCast`<br>`org.gnome.Mutter.ScreenCast.Session`<br>`org.gnome.Mutter.ScreenCast.Stream` | `/org/gnome/Mutter/ScreenCast`<br>`/org/gnome/Mutter/ScreenCast/Session/<id>`<br>`/org/gnome/Mutter/ScreenCast/Stream/<id>` | none |
 | `org.gnome.Mutter.ServiceChannel` | `org.gnome.Mutter.ServiceChannel` | `/org/gnome/Mutter/ServiceChannel` | none |
 
 ## Interfaces against the adapters' matrices
@@ -46,26 +46,37 @@ does not have.
 
 | Interface | Members on Mutter 51 | Adapter | Supported | Partial | Unsupported | Missing from matrix | Extra in matrix |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `org.freedesktop.a11y.KeyboardMonitor` | 6 | `gnoblin-compat-dbus-a11y-keyboard-monitor` | 6 | 0 | 0 | none | none |
+| `org.freedesktop.a11y.KeyboardMonitor` | 6 | none | - | - | - | all | - |
 | `org.freedesktop.a11y.PointerLocator` | 2 | none | - | - | - | all | - |
-| `org.gnome.Mutter.Clipboard` | 8 | `gnoblin-compat-dbus-mutter-clipboard` | 0 | 0 | 8 | none | none |
+| `org.gnome.Mutter.Clipboard` | 8 | none | - | - | - | all | - |
 | `org.gnome.Mutter.ColorManager` | 1 | none | - | - | - | all | - |
 | `org.gnome.Mutter.DisplayConfig` | 16 | `gnoblin-compat-dbus-mutter-displayconfig` | 3 | 3 | 10 | none | none |
 | `org.gnome.Mutter.IdleMonitor` | 6 | `gnoblin-compat-dbus-mutter-idlemonitor` | 5 | 0 | 1 | none | none |
-| `org.gnome.Mutter.InputCapture` | 2 | `gnoblin-compat-dbus-mutter-inputcapture` | 0 | 0 | 2 | none | none |
-| `org.gnome.Mutter.InputCapture.Session` | 13 | `gnoblin-compat-dbus-mutter-inputcapture` | 0 | 0 | 13 | none | none |
+| `org.gnome.Mutter.InputCapture` | 2 | none | - | - | - | all | - |
+| `org.gnome.Mutter.InputCapture.Session` | 13 | none | - | - | - | all | - |
 | `org.gnome.Mutter.InputMapping` | 1 | none | - | - | - | all | - |
-| `org.gnome.Mutter.RemoteDesktop` | 3 | `gnoblin-compat-dbus-mutter-remotedesktop` | 0 | 0 | 3 | none | none |
-| `org.gnome.Mutter.RemoteDesktop.Session` | 29 | `gnoblin-compat-dbus-mutter-remotedesktop` | 0 | 0 | 29 | none | none |
-| `org.gnome.Mutter.ScreenCast` | 2 | `gnoblin-compat-dbus-mutter-screencast` | 1 | 1 | 0 | none | none |
-| `org.gnome.Mutter.ScreenCast.Session` | 7 | `gnoblin-compat-dbus-mutter-screencast` | 2 | 4 | 1 | none | none |
-| `org.gnome.Mutter.ScreenCast.Stream` | 4 | `gnoblin-compat-dbus-mutter-screencast` | 1 | 1 | 2 | none | none |
+| `org.gnome.Mutter.RemoteDesktop` | 3 | none | - | - | - | all | - |
+| `org.gnome.Mutter.RemoteDesktop.Session` | 29 | none | - | - | - | all | - |
+| `org.gnome.Mutter.ScreenCast` | 2 | none | - | - | - | all | - |
+| `org.gnome.Mutter.ScreenCast.Session` | 7 | none | - | - | - | all | - |
+| `org.gnome.Mutter.ScreenCast.Stream` | 4 | none | - | - | - | all | - |
 | `org.gnome.Mutter.ServiceChannel` | 2 | none | - | - | - | all | - |
 
 ### Members of the interfaces no adapter declares
 
 Taken from the recording, with the plan's proposal for each interface. An adapter that is written from this list declares
 every row; a member it does not serve is declared `unsupported` with a reason, never left out.
+
+**`org.freedesktop.a11y.KeyboardMonitor`**: no proposal in the plan.
+
+| Kind | Member | Signature |
+| --- | --- | --- |
+| method | `GrabKeyboard` | `` |
+| method | `SetKeyGrabs` | `in:au,in:a(uu)` |
+| method | `UngrabKeyboard` | `` |
+| method | `UnwatchKeyboard` | `` |
+| method | `WatchKeyboard` | `` |
+| signal | `KeyEvent` | `out:b,out:u,out:u,out:u,out:q` |
 
 **`org.freedesktop.a11y.PointerLocator`**: none in the plan's redirect map; it shares the a11y.Manager object with KeyboardMonitor.
 
@@ -74,17 +85,125 @@ every row; a member it does not serve is declared `unsupported` with a reason, n
 | method | `QueryPointer` | `out:a{sv},out:d,out:d` |
 | signal | `PointerPositionChanged` | `` |
 
+**`org.gnome.Mutter.Clipboard`**: no proposal in the plan.
+
+| Kind | Member | Signature |
+| --- | --- | --- |
+| method | `Disable` | `` |
+| method | `Enable` | `in:a{sv}` |
+| method | `SelectionRead` | `in:s,out:h` |
+| method | `SelectionWrite` | `in:u,out:h` |
+| method | `SelectionWriteDone` | `in:u,in:b` |
+| method | `SetSelection` | `in:a{sv}` |
+| signal | `SelectionOwnerChanged` | `out:a{sv}` |
+| signal | `SelectionTransfer` | `out:s,out:u` |
+
 **`org.gnome.Mutter.ColorManager`**: dropped: Night Light moves to Gnoblin (D15).
 
 | Kind | Member | Signature |
 | --- | --- | --- |
 | method | `CalibrateMonitor` | `in:s,out:o` |
 
+**`org.gnome.Mutter.InputCapture`**: no proposal in the plan.
+
+| Kind | Member | Signature |
+| --- | --- | --- |
+| method | `CreateSession` | `in:u,out:o` |
+| property | `SupportedCapabilities` | `u read` |
+
+**`org.gnome.Mutter.InputCapture.Session`**: no proposal in the plan.
+
+| Kind | Member | Signature |
+| --- | --- | --- |
+| method | `AddBarrier` | `in:u,in:(iiii),out:u` |
+| method | `ClearBarriers` | `` |
+| method | `Close` | `` |
+| method | `ConnectToEIS` | `out:h` |
+| method | `Disable` | `` |
+| method | `Enable` | `` |
+| method | `GetZones` | `out:u,out:a(uuii)` |
+| method | `Release` | `in:a{sv}` |
+| signal | `Activated` | `out:u,out:u,out:(dd)` |
+| signal | `Closed` | `` |
+| signal | `Deactivated` | `out:u` |
+| signal | `Disabled` | `` |
+| signal | `ZonesChanged` | `` |
+
 **`org.gnome.Mutter.InputMapping`**: adapter, later (redirect: tablet output mapping config).
 
 | Kind | Member | Signature |
 | --- | --- | --- |
 | method | `GetDeviceMapping` | `in:o,out:(iiii)` |
+
+**`org.gnome.Mutter.RemoteDesktop`**: no proposal in the plan.
+
+| Kind | Member | Signature |
+| --- | --- | --- |
+| method | `CreateSession` | `out:o` |
+| property | `SupportedDeviceTypes` | `u read` |
+| property | `Version` | `i read` |
+
+**`org.gnome.Mutter.RemoteDesktop.Session`**: no proposal in the plan.
+
+| Kind | Member | Signature |
+| --- | --- | --- |
+| method | `ConnectToEIS` | `in:a{sv},out:h` |
+| method | `DisableClipboard` | `` |
+| method | `EnableClipboard` | `in:a{sv}` |
+| method | `NotifyKeyboardKeycode` | `in:u,in:b` |
+| method | `NotifyKeyboardKeysym` | `in:u,in:b` |
+| method | `NotifyPointerAxis` | `in:d,in:d,in:u` |
+| method | `NotifyPointerAxisDiscrete` | `in:u,in:i` |
+| method | `NotifyPointerButton` | `in:i,in:b` |
+| method | `NotifyPointerMotionAbsolute` | `in:s,in:d,in:d` |
+| method | `NotifyPointerMotionRelative` | `in:d,in:d` |
+| method | `NotifyTouchDown` | `in:s,in:u,in:d,in:d` |
+| method | `NotifyTouchMotion` | `in:s,in:u,in:d,in:d` |
+| method | `NotifyTouchUp` | `in:u` |
+| method | `SelectionRead` | `in:s,out:h` |
+| method | `SelectionWrite` | `in:u,out:h` |
+| method | `SelectionWriteDone` | `in:u,in:b` |
+| method | `SetKeymap` | `in:a{sv}` |
+| method | `SetKeymapLayoutIndex` | `in:u` |
+| method | `SetSelection` | `in:a{sv}` |
+| method | `Start` | `` |
+| method | `Stop` | `` |
+| property | `CapsLockState` | `b read` |
+| property | `CurrentKeymap` | `a{sv} read` |
+| property | `KeymapCapabilities` | `a{sv} read` |
+| property | `NumLockState` | `b read` |
+| property | `SessionId` | `s read` |
+| signal | `Closed` | `` |
+| signal | `SelectionOwnerChanged` | `out:a{sv}` |
+| signal | `SelectionTransfer` | `out:s,out:u` |
+
+**`org.gnome.Mutter.ScreenCast`**: no proposal in the plan.
+
+| Kind | Member | Signature |
+| --- | --- | --- |
+| method | `CreateSession` | `in:a{sv},out:o` |
+| property | `Version` | `i read` |
+
+**`org.gnome.Mutter.ScreenCast.Session`**: no proposal in the plan.
+
+| Kind | Member | Signature |
+| --- | --- | --- |
+| method | `RecordArea` | `in:i,in:i,in:i,in:i,in:a{sv},out:o` |
+| method | `RecordMonitor` | `in:s,in:a{sv},out:o` |
+| method | `RecordVirtual` | `in:a{sv},out:o` |
+| method | `RecordWindow` | `in:a{sv},out:o` |
+| method | `Start` | `` |
+| method | `Stop` | `` |
+| signal | `Closed` | `` |
+
+**`org.gnome.Mutter.ScreenCast.Stream`**: no proposal in the plan.
+
+| Kind | Member | Signature |
+| --- | --- | --- |
+| method | `Start` | `` |
+| method | `Stop` | `` |
+| property | `Parameters` | `a{sv} read` |
+| signal | `PipeWireStreamAdded` | `out:u` |
 
 **`org.gnome.Mutter.ServiceChannel`**: adapter, later (redirect: privileged client connection from the services role).
 
@@ -101,7 +220,6 @@ session (GNOME Shell, gnome-session, a portal), so a session with only Mutter ca
 | Interface | Adapter | Members declared |
 | --- | --- | --- |
 | `org.gnome.Shell.Introspect` | `gnoblin-compat-dbus-gnome-shell-introspect` | 7 |
-| `org.gnome.Shell.Screenshot` | `gnoblin-compat-dbus-gnome-shell-screenshot` | 7 |
 
 Matrices for surfaces that are neither a bus interface nor a Wayland global, which this recording has nothing to say about:
 
@@ -214,8 +332,17 @@ roots, so the declaration is owed with the adapter:
 
 ## Gaps the comparison found
 
+- `org.freedesktop.a11y.KeyboardMonitor`: no adapter declares this interface.
 - `org.freedesktop.a11y.PointerLocator`: no adapter declares this interface.
+- `org.gnome.Mutter.Clipboard`: no adapter declares this interface.
 - `org.gnome.Mutter.ColorManager`: no adapter declares this interface.
+- `org.gnome.Mutter.InputCapture`: no adapter declares this interface.
+- `org.gnome.Mutter.InputCapture.Session`: no adapter declares this interface.
 - `org.gnome.Mutter.InputMapping`: no adapter declares this interface.
+- `org.gnome.Mutter.RemoteDesktop`: no adapter declares this interface.
+- `org.gnome.Mutter.RemoteDesktop.Session`: no adapter declares this interface.
+- `org.gnome.Mutter.ScreenCast`: no adapter declares this interface.
+- `org.gnome.Mutter.ScreenCast.Session`: no adapter declares this interface.
+- `org.gnome.Mutter.ScreenCast.Stream`: no adapter declares this interface.
 - `org.gnome.Mutter.ServiceChannel`: no adapter declares this interface.
 - `org.gnome.SessionManager`: Mutter calls `org.gnome.SessionManager.Setenv` on it (observed) and no adapter matrix declares it.

@@ -135,9 +135,7 @@
 //!     `a_guarded_screenshot_is_refused_when_the_loop_finds_the_session_covered` (`gnoblin-wayland`, `frame::tests`).
 //! 14. **An adapter skips the embargo.** Every adapter member admits through the same gate, in every mode:
 //!     `capture_is_refused_while_locked` and `capture_during_the_lock_transition_is_refused`
-//!     (`gnoblin-compat-core/tests/failure_modes.rs`), `a_screenshot_is_refused_while_the_session_is_locked`
-//!     (`gnoblin-compat-dbus-gnome-shell-screenshot`) and `locking_ends_every_session_and_refuses_a_new_one`
-//!     (`gnoblin-compat-dbus-mutter-screencast`).
+//!     (`gnoblin-compat-core/tests/failure_modes.rs`).
 //!
 //! ## Sessions, claims and frames
 //!

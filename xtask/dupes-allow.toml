@@ -654,30 +654,12 @@ reason = "every adapter's admission wrapper is one parsed SupportMatrix; the typ
 
 [[allow]]
 left = "gnoblin-compat-dbus-gnome-shell-introspect::IntrospectAdmission"
-right = "gnoblin-compat-dbus-gnome-shell-screenshot::ScreenshotAdmission"
-kind = "same-shape"
-reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-shell-introspect::IntrospectAdmission"
 right = "gnoblin-compat-dbus-mutter-displayconfig::DisplayConfigAdmission"
 kind = "same-shape"
 reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
 
 [[allow]]
 left = "gnoblin-compat-dbus-gnome-shell-introspect::IntrospectAdmission"
-right = "gnoblin-compat-dbus-mutter-idlemonitor::IdleMonitorAdmission"
-kind = "same-shape"
-reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-shell-screenshot::ScreenshotAdmission"
-right = "gnoblin-compat-dbus-mutter-displayconfig::DisplayConfigAdmission"
-kind = "same-shape"
-reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-shell-screenshot::ScreenshotAdmission"
 right = "gnoblin-compat-dbus-mutter-idlemonitor::IdleMonitorAdmission"
 kind = "same-shape"
 reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
@@ -687,30 +669,6 @@ left = "gnoblin::Role"
 right = "gnoblin-services::Role"
 kind = "same-name"
 reason = "the session binary's role versus the services role's own settings"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-shell-introspect::IntrospectAdmission"
-right = "gnoblin-compat-dbus-mutter-screencast::ScreenCastAdmission"
-kind = "same-shape"
-reason = "each adapter's Admission applies the frame's support matrix to its own Call enum; the shape is the frame's, and the type stays per adapter so a refusal names its adapter"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-shell-screenshot::ScreenshotAdmission"
-right = "gnoblin-compat-dbus-mutter-screencast::ScreenCastAdmission"
-kind = "same-shape"
-reason = "each adapter's Admission applies the frame's support matrix to its own Call enum; the shape is the frame's, and the type stays per adapter so a refusal names its adapter"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-displayconfig::DisplayConfigAdmission"
-right = "gnoblin-compat-dbus-mutter-screencast::ScreenCastAdmission"
-kind = "same-shape"
-reason = "each adapter's Admission applies the frame's support matrix to its own Call enum; the shape is the frame's, and the type stays per adapter so a refusal names its adapter"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-idlemonitor::IdleMonitorAdmission"
-right = "gnoblin-compat-dbus-mutter-screencast::ScreenCastAdmission"
-kind = "same-shape"
-reason = "each adapter's Admission applies the frame's support matrix to its own Call enum; the shape is the frame's, and the type stays per adapter so a refusal names its adapter"
 
 [[allow]]
 left = "gnoblin-model::UnknownSlot"
@@ -863,127 +821,10 @@ kind = "same-name"
 reason = "the portal's Interface names which portal interface a session belongs to; xtask's Interface is a private struct with no doc comment, used for its compat report rows"
 
 [[allow]]
-left = "gnoblin-compat-dbus-mutter-screencast::BridgeError"
-right = "xdg-desktop-portal-gnoblin::Unavailable"
-kind = "same-shape"
-reason = "the screencast bridge's BridgeError is why the compositor did not open or close a session; the portal's Unavailable is why a compositor call could not be made; the shape coincides and the failures differ"
-
-[[allow]]
 left = "gnoblin-compat-core::CallerWatcher"
 right = "xdg-desktop-portal-gnoblin::Owners"
 kind = "same-shape"
 reason = "both wrap the bus's NameOwnerChanged stream to end a gone caller's grants or sessions; the portal may not link a compat adapter, and gnoblin-compat-core is a compat crate, so the portal keeps its own copy until the rule is moved to a non-compat shared crate"
-
-# Each compat adapter's `Admission` holds its own declaration and gate. The struct shape is
-# the frame's and so coincides across adapters; the names belong to each adapter.
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-shell-introspect::IntrospectAdmission"
-right = "gnoblin-compat-dbus-mutter-clipboard::ClipboardAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-shell-introspect::IntrospectAdmission"
-right = "gnoblin-compat-dbus-mutter-inputcapture::InputCaptureAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-shell-introspect::IntrospectAdmission"
-right = "gnoblin-compat-dbus-mutter-remotedesktop::RemoteDesktopAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-shell-screenshot::ScreenshotAdmission"
-right = "gnoblin-compat-dbus-mutter-clipboard::ClipboardAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-shell-screenshot::ScreenshotAdmission"
-right = "gnoblin-compat-dbus-mutter-inputcapture::InputCaptureAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-shell-screenshot::ScreenshotAdmission"
-right = "gnoblin-compat-dbus-mutter-remotedesktop::RemoteDesktopAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-clipboard::ClipboardAdmission"
-right = "gnoblin-compat-dbus-mutter-displayconfig::DisplayConfigAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-clipboard::ClipboardAdmission"
-right = "gnoblin-compat-dbus-mutter-idlemonitor::IdleMonitorAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-clipboard::ClipboardAdmission"
-right = "gnoblin-compat-dbus-mutter-inputcapture::InputCaptureAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-clipboard::ClipboardAdmission"
-right = "gnoblin-compat-dbus-mutter-remotedesktop::RemoteDesktopAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-clipboard::ClipboardAdmission"
-right = "gnoblin-compat-dbus-mutter-screencast::ScreenCastAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-displayconfig::DisplayConfigAdmission"
-right = "gnoblin-compat-dbus-mutter-inputcapture::InputCaptureAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-displayconfig::DisplayConfigAdmission"
-right = "gnoblin-compat-dbus-mutter-remotedesktop::RemoteDesktopAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-idlemonitor::IdleMonitorAdmission"
-right = "gnoblin-compat-dbus-mutter-inputcapture::InputCaptureAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-idlemonitor::IdleMonitorAdmission"
-right = "gnoblin-compat-dbus-mutter-remotedesktop::RemoteDesktopAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-inputcapture::InputCaptureAdmission"
-right = "gnoblin-compat-dbus-mutter-remotedesktop::RemoteDesktopAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-inputcapture::InputCaptureAdmission"
-right = "gnoblin-compat-dbus-mutter-screencast::ScreenCastAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-mutter-remotedesktop::RemoteDesktopAdmission"
-right = "gnoblin-compat-dbus-mutter-screencast::ScreenCastAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
 
 # gnoblin-compositor and gnoblin-portal (D19) reuse generic state-machine names; each keeps its own meaning.
 
@@ -1262,12 +1103,6 @@ left = "gnoblin-input::Activity"
 right = "gnoblin-service-privacy::Activity"
 kind = "same-name"
 reason = "input's Activity counts input events since session start; the privacy Activity is the published PipeWire microphone and camera state; the name is shared, the meaning is not"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-shell-screenshot::ScreenshotError"
-right = "xdg-desktop-portal-gnoblin::ScreenshotError"
-kind = "same-name"
-reason = "the compat crate's ScreenshotError is the gnome-shell Screenshot wire error; the portal's is the outcome of a compositor capture (refused, unavailable, write failed) that the portal maps to a portal response; the name is shared, the meaning is not"
 
 [[allow]]
 left = "gnoblin-backend::RawTouchpadKind"

@@ -1144,16 +1144,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-dbus-a11y-keyboard-monitor"
-version = "0.2.0-alpha.0"
-dependencies = [
- "futures-lite",
- "gnoblin-a11y",
- "gnoblin-log",
- "zbus",
-]
-
-[[package]]
 name = "gnoblin-compat-dbus-gnome-shell-introspect"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1168,26 +1158,6 @@ dependencies = [
  "gnoblin-service-core",
  "gnoblin-testkit",
  "zbus",
-]
-
-[[package]]
-name = "gnoblin-compat-dbus-gnome-shell-screenshot"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-client",
- "gnoblin-compat-core",
- "gnoblin-log",
- "gnoblin-model",
- "gnoblin-proto",
- "gnoblin-schema",
- "zbus",
-]
-
-[[package]]
-name = "gnoblin-compat-dbus-mutter-clipboard"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-compat-core",
 ]
 
 [[package]]
@@ -1218,30 +1188,6 @@ dependencies = [
  "gnoblin-proto",
  "gnoblin-schema",
  "gnoblin-service-core",
- "zbus",
-]
-
-[[package]]
-name = "gnoblin-compat-dbus-mutter-inputcapture"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-compat-core",
-]
-
-[[package]]
-name = "gnoblin-compat-dbus-mutter-remotedesktop"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-compat-core",
-]
-
-[[package]]
-name = "gnoblin-compat-dbus-mutter-screencast"
-version = "0.2.0-alpha.0"
-dependencies = [
- "futures-lite",
- "gnoblin-compat-core",
- "gnoblin-log",
  "zbus",
 ]
 

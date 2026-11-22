@@ -1503,7 +1503,7 @@ mod tests {
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
         assert!(
             reported[0].starts_with(
-                "gnoblin-compat-dbus-mutter-screencast -> gnoblin-compat-dbus-mutter-clipboard [compat-isolation]"
+                "gnoblin-compat-dbus-mutter-idlemonitor -> gnoblin-compat-dbus-mutter-displayconfig [compat-isolation]"
             ),
             "unexpected violation: {}",
             reported[0]
@@ -1613,7 +1613,7 @@ mod tests {
     }
     #[test]
     fn no_adapter_links_the_compat_host() {
-        let adapter = violations(&[("gnoblin-compat-dbus-mutter-clipboard", &["gnoblin-compat-host"])]);
+        let adapter = violations(&[("gnoblin-compat-dbus-mutter-displayconfig", &["gnoblin-compat-host"])]);
         assert_eq!(
             adapter.iter().filter(|found| found.contains("[compat-host]")).count(),
             1,
@@ -1623,7 +1623,7 @@ mod tests {
 
     #[test]
     fn the_services_core_links_no_compat_adapter() {
-        let core = violations(&[("gnoblin-service-core", &["gnoblin-compat-dbus-mutter-clipboard"])]);
+        let core = violations(&[("gnoblin-service-core", &["gnoblin-compat-dbus-mutter-displayconfig"])]);
         assert_eq!(
             core.iter().filter(|found| found.contains("[compat-host]")).count(),
             1,
@@ -1955,7 +1955,7 @@ mod tests {
     fn an_adapter_named_for_a_transport_passes_the_naming_rule() {
         assert_eq!(
             violations(&[
-                ("gnoblin-compat-dbus-mutter-clipboard", &["gnoblin-compat-core"]),
+                ("gnoblin-compat-dbus-mutter-displayconfig", &["gnoblin-compat-core"]),
                 ("gnoblin-compat-wayland-gtk-shell1", &["gnoblin-compat-core"]),
                 ("gnoblin-compat-x11-xsettings", &["gnoblin-compat-core"]),
                 ("gnoblin-compat-core", &[]),

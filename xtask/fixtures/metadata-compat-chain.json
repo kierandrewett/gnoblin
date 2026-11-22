@@ -1,10 +1,10 @@
 {
   "packages": [
     {
-      "name": "gnoblin-compat-dbus-mutter-screencast",
+      "name": "gnoblin-compat-dbus-mutter-idlemonitor",
       "dependencies": [
         {
-          "name": "gnoblin-compat-dbus-mutter-clipboard",
+          "name": "gnoblin-compat-dbus-mutter-displayconfig",
           "kind": null
         },
         {
@@ -14,7 +14,7 @@
       ]
     },
     {
-      "name": "gnoblin-compat-dbus-mutter-clipboard",
+      "name": "gnoblin-compat-dbus-mutter-displayconfig",
       "dependencies": [
         {
           "name": "gnoblin-compat-core",

@@ -601,15 +601,10 @@ gnoblin/
     gnoblin-a11y/             accessibility logic: keyboard monitor, sticky/slow/bounce/mouse keys, magnifier and colour-filter state
     compat/                   one crate per compatibility path; none depends on another (see "Compatibility crates")
       gnoblin-compat-core/                shared adapter frame: support matrix, mode gate, sandbox refusal, D-Bus helpers
-      gnoblin-compat-dbus-mutter-screencast/   org.gnome.Mutter.ScreenCast
-      gnoblin-compat-dbus-mutter-remotedesktop/  org.gnome.Mutter.RemoteDesktop
-      gnoblin-compat-dbus-mutter-inputcapture/  org.gnome.Mutter.InputCapture
-      gnoblin-compat-dbus-mutter-clipboard/    org.gnome.Mutter.Clipboard
       gnoblin-compat-dbus-mutter-displayconfig/  org.gnome.Mutter.DisplayConfig
       gnoblin-compat-dbus-mutter-idlemonitor/  org.gnome.Mutter.IdleMonitor
       gnoblin-compat-wayland-mutter-x11-interop/  mutter_x11_interop Wayland redirect (later)
       gnoblin-compat-dbus-gnome-shell-introspect/  org.gnome.Shell.Introspect
-      gnoblin-compat-dbus-gnome-shell-screenshot/  org.gnome.Shell.Screenshot
       gnoblin-compat-wayland-gtk-shell1/          gtk_shell1 Wayland redirect (compositor side)
       gnoblin-compat-gtk-dconf-settings/  dconf layer for GTK (D15)
       gnoblin-compat-qt-portal-settings/  QT_QPA_PLATFORMTHEME for Qt (D15)
@@ -1325,9 +1320,8 @@ failure-mode list that must be complete before isolated tests or code.
 - Nothing in the IPC, the schema or the damage model assumes a flat plane.
 - **Session owner:** capture and remote-desktop sessions are compositor objects.
   `gnoblin-capture` owns their PipeWire streams and `gnoblin-input` owns their
-  EIS contexts. The portal and the `gnoblin-compat-dbus-mutter-screencast` and
-  `gnoblin-compat-dbus-mutter-remotedesktop` crates are clients: they open and close
-  sessions through the IPC. A session ends when the client that opened it
+  EIS contexts. The portal is a client: it opens and closes sessions
+  through the IPC. A session ends when the client that opened it
   disconnects, so a crashed adapter cannot leave a stream running.
 - **Replaces:** `src/compositor/effects`, `src/compositor/plugin`,
   `51-blur-cache`, `53`, `56`, `60`, `62`, `63`, `64`, `65`, `66`, `77`,
@@ -1412,8 +1406,8 @@ failure-mode list that must be complete before isolated tests or code.
 
 A protocol adapter is named `gnoblin-compat-<transport>-<interface>`, so the name
 says which transport it serves and whose interface it adapts. The transport is one
-of `dbus`, `wayland` or `x11`. For example, gnoblin-compat-dbus-mutter-screencast
-adapts org.gnome.Mutter.ScreenCast, and gnoblin-compat-x11-xsettings serves
+of `dbus`, `wayland` or `x11`. For example, gnoblin-compat-dbus-mutter-displayconfig
+adapts org.gnome.Mutter.DisplayConfig, and gnoblin-compat-x11-xsettings serves
 XSETTINGS. The directory name equals the crate name. The settings adapters that
 write a toolkit's own configuration carry no transport prefix and are named
 `gnoblin-compat-<toolkit>-<what>`: gnoblin-compat-gtk-dconf-settings and
