@@ -463,6 +463,10 @@ pub(super) fn version(cx: &Cx<'_>) -> Res<Val> {
 
 pub(super) fn register(builder: &mut Builder) {
     let _ = builder
+        .class::<()>("compositor_settings")
+        .ctor(|_, _| Ok(()))
+        .get("user_shaders", |_, cx| Ok(Val::Bool(super::input::user_shaders(cx))));
+    let _ = builder
         .class::<()>("session")
         .ctor(|cx, _| {
             let me = cx.me();

@@ -958,56 +958,61 @@ type = "object:session_lock"
 since = "0.2.0"
 readonly = true
 
-# The build identity: Gnoblin, GNOME, Mutter, the script engine and the control API, and the commit and build that made this one.
+# Calls that run later, and the monotonic clock (`timers` module): `gnoblin.timers`.
 [[object.property]]
-name = "version"
-type = "object:build_version"
+name = "timers"
+type = "object:timers"
 since = "0.2.0"
 readonly = true
 
+# The compositor's own settings, as it read them when it started (`session` module): `gnoblin.compositor`.
+[[object.property]]
+name = "compositor"
+type = "object:compositor_settings"
+since = "0.2.0"
+readonly = true
+
+# The build identity: Gnoblin, GNOME, Mutter, the script engine and the control API, and the commit and build that made this one.
+[[object.method]]
+name = "version"
+since = "0.2.0"
+returns = "object:build_version"
+
+# The milliseconds an animation of `duration` is to take: 0 while the first seat asks for reduced motion, `duration` when it does not
+# or when the compositor has no seat. A shell passes every duration it animates over through it.
+[[object.method]]
+name = "motion"
+since = "0.2.0"
+returns = "double"
+
+[[object.method.param]]
+name = "duration"
+type = "double"
+
 # The live windows that match `query`, in list order; every window when it is left out. For a test a table cannot say, take
-# `clients.to_list()` and filter it in the shell's own language.
+# `clients.to_list()` and filter it in the shell's own language. `find("Window", filter)` is the same call.
 [[object.method]]
 name = "find_clients"
 since = "0.2.0"
 returns = "list<object:client>"
+find = "Window"
 
 [[object.method.param]]
 name = "query"
 type = "object:client_query"
 optional = true
 
-# The live outputs that match `query`, in list order; every output when it is left out.
+# The live outputs that match `query`, in list order; every output when it is left out. `find("Output", filter)` is the same call.
 [[object.method]]
 name = "find_outputs"
 since = "0.2.0"
 returns = "list<object:output>"
+find = "Output"
 
 [[object.method.param]]
 name = "query"
 type = "object:output_query"
 optional = true
-
-# Runs `run` once, `ms` milliseconds from now (0 to a day), from the first turn at or after its time. The timer can be cancelled.
-# A throw is reported and never stops another timer.
-[[object.method]]
-name = "timer"
-since = "0.2.0"
-returns = "object:timer"
-
-[[object.method.param]]
-name = "ms"
-type = "double"
-
-[[object.method.param]]
-name = "run"
-type = "callback:timer_fn"
-
-# The monotonic clock in milliseconds: only the difference between two readings is meaningful.
-[[object.method]]
-name = "now"
-since = "0.2.0"
-returns = "double"
 
 # Starts a program: `process.spawn`. Returns its handle at once.
 [[object.method]]

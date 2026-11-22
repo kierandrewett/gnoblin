@@ -78,15 +78,16 @@ member | gnoblin.client_pointer_release | signal (client:object:client, event:ob
 member | gnoblin.client_ready | signal (client:object:client) | 0.2.0
 member | gnoblin.client_title_changed | signal (client:object:client, title:string) | 0.2.0
 member | gnoblin.clients | property object:client_collection ro | 0.2.0
+member | gnoblin.compositor | property object:compositor_settings ro | 0.2.0
 member | gnoblin.dialogs | property object:dialogs ro | 0.2.0
-member | gnoblin.find_clients | method (query?:object:client_query) -> list<object:client> | 0.2.0
-member | gnoblin.find_outputs | method (query?:object:output_query) -> list<object:output> | 0.2.0
+member | gnoblin.find_clients | method (query?:object:client_query) -> list<object:client> find=Window | 0.2.0
+member | gnoblin.find_outputs | method (query?:object:output_query) -> list<object:output> find=Output | 0.2.0
 member | gnoblin.focus | property object:focus_history ro | 0.2.0
 member | gnoblin.idle | property object:idle ro | 0.2.0
 member | gnoblin.input | property object:input_manager ro | 0.2.0
 member | gnoblin.launches | property object:launches ro | 0.2.0
 member | gnoblin.lock | property object:session_lock ro | 0.2.0
-member | gnoblin.now | method () -> double | 0.2.0
+member | gnoblin.motion | method (duration:double) -> double | 0.2.0
 member | gnoblin.output_added | signal (output:object:output, collection:object:output_collection) | 0.2.0
 member | gnoblin.output_applied | signal (output:object:output, error:string) | 0.2.0
 member | gnoblin.output_connected | signal (output:object:output) | 0.2.0
@@ -101,8 +102,8 @@ member | gnoblin.runtime | property object:runtime ro | 0.2.0
 member | gnoblin.session | property object:session ro | 0.2.0
 member | gnoblin.shell | method (command:string, options?:object:spawn_options) -> object:process | 0.2.0
 member | gnoblin.spawn | method (argv:list<string>, options?:object:spawn_options) -> object:process | 0.2.0
-member | gnoblin.timer | method (ms:double, run:callback:timer_fn) -> object:timer | 0.2.0
-member | gnoblin.version | property object:build_version ro | 0.2.0
+member | gnoblin.timers | property object:timers ro | 0.2.0
+member | gnoblin.version | method () -> object:build_version | 0.2.0
 member | gpu_memory.budget | property double rw | 0.2.0
 member | gpu_memory.capture | property double rw | 0.2.0
 member | gpu_memory.clients | property double rw | 0.2.0

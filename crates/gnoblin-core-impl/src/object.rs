@@ -137,7 +137,8 @@ mod tests {
 
     #[test]
     fn the_model_is_served_and_complete() {
-        assert!(LIB.with(|lib| lib.problems()).is_empty());
+        let problems = LIB.with(|lib| lib.problems());
+        assert!(problems.is_empty(), "{problems:#?}");
         assert!(api_of("gnoblin.model").is_ok());
         assert!(api_of("gnoblin.std").is_err());
         assert_eq!(API.catalog_hash, CATALOG_HASH);

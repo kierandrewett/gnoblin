@@ -1,9 +1,7 @@
-//! `gnoblin`: the service that holds the roots of the model, `find`, the timers and the focus history.
+//! `gnoblin`: the service that holds the roots of the model, `find`, `motion` and the focus history, and reaches the other services.
 //!
 //! Its signals are a facade: `client_title_changed` is `clients.title_changed`, and a listener of it stands in the collection's own list,
 //! in the order listeners were added.
-
-use std::rc::Rc;
 
 use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{Fail, Obj, Res, Val};
@@ -11,8 +9,7 @@ use gnoblin_object::{Fail, Obj, Res, Val};
 use super::collection::query_of;
 use super::values::fields_of;
 use super::world::{CollKind, items, matches};
-use super::{glue, handout, operation, process, session as session_service, with_world};
-use crate::session;
+use super::{glue, handout, input, process, session as session_service, with_world};
 
 /// The service.
 pub(super) struct RootService;
@@ -154,7 +151,15 @@ pub(super) fn register(builder: &mut Builder) {
             glue::service_value(cx.ctx(), "authentication")
         })
         .get("lock", |_, cx| glue::service_value(cx.ctx(), "session_lock"))
-        .get("version", |_, cx| session_service::version(cx))
+        .get("timers", |_, cx| glue::service_value(cx.ctx(), "timers"))
+        .get("compositor", |_, cx| {
+            glue::service_value(cx.ctx(), "compositor_settings")
+        })
+        .method("version", |_, cx, _| session_service::version(cx))
+        .method("motion", |_, cx, args| {
+            let duration = args[0].double()?;
+            Ok(Val::Double(if input::reduced_motion(cx) { 0.0 } else { duration }))
+        })
         .method("spawn", |_, cx, args| {
             let argv = args[0]
                 .list()?
@@ -165,13 +170,7 @@ pub(super) fn register(builder: &mut Builder) {
         })
         .method("shell", |_, cx, args| process::shell(cx, args[0].text()?, args.get(1)))
         .method("find_clients", |_, cx, args| find(cx, CollKind::Client, args.first()))
-        .method("find_outputs", |_, cx, args| find(cx, CollKind::Output, args.first()))
-        .method("timer", |_, cx, args| {
-            operation::start(cx, args[0].double()?, Rc::clone(args[1].closure()?))
-        })
-        .method("now", |_, _, _| {
-            Ok(Val::Double(session::with(|session| session.now_ms())))
-        });
+        .method("find_outputs", |_, cx, args| find(cx, CollKind::Output, args.first()));
     class = class
         .redirect("client_created", |cx| Ok((root(cx, true)?, "added")))
         .redirect("output_added", |cx| Ok((root(cx, false)?, "added")))

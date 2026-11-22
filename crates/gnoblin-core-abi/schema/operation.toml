@@ -121,3 +121,29 @@ readonly = true
 name = "cancel"
 since = "0.2.0"
 
+# `gnoblin.timers`: calls that run later, and the monotonic clock they are set against.
+[[object]]
+name = "timers"
+since = "0.2.0"
+kind = "service"
+
+# Runs `run` once, `ms` milliseconds from now (0 to a day), from the first turn at or after its time. The timer can be cancelled.
+# A throw is reported and never stops another timer.
+[[object.method]]
+name = "after"
+since = "0.2.0"
+returns = "object:timer"
+
+[[object.method.param]]
+name = "ms"
+type = "double"
+
+[[object.method.param]]
+name = "run"
+type = "callback:timer_fn"
+
+# The monotonic clock in milliseconds: only the difference between two readings is meaningful.
+[[object.method]]
+name = "now"
+since = "0.2.0"
+returns = "double"

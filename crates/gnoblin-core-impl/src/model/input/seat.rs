@@ -70,6 +70,21 @@ pub(super) fn split_device(item: &str) -> Option<(String, String, Vec<String>)> 
     ))
 }
 
+/// The seat of the desktop's own keyboard and pointer: the first one that is not the XR program's.
+pub(super) fn main_seat() -> Option<u64> {
+    seats().into_iter().find(|seat| name(*seat) != "xr")
+}
+
+/// Whether the seat asks for reduced motion.
+pub(super) fn reduced_motion(seat: u64) -> bool {
+    read(seat, "reduced_motion").flag()
+}
+
+/// Whether the compositor accepts a shader effect from a shell, as the seat publishes it.
+pub(super) fn user_shaders(seat: u64) -> bool {
+    read(seat, "user_shaders").flag()
+}
+
 /// The settings record of a seat.
 pub(super) fn settings(cx: &Cx<'_>, seat: u64) -> Res<Val> {
     let flag = |key: &str| Val::Bool(read(seat, key).flag());

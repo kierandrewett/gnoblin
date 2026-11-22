@@ -20,6 +20,7 @@ member | build_version.gnoblin | property string rw | 0.2.0
 member | build_version.gnome | property string rw | 0.2.0
 member | build_version.js | property string rw | 0.2.0
 member | build_version.mutter | property string rw | 0.2.0
+member | compositor_settings.user_shaders | property bool ro | 0.2.0
 member | config_reload_failed.error | property string rw | 0.2.0
 member | config_reload_failed.path | property string rw | 0.2.0
 member | config_reload_failed.sequence | property uint rw | 0.2.0
@@ -64,6 +65,7 @@ member | session_status.revision | property uint rw | 0.2.0
 member | session_status.state | property enum:session_state rw | 0.2.0
 
 object | build_version | base none record | 0.2.0
+object | compositor_settings | base none service | 0.2.0
 object | config_reload_failed | base none record | 0.2.0
 object | config_reloaded | base none record | 0.2.0
 object | reload_result | base none record | 0.2.0

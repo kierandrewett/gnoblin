@@ -339,6 +339,16 @@ pub(crate) fn pumped(ctx: GnoblinCtx) {
     let _ = crate::object::run_in(ctx, manager, |cx| manager::sync(cx));
 }
 
+/// Whether the main seat asks for reduced motion. False while there is no seat: nothing asked for it.
+pub(in crate::model) fn reduced_motion(cx: &Cx<'_>) -> bool {
+    super::values::attached(cx) && seat::main_seat().is_some_and(seat::reduced_motion)
+}
+
+/// Whether the compositor accepts a shader effect from a shell, as the main seat says. True while there is no seat to say otherwise.
+pub(in crate::model) fn user_shaders(cx: &Cx<'_>) -> bool {
+    !super::values::attached(cx) || seat::main_seat().is_none_or(seat::user_shaders)
+}
+
 /// Implements the classes of the catalog.
 pub(super) fn register(builder: &mut Builder) {
     binding::register(builder);

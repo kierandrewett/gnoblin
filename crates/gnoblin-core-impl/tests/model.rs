@@ -1200,15 +1200,15 @@ fn focus_history_follows_the_seat() {
 fn timers_run_once_in_their_time() {
     let rig = Rig::new("model_timers", &[]);
     rig.boot();
-    let (api, gnoblin) = (rig.api, rig.gnoblin);
-    let t0 = rig.call(gnoblin, "now", &[]).unwrap().double().unwrap();
+    let (api, timers) = (rig.api, rig.object(rig.gnoblin, "timers"));
+    let t0 = rig.call(timers, "now", &[]).unwrap().double().unwrap();
     let after = |rig: &Rig, ms: f64, line: &'static str| -> Obj {
         let log = Rc::clone(&rig.log);
         let run = Val::Closure(closure(move |_, _| {
             log.borrow_mut().push(json!(line));
             Ok(Val::None)
         }));
-        rig.call(gnoblin, "timer", &[Val::Double(ms), run])
+        rig.call(timers, "after", &[Val::Double(ms), run])
             .expect("a timer")
             .object()
             .expect("an object")
@@ -1226,7 +1226,7 @@ fn timers_run_once_in_their_time() {
     rig.advance(60);
     rig.step("sixty", &[]);
     rig.advance(60);
-    let t = rig.call(gnoblin, "now", &[]).unwrap().double().unwrap();
+    let t = rig.call(timers, "now", &[]).unwrap().double().unwrap();
     rig.rec("elapsed", number(t - t0));
     rig.step("hundred_and_twenty", &[]);
     rig.finish();

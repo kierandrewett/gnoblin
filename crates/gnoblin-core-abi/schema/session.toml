@@ -53,7 +53,7 @@ type = "enum:lock_state"
 since = "0.2.0"
 optional = true
 
-# The build identity (`gnoblin.version`). A field the build does not give is `unknown`; credentials are removed from the remote.
+# The build identity (`gnoblin.version()`). A field the build does not give is `unknown`; credentials are removed from the remote.
 [[object]]
 name = "build_version"
 since = "0.2.0"
@@ -476,3 +476,18 @@ type = "object:runtime"
 [[object.signal.field]]
 name = "failure"
 type = "object:config_reload_failed"
+
+# `gnoblin.compositor`: the compositor's own settings, as it read them when it started. A change of a setting applies at the next
+# login, so a shell reads the values the running compositor holds.
+[[object]]
+name = "compositor_settings"
+since = "0.2.0"
+kind = "service"
+
+# Whether the compositor accepts a shader effect from a shell (`compositor.user-shaders`, true unless it is switched off). While it is
+# false the compositor refuses the effects of a node that hold a shader. True while the compositor has not said.
+[[object.property]]
+name = "user_shaders"
+type = "bool"
+since = "0.2.0"
+readonly = true

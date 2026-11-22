@@ -1,4 +1,5 @@
-//! `operation`, `output_operation` and `timer`: a request the compositor answers later, and a call that waits for its time.
+//! `operation`, `output_operation`, `timer` and `timers`: a request the compositor answers later, a call that waits for its time, and the
+//! service that sets it.
 //!
 #![allow(unsafe_code)]
 use std::cell::Cell;
@@ -9,7 +10,7 @@ use gnoblin_core_abi as abi;
 use gnoblin_object::server::{Builder, ClassBuilder, Cx};
 use gnoblin_object::{Callable, Fail, Obj, Res, Val};
 
-use crate::registry;
+use crate::{registry, session};
 
 /// Where an operation stands.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -234,7 +235,7 @@ const MAX_TIMER_MS: f64 = 86_400_000.0;
 pub(super) fn start(cx: &Cx<'_>, ms: f64, run: Rc<dyn Callable>) -> Res<Val> {
     if !ms.is_finite() || !(0.0..=MAX_TIMER_MS).contains(&ms) {
         return Err(Fail::type_error(format!(
-            "gnoblin.timer: ms must be a finite number from 0 to {MAX_TIMER_MS}"
+            "gnoblin.timers.after: ms must be a finite number from 0 to {MAX_TIMER_MS}"
         )));
     }
     let pending = Rc::new(Cell::new(true));
@@ -272,7 +273,7 @@ pub(super) fn register(builder: &mut Builder) {
     });
     let _ = builder
         .class::<TimerState>("timer")
-        .ctor(|_, _| Err(Fail::refused("a timer is made with `gnoblin.timer`")))
+        .ctor(|_, _| Err(Fail::refused("a timer is made with `gnoblin.timers.after`")))
         .get("pending", |state, _| Ok(Val::Bool(state.pending.get())))
         .method("cancel", |state, cx, _| {
             if state.pending.replace(false) {
@@ -280,5 +281,14 @@ pub(super) fn register(builder: &mut Builder) {
                 cx.unhold(cx.me());
             }
             Ok(Val::None)
+        });
+    let _ = builder
+        .class::<()>("timers")
+        .ctor(|_, _| Ok(()))
+        .method("after", |_, cx, args| {
+            start(cx, args[0].double()?, Rc::clone(args[1].closure()?))
+        })
+        .method("now", |_, _, _| {
+            Ok(Val::Double(session::with(|session| session.now_ms())))
         });
 }

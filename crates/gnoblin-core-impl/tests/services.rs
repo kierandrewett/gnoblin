@@ -21,7 +21,7 @@ use gnoblin_model::Value;
 use gnoblin_object::client::{Api, closure};
 use gnoblin_object::{ClassId, Fail, MemberId, Obj, Res, Val};
 use gnoblin_shell_host::supervisor::ManualClock;
-use gnoblin_testkit::compositor::{FakeCompositor, text};
+use gnoblin_testkit::compositor::{FakeCompositor, ROOT, text};
 use gnoblin_tree_client::slot_link::{SlotEvent, SlotLink};
 use gnoblin_tree_client::tree_mirror::{LinkError, MirrorValue, TreeLink};
 
@@ -259,10 +259,16 @@ impl Rig {
     }
 
     fn with(owner_link: bool, slot_link: bool) -> Rig {
+        Rig::over(owner_link, slot_link, |_| {})
+    }
+
+    /// A rig whose compositor has what `world` adds to the desktop before the generation attaches.
+    fn over(owner_link: bool, slot_link: bool, world: impl FnOnce(&FakeCompositor)) -> Rig {
         let lock = process_lock();
         host::reset_session();
         let comp = FakeCompositor::new();
         comp.add_desktop(1000.0, 600.0);
+        world(&comp);
         host::set_tree_link_provider(Box::new(TreeProvider(comp.clone())));
         let clock = ManualClock::default();
         host::set_clock(Arc::new(clock.clone()));
@@ -608,7 +614,12 @@ fn the_sessions_and_the_configurations_signals_reach_their_listeners_in_order() 
 fn version_is_the_build_identity_with_unknown_for_what_the_build_lacks() {
     let rig = Rig::new();
     let gnoblin = rig.service("gnoblin");
-    let version = rig.prop(gnoblin, "version").record().expect("a record").to_vec();
+    let version = rig
+        .try_call(gnoblin, "version", &[])
+        .expect("the build identity")
+        .record()
+        .expect("a record")
+        .to_vec();
     assert_eq!(version.len(), 8);
     let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
     assert_eq!(version[4].text(), Ok(format!("{major}.{minor}.{patch}").as_str()));
@@ -1880,4 +1891,144 @@ fn insets_grow_and_shrink_rectangles_and_compare() {
         vec![9.0, 9.0, 0.0, 0.0]
     );
     let _ = (closure(|_, _| Ok(Val::None)), Fail::err("unused"));
+}
+
+// ---- the root's own members: timers, motion and the compositor's settings ---------------------------------------------------
+
+/// The `gnoblin` service of a rig.
+fn root_of(rig: &Rig) -> Obj {
+    rig.service("gnoblin")
+}
+
+#[test]
+fn motion_is_the_duration_until_the_main_seat_asks_for_reduced_motion_and_zero_while_it_does() {
+    let rig = Rig::new();
+    let gnoblin = root_of(&rig);
+    let motion = |ms: f64| {
+        rig.call(gnoblin, "motion", &[Val::Double(ms)])
+            .double()
+            .expect("a number")
+    };
+    assert_eq!(motion(200.0), 200.0, "a seat that has not asked for it animates");
+    assert_eq!(motion(0.0), 0.0);
+    rig.comp.external_set(21, "reduced_motion", MirrorValue::Bool(true));
+    rig.settle();
+    assert_eq!(
+        motion(200.0),
+        0.0,
+        "reduced motion takes the time out of every animation"
+    );
+    assert_eq!(motion(0.0), 0.0);
+    rig.comp.external_set(21, "reduced_motion", MirrorValue::Bool(false));
+    rig.settle();
+    assert_eq!(motion(350.0), 350.0, "and gives it back when the seat stops asking");
+    let wrong = rig.try_call(gnoblin, "motion", &[Val::Text("fast".to_owned())]);
+    assert!(wrong.is_err(), "a duration that is not a number is refused: {wrong:?}");
+}
+
+#[test]
+fn motion_reads_the_desktops_seat_and_not_the_xr_programs() {
+    let rig = Rig::over(true, true, |comp| {
+        // The XR seat comes first in the tree and asks for reduced motion; the desktop's seat does not.
+        comp.add_node(
+            19,
+            ROOT,
+            "seat",
+            vec![("name", text("xr")), ("reduced_motion", MirrorValue::Bool(true))],
+        );
+    });
+    let gnoblin = root_of(&rig);
+    let motion = |ms: f64| {
+        rig.call(gnoblin, "motion", &[Val::Double(ms)])
+            .double()
+            .expect("a number")
+    };
+    assert_eq!(motion(120.0), 120.0, "the XR seat's preference is not the desktop's");
+    rig.comp.external_set(21, "reduced_motion", MirrorValue::Bool(true));
+    rig.settle();
+    assert_eq!(motion(120.0), 0.0);
+}
+
+#[test]
+fn compositor_settings_read_what_the_main_seat_publishes() {
+    let rig = Rig::new();
+    let compositor = rig.object(rig.prop(root_of(&rig), "compositor"));
+    assert!(
+        rig.flag(compositor, "user_shaders"),
+        "shaders are accepted until the compositor says not"
+    );
+    rig.comp.external_set(21, "user_shaders", MirrorValue::Bool(false));
+    rig.settle();
+    assert!(
+        !rig.flag(compositor, "user_shaders"),
+        "the compositor switched them off"
+    );
+    let again = rig.object(rig.prop(root_of(&rig), "compositor"));
+    assert_eq!(again, compositor, "the settings are one object for the generation");
+    let member = rig.member(compositor, abi::MEMBER_PROPERTY, "user_shaders");
+    assert!(
+        rig.api.set(compositor, member, &Val::Bool(true)).is_err(),
+        "a setting the compositor read at its start is not written from a shell"
+    );
+}
+
+#[test]
+fn timers_after_runs_once_and_is_refused_a_time_it_cannot_keep() {
+    let rig = Rig::new();
+    let timers = rig.object(rig.prop(root_of(&rig), "timers"));
+    let ran = Rc::new(RefCell::new(0_u32));
+    let counted = {
+        let ran = Rc::clone(&ran);
+        move || {
+            let ran = Rc::clone(&ran);
+            Val::Closure(closure(move |_, _| {
+                *ran.borrow_mut() += 1;
+                Ok(Val::None)
+            }))
+        }
+    };
+    let t0 = rig.call(timers, "now", &[]).double().expect("a clock");
+    let timer = rig.object(rig.call(timers, "after", &[Val::Double(50.0), counted()]));
+    assert!(rig.flag(timer, "pending"));
+    rig.advance(40);
+    assert_eq!(*ran.borrow(), 0, "not before its time");
+    rig.advance(20);
+    assert_eq!(*ran.borrow(), 1, "once its time has come");
+    assert!(!rig.flag(timer, "pending"));
+    rig.advance(500);
+    assert_eq!(*ran.borrow(), 1, "and never again");
+    let t1 = rig.call(timers, "now", &[]).double().expect("a clock");
+    assert!(
+        (t1 - t0 - 560.0).abs() < 1.0,
+        "the clock moved with the manual clock: {t0} to {t1}"
+    );
+
+    for bad in [-1.0, f64::NAN, f64::INFINITY, 86_400_001.0] {
+        let refused = rig.try_call(timers, "after", &[Val::Double(bad), counted()]);
+        let Err(error) = refused else {
+            panic!("{bad} is not a time a timer can wait");
+        };
+        assert!(error.to_string().contains("gnoblin.timers.after"), "{error}");
+    }
+    let cancelled = rig.object(rig.call(timers, "after", &[Val::Double(10.0), counted()]));
+    rig.call(cancelled, "cancel", &[]);
+    rig.advance(50);
+    assert_eq!(*ran.borrow(), 1, "a cancelled timer never runs");
+}
+
+#[test]
+fn the_root_no_longer_has_the_members_timers_and_version_replaced() {
+    let rig = Rig::new();
+    let gnoblin = root_of(&rig);
+    let class = rig.api.class_of(gnoblin).expect("a class");
+    for (kind, name) in [
+        (abi::MEMBER_METHOD, "timer"),
+        (abi::MEMBER_METHOD, "now"),
+        (abi::MEMBER_PROPERTY, "version"),
+    ] {
+        assert!(
+            rig.api.member(class, kind, name).is_err(),
+            "`{name}` moved: to `timers.after`, `timers.now` and the method `version`"
+        );
+    }
 }

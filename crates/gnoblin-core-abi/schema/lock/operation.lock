@@ -30,7 +30,10 @@ member | output_operation.status | property enum:operation_status ro | 0.2.0
 member | output_operation.then | method (run:callback:operation_done) | 0.2.0
 member | timer.cancel | method () | 0.2.0
 member | timer.pending | property bool ro | 0.2.0
+member | timers.after | method (ms:double, run:callback:timer_fn) -> object:timer | 0.2.0
+member | timers.now | method () -> double | 0.2.0
 
 object | operation | base none | 0.2.0
 object | output_operation | base operation | 0.2.0
 object | timer | base none | 0.2.0
+object | timers | base none service | 0.2.0
