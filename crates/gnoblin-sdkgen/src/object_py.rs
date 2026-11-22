@@ -713,7 +713,7 @@ impl<'a> Py<'a> {
 
         // A class with nothing but functions is a namespace for them: it is not an object, so it has no `on` and no `destroy`.
         // At run time a class carries the members of its base (the ids number them that way), so it is flat; a stub names the base, so a type
-        // checker takes a `Camera3d` where a `SceneNode` is wanted, as the library does.
+        // checker takes a `Camera3D` where a `SceneNode` is wanted, as the library does.
         let bases = if self.stub {
             match object.base.as_deref().filter(|base| !base.contains('.')) {
                 Some(base) => format!("({})", class_name(self.view.class(base)?)),

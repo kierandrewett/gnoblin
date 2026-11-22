@@ -9,17 +9,17 @@ own, and aborts it: the library puts back the opacity, and the shell's rollback 
 
 from gnoblin import gnoblin
 from gnoblin.objects.std import (
+    ClientStyle,
     CornerRadius,
     SceneNode,
     Shadow,
-    Style,
     StyleProperty,
     Transition,
     TransitionOptions,
     TransitionValue,
 )
 
-style = Style.of_clients()
+style = ClientStyle.of_clients()
 style.corner_radius = CornerRadius(all=12.0)
 style.shadows = [Shadow(blur=8.0), Shadow(y=4.0, blur=20.0)]
 radius = style.corner_radius.all

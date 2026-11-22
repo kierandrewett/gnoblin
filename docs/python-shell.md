@@ -236,7 +236,7 @@ names it, and fails on any error. A `GNOBLIN_PYRIGHT` that names nothing is an e
 A stub differs from the classes at run time in two ways, on purpose:
 
 - A property or a result reads as `None` only where the catalog marks it `optional`.
-- A class of `gnoblin.objects` that derives from another (`Camera3d` from `SceneNode`) names it as its base, so a checker accepts it
+- A class of `gnoblin.objects` that derives from another (`Camera3D` from `SceneNode`) names it as its base, so a checker accepts it
   where the base is wanted. At run time the classes are flat, and a call takes any handle.
 
 ## The desktop library: `gnoblin.std`

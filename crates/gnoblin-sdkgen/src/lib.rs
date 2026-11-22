@@ -453,7 +453,7 @@ mod tests {
     #[test]
     fn a_python_stub_names_the_base_of_a_derived_class() {
         let std = generated("object-types", "python/gnoblin/objects/std.pyi");
-        assert!(std.contains("class Camera3d(SceneNode):"), "a camera is a scene node");
+        assert!(std.contains("class Camera3D(SceneNode):"), "a camera is a scene node");
         assert!(std.contains("class View(SceneNode):"), "a view is a scene node");
     }
 

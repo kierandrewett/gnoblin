@@ -311,9 +311,28 @@ const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", he
   an exception a listener throws is logged with its stack and does not stop the listeners after it.
 - Importing the module opens `libgnoblin-std.so.1` and throws `gnoblin-std is not installed (looked in: ...)` without it, as
   `gnoblin-std` does.
+- `gnoblin-core/generated/objects` exports `gnoblin`, the root of the core's object model, made once. Each of its signals also has a
+  named subscription: `gnoblin.onClientCreated(handler)` is the same as `gnoblin.on("clientCreated", handler)` and returns the same
+  `Listener`.
+- Classes keep the names of the shell API: `Camera2D`, `Camera3D`, `ClientStyle`, `InputDevice`, `IdleMonitor` and
+  `LaunchFeedback`. The generated Rust and Python classes use the same names.
 
 `examples/20-native-object/shell.ts` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the Rust
 and Python shells of the same example, and checked with `gnoblinctl check --types`.
+
+### Which library a shell runs on
+
+Gnoblin reads the shell's imports before it runs any of them, and runs the whole shell on one library:
+
+- **The generated classes alone:** the shell imports only `gnoblin-core/generated/objects`,
+  `gnoblin-core/generated/object_base` and `gnoblin-std/generated/objects`, and nothing else from gnoblin.
+- **The TypeScript library, as before:** every other shell. That covers a shell that imports `gnoblin-core`, `gnoblin-std` or
+  any of their other modules, a shell that imports nothing from gnoblin and reads the global `gnoblin`, a shell that reaches
+  `gnoblin-std/extensions/xr`, and a shell that uses a dynamic `import()`.
+
+The generated modules import the same way on both, so a shell that mixes them with `gnoblin-std` keeps working. A reload that
+would move the shell to the other library is refused: the error ends `restart gnoblin to change the stock library`, and the
+running shell keeps serving. Restart gnoblin to load the new code.
 
 ## With no `shell.ts`
 

@@ -7,10 +7,10 @@ starts with ``scene:``, as the Rust shell of the same example spells it.
 """
 
 from gnoblin import gnoblin
-from gnoblin.objects.std import Camera3d, Projection, Scene, SceneSize, Vec3, View
+from gnoblin.objects.std import Camera3D, Projection, Scene, SceneSize, Vec3, View
 
 scene = Scene.get()
-camera = Camera3d(id="cam", projection=Projection.PERSPECTIVE, fov=70.0, position=Vec3(x=1.0, y=2.0, z=3.0))
+camera = Camera3D(id="cam", projection=Projection.PERSPECTIVE, fov=70.0, position=Vec3(x=1.0, y=2.0, z=3.0))
 scene.add(camera)
 view = View(id="panel", size=SceneSize(width=400.0, height=300.0), position=Vec3(x=0.5, y=0.2, z=-1.4), camera=camera)
 scene.add(view)

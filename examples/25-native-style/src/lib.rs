@@ -9,14 +9,14 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use gnoblin_std::objects::{
-    CornerRadius, SceneNode, Shadow, Style, StyleProperty, Transition, TransitionOptions, TransitionValue,
+    ClientStyle, CornerRadius, SceneNode, Shadow, StyleProperty, Transition, TransitionOptions, TransitionValue,
 };
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
-    let style = Style::of_clients(&objects)?;
+    let style = ClientStyle::of_clients(&objects)?;
     style.set_corner_radius(&CornerRadius {
         all: Some(12.0),
         ..CornerRadius::default()
