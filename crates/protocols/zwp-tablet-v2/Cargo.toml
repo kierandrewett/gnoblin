@@ -22,4 +22,4 @@ gnoblin-log = { path = "../../gnoblin-log" }
 gnoblin-backend = { path = "../../gnoblin-backend" }
 gnoblin-types = { workspace = true }
 gnoblin-wayland-testkit = { path = "../testkit" }
-wayland-client.workspace = true
+wayland-client = { workspace = true }

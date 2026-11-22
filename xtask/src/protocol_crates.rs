@@ -242,7 +242,10 @@ fn crate_manifest(table: &ProtocolTable, row: &ProtocolRow) -> String {
     text.push_str(
         "version.workspace = true\nedition.workspace = true\nrust-version.workspace = true\nlicense.workspace = true\npublish.workspace = true\n\n[lints]\nworkspace = true\n\n[dependencies]\n",
     );
-    let _ = writeln!(text, "{PREFIX}api = {{ path = \"../api\" }}");
+    // A shared crate holds plain code two protocols use; only a protocol crate implements the api traits.
+    if row.kind == Kind::Protocol {
+        let _ = writeln!(text, "{PREFIX}api = {{ path = \"../api\" }}");
+    }
     for needed in &row.needs {
         let _ = writeln!(text, "{PREFIX}{needed} = {{ path = \"../{needed}\" }}");
     }
