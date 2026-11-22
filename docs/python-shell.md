@@ -324,7 +324,7 @@ action = FocusPolicy.focus_decision(           # a function of a service: record
 - `gnoblin/objects/*.pyi` are the stubs. A `tests/shells.rs` check holds them to what the runtime reflects. Importing the module opens
   `libgnoblin-std.so.1` and raises `ImportError` without it, as `gnoblin.std` does.
 
-`examples/20-native-object-py/shell.py` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the
+`examples/20-native-object/shell.py` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the
 Rust and TypeScript shells of the same example.
 
 ## Examples
@@ -335,7 +335,7 @@ as it is:
 - `examples/07-script-binding/shell.py`: a key binding written entirely in Python that moves the focused window.
 - `examples/03-python-std/shell.py` (example 3) and `layouts.py`: a workspace with a layout of your own, a listener on the clients and a
   chord, and the built-in layouts. The tests hold their rectangles to the ones the native Rust shells produce.
-- `examples/08-no-workspaces-py/`: a master-and-stack tiler of raw window nodes, in a shell file and a module it imports (edit
+- `examples/08-no-workspaces/shell.py` and `tiles.py`: a master-and-stack tiler of raw window nodes, in a shell file and a module it imports (edit
   `tiles.py` and the tiling changes without restarting).
 - The same test builds example 11 (edit the shell and a module it imports; no listener twice; a broken edit keeps the shell) and
   example 17 (a core-only shell runs, and importing std says why it cannot).

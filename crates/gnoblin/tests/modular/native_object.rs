@@ -3,8 +3,9 @@
 //! `changed` signal from the library's turn, and calls a static function of the focus policy, against the libraries the session stages.
 //!
 //! - The Rust shell (`examples/20-native-object`) uses the typed Rust API (`gnoblin_std::objects`).
-//! - The TypeScript shell (`examples/20-native-object-ts`) imports `gnoblin-std/generated/objects`, a module the JavaScript runtime library
-//!   carries, and the Python shell (`examples/20-native-object-py`) imports `gnoblin.objects.std`, which the Python runtime library carries.
+//! - The TypeScript shell (`examples/20-native-object/shell.ts`) imports `gnoblin-std/generated/objects`, a module the JavaScript runtime
+//!   library carries, and the Python shell (`examples/20-native-object/shell.py`) imports `gnoblin.objects.std`, which the Python runtime
+//!   library carries.
 //!   Neither reads a file of the repository's `data/` trees for it: the classes are generated from the catalog when the runtime is built.
 //!
 //! What each asserts is what the shell logs about what the libraries answered, and that a chord the shell claimed edits the entry again and
@@ -92,14 +93,14 @@ fn script_session(name: &str, file: &str) -> (tempfile::TempDir, Gnoblin) {
 
 #[test]
 fn example_20_a_typescript_shell_makes_edits_and_hears_an_entry_model_through_the_generated_classes() {
-    let (_dir, mut session) = script_session("20-native-object-ts", "shell.ts");
+    let (_dir, mut session) = script_session("20-native-object", "shell.ts");
     assert_the_entry_is_made_edited_heard_and_typed_into(&mut session);
     assert!(!session.log_text().contains("raised"), "{}", session.log_text());
 }
 
 #[test]
 fn example_20_a_python_shell_makes_edits_and_hears_an_entry_model_through_the_generated_classes() {
-    let (_dir, mut session) = script_session("20-native-object-py", "shell.py");
+    let (_dir, mut session) = script_session("20-native-object", "shell.py");
     assert_the_entry_is_made_edited_heard_and_typed_into(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
 }
@@ -146,7 +147,7 @@ fn example_20_the_typescript_shell_type_checks_against_the_generated_declaration
         eprintln!("no TypeScript compiler (GNOBLIN_TSC, or tsc on the path): the check is skipped");
         return;
     };
-    let dir = copy_example("20-native-object-ts");
+    let dir = copy_example("20-native-object");
     let shell = dir.path().join("shell.ts");
     let (code, document) = check_types(&shell);
     assert_eq!(code, 0, "{document}");

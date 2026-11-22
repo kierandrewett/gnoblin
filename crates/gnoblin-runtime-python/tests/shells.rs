@@ -315,7 +315,7 @@ fn the_runtime_library_exports_its_entry_and_needs_the_core_and_libpython() {
 
 #[test]
 fn example_8_a_python_tiler_places_raw_window_nodes_and_makes_no_node_of_its_own() {
-    let run = scenario_of("example08", &example("08-no-workspaces-py/shell.py"));
+    let run = scenario_of("example08", &example("08-no-workspaces/shell.py"));
     assert_eq!(run.code, 0, "{}", run.dump());
     // The same numbers as the Rust example 8: the screen is 1000 by 800 and the gap 10.
     assert_eq!(

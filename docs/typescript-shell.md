@@ -312,7 +312,7 @@ const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", he
 - Importing the module opens `libgnoblin-std.so.1` and throws `gnoblin-std is not installed (looked in: ...)` without it, as
   `gnoblin-std` does.
 
-`examples/20-native-object-ts/shell.ts` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the Rust
+`examples/20-native-object/shell.ts` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the Rust
 and Python shells of the same example, and checked with `gnoblinctl check --types`.
 
 ## With no `shell.ts`

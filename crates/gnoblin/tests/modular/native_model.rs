@@ -19,7 +19,7 @@ fn example_21_a_core_shell_follows_the_windows_through_the_object_model() {
 
 #[test]
 fn example_21_a_python_shell_follows_the_windows_through_the_generated_classes() {
-    let dir = copy_example("21-native-model-py");
+    let dir = copy_example("21-native-model");
     let mut session = start_script(Start::Compositor, &dir.path().join("shell.py"), &[]);
     serving(&mut session);
     follows_the_windows(&mut session, "None");
@@ -27,7 +27,7 @@ fn example_21_a_python_shell_follows_the_windows_through_the_generated_classes()
 
 #[test]
 fn example_21_a_typescript_shell_follows_the_windows_through_the_generated_classes() {
-    let dir = copy_example("21-native-model-ts");
+    let dir = copy_example("21-native-model");
     let mut session = start_script(Start::Compositor, &dir.path().join("shell.ts"), &[]);
     serving(&mut session);
     follows_the_windows(&mut session, "undefined");

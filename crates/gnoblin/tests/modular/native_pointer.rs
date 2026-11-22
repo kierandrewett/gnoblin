@@ -172,7 +172,7 @@ fn example_30_a_rust_shell_follows_a_drag_and_a_reload_cancels_the_drag_in_fligh
 
 #[test]
 fn example_30_a_python_shell_follows_a_drag_and_a_reload_cancels_the_drag_in_flight() {
-    let dir = copy_example("30-native-pointer-py");
+    let dir = copy_example("30-native-pointer");
     let path = dir.path().join("shell.py");
     let mut session = start_script(Start::Compositor, &path, &[]);
     serving(&mut session);

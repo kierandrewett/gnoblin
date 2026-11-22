@@ -169,13 +169,13 @@ fn script_session(name: &str, file: &str) -> (tempfile::TempDir, Gnoblin) {
 
 #[test]
 fn example_29_a_typescript_shell_starts_the_window_menu_and_a_client_asks_for_it() {
-    let (_dir, mut session) = script_session("29-native-menus-ts", "shell.ts");
+    let (_dir, mut session) = script_session("29-native-menus", "shell.ts");
     a_client_asks_for_its_menu_and_the_card_answers(&mut session);
 }
 
 #[test]
 fn example_29_a_python_shell_starts_the_window_menu_and_a_client_asks_for_it() {
-    let (_dir, mut session) = script_session("29-native-menus-py", "shell.py");
+    let (_dir, mut session) = script_session("29-native-menus", "shell.py");
     a_client_asks_for_its_menu_and_the_card_answers(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
 }

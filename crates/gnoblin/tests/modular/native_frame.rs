@@ -104,13 +104,13 @@ fn script_session(name: &str, file: &str) -> (tempfile::TempDir, Gnoblin) {
 
 #[test]
 fn example_27_a_typescript_shell_frames_windows_and_closes_one_with_the_fade() {
-    let (_dir, mut session) = script_session("27-native-frame-ts", "shell.ts");
+    let (_dir, mut session) = script_session("27-native-frame", "shell.ts");
     the_shell_frames_windows_and_closes_one_with_the_fade(&mut session);
 }
 
 #[test]
 fn example_27_a_python_shell_frames_windows_and_closes_one_with_the_fade() {
-    let (_dir, mut session) = script_session("27-native-frame-py", "shell.py");
+    let (_dir, mut session) = script_session("27-native-frame", "shell.py");
     the_shell_frames_windows_and_closes_one_with_the_fade(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
 }

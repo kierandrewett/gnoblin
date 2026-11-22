@@ -139,7 +139,7 @@ fn example_28_a_rust_shell_binds_chords_and_a_reload_hands_one_to_the_next_gener
 
 #[test]
 fn example_28_a_python_shell_binds_chords_and_a_reload_hands_one_to_the_next_generation() {
-    let dir = copy_example("28-native-input-py");
+    let dir = copy_example("28-native-input");
     let path = dir.path().join("shell.py");
     let mut session = start_script(Start::Compositor, &path, &[]);
     serving(&mut session);

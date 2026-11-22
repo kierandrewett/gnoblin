@@ -53,13 +53,13 @@ fn script_session(name: &str, file: &str) -> (tempfile::TempDir, Gnoblin) {
 
 #[test]
 fn example_23_a_typescript_shell_is_told_of_a_program_a_launch_idleness_and_the_lock() {
-    let (_dir, mut session) = script_session("23-native-services-ts", "shell.ts");
+    let (_dir, mut session) = script_session("23-native-services", "shell.ts");
     assert_the_services_are_told(&mut session);
 }
 
 #[test]
 fn example_23_a_python_shell_is_told_of_a_program_a_launch_idleness_and_the_lock() {
-    let (_dir, mut session) = script_session("23-native-services-py", "shell.py");
+    let (_dir, mut session) = script_session("23-native-services", "shell.py");
     assert_the_services_are_told(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
 }

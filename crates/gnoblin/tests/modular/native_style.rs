@@ -70,13 +70,13 @@ fn script_session(name: &str, file: &str) -> (tempfile::TempDir, Gnoblin) {
 
 #[test]
 fn example_25_a_typescript_shell_styles_the_windows_and_its_aborted_transition_is_rolled_back() {
-    let (_dir, mut session) = script_session("25-native-style-ts", "shell.ts");
+    let (_dir, mut session) = script_session("25-native-style", "shell.ts");
     assert_the_style_is_set_and_the_transition_rolled_back(&mut session);
 }
 
 #[test]
 fn example_25_a_python_shell_styles_the_windows_and_its_aborted_transition_is_rolled_back() {
-    let (_dir, mut session) = script_session("25-native-style-py", "shell.py");
+    let (_dir, mut session) = script_session("25-native-style", "shell.py");
     assert_the_style_is_set_and_the_transition_rolled_back(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
 }

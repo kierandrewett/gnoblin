@@ -1,5 +1,5 @@
 //! Example 8, a shell with no dependency on workspaces or scene graphs, in a real session and in both languages it exists in: the Rust
-//! tiler (`examples/08-no-workspaces`) and the Python one (`examples/08-no-workspaces-py`).
+//! tiler (`examples/08-no-workspaces`) and the Python one (`examples/08-no-workspaces/shell.py`).
 //!
 //! The tiler writes the rectangle of each raw window of the tree and nothing else. What these tests assert is the claim of the spec: the
 //! tree of such a session holds no node of any class the compositor's own session does not (no workspace, camera, canvas, view, tween
@@ -94,7 +94,7 @@ fn example_8_the_rust_tiler_tiles_raw_windows_and_the_tree_holds_no_node_of_its_
 
 #[test]
 fn example_8_the_python_tiler_tiles_raw_windows_and_the_tree_holds_no_node_of_its_own() {
-    let dir = copy_example("08-no-workspaces-py");
+    let dir = copy_example("08-no-workspaces");
     let entry: &Path = &dir.path().join("shell.py");
     let mut session = start_script(Start::Compositor, entry, &[]);
     serving(&mut session);

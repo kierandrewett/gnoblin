@@ -83,13 +83,13 @@ fn script_session(name: &str, file: &str) -> (tempfile::TempDir, Gnoblin) {
 
 #[test]
 fn example_32_a_typescript_shell_starts_the_window_policy_and_a_client_asks_for_fullscreen_and_maximise() {
-    let (_dir, mut session) = script_session("32-native-policy-ts", "shell.ts");
+    let (_dir, mut session) = script_session("32-native-policy", "shell.ts");
     a_window_asks_and_the_policy_answers(&mut session);
 }
 
 #[test]
 fn example_32_a_python_shell_starts_the_window_policy_and_a_client_asks_for_fullscreen_and_maximise() {
-    let (_dir, mut session) = script_session("32-native-policy-py", "shell.py");
+    let (_dir, mut session) = script_session("32-native-policy", "shell.py");
     a_window_asks_and_the_policy_answers(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
 }

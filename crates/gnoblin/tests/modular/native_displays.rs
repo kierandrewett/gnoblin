@@ -105,13 +105,13 @@ fn example_33_a_std_shell_lists_the_displays_applies_a_profile_and_adds_and_remo
 
 #[test]
 fn example_33_a_typescript_shell_lists_the_displays_applies_a_profile_and_adds_and_removes_a_display() {
-    let (_dir, mut session) = script_session("33-native-displays-ts", "shell.ts");
+    let (_dir, mut session) = script_session("33-native-displays", "shell.ts");
     the_displays_are_listed_a_profile_is_applied_and_a_display_comes_and_goes(&mut session);
 }
 
 #[test]
 fn example_33_a_python_shell_lists_the_displays_applies_a_profile_and_adds_and_removes_a_display() {
-    let (_dir, mut session) = script_session("33-native-displays-py", "shell.py");
+    let (_dir, mut session) = script_session("33-native-displays", "shell.py");
     the_displays_are_listed_a_profile_is_applied_and_a_display_comes_and_goes(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
 }

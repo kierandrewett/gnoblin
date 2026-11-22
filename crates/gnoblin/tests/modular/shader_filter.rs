@@ -201,7 +201,7 @@ fn assert_tinted(session: &mut Gnoblin, mapper: &mut Mapper, app: &str) {
 
 #[test]
 fn a_typescript_shell_tints_a_window_with_a_shader_filter_by_default() {
-    let shell = repo_root().join("examples/19-shader-tint-ts/shell.ts");
+    let shell = repo_root().join("examples/19-shader-tint/shell.ts");
     let mut session = start_script(Home::new(), &shell);
     let mut mapper = Mapper::connect(&session.wayland());
     assert_tinted(&mut session, &mut mapper, "tint.ts");
@@ -216,7 +216,7 @@ fn a_rust_shell_tints_a_window_with_a_shader_filter_by_default() {
 
 #[test]
 fn a_python_shell_tints_a_window_with_a_shader_filter_by_default() {
-    let shell = repo_root().join("examples/19-shader-tint-py/shell.py");
+    let shell = repo_root().join("examples/19-shader-tint/shell.py");
     let mut session = start_script(Home::new(), &shell);
     let mut mapper = Mapper::connect(&session.wayland());
     assert_tinted(&mut session, &mut mapper, "tint.py");
@@ -224,7 +224,7 @@ fn a_python_shell_tints_a_window_with_a_shader_filter_by_default() {
 
 #[test]
 fn a_typescript_config_that_switches_user_shaders_off_has_them_refused_from_the_next_login() {
-    let example = fs::read_to_string(repo_root().join("examples/19-shader-tint-ts/shell.ts")).expect("the example");
+    let example = fs::read_to_string(repo_root().join("examples/19-shader-tint/shell.ts")).expect("the example");
     let text = format!("{example}\ngnoblin.compositor.userShaders = false;\n");
     let (mut first, source) = first_login_that_switches_user_shaders_off(&text);
     // The first login: this compositor started with the default, so the shader is drawn while the setting is committed and kept.

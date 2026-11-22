@@ -24,10 +24,12 @@ gnoblin.compositor.userShaders = false;
 ```
 
 The shell commits the setting with the rest of its configuration, and the compositor keeps it in the last configuration
-document it accepted. The running compositor does not change: it started with shaders. Log out and in again, or restart
-`gnoblin`, and the next session refuses them. Delete the line, or set it to `true`, to go back to the default after the next
-login. `gnoblinctl config get` prints the document the compositor holds, and `gnoblinctl check shell.ts` runs the file
-without a session to show that the setting is accepted.
+document it accepted. The running compositor does not change: it started with shaders.
+
+- Log out and in again, or restart `gnoblin`, and the next session refuses them.
+- Delete the line, or set it to `true`, to go back to the default after the next login.
+- `gnoblinctl config get` prints the document the compositor holds.
+- `gnoblinctl check shell.ts` runs the file without a session to show that the setting is accepted.
 
 A shell written in Rust or Python commits no configuration document of its own. The compositor reads the document of the
 `shell.ts` in your configuration directory, so run that file as your shell once with the line above; the setting stays in
@@ -75,8 +77,8 @@ style.set_list(StyleKind.FILTER, [StyleEntry.of_shader(TINT, [1.0, 0.55, 0.2, 0.
 The scopes work as they do for every style property: a client's own style beats a `where` selection, which beats its
 workspace, which beats the global style. A list a scope sets replaces the inherited list whole. See [window style](/js-style).
 
-The source tree has complete shells that set the tint of this page: `examples/19-shader-tint-ts/shell.ts`,
-`examples/19-shader-tint/src/lib.rs` (Rust) and `examples/19-shader-tint-py/shell.py`. See [build a desktop](/build-a-desktop#the-examples).
+The source tree has complete shells that set the tint of this page in three languages, side by side in `examples/19-shader-tint/`:
+`shell.ts`, `shell.py` and the Rust project `src/lib.rs`. See [build a desktop](/build-a-desktop#the-examples).
 
 ## What the shader is
 
@@ -229,13 +231,19 @@ so compare colours with a tolerance.
 
 ### The shader is too slow
 
-The compositor times each shader source in every frame it draws. A source that takes more than 50 ms in three frames in a
-row is switched off for ten seconds: the window is drawn without it, the node's `skipped` list says `shader: over-budget`,
-and the compositor logs a warning with the source's hash. It comes back when the ten seconds are up, and the window is
-repainted with it, whether or not anything else changed. A source that is switched off three times, or whose frame was in flight when the graphics device was lost
-three times, is refused for the rest of the session: `skipped` says `shader: refused-for-session`, and writing the same
-source again is refused `bad-value` before it is validated. A different source is not affected. Make the shader cheaper
-(fewer texture reads, a smaller loop, fewer `backdrop` calls) and write it again; a changed source has a new hash.
+The compositor times each shader source in every frame it draws:
+
+- A source that takes more than 50 ms in three frames in a row is switched off for ten seconds. The window is drawn
+  without it, the node's `skipped` list says `shader: over-budget`, and the compositor logs a warning with the source's
+  hash.
+- When the ten seconds are up the source comes back, and the window is repainted with it, whether or not anything else
+  changed.
+- A source that is switched off three times, or whose frame was in flight when the graphics device was lost three times,
+  is refused for the rest of the session: `skipped` says `shader: refused-for-session`, and writing the same source again
+  is refused `bad-value` before it is validated. A different source is not affected.
+
+Make the shader cheaper (fewer texture reads, a smaller loop, fewer `backdrop` calls) and write it again; a changed source
+has a new hash.
 
 A renderer that cannot build a program for a valid source says why instead: `shader: <reason>`. That is not a strike.
 

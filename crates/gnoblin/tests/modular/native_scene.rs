@@ -81,13 +81,13 @@ fn script_session(name: &str, file: &str) -> (tempfile::TempDir, Gnoblin) {
 
 #[test]
 fn example_24_a_typescript_shell_places_a_view_and_a_camera_and_the_tree_holds_them() {
-    let (_dir, mut session) = script_session("24-native-scene-ts", "shell.ts");
+    let (_dir, mut session) = script_session("24-native-scene", "shell.ts");
     assert_the_scene_is_placed_and_read_back(&mut session);
 }
 
 #[test]
 fn example_24_a_python_shell_places_a_view_and_a_camera_and_the_tree_holds_them() {
-    let (_dir, mut session) = script_session("24-native-scene-py", "shell.py");
+    let (_dir, mut session) = script_session("24-native-scene", "shell.py");
     assert_the_scene_is_placed_and_read_back(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
 }

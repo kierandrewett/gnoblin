@@ -173,25 +173,22 @@ The `examples/` directory of the source tree holds the example shells. Each is a
 stands. Rust ones build with `cargo build -p <package>` from the source tree; scripts run directly with
 `gnoblin ./examples/<directory>/shell.ts` (or `shell.py`, `shell.js`).
 
-| Directory               | Language           | Layers    | What it shows                                                                                        |
-| ----------------------- | ------------------ | --------- | ---------------------------------------------------------------------------------------------------- |
-| `01-minimal-core-shell` | Rust               | Core      | Places every window in a cascade, starts a terminal on a chord, closes the focused window.           |
-| `02-std-prelude`        | Rust               | Core, std | One workspace per output, and chords that step through workspaces.                                   |
-| `03-python-std`         | Python             | Core, std | A workspace with a layout of your own, a listener on windows, a chord.                               |
-| `03-typescript-std`     | TypeScript         | Core, std | The same shell in TypeScript.                                                                        |
-| `04-js-esm`             | JavaScript         | Core, std | ES modules: imports `gnoblin-core` and `gnoblin-std`, and a relative module.                         |
-| `05-ts-types`           | TypeScript         | Core, std | Three files with types; an error points at the `.ts` line that wrote it.                             |
-| `06-rust-layout`        | Rust               | Core, std | A `Layout` written in Rust: equal columns, and a chord that swaps two windows.                       |
-| `07-script-binding`     | TypeScript, Python | Core      | A key binding written entirely in a script that moves the focused window.                            |
-| `08-no-workspaces`      | Rust               | Core      | A master-and-stack tiler of raw windows with no workspaces and no scene graph.                       |
-| `08-no-workspaces-py`   | Python             | Core      | The same tiler in Python, with the tiling in an imported module.                                     |
-| `09-native-linked`      | Rust               | Core, std | Links the installed libraries and says which ones its process maps and which ABI each has.           |
-| `10-hot-reload`         | Rust               | Core      | A shell built to be rebuilt while it runs: kept state, adopted nodes, no duplicate listeners.        |
-| `19-shader-tint`        | Rust               | Core, std | A shader filter that tints every window, and a chord that says why one is not drawn.                 |
-| `19-shader-tint-ts`     | TypeScript         | Core, std | The same tint in TypeScript.                                                                         |
-| `19-shader-tint-py`     | Python             | Core, std | The same tint in Python.                                                                             |
-| `20-native-object`      | Rust               | Core, std | The typed object API of std: an entry model edited and heard, a focus decision.                      |
-| `22-native-ui`          | Rust               | Core, std | The toolkit of std: a text and a focused entry over the windows; Return is heard with what was typed |
+| Directory               | Language                 | Layers    | What it shows                                                                                        |
+| ----------------------- | ------------------------ | --------- | ---------------------------------------------------------------------------------------------------- |
+| `01-minimal-core-shell` | Rust                     | Core      | Places every window in a cascade, starts a terminal on a chord, closes the focused window.           |
+| `02-std-prelude`        | Rust                     | Core, std | One workspace per output, and chords that step through workspaces.                                   |
+| `03-python-std`         | Python                   | Core, std | A workspace with a layout of your own, a listener on windows, a chord.                               |
+| `03-typescript-std`     | TypeScript               | Core, std | The same shell in TypeScript.                                                                        |
+| `04-js-esm`             | JavaScript               | Core, std | ES modules: imports `gnoblin-core` and `gnoblin-std`, and a relative module.                         |
+| `05-ts-types`           | TypeScript               | Core, std | Three files with types; an error points at the `.ts` line that wrote it.                             |
+| `06-rust-layout`        | Rust                     | Core, std | A `Layout` written in Rust: equal columns, and a chord that swaps two windows.                       |
+| `07-script-binding`     | TypeScript, Python       | Core      | A key binding written entirely in a script that moves the focused window.                            |
+| `08-no-workspaces`      | Rust, Python             | Core      | A master-and-stack tiler of raw windows with no workspaces and no scene graph.                       |
+| `09-native-linked`      | Rust                     | Core, std | Links the installed libraries and says which ones its process maps and which ABI each has.           |
+| `10-hot-reload`         | Rust                     | Core      | A shell built to be rebuilt while it runs: kept state, adopted nodes, no duplicate listeners.        |
+| `19-shader-tint`        | Rust, TypeScript, Python | Core, std | A shader filter that tints every window, and a chord that says why one is not drawn.                 |
+| `20-native-object`      | Rust, TypeScript, Python | Core, std | The typed object API of std: an entry model edited and heard, a focus decision.                      |
+| `22-native-ui`          | Rust                     | Core, std | The toolkit of std: a text and a focused entry over the windows; Return is heard with what was typed |
 
 The numbers also name behaviours that are not shells of their own:
 

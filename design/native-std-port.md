@@ -1465,7 +1465,7 @@ gnoblin-config-migrate`, `just workspace-ci` and the `lua-runtime.yml` job on th
   `gnoblin-core/generated/objects` (JavaScript, with `object_base` they share) and `gnoblin.objects.std` and `gnoblin.objects.model`
   (Python); NpFlip renames them to `gnoblin-std`, `gnoblin-core`, `gnoblin.std` and `gnoblin`. The JavaScript stock table now holds
   generated `.js` modules (the engine runs them, an editor never sees them) and `.d.ts` files (an editor reads them, the engine never
-  runs them). The golden scripts of the slice are examples `20-native-object-ts` and `20-native-object-py`: they log the lines the Rust
+  runs them). The golden scripts of the slice are `examples/20-native-object/shell.ts` and `shell.py`: they log the lines the Rust
   example logs, `modular::native_object` runs all three in a real session and asserts those lines (the trace), and
   `gnoblinctl check --types` type-checks the TypeScript one against the generated declarations and refuses a copy that uses a name, a
   value or a write the catalog does not allow. The `.pyi` is held to what the runtime reflects of every class of `gnoblin.objects.std`
@@ -1639,7 +1639,7 @@ there, from the next turn), and native listeners (`Cx::listen`) that `add_listen
 | The focus filters `workspace_id` and `monitor_id` match nothing in the core alone                                                                      | A window of the core has no workspace and no output; std's class extending `client` answers for both | Acceptable                                                                             |
 
 **Acceptance.** `modular::native_model` runs example 21 in a real session from Rust (`examples/21-native-model`), Python
-(`examples/21-native-model-py`, through `gnoblin.objects.model`) and TypeScript (`examples/21-native-model-ts`): a lookup of a window that
+(`examples/21-native-model/shell.py`, through `gnoblin.objects.model`) and TypeScript (`examples/21-native-model/shell.ts`): a lookup of a window that
 is not there (`at(1000)`, `get("no-such-window")`) answers `None`, `None` and `undefined`, a lookup of the terminal by its id finds it, a window of
 the selected application joins a `where` selection, and the
 close of a window is heard through the `gnoblin` object with its last title still readable. A retitle is not asserted in a real

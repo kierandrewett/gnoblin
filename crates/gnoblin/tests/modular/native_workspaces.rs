@@ -361,7 +361,7 @@ fn example_34_a_std_shell_tiles_real_windows_with_each_layout_and_drags_a_divide
 
 #[test]
 fn example_34_a_python_shell_tiles_real_windows_with_each_layout_and_drags_a_divider() {
-    let dir = copy_example("34-native-workspaces-py");
+    let dir = copy_example("34-native-workspaces");
     let mut session = start_script(Start::Compositor, &dir.path().join("shell.py"), &[]);
     serving(&mut session);
     assert_the_workspaces_tile_real_windows_and_a_divider_moves(&mut session);

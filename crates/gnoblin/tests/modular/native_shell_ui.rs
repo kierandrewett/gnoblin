@@ -159,7 +159,7 @@ fn example_31_a_std_shell_raises_the_alert_opens_the_launcher_flips_the_overview
 #[test]
 fn example_31_a_typescript_shell_raises_the_alert_opens_the_launcher_flips_the_overview_and_locks_with_its_own_screen()
 {
-    let dir = copy_example("31-native-shell-ui-ts");
+    let dir = copy_example("31-native-shell-ui");
     let mut session = start_script_in(home(), None, Start::Compositor, &dir.path().join("shell.ts"), &[]);
     serving(&mut session);
     the_shell_ui_works(&mut session);
@@ -167,7 +167,7 @@ fn example_31_a_typescript_shell_raises_the_alert_opens_the_launcher_flips_the_o
 
 #[test]
 fn example_31_a_python_shell_raises_the_alert_opens_the_launcher_flips_the_overview_and_locks_with_its_own_screen() {
-    let dir = copy_example("31-native-shell-ui-py");
+    let dir = copy_example("31-native-shell-ui");
     let mut session = start_script_in(home(), None, Start::Compositor, &dir.path().join("shell.py"), &[]);
     serving(&mut session);
     the_shell_ui_works(&mut session);

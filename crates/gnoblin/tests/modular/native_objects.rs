@@ -98,13 +98,13 @@ fn script_session(name: &str, file: &str) -> (tempfile::TempDir, Gnoblin) {
 
 #[test]
 fn example_26_a_typescript_shell_lays_out_a_workspace_with_its_own_layout_and_moves_a_divider() {
-    let (_dir, mut session) = script_session("26-native-objects-ts", "shell.ts");
+    let (_dir, mut session) = script_session("26-native-objects", "shell.ts");
     the_workspace_is_laid_out_by_the_library_and_by_the_shell(&mut session);
 }
 
 #[test]
 fn example_26_a_python_shell_lays_out_a_workspace_with_its_own_layout_and_moves_a_divider() {
-    let (_dir, mut session) = script_session("26-native-objects-py", "shell.py");
+    let (_dir, mut session) = script_session("26-native-objects", "shell.py");
     the_workspace_is_laid_out_by_the_library_and_by_the_shell(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
 }
