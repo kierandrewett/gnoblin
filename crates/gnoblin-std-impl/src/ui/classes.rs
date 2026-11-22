@@ -7,7 +7,7 @@ use gnoblin_object::server::{Builder, ClassBuilder, Cx};
 use gnoblin_object::{Fail, Res, Val};
 
 use super::tree::ui_of;
-use super::widget::{BarPart, Behaviour, CanvasHandle, Cid, ClockPart, Special, Widget, WidgetKind, en};
+use super::widget::{BarPart, Behaviour, CanvasHandle, Cid, ClockPart, Metrics, Special, Widget, WidgetKind, en};
 use super::{clock, entry, paint, toast};
 use crate::object::with_lib;
 
@@ -242,6 +242,18 @@ pub(crate) fn box_members(class: Class<'_>) -> Class<'_> {
         .set("radius", |h, _, v| h.edit(|w| w.b.radius = v.double().unwrap_or(0.0)))
 }
 
+/// A `text_metrics` record of `metrics`.
+pub(super) fn metrics_val(metrics: Metrics) -> Val {
+    Val::Record {
+        class: 0,
+        fields: vec![
+            Val::Double(metrics.width),
+            Val::Double(metrics.height),
+            Val::Double(metrics.ascent),
+        ],
+    }
+}
+
 /// The members a text adds.
 pub(crate) fn text_members(class: Class<'_>) -> Class<'_> {
     class
@@ -266,13 +278,7 @@ pub(crate) fn text_members(class: Class<'_>) -> Class<'_> {
         .set("ellipsize", |h, _, v| {
             h.edit(|w| w.t.ellipsize = v.bool().unwrap_or(false))
         })
-        .get("metrics", |h, _| {
-            let m = h.ui.metrics(h.cid);
-            Ok(Val::Record {
-                class: 0,
-                fields: vec![Val::Double(m.width), Val::Double(m.height), Val::Double(m.ascent)],
-            })
-        })
+        .get("metrics", |h, _| Ok(metrics_val(h.ui.metrics(h.cid))))
         .get("ascent", |h, _| Ok(Val::Double(h.ui.metrics(h.cid).ascent)))
         .method("shown", |h, _, _| Ok(Val::Text(h.ui.shown(h.cid))))
 }

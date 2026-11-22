@@ -257,6 +257,8 @@ member | text_metrics.ascent | property double rw | 0.2.0
 member | text_metrics.height | property double rw | 0.2.0
 member | text_metrics.width | property double rw | 0.2.0
 member | ui.canvas_count | function () -> uint | 0.2.0
+member | ui.encode_paint_list | function (ops:list<object:paint_op>) -> bytes | 0.2.0
+member | ui.estimate_text | function (text:string, size:double) -> object:text_metrics | 0.2.0
 member | ui.focus | function (node:uint) | 0.2.0
 member | ui.focused | function () -> uint | 0.2.0
 member | ui.locked | function () -> bool | 0.2.0

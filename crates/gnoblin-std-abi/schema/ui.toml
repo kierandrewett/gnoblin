@@ -865,6 +865,35 @@ since = "0.2.0"
 name = "ui"
 since = "0.2.0"
 
+# What the library guesses a string's size to be when it cannot be measured, and what a text shows until its measurement comes: half the
+# font size for each character (counted by code point) in the widest line, a line of one and a half font sizes (the fraction dropped) for
+# each line, and a baseline 1.1 font sizes from the top (the fraction dropped). It needs no desktop and asks no one. It is a function of `ui` and not of `text`, so that the classes that derive from `text` do not each carry it.
+[[object.method]]
+name = "estimate_text"
+since = "0.2.0"
+function = true
+returns = "object:text_metrics"
+
+[[object.method.param]]
+name = "text"
+type = "string"
+
+[[object.method.param]]
+name = "size"
+type = "double"
+
+# The bytes a canvas's `content` holds for `ops`: `GNPL`, a version byte, the number of operations as a `u32`, then each operation's tag
+# and fields, little-endian. A list that cannot be encoded is refused as a whole, and the message names the operation (`draw op 2: ...`).
+[[object.method]]
+name = "encode_paint_list"
+since = "0.2.0"
+function = true
+returns = "bytes"
+
+[[object.method.param]]
+name = "ops"
+type = "list<object:paint_op>"
+
 # Milliseconds on a clock that only moves forward.
 [[object.method]]
 name = "now"

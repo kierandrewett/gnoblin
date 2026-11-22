@@ -537,3 +537,186 @@ fn a_canvas_that_fails_to_paint_is_counted_each_turn_and_reported_once() {
     assert_eq!(rig.comp.value(bad.node(), "content"), None);
     assert!(bad.flag("alive"));
 }
+
+// ---- the paint list's encoding and the estimate, as functions ----------------------------------------------------------------------------
+
+/// A `paint_op` record: the fields given, by position in the catalog (`op`, `x`, `y`, `width`, `height`, `radius`, `fill`, `stroke`,
+/// `stroke_width`, `x1`, `y1`, `x2`, `y2`, `size`, `color`, `text`, `font`, `name`, `alpha`).
+fn paint_op(kind: u32, given: &[(usize, Val)]) -> Val {
+    let mut fields = vec![Val::None; 19];
+    fields[0] = en(kind);
+    for (index, value) in given {
+        fields[*index] = value.clone();
+    }
+    Val::Record { class: 0, fields }
+}
+
+/// `ui.encode_paint_list` of `ops`, as the shell's call would see its answer.
+fn encoded(rig: &Rig, ops: Vec<Val>) -> Result<Vec<u8>, String> {
+    let class = rig.api.class("ui").expect("the class");
+    let member = rig
+        .api
+        .member(class, MEMBER_METHOD, "encode_paint_list")
+        .expect("the function");
+    match rig.api.call_static(class, member, &[Val::List(ops)]) {
+        Ok(Val::Bytes(bytes)) => Ok(bytes),
+        Ok(other) => panic!("bytes were expected, not {other:?}"),
+        Err(fail) => Err(fail.to_string()),
+    }
+}
+
+fn le(value: f32) -> [u8; 4] {
+    value.to_le_bytes()
+}
+
+#[test]
+fn a_paint_list_is_encoded_as_the_bytes_the_compositor_reads() {
+    let rig = scratch();
+    // Nothing to draw: the magic, the version and a count of none.
+    assert_eq!(encoded(&rig, vec![]).expect("an empty list"), b"GNPL\x01\0\0\0\0");
+
+    // A rectangle that leaves its radius, stroke and stroke width out, a text that leaves its position, size, colour and font out, a
+    // line that leaves its width and colour out, and the four ops that name no field of a list's own.
+    let ops = vec![
+        paint_op(
+            1,
+            &[
+                (1, d(1.0)),
+                (2, d(2.0)),
+                (3, d(30.0)),
+                (4, d(40.0)),
+                (6, t("#ff000080")),
+            ],
+        ),
+        paint_op(3, &[(15, t("h\u{e9} \u{1f600}"))]),
+        paint_op(2, &[(9, d(0.0)), (10, d(0.0)), (11, d(5.0)), (12, d(6.0))]),
+        paint_op(4, &[(17, t("folder")), (13, d(24.0)), (14, t("#abc"))]),
+        paint_op(5, &[(1, d(1.0)), (2, d(1.0)), (3, d(8.0)), (4, d(9.0)), (5, d(2.0))]),
+        paint_op(6, &[]),
+        paint_op(7, &[(18, d(0.5))]),
+        paint_op(8, &[]),
+    ];
+    let mut want: Vec<u8> = b"GNPL\x01".to_vec();
+    want.extend(8_u32.to_le_bytes());
+    // rect
+    want.push(1);
+    for number in [1.0, 2.0, 30.0, 40.0, 0.0] {
+        want.extend(le(number));
+    }
+    want.extend(0xff00_0080_u32.to_le_bytes());
+    want.extend(0_u32.to_le_bytes());
+    want.extend(le(0.0));
+    // text: the default position, size 14, opaque white, the font `sans`, a `u32` length in front of the UTF-8
+    want.push(3);
+    for number in [0.0, 0.0, 14.0] {
+        want.extend(le(number));
+    }
+    want.extend(0xffff_ffff_u32.to_le_bytes());
+    want.extend(4_u16.to_le_bytes());
+    want.extend(b"sans");
+    let text = "h\u{e9} \u{1f600}";
+    want.extend((text.len() as u32).to_le_bytes());
+    want.extend(text.as_bytes());
+    // line: width 1, opaque white
+    want.push(2);
+    for number in [0.0, 0.0, 5.0, 6.0, 1.0] {
+        want.extend(le(number));
+    }
+    want.extend(0xffff_ffff_u32.to_le_bytes());
+    // icon: a `u16` length in front of the name, the short colour `#abc` spelt out
+    want.push(4);
+    for number in [0.0, 0.0, 24.0] {
+        want.extend(le(number));
+    }
+    want.extend(0xaabb_ccff_u32.to_le_bytes());
+    want.extend(6_u16.to_le_bytes());
+    want.extend(b"folder");
+    // push-clip, pop-clip, push-opacity, pop-opacity
+    want.push(5);
+    for number in [1.0, 1.0, 8.0, 9.0, 2.0] {
+        want.extend(le(number));
+    }
+    want.push(6);
+    want.push(7);
+    want.extend(le(0.5));
+    want.push(8);
+    assert_eq!(encoded(&rig, ops).expect("a list"), want);
+    // What the compositor reads back is what was asked.
+    let list = decode(&want).expect("the compositor reads it");
+    assert_eq!(list.ops.len(), 8);
+}
+
+#[test]
+fn a_paint_list_with_one_bad_op_is_refused_whole_and_names_the_op() {
+    let rig = scratch();
+    let good = paint_op(1, &[(3, d(1.0)), (4, d(1.0))]);
+    let bad_colour = paint_op(1, &[(6, t("red"))]);
+    let message = encoded(&rig, vec![good.clone(), bad_colour]).expect_err("a colour that is not one");
+    assert!(
+        message.contains("draw op 2: a colour is #rgb, #rgba, #rrggbb or #rrggbbaa, not red"),
+        "{message}"
+    );
+    for (what, op, want) in [
+        (
+            "not a number",
+            paint_op(1, &[(1, d(f64::NAN))]),
+            "draw op 2: expected a finite number, not NaN",
+        ),
+        (
+            "infinite",
+            paint_op(2, &[(11, d(f64::INFINITY))]),
+            "draw op 2: expected a finite number, not Infinity",
+        ),
+        (
+            "a text without its string",
+            paint_op(3, &[]),
+            "draw op 2: a text needs its text field",
+        ),
+        (
+            "an icon without its name",
+            paint_op(4, &[]),
+            "draw op 2: a name needs its name field",
+        ),
+    ] {
+        let message = encoded(&rig, vec![good.clone(), op]).expect_err(what);
+        assert!(message.contains(want), "{what}: {message}");
+    }
+    // The shell that gave something that is not a list of ops is told so, and nothing is encoded.
+    let class = rig.api.class("ui").expect("the class");
+    let member = rig
+        .api
+        .member(class, MEMBER_METHOD, "encode_paint_list")
+        .expect("the function");
+    assert!(rig.api.call_static(class, member, &[t("rect")]).is_err());
+}
+
+#[test]
+fn a_text_is_estimated_without_a_desktop_by_the_rule_a_text_falls_back_on() {
+    let rig = scratch();
+    let estimate = |text: &str, size: f64| -> (f64, f64, f64) {
+        match rig.function("ui", "estimate_text", &[t(text), d(size)]) {
+            Val::Record { fields, .. } => match fields.as_slice() {
+                [Val::Double(width), Val::Double(height), Val::Double(ascent)] => (*width, *height, *ascent),
+                other => panic!("three numbers were expected, not {other:?}"),
+            },
+            other => panic!("a record was expected, not {other:?}"),
+        }
+    };
+    // Half the size for each character, a line and a half for each line, a baseline at 1.1 sizes.
+    assert_eq!(estimate("Hello", 10.0), (25.0, 15.0, 11.0));
+    // The widest line gives the width, every line adds a height, and an empty line counts.
+    assert_eq!(estimate("a\nbbbb\ncc", 10.0), (20.0, 45.0, 11.0));
+    assert_eq!(estimate("", 12.0), (0.0, 18.0, 13.0));
+    assert_eq!(estimate("a\n", 10.0), (5.0, 30.0, 11.0));
+    // A character is a code point, whatever its bytes; every fraction is dropped.
+    assert_eq!(estimate("h\u{e9}llo", 10.0).0, 25.0);
+    assert_eq!(estimate("\u{1f600}", 10.0).0, 5.0);
+    assert_eq!(estimate("ab", 13.0), (13.0, 19.0, 14.0));
+    // A call that gives no number is refused.
+    let class = rig.api.class("ui").expect("the class");
+    let member = rig
+        .api
+        .member(class, MEMBER_METHOD, "estimate_text")
+        .expect("the function");
+    assert!(rig.api.call_static(class, member, &[t("x"), t("big")]).is_err());
+}

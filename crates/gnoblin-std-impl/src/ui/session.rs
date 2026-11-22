@@ -6,6 +6,9 @@ use std::rc::Rc;
 use gnoblin_object::server::Builder;
 use gnoblin_object::{Closure, Fail, Res, Val};
 
+use super::classes::metrics_val;
+use super::paint;
+use super::text;
 use super::tree::ui_of;
 use super::update::now_ms;
 use super::widget::{Hook, Ui};
@@ -141,6 +144,13 @@ pub(super) fn register(builder: &mut Builder) {
     let _ = builder
         .class::<()>("ui")
         .function("now", |_cx, _args| Ok(Val::Double(now_ms())))
+        .function("estimate_text", |_cx, args| {
+            Ok(metrics_val(text::estimate(args[0].text()?, args[1].double()?)))
+        })
+        .function("encode_paint_list", |_cx, args| {
+            let ops = paint::read(&args[0]).map_err(Fail::err)?;
+            Ok(Val::Bytes(paint::bytes(ops)))
+        })
         .function("focused", |cx, _args| {
             let ui = ui_of(cx)?;
             Ok(Val::Uint(ui.seat_focus().unwrap_or(0)))
