@@ -12,7 +12,7 @@ says what each is for, so you can tell before you run it.
 | `native-probe.sh`                | Probe one target image for the native libraries the workspace needs, and store the report         | by hand (`cargo xtask native-probe` documents it)  |
 | `oci-rootfs.py`                  | Unpack a container image from its registry into a plain directory, with no container runtime      | `native-probe.sh`                                  |
 | `probe-rpm-target.py`            | Record the library floor of a distribution image                                                  | `rpm-target-probes.yml`                            |
-| `check-packaging-targets.py`     | Validate the package target list in `design/package-targets.json`                                 | `packaging-targets.yml`                            |
+| `check-packaging-targets.py`     | Validate the package target list in `design/packaging/targets.json`                               | `packaging-targets.yml`                            |
 | `pkgrepo/`                       | Build, sign and upload the RPM, APT, pacman and Alpine repositories (`pkgrepo/README.md`)         | `package-repository.yml`                           |
 
 ## Conformance and parity

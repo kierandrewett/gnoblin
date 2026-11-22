@@ -3,14 +3,14 @@
 
 usage: scripts/oci-rootfs.py IMAGE DEST
 
-IMAGE is a name as `design/package-targets.json` writes it (`fedora:45`, `quay.io/rockylinux/rockylinux:9`,
+IMAGE is a name as `design/packaging/targets.json` writes it (`fedora:45`, `quay.io/rockylinux/rockylinux:9`,
 `registry.opensuse.org/opensuse/leap:16.0`). DEST becomes the image's root file system. Run it as root so the
 ownership in the layers is kept: `dpkg`, `rpm` and `apk` read it back.
 
 Why this exists: an Agent37 instance has no podman, docker or skopeo and cannot mount, but it can `chroot` as root,
 so an image is only a tree of files to it. Anonymous registry access is enough for every public image the targets
 name. Device nodes in a layer are skipped (mknod is refused there), and a layer's whiteouts are applied the way the
-OCI image specification says. The architecture is linux/amd64 because `design/package-targets.json` says x86_64.
+OCI image specification says. The architecture is linux/amd64 because `design/packaging/targets.json` says x86_64.
 """
 
 import gzip

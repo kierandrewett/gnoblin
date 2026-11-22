@@ -1,7 +1,7 @@
 # JS runtime: tests against a real compositor and test timing
 
 How the runtime is tested against a real compositor session, and the rule that no assertion rests on how fast a machine
-is. Part of the [JS/TS runtime design](js-runtime.md).
+is. Part of the [JS/TS runtime design](runtime.md).
 
 ## Real-compositor tests
 
@@ -104,7 +104,7 @@ beside it passes. Both are the proof a change to these tests needs.
 - **An honest script gets `HONEST_BUDGET`, 5 s,** for each call and 10 s for a frame (`honest_config`, and
   `honest_role_config` for a role). The product's budgets (`src/budget.rs`: 1 s per listener call, 5 s per frame, 30 s
   per module load) are a limit on a script that hangs the shell, and are set above what a loaded machine needs; see
-  ["Product budgets"](js-runtime-budgets.md#product-budgets) for the measurements.
+  ["Product budgets"](runtime-budgets.md#product-budgets) for the measurements.
 - **A test about a budget runs a script that never ends,** under a short budget (`RUNAWAY_BUDGET`, 500 ms: not shorter,
   because the honest calls the same budget covers must not be able to trip it), and asserts that the script was
   interrupted, never when.

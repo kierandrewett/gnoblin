@@ -2957,7 +2957,7 @@ fn the_shells_own_writes_to_the_head_camera_are_not_disturbed_by_an_observer_wri
 }
 
 // ---------------------------------------------------------------------------
-// The controllers: the hands the XR program makes as an observer (design/js-xr.md).
+// The controllers: the hands the XR program makes as an observer (design/js/xr.md).
 
 /// A hand made the way the XR program makes it: new, then its values, and no parent.
 fn unparented_controller(id: u64, hand: &str) -> Vec<op::Properties> {

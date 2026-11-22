@@ -1,7 +1,7 @@
 # JS runtime: performance
 
 What the runtime costs when it starts and when nothing happens: the bytecode cache and change gating. Part of the [JS/TS
-runtime design](js-runtime.md).
+runtime design](runtime.md).
 
 ## Performance
 

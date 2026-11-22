@@ -1,7 +1,7 @@
 # JS runtime: hot reload and generations
 
 How the runtime swaps a whole generation when a file changes, what a failed reload keeps, and how seat claims survive
-the swap. Part of the [JS/TS runtime design](js-runtime.md).
+the swap. Part of the [JS/TS runtime design](runtime.md).
 
 ## Hot reload
 

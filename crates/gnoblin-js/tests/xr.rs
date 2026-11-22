@@ -1,4 +1,4 @@
-//! XR on the JS shell (`data/js/gnoblin-std/{scene,extensions/xr}.ts`, `design/js-xr.md`) over the fake compositor of `tests/common`.
+//! XR on the JS shell (`data/js/gnoblin-std/{scene,extensions/xr}.ts`, `design/js/xr.md`) over the fake compositor of `tests/common`.
 //!
 //! The XR program is out of process, so what the shell sees of it is nodes: the seat named `xr`, the camera named
 //! `head`, and `controller` nodes. These tests make those nodes the way the program does (unparented, while the shell
@@ -1797,7 +1797,7 @@ fn a_settle_time_past_the_cap_claims_at_the_cap_so_the_claim_still_fits_the_prog
     );
 }
 
-// ---- The specification's XR surface (design/js-spec-native.md, "XR extension") --------------------------------------
+// ---- The specification's XR surface ---------------------------------------------------------------------------------
 
 /// A code fence of the owner's specification, verbatim.
 fn fence(name: &str) -> String {

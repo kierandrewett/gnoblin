@@ -20,7 +20,7 @@
 #   cargo build --release -p gnoblin -p gnoblinctl -p gnoblin-core-impl   (the binary records libgnoblin-core.so.1; the
 #   core-impl build links it beside the binary, `cargo xtask stage --release` does it too)
 #   scripts/js-shell-screenshots.sh ./shots
-# design/js-runtime-live-verification.md, "Live verification", says how to run it through a37-gate.sh.
+# design/js/runtime-live-verification.md, "Live verification", says how to run it through a37-gate.sh.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

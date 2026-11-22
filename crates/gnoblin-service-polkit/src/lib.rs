@@ -6,7 +6,7 @@
 //! PAM, and only when PAM says yes it tells polkitd itself (`AuthenticationAgentResponse2`, which polkitd accepts
 //! from root alone) before it prints `SUCCESS`. The reply to `BeginAuthentication` is only the agent's note that the
 //! dialog ended, and polkitd reads whether the user authenticated from the helper's call, not from this reply
-//! (design/js-research/polkit.md). This module is that interface, and nothing else in the crate knows a bus name.
+//! (design/js/research/polkit.md). This module is that interface, and nothing else in the crate knows a bus name.
 //!
 //! Three properties of the interface shape the code:
 //!

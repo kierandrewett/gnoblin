@@ -1,7 +1,7 @@
 //! Hot reload and swap: the protocol every language runtime shares.
 //!
 //! A reload stages a fresh generation from disk, hands it to the caller's `commit` closure (the compositor commit,
-//! `design/js-research/quickjs-embedding.md` section 5, step 5), and only when that accepts does it make the generation
+//! `design/js/research/quickjs-embedding.md` section 5, step 5), and only when that accepts does it make the generation
 //! current and drop the old one. Any failure on the way (a parse error, a throw, a runaway loop, a failing `init`, a
 //! rejected commit) leaves the running generation exactly as it was and comes back as a [`ReloadReport`] with the failing
 //! file, line and column in the author's coordinates.

@@ -1,7 +1,7 @@
 # JS runtime: live verification
 
 The pictures of the shipped shell, the defects they showed and how each was fixed. Part of the [JS/TS runtime
-design](js-runtime.md).
+design](runtime.md).
 
 ## Live verification
 
@@ -132,8 +132,8 @@ was refused` at WARN. The new generation claimed each stock key while the old on
     key did nothing.
 
     State: Fixed . A staged generation's claims wait for the swap and go out behind the old
-    generation's releases, in one transaction (["Hot reload"](js-runtime-reload.md#hot-reload), ["Seat claims across a
-    reload"](js-runtime-reload.md#seat-claims-across-a-reload)). Tests: `crates/gnoblin-js/tests/input.rs`, real:
+    generation's releases, in one transaction (["Hot reload"](runtime-reload.md#hot-reload), ["Seat claims across a
+    reload"](runtime-reload.md#seat-claims-across-a-reload)). Tests: `crates/gnoblin-js/tests/input.rs`, real:
     `a_reload_hands_every_seat_claim_over_so_each_shortcut_fires_once_and_a_removed_one_is_released`.
 
 - **7.** every `.log`

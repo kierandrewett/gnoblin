@@ -79,7 +79,7 @@ const LEGACY_TYPES_HEADER: &str = "// gnoblin.d.ts: the types of the Gnoblin Jav
 
 /// The generated `tsconfig.json`: what an editor or `tsc` needs to check a configuration written in TypeScript.
 ///
-/// The options follow design/js-runtime.md: strict, ES modules resolved the way a bundler does, `.ts` extensions
+/// The options follow design/js/runtime.md: strict, ES modules resolved the way a bundler does, `.ts` extensions
 /// importable (the runtime resolves them), and no emit, because nothing here compiles: the runtime strips types itself.
 /// Each package, `gnoblin-core` and `gnoblin-std`, is mapped with its submodules to the real sources
 /// (`lib/gnoblin-core/index.ts` and `lib/gnoblin-core/*`, the same for `gnoblin-std`), which is what makes

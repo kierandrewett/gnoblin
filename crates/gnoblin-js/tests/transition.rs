@@ -1,6 +1,6 @@
 //! `gnoblin.requestTransition` over a fake compositor: the callback runs once, its writes are staged and travel as one
 //! transaction of timed writes, a layout change inside it is computed once and every window tweens from where it is, and a
-//! failure leaves the previous state (`design/js-research/spec-review.md`, rows AN1, AN2, AN6 to AN8).
+//! failure leaves the previous state (`design/js/research/spec-review.md`, rows AN1, AN2, AN6 to AN8).
 //!
 //! The fake compositor applies a write at once, so what a test reads back from it is the logical state the transition
 //! committed; what the compositor draws on the way is its tween player's (`gnoblin-wayland/tests/tree_live.rs`) and is

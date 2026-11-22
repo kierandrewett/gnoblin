@@ -82,7 +82,7 @@ hosted runner.
 cargo xtask stage && cargo build -p gnoblin && target/debug/gnoblin --version
 ```
 
-`GNOBLIN_CORE_LIB_DIR=target/debug` links the real library (its linker name is staged too) instead of the stub. `GNOBLIN_RPATH` replaces the run path when `gnoblin` is built, and an empty value leaves none: a distribution package installs under `/usr`, which the loader searches. `just dist-check` builds the workspace, stages, installs into three temporary trees and runs `cargo xtask dist-check` on the build tree and on each (SONAME and exports of the core, `NEEDED` once, no `gnoblin_*` in a shell, every gnoblin library resolving inside the tree, links, header, `.pc`, manifest, the glibc floor, and `gnoblin --version` run with `LD_LIBRARY_PATH` unset); CI runs it. `design/dist-status.md` has the install layout.
+`GNOBLIN_CORE_LIB_DIR=target/debug` links the real library (its linker name is staged too) instead of the stub. `GNOBLIN_RPATH` replaces the run path when `gnoblin` is built, and an empty value leaves none: a distribution package installs under `/usr`, which the loader searches. `just dist-check` builds the workspace, stages, installs into three temporary trees and runs `cargo xtask dist-check` on the build tree and on each (SONAME and exports of the core, `NEEDED` once, no `gnoblin_*` in a shell, every gnoblin library resolving inside the tree, links, header, `.pc`, manifest, the glibc floor, and `gnoblin --version` run with `LD_LIBRARY_PATH` unset); CI runs it. `design/status/dist.md` has the install layout.
 
 ## Full suite
 
@@ -173,7 +173,7 @@ is the crate and the binary alike. Library crates take their area prefix, such a
 [install layout](docs/install-layout.md)); `just dist-check` checks how it links and what it installs. The release
 workflow that builds distribution packages from that install, and runs them through a clean-install and login check on
 each target, is tracked in [issue 379](https://github.com/kierandrewett/gnoblin/issues/379).
-[Package repositories](design/package-repositories.md) describes the signed repository that `scripts/pkgrepo` builds and
+[Package repositories](design/packaging/repositories.md) describes the signed repository that `scripts/pkgrepo` builds and
 `.github/workflows/package-repository.yml` publishes.
 
 Use small conventional commits. Keep unrelated working-tree changes out of a

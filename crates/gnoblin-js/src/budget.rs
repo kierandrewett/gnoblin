@@ -14,7 +14,7 @@
 //! # Where the numbers come from
 //!
 //! `tests/budgets.rs` boots the stock desktop with 40 windows and churns 300 frames, on a 4-CPU Agent37 instance in
-//! release (design/js-runtime-budgets.md, "Product budgets", has the table). Idle, a frame took 9 ms at the median and 71 ms
+//! release (design/js/runtime-budgets.md, "Product budgets", has the table). Idle, a frame took 9 ms at the median and 71 ms
 //! at worst. With two busy threads per CPU, which is a build running beside the desktop, the previous budgets (5 s to
 //! load, 100 ms per listener call, 500 ms per frame) were exceeded 7 times in 300 frames, more than the three strikes in
 //! 30 s that stop a generation, because the worst frame took 1.25 s. With the values below no budget fired at two busy

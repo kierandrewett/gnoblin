@@ -5,7 +5,7 @@
 //! whether the password was right: [`PolkitDialog`] collects it in [`PolkitUi`], runs polkit's own
 //! `polkit-agent-helper-1` for the identity the user chose with the request's cookie, shows the PAM prompts the
 //! helper sends back, and reports [`PolkitOutcome::Authenticated`] only when the helper itself says `SUCCESS`. The helper
-//! has by then told polkitd, which is the authority (design/js-research/polkit.md).
+//! has by then told polkitd, which is the authority (design/js/research/polkit.md).
 //!
 //! [`PolkitDialog`] never touches a socket or the screen. [`super::secret::SecretService`] gives it keys and the
 //! clock and draws its card; it returns what the dialog ended in.
@@ -242,7 +242,7 @@ impl std::fmt::Debug for PolkitDialog {
 }
 
 /// Fake helpers for the dialog's tests and the service's: scripts that speak the real helper's protocol
-/// (design/js-research/polkit.md). They run no PAM and talk to no polkitd.
+/// (design/js/research/polkit.md). They run no PAM and talk to no polkitd.
 #[cfg(test)]
 pub(crate) mod fake {
     use std::os::unix::fs::PermissionsExt as _;

@@ -1,7 +1,7 @@
 //! Every time of the script API is in milliseconds, and the easings are the CSS names.
 //!
 //! The owner's specification says "milliseconds (the JS API uses ms consistently)" and names its easings the CSS way
-//! (`design/js-research/owner-spec.md`, "TransitionOptions"). Two halves hold that:
+//! (`design/js/research/owner-spec.md`, "TransitionOptions"). Two halves hold that:
 //!
 //! - a scan of everything a script reads (the library sources, the declarations, the shell API pages) that fails when a
 //!   time is documented in seconds, or an old easing name comes back, and

@@ -3,7 +3,7 @@
 One visual language for every Gnoblin command-line tool: `gnoblinctl`, `gnoblin`,
 `gnoblin-parity` and `xtask`. The shared code lives in the `gnoblin-cli-style` crate.
 The rules for command shape, arguments and exit codes stay in
-[cli-development.md](cli-development.md); this document covers how output looks.
+[development.md](development.md); this document covers how output looks.
 
 ## Principles
 
@@ -19,7 +19,7 @@ The rules for command shape, arguments and exit codes stay in
   next.** The shape is an error block with a `hint:` line (see Components). A
   message that only names the failure is a bug.
 - **Exit codes are documented and do not change with styling.** The codes are in
-  `docs/cli/index.md` and in cli-development.md. Styling never alters them.
+  `docs/cli/index.md` and in development.md. Styling never alters them.
 - **Width-aware.** The default width is 80 columns. The minimum is 40. Wrap
   prose, truncate table cells with an ellipsis, and never break a table row across
   lines. Width comes from the terminal when one is attached and from `COLUMNS`

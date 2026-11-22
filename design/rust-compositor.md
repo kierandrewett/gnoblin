@@ -374,7 +374,7 @@ The audit covered every crate, `data/`, `docs/`, `tests/` and `design/` at
 | A per-client cover state machine                                    | `gnoblin-lock/src/protection.rs` (544 lines), `protection_tests.rs` (472), `lib.rs:100-111`                                                                                                                                                               | Deleted                                                                |
 | A covered set of clients in the session lock, never fed by anything | `gnoblin-lock/src/lock.rs:415-446`, `event.rs:77-84`, `model.rs:78-82`, `ids.rs:14-24` (`SubjectAdded`, `SubjectRemoved`, `Subject::Client` as a covered subject)                                                                                         | Deleted (the lock covers the session, as it did)                       |
 | A scenario nobody can run                                           | `tests/parity/scenarios/nested-session-ipc.toml`, `tests/parity/README.md:30,153-158`, `tests/parity/divergences.toml:34`, `crates/gnoblin-parity/tests/scenarios.rs:42,199-204`                                                                          | Deleted                                                                |
-| Design and docs                                                     | this file (D4, D21, the protocol table, the Bingux contracts), `design/capture-protocols.md:17`, `CHANGELOG.md`                                                                                                                                           | Rewritten                                                              |
+| Design and docs                                                     | this file (D4, D21, the protocol table, the Bingux contracts), `design/capture/protocols.md:17`, `CHANGELOG.md`                                                                                                                                           | Rewritten                                                              |
 | The nested backend and its settings                                 | `gnoblin-backend/src/nested/`, `gnoblin-compositor/src/backend.rs:150-152,213-228`, `backend_select.rs`, `compositor.nested-*`                                                                                                                            | Stays: it is a backend, not a host path                                |
 | Closing the last backend window ends the session                    | `src/server.rs:924`, `gnoblin-backend/src/lib.rs:744`                                                                                                                                                                                                     | Stays: the backend's event, as for a window-backed development session |
 | The host's decisions about a hosted session                         | Nothing else. `gnoblin-session`, `gnoblin-core-impl`, `gnoblin-compositor/src/ipc`, `data/js` and the C tree contain no nested branch                                                                                                                     | Clean                                                                  |
@@ -409,7 +409,7 @@ configuration which user's window to show. The flags are the ones every window h
 - **Captured:** the configuration marks the window `secure` (a window rule that
   matches the nested session's `app_id`). Every capture of the host then masks it,
   whether the reader asked for an output or for the window
-  (`design/security-secure-content-in-views.md`). It is the mark a password
+  (`design/capture/secure-content-in-views.md`). It is the mark a password
   dialog uses.
 - **Locked:** `ext-session-lock-v1` on the host covers every window on every
   output, the nested window included, and holds the capture embargo until the
@@ -558,7 +558,7 @@ The session exports the socket name as `GNOBLIN_PRIVILEGED_DISPLAY` to every chi
 - Flatpak 1.16.6 with the default permissions of `app.drey.Warp` hides it. Verified for that app only; see `docs/wayland-protocols.md`.
 - An app granted `xdg-run`, or a runtime-directory bind, may reach it. Not tested.
 
-Treat the privileged socket as a same-user boundary, not a capture-tool boundary. Two choices remain open in `capture-protocols.md`: the portal-style consent alternative, and the scope of the variable.
+Treat the privileged socket as a same-user boundary, not a capture-tool boundary. Two choices remain open in `capture/protocols.md`: the portal-style consent alternative, and the scope of the variable.
 
 ## Project structure
 
@@ -909,7 +909,7 @@ Landed:
   `gnoblin-wm`, `gnoblin-lock`, `gnoblin-authority`, `gnoblin-a11y`,
   `gnoblin-session`, `gnoblin-config`, `gnoblin-model` and `gnoblin-render`, and
   the capture-embargo list in `gnoblin-capture`: 36 entries from this plan,
-  `capture-api.md` and `supersample.md`, each with its test, and a
+  `capture/api.md` and `supersample.md`, each with its test, and a
   list of what is not covered and why. The lock and the capture table are tested
   together through whole lock cycles (`gnoblin-capture/tests/lock_cycle.rs`).
   Writing it found two defects, both fixed with a test: a session that changed
@@ -1441,18 +1441,18 @@ Accessibility is its own lane, not a side effect of input and rendering.
 
 | Area                     | What Gnoblin provides                                                                                                                          | Where                                             |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| Screen reader keys       | `org.freedesktop.a11y.KeyboardMonitor` for Orca: grab table in `gnoblin-a11y`; the D-Bus service is not started yet ([status](a11y-status.md)) | compositor, logic in `gnoblin-a11y`               |
-| Keyboard accessibility   | Sticky, slow, bounce and mouse keys: state machines in `gnoblin-a11y`, not yet on the live key path ([status](a11y-status.md))                 | `gnoblin-a11y` logic                              |
-| Magnifier                | Full-output zoom centred on the pointer, per output; drawn on screen, and captures take the last drawn frame ([status](a11y-status.md))        | `gnoblin-render-frame`, `gnoblin-compositor`      |
-| Colour filters           | Invert, greyscale, colour-blindness filters, drawn on screen ([status](a11y-status.md))                                                        | `gnoblin-render` passes                           |
-| Motion and contrast      | Animations honour reduced motion; contrast and reduced motion published to apps (D15); end-to-end checks open ([status](a11y-status.md))       | `gnoblin-render`, settings publish                |
-| Visual bell              | Screen or window flash for `xdg_system_bell`; no test draws it yet ([status](a11y-status.md))                                                  | `gnoblin-wayland` state                           |
-| Accessible recovery UI   | The egui dialogs (D5) are meant to expose an AT-SPI tree through AccessKit; not built, AccessKit is off ([status](a11y-status.md))             | `gnoblin-portal-ui`                               |
+| Screen reader keys       | `org.freedesktop.a11y.KeyboardMonitor` for Orca: grab table in `gnoblin-a11y`; the D-Bus service is not started yet ([status](status/a11y.md)) | compositor, logic in `gnoblin-a11y`               |
+| Keyboard accessibility   | Sticky, slow, bounce and mouse keys: state machines in `gnoblin-a11y`, not yet on the live key path ([status](status/a11y.md))                 | `gnoblin-a11y` logic                              |
+| Magnifier                | Full-output zoom centred on the pointer, per output; drawn on screen, and captures take the last drawn frame ([status](status/a11y.md))        | `gnoblin-render-frame`, `gnoblin-compositor`      |
+| Colour filters           | Invert, greyscale, colour-blindness filters, drawn on screen ([status](status/a11y.md))                                                        | `gnoblin-render` passes                           |
+| Motion and contrast      | Animations honour reduced motion; contrast and reduced motion published to apps (D15); end-to-end checks open ([status](status/a11y.md))       | `gnoblin-render`, settings publish                |
+| Visual bell              | Screen or window flash for `xdg_system_bell`; no test draws it yet ([status](status/a11y.md))                                                  | `gnoblin-wayland` state                           |
+| Accessible recovery UI   | The egui dialogs (D5) are meant to expose an AT-SPI tree through AccessKit; not built, AccessKit is off ([status](status/a11y.md))             | `gnoblin-portal-ui`                               |
 | Window and focus mapping | Focus changes on the IPC; `gtk_shell1` links windows to AT-SPI objects                                                                         | object model, `gnoblin-compat-wayland-gtk-shell1` |
 
 - **Not Gnoblin's job:** the on-screen keyboard and shell UI accessibility
   belong to the shell; app accessibility trees belong to the apps.
-- **Platform-wide gap:** no Gnoblin surface reaches assistive technology yet. `gnoblin-a11y` has no AT-SPI tree, so the window menu, window frames and portal dialogs are not readable through AT-SPI. This gap is accepted until that tree lands. The egui dialogs never enable AccessKit, so the claim at line 2558 does not hold yet. The options and plan are in [a11y-status.md](a11y-status.md).
+- **Platform-wide gap:** no Gnoblin surface reaches assistive technology yet. `gnoblin-a11y` has no AT-SPI tree, so the window menu, window frames and portal dialogs are not readable through AT-SPI. This gap is accepted until that tree lands. The egui dialogs never enable AccessKit, so the claim at line 2558 does not hold yet. The options and plan are in [status/a11y.md](status/a11y.md).
 - **Why the keyboard monitor stays in the compositor:** key grabs must decide
   before the focused client sees the key, so a process hop would add latency to
   every key press. It is the one D-Bus name the compositor serves itself.
@@ -1902,7 +1902,7 @@ D35 deletes capability gates and grants: there is no capability set, no grants f
 
 ### D1: where scripts run
 
-**Update:** the script runtime is the TypeScript shell on QuickJS (`design/js-runtime.md`, J1-J9), and it still runs as a separate process, the runtime role. "Lua worker" and "C script engine" below describe the engine as it was when this was decided.
+**Update:** the script runtime is the TypeScript shell on QuickJS (`design/js/runtime.md`, J1-J9), and it still runs as a separate process, the runtime role. "Lua worker" and "C script engine" below describe the engine as it was when this was decided.
 
 **Decided 2026-11-04: separate process.** The phase 0 measurements below still
 run, to set the latency budget for input policy decisions.

@@ -3,7 +3,7 @@
 //!
 //! A stock shell draws the lock screen and takes the typed password. This is the built-in that serves when none does:
 //! no shell attached, one that died while the session was locked, or one that never engaged the lock. Without it the
-//! user sees a black cover with nothing to type into (design/js-research/popups-portals.md, row 9). The session decides
+//! user sees a black cover with nothing to type into (design/js/research/popups-portals.md, row 9). The session decides
 //! when the card is wanted and takes the keys for it (`gnoblin-wayland`, `lock_card.rs`); this module only draws it and
 //! turns keys into a password. [`LockCardService::pump`] returns the [`LockCardScene`]: the overlay to show or clear and
 //! the passwords to check.

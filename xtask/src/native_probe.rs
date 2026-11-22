@@ -31,9 +31,9 @@ use crate::native_libs;
 const TABLE: &str = "tests/native-probe/libraries.toml";
 const RESULTS: &str = "tests/native-probe/results";
 const MATRIX: &str = "tests/native-probe/MATRIX.md";
-const TARGETS: &str = "design/package-targets.json";
+const TARGETS: &str = "design/packaging/targets.json";
 
-/// Images the design names that `package-targets.json` does not list: the apk packages are built in `alpine:edge`,
+/// Images the design names that `targets.json` does not list: the apk packages are built in `alpine:edge`,
 /// which is the only Alpine target.
 const EXTRA_IMAGES: &[(&str, &str)] = &[("alpine-edge", "alpine:edge")];
 
@@ -90,7 +90,7 @@ struct ProbeReport {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct ImageInfo {
-    /// The target id in `design/package-targets.json`.
+    /// The target id in `design/packaging/targets.json`.
     id: String,
     /// The image name the root file system came from.
     image: String,
@@ -641,7 +641,7 @@ fn option<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
         .map(String::as_str)
 }
 
-/// The `(id, image)` pairs of every target: `package-targets.json` first, then [`EXTRA_IMAGES`].
+/// The `(id, image)` pairs of every target: `targets.json` first, then [`EXTRA_IMAGES`].
 fn targets(root: &Path) -> Result<Vec<(String, String)>, String> {
     let text = fs::read_to_string(root.join(TARGETS)).map_err(|e| format!("{TARGETS}: {e}"))?;
     let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{TARGETS}: {e}"))?;

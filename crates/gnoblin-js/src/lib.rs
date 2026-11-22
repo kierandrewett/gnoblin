@@ -1,6 +1,6 @@
 //! The JavaScript shell runtime: TypeScript stripping, the module loader, and one QuickJS generation.
 //!
-//! The design is `design/js-runtime.md`. This crate is the engine core of the JS shell: it runs a user's
+//! The design is `design/js/runtime.md`. This crate is the engine core of the JS shell: it runs a user's
 //! `shell.ts` in a sandboxed QuickJS context, bounded in time and memory, and reports every failure at the
 //! line the author wrote.
 //!

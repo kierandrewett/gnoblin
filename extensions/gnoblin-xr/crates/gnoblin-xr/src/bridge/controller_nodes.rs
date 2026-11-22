@@ -3,7 +3,7 @@
 //!
 //! The owner is `controllers::owner`, which keeps the tree the program builds and publishes it back, so the bridge reads
 //! the shell's `claimed` from its own mirror as it would from a compositor. The shell's write is the owner's `claim`,
-//! made between frames. What this proves is the program's half of `design/js-xr.md`; the JS bindings' half is proved in
+//! made between frames. What this proves is the program's half of `design/js/xr.md`; the JS bindings' half is proved in
 //! `gnoblin-js`, and neither has met a headset.
 
 use std::collections::BTreeSet;

@@ -309,7 +309,7 @@ How each requirement is met:
   as it is not in `window_shape`'s frame today.
 - **Secure content.** Per subtree, by the View path's own rule: `secure_nodes` over the source subtree plus the whole-scene secure
   scope, so a window marked secure, a secure ancestor or a secure child is replaced by the mask (`Mask`) or left out (`Omit`), and a change in
-  what is secure is drawn again at once (`views.rs` docs on `render_views`; `design/security-secure-content-in-views.md`). Window
+  what is secure is drawn again at once (`views.rs` docs on `render_views`; `design/capture/secure-content-in-views.md`). Window
   sessions today keep running under the treatment (`capture_shared.rs:436`), where View sessions stop; E-flat keeps the window behaviour.
 - **Lock embargo.** Unchanged, because it keys on the target kind in the table and window and View targets follow one rule
   (`gnoblin-capture/src/lib.rs:113`, items 6 to 9: a granted window or View stream is refused under the lock, and a picture made before the lock

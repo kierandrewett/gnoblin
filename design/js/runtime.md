@@ -1,25 +1,24 @@
 # Gnoblin JS/TS runtime (D36)
 
 The JavaScript shell runs on QuickJS in the `gnoblin-js` process. The owner's API spec is
-`design/js-research/owner-spec.md` and wins on API shape. This file records the engineering decisions around it.
+`design/js/research/owner-spec.md` and wins on API shape. This file records the engineering decisions around it.
 
-Inputs (all in `design/js-research/`):
+Inputs (all in `design/js/research/`):
 
 - `quickjs-embedding.md`: engine, binding crate, hot reload, budgets.
 - `ts-in-quickjs.md`: how `.ts` runs, source maps, types.
-- `current-runtime-map.md`: what exists in Rust today and what a `gnoblin-js` crate replaces.
 - `spec-review.md`: contradictions in the spec, effort ranking, first slice, acceptance tests.
 - `popups-portals.md`: who draws built-in dialogs, API for them.
 
 ## Where the rest lives
 
-- [Hot reload and generations](js-runtime-reload.md): the generation swap, failed reloads and seat claims across a
+- [Hot reload and generations](runtime-reload.md): the generation swap, failed reloads and seat claims across a
   reload.
-- [Tests against a real compositor and test timing](js-runtime-testing.md): how the runtime is tested.
-- [Product budgets](js-runtime-budgets.md): the wall-clock limits on a script call and their measurements.
-- [Performance](js-runtime-performance.md): the bytecode cache and change gating.
-- [Live verification](js-runtime-live-verification.md): pictures of the shipped shell and the defects they showed.
-- [Time units and error codes](js-runtime-time-errors.md): milliseconds, easings and `ErrorCode`.
+- [Tests against a real compositor and test timing](runtime-testing.md): how the runtime is tested.
+- [Product budgets](runtime-budgets.md): the wall-clock limits on a script call and their measurements.
+- [Performance](runtime-performance.md): the bytecode cache and change gating.
+- [Live verification](runtime-live-verification.md): pictures of the shipped shell and the defects they showed.
+- [Time units and error codes](runtime-time-errors.md): milliseconds, easings and `ErrorCode`.
 
 ## Decisions
 
@@ -117,7 +116,7 @@ to run when they differ.
 
 Shell modules use the repository's Prettier configuration. Keep a file header, document public exports, and comment why
 a non-obvious choice or necessary `any` or type assertion exists. See
-[contributor commands and comment guidance](../CONTRIBUTING.md#typescript-shell-code).
+[contributor commands and comment guidance](../../CONTRIBUTING.md#typescript-shell-code).
 
 ## Zero-config baseline
 

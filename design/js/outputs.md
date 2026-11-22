@@ -1,7 +1,7 @@
 # Output modes: configuration, mirror, span and profiles
 
-Lane OutputMirror. Spec: `design/js-research/owner-spec.md` sections 9 and 21; acceptance DW1 to DW8 in
-`design/js-research/spec-review.md` section 5. User page: `docs/shell-api/outputs.md`.
+Lane OutputMirror. Spec: `design/js/research/owner-spec.md` sections 9 and 21; acceptance DW1 to DW8 in
+`design/js/research/spec-review.md` section 5. User page: `docs/shell-api/outputs.md`.
 
 ## What existed
 

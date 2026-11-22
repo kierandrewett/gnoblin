@@ -800,7 +800,7 @@ fn create_launched(rig: &mut Rig, id: u64) {
 fn a_launched_window_does_not_take_focus_but_a_window_nobody_launched_does() {
     // Before: `Focus.opens_focused(focus_settings(), self.from_launcher)`: a window from a launcher takes focus only when
     // `focus_new_windows` is `allow`. The the retired shell `from_launcher` was a field of the fake core only; here it is the real
-    // node's property. The `allow` half went with the `focus` key (design/js-spec-native.md, 3.11).
+    // node's property. The `allow` half went with the `focus` key.
     let mut rig = world(1, false, "new Layout()");
     give_focus(&mut rig, 3);
     create_launched(&mut rig, 30);

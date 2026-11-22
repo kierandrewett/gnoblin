@@ -116,7 +116,7 @@ fn observed_subject(offer: &Offer) -> Vec<u8> {
 
 /// Whether the compositor's own dialog serves the slot's requests when no shell does: the passphrase prompt when
 /// nobody claimed it, and polkit authentication always, because the compositor and not a script verifies the
-/// password (design/js-research/polkit.md).
+/// password (design/js/research/polkit.md).
 fn builtin_slot(slot: CapabilitySlot) -> bool {
     matches!(slot, CapabilitySlot::PromptSecret | CapabilitySlot::AuthPolkit)
 }

@@ -2,7 +2,7 @@
 //! answer, and the compositor starts a stream only for a session that has one.
 //!
 //! Each test starts a headless session pointed at a private `pipewire` daemon (the recipe in
-//! `design/pipewire-capture-spike.md`), speaks the portal's half of the IPC over a real socket,
+//! `design/capture/pipewire-spike.md`), speaks the portal's half of the IPC over a real socket,
 //! and asks the daemon with `pw-dump` what it holds. `gnoblin-pipewire-export`'s own tests prove
 //! the frames a stream carries; what is proven here is who may have a stream at all.
 

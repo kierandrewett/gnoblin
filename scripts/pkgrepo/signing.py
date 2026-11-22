@@ -2,7 +2,7 @@
 
 The private key never touches the repository tree. A CI job imports it into a throw-away GNUPGHOME from the secret
 REPO_GPG_PRIVATE_KEY, and the passphrase comes from REPO_GPG_PASSPHRASE (both names are options). Nothing here
-generates a key: creating the real key is a one-time offline step described in design/package-repositories.md.
+generates a key: creating the real key is a one-time offline step described in design/packaging/repositories.md.
 
 Alpine's apk does not use GnuPG: it checks an RSA signature of APKINDEX.tar.gz against a public key in /etc/apk/keys.
 ApkSigner holds that second key, from REPO_APK_PRIVATE_KEY (an unencrypted PEM file), and uses the openssl program.

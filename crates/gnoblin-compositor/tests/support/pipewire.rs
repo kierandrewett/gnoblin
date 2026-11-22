@@ -1,4 +1,4 @@
-//! A private `pipewire` daemon, the recipe in `design/pipewire-capture-spike.md`.
+//! A private `pipewire` daemon, the recipe in `design/capture/pipewire-spike.md`.
 
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};

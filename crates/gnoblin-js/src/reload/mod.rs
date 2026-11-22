@@ -1,7 +1,7 @@
 //! Hot reload of the JavaScript shell: stage the config from disk, hand it to the compositor, then swap it in.
 //!
 //! The protocol is the shell host's (`gnoblin_shell_host::stage::Reloader`): stage a fresh generation, pass it to the
-//! caller's `commit` closure (the compositor commit of design/js-research/quickjs-embedding.md, section 5, step 5), and
+//! caller's `commit` closure (the compositor commit of design/js/research/quickjs-embedding.md, section 5, step 5), and
 //! only when that accepts make it current and drop the old one. Any failure on the way, a parse error, a throw, a runaway
 //! loop, a rejected commit, leaves the running generation exactly as it was and comes back as a [`ReloadReport`] with the
 //! failing file, line and column in the author's `.ts` coordinates.

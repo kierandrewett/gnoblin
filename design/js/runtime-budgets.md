@@ -1,7 +1,7 @@
 # JS runtime: product budgets
 
 The wall-clock limits on one call into a script, and the measurements that set them. Part of the [JS/TS runtime
-design](js-runtime.md).
+design](runtime.md).
 
 ## Product budgets
 

@@ -1,7 +1,7 @@
 //! The conversation with `polkit-agent-helper-1`.
 //!
 //! The helper is polkit's setuid-root program that runs the PAM stack for one user. libpolkit-agent's
-//! `PolkitAgentSession` is the reference for how it is driven (design/js-research/polkit.md), and this is the same
+//! `PolkitAgentSession` is the reference for how it is driven (design/js/research/polkit.md), and this is the same
 //! protocol:
 //!
 //! - It is started as `polkit-agent-helper-1 <user name>`, with the cookie as the first line of its standard

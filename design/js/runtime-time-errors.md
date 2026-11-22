@@ -1,12 +1,12 @@
 # JS runtime: time units and error codes
 
 Milliseconds everywhere, one easing vocabulary and one set of error codes for the JavaScript API. Part of the [JS/TS
-runtime design](js-runtime.md).
+runtime design](runtime.md).
 
 ## Decisions
 
 The owner's specification says "milliseconds (the JS API uses ms consistently)" and names its easings the CSS way
-(`design/js-research/owner-spec.md`, "TransitionOptions"). The specification gives no error codes, so the one scheme is
+(`design/js/research/owner-spec.md`, "TransitionOptions"). The specification gives no error codes, so the one scheme is
 the one the host already spoke and `docs/shell-api/errors.md` documented.
 
 - **Times.** Every duration, delay and timeout of the script API is milliseconds.

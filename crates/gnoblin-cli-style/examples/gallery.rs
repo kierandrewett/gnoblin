@@ -3,7 +3,7 @@
 //! `cargo run -p gnoblin-cli-style --example gallery` prints to the terminal.
 //! `cargo run -p gnoblin-cli-style --example gallery -- --html` prints the same
 //! components as an HTML page instead: forced colour, 80 and 40 columns, Unicode
-//! and ASCII glyphs. Redirect it to `design/cli-gallery.html` to screenshot it.
+//! and ASCII glyphs. Redirect it to `design/cli/gallery.html` to screenshot it.
 
 use std::fmt::Write as _;
 

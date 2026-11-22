@@ -47,7 +47,7 @@ either way, so phase 1 is not wasted if the seat work is later cut back.
   `pointer_cursor(output)` (lines 3194-3200), and only while the session is unlocked.
   The cursor is drawn as a frame overlay through `set_cursor_image`
   (`crates/gnoblin-render-frame/src/frame.rs` line 528).
-- `design/input-status.md` section 8 says `wp_cursor_shape_v1` and `wl_cursor` requests
+- `design/status/input.md` section 8 says `wp_cursor_shape_v1` and `wl_cursor` requests
   are recorded and never painted, and that drawing them needs a cursor plane on the
   DRM backend. [FACT: the doc says so; not re-tested here.]
 - The clipboard "follows the keyboard" (`state.rs` line 1527). There is one
@@ -334,7 +334,7 @@ identity exists.
 
 Each lane has: tests first, the files it touches, and its acceptance. Builds run on
 the agent machine, not in the lane (per the lane rules). Every lane updates
-`design/input-status.md` if its row changes.
+`design/status/input.md` if its row changes.
 
 ### Phase 1: device identity and device-scoped bindings (option B)
 
@@ -463,7 +463,7 @@ down is released by the seat's last release even when the router gave that relea
   choice at lines 3194-3200); `crates/gnoblin-wayland/src/protocols/wp_cursor_shape_v1.rs`
   (`update_cursor`, line 83; `pointer_cursor`, line 105); the frame overlay
   (`crates/gnoblin-render-frame/src/frame.rs` line 528) and the DRM cursor plane
-  (`design/input-status.md` section 8). Each cursor needs its own plane or a composite.
+  (`design/status/input.md` section 8). Each cursor needs its own plane or a composite.
 - Acceptance: two cursors are drawn at the two positions. Optional colour or label is
   a separate lane, if Kieran asks for it.
 
@@ -516,7 +516,7 @@ down is released by the seat's last release even when the router gave that relea
 
 **Lane 5.2: docs and decision.**
 
-- Files: `design/input-status.md` (rows for multi-seat and device bindings);
+- Files: `design/status/input.md` (rows for multi-seat and device bindings);
   `design/rust-compositor.md` (D31 accepted or changed); the device and seat selectors; the config reference (new `seats` and
   `device` keys); changelog.
 - Acceptance: docs match the code; no row says "absent" for a feature that shipped.

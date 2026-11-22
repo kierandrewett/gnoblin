@@ -111,7 +111,7 @@ Why (a1) fails:
 
 Why (b) fails:
 
-- A window capture holds the client buffer only. Popups are excluded (`design/capture-api.md:17`).
+- A window capture holds the client buffer only. Popups are excluded (`design/capture/api.md:17`).
 - Window frames are a layer the compositor draws around the window. Effects (D24, D26),
   the cursor and lock covers are compositor drawing too. The extension would have to copy Gnoblin's compositing.
 - Input has no standard path to a window that is not on an output. libei regions are output rectangles, and an
@@ -402,7 +402,7 @@ Rules:
   its windows float in the environment.
 - **Secure windows** are drawn with the frame's existing mask (`crates/gnoblin-render-frame/src/frame.rs:97`).
 - **Privacy and audit.** The privacy indicator is on while any panel capture runs. View creation is audited, as for
-  capture streams (`design/capture-api.md:86-96`).
+  capture streams (`design/capture/api.md:86-96`).
 - **Latching for projection panels.** `set_eyes` applies to that panel's next capture. Wayland handles one client's
   requests in order, so each projection frame has exactly the eyes sent before it.
 
@@ -555,7 +555,7 @@ Code today:
 - **Backdrop blur** in a window panel blurs the Gnoblin content behind it in the same plane. It cannot blur the
   environment, which Gnoblin never sees.
 - **Why general:** window thumbnails and previews, and window capture that includes the frame the user sees. The
-  current window still excludes it (`design/capture-api.md:17`).
+  current window still excludes it (`design/capture/api.md:17`).
 - **Code today:** the composer composes per output only (`crates/gnoblin-backend/src/render/compose.rs:1114`). The
   scene already knows each node's padded bounds (`crates/gnoblin-render/src/scene.rs:175-176`).
 

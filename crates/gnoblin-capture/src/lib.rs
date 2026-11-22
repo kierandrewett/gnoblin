@@ -44,7 +44,7 @@
 //! # PipeWire: what is proven, what is missing, and where it goes
 //!
 //! No file in `src/` speaks PipeWire yet, and there is no placeholder for it. The
-//! decision and its evidence are in `design/pipewire-capture-spike.md`:
+//! decision and its evidence are in `design/capture/pipewire-spike.md`:
 //!
 //! - The round trip is proven by a spike. `tests/pipewire_stream.rs` starts a private
 //!   `pipewire` daemon, runs a producer and a consumer stream in one process and
@@ -74,7 +74,7 @@
 //!
 //! - the lock card and the lock's own list ([`gnoblin_lock`], entries 10 and 11), which give the states and who may see
 //!   what in each;
-//! - `design/capture-api.md`: "Locked session refuses" (every target kind, the check before any pixel is read, a View
+//! - `design/capture/api.md`: "Locked session refuses" (every target kind, the check before any pixel is read, a View
 //!   stream stopped and not resumed), "Secure treatment", and the consent and ownership rules for streams;
 //! - The lock surface is secure, and secure content is never drawn into any capture, whoever asks;
 //! - `design/supersample.md`, "Captures": a capture is the composed frame, `mode * supersample` on each axis, and secure
@@ -259,14 +259,14 @@
 //!
 //! Each of these is a gap in what exists, not a rule with a test missing:
 //!
-//! - **`capture.still` (window and region targets).** `design/capture-api.md` says phase 1 is the only phase to build and
+//! - **`capture.still` (window and region targets).** `design/capture/api.md` says phase 1 is the only phase to build and
 //!   that window stills must not ship until the secure-window question is answered. Nothing implements it, so no test
 //!   exists and none is faked. When it lands, entries 1, 12 and 30 apply to it and it needs its own.
-//! - **The privacy indicator for a still.** `design/capture-api.md` says whether `org.gnoblin.Privacy` reports a still at
+//! - **The privacy indicator for a still.** `design/capture/api.md` says whether `org.gnoblin.Privacy` reports a still at
 //!   all is unverified, so the "signal before pixels are read" rule has nothing to be tested against.
 //! - **DRM capture.** `Drm::capture` is `None` (`design/supersample.md`), so no output is screenshot-able on hardware at any
 //!   factor. That refuses every capture; it does not leak one.
-//! - **The magnifier.** `design/capture-api.md` says whether the output screenshot includes the magnifier's zoom is
+//! - **The magnifier.** `design/capture/api.md` says whether the output screenshot includes the magnifier's zoom is
 //!   unverified. No test pins either answer.
 //! - **A PipeWire frame a consumer already took.** The producer cannot recall it, so the secure-mark and lock guarantees
 //!   do not reach it (the `gnoblin-pipewire-export` crate docs state this).

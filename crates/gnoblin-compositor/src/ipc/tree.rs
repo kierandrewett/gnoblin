@@ -94,7 +94,7 @@ pub enum AttachMode {
     Holder,
     /// A reader beside the shell. It hears the snapshot and every change, never holds the tree, and may only make
     /// and destroy its own seats and controllers, write those controllers' values, and send pointer input
-    /// (design/node-core.md, F2b; design/js-xr.md).
+    /// (design/node-core.md, F2b; design/js/xr.md).
     Observer,
 }
 

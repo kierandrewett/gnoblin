@@ -1,5 +1,5 @@
 //! The style model and its cascade (`data/js/gnoblin-std/style/` and the host half in `data/js/gnoblin-core/host.ts`), over the fake
-//! compositor of `tests/common`: the cases ST1 to ST7 of design/js-research/spec-review.md section 5, what a resolved
+//! compositor of `tests/common`: the cases ST1 to ST7 of design/js/research/spec-review.md section 5, what a resolved
 //! style becomes on a window node, `gnoblin.clients.style` as the global default and a selection's `style`.
 //!
 //! Nothing here proves what the real compositor does with the node's `effects`: that is

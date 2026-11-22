@@ -50,4 +50,4 @@ wayland 1.25, PipeWire 1.4.11). It is a comparison only: the rewrite removes tho
   The report lists it as absent, and the library shows `missing`; that is a finding about the table or the image, and the
   report's `packages-not-installed` says which.
 - It never builds the workspace on the image. A floor that holds is not a passing package gate: the gates in
-  `design/package-targets.json` (package build, install, login, removal) are separate.
+  `design/packaging/targets.json` (package build, install, login, removal) are separate.
