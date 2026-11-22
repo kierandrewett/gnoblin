@@ -6,8 +6,7 @@ Nothing here is hand-written: every entry records the file and line it was read 
 disagreement can be settled by opening the source at that line.
 
 The inventory covers API 1.93: every wire operation of the native control socket, every event
-name the compositor emits, the `gnoblinctl` command surface and the top-level keys of
-`gnoblin.configure`.
+name the compositor emits and the top-level keys of `gnoblin.configure`.
 
 ## Files
 
@@ -15,7 +14,6 @@ name the compositor emits, the `gnoblinctl` command surface and the top-level ke
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `operations.json`       | Every row of the wire operation table, one per socket method                                                                      |
 | `events.json`           | Every event name the compositor emits                                                                                             |
-| `cli.json`              | Every `gnoblinctl` command and action, with the help summary                                                                      |
 | `config-keys.json`      | Every top-level `gnoblin.configure` key, plus the keys that can change at runtime                                                 |
 | `recorded-session.json` | What a live Mutter-based session (API 1.93) answered to every operation and which events it sent, by `scripts/contract-record.py` |
 
@@ -55,7 +53,6 @@ Every `src/` path on this page is a path of the Mutter-based tree.
 | `src/config/lua/gnoblin-lua.c`         | `lua_api[]` and `bridge_operations[]`, which map a wire operation to a Lua entry        |
 | `src/config/lua/gnoblin-lua-input.c`   | `known_configure_sections[]` and `known_protocols[]`                                    |
 | `src/control/gnoblin-overrides.h`      | The sections and keys that may change at runtime                                        |
-| `src/cli/gnoblinctl-cli.c`             | `commands[]` and `help_entries[]`                                                       |
 
 A construct the script could not read raised instead of being skipped, so no row was lost quietly.
 
@@ -90,10 +87,6 @@ The asymmetry is deliberate: the subscription table proves socket delivery, and 
 runtime delivery, while an absent `runtime` channel means the sources do not prove it either way
 rather than that the runtime never sees the event.
 
-`cli.json` entries carry `command`, `summary`, and an `actions` list; each action carries its own
-summary and line, which is why `window focus` can be inventoried as a rejected command without a
-special case.
-
 `config-keys.json` entries carry `key`, `table_index`, `runtime_overridable` and
 `runtime_override_keys` (the key names allowed inside that section, or empty when every key the
 validator accepts may change). The `enumerations` array records the values of `protocols`, which
@@ -105,7 +98,6 @@ is the one `gnoblin.configure` key whose accepted values are a closed list in th
 
 - `operations.json`: 136 entries, from `src/control/gnoblin-api-operations.h`
 - `events.json`: 76 entries, from `src/control/gnoblin-control-focus.c`, `src/control/gnoblin-control-grabs.c`, `src/control/gnoblin-control-overrides.c`, `src/control/gnoblin-control-process.c`, `src/control/gnoblin-control-tweens.c`, `src/control/gnoblin-native-control.c`, `src/portal/grants/gnoblin-control-session-activity.c`
-- `cli.json`: 22 entries (77 actions), from `src/cli/gnoblinctl-cli.c`
 - `config-keys.json`: 21 entries, from `src/config/lua/gnoblin-lua-input.c`
 
 <!-- contract-counts:end -->
@@ -121,11 +113,6 @@ no text extraction can read reliably.
   `json_object_get_*` calls, and there is no table that declares them. The positional arguments of
   Lua entries are recorded where `lua_api[]` declares them, and a `null` there means the entry
   packs its arguments in code.
-- **`gnoblinctl` options and `--json` shapes.** Options are read by name at each call site
-  (`option(cli, "app-id")`) and the JSON shapes come from `src/cli/gnoblinctl-render*.c`, both
-  without a declaration. Commands and actions are complete; their options are not.
-- **`gnoblinctl` action to wire operation mapping.** `src/cli/gnoblinctl-dispatch.c` assigns the
-  method inside per-command branches, so the mapping is not a table. The recorded CLI output is the gate for that mapping.
 - **Per-section configuration keys.** `gnoblin.configure` accepts the sections listed in
   `config-keys.json`; which keys are legal inside each section is checked by hand-written
   validators (`src/config/gnoblin-config-validate.c`, `gnoblin-config-windows.c` and others). Only
