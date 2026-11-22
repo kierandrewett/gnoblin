@@ -325,7 +325,8 @@ and Python shells of the same example, and checked with `gnoblinctl check --type
 Gnoblin reads the shell's imports before it runs any of them, and runs the whole shell on one library:
 
 - **The generated classes alone:** the shell imports only `gnoblin-core/generated/objects`,
-  `gnoblin-core/generated/object_base` and `gnoblin-std/generated/objects`, and nothing else from gnoblin.
+  `gnoblin-core/generated/object_base` and `gnoblin-std/generated/objects`, nothing else from gnoblin, and uses no dynamic
+  `import()`.
 - **The TypeScript library, as before:** every other shell. That covers a shell that imports `gnoblin-core`, `gnoblin-std` or
   any of their other modules, a shell that imports nothing from gnoblin and reads the global `gnoblin`, a shell that reaches
   `gnoblin-std/extensions/xr`, and a shell that uses a dynamic `import()`.

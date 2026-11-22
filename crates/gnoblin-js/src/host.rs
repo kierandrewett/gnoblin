@@ -83,7 +83,7 @@ impl JsHost {
             Choice::Typescript(reason) => Some((StockRuntime::Typescript, reason)),
             Choice::Generated => Some((
                 StockRuntime::Generated,
-                "no longer imports gnoblin-std/extensions/xr and has no import()".to_owned(),
+                "it imports only the generated object modules".to_owned(),
             )),
             Choice::Unknown => None,
         };
