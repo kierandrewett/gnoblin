@@ -335,6 +335,14 @@ ends, because its window closed, reads as it was with `alive` false until you le
 
 Text is measured at once by the painter the compositor draws with. A `Text` has its size the moment you set its string.
 
+Three more functions of the toolkit need no canvas, and each is an associated function that takes the `Objects` of the library:
+
+- `Ui::estimate_text(&objects, text, size)` is what a `Text` takes the size of its string to be when it cannot be measured: half the font
+  size for each character of the widest line, a line of one and a half font sizes for each line, and a baseline at 1.1 font sizes.
+- `Ui::encode_paint_list(&objects, &ops)` is the bytes a canvas's `content` holds for a list of `PaintOp`s. A list with one operation that
+  cannot be encoded is refused whole, and the error names it (`draw op 2: ...`).
+- `Toast::show(&objects, text, ..)` makes a toast, and `Launcher::open(&objects, spawn)` opens the launcher, or focuses the one that is open.
+
 What only your shell can say is the `Widget` interface (`WidgetHandlers::implement`), given to a canvas as its `behaviour`:
 
 - a custom paint, measure or arrangement, and a handler for pointer events or keys;

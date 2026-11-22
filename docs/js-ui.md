@@ -257,6 +257,10 @@ Start it with `startNotRespondingAlert()`. The module is `gnoblin-std/alerts`.
 - **`toast(text)`** shows a message card in the top right corner for a few seconds.
 - **`overview.toggle()`** dims the windows of the workspaces that are not shown, or gives them all full strength, .
 
+The generated classes of `gnoblin-std/generated/objects` have the same pieces as functions of a class: `Launcher.open`, `Toast.show`,
+`Ui.estimateText` (`estimateText`) and `Ui.encodePaintList` (`encodePaintList`). [The TypeScript shell page](typescript-shell.md) has the
+table.
+
 The consent and passphrase dialogs are not here: the compositor draws them, and `gnoblin.dialogs` observes them.
 
 ## What is not done

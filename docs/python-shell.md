@@ -330,6 +330,22 @@ action = FocusPolicy.focus_decision(           # a function of a service: record
 - `gnoblin/objects/*.pyi` are the stubs. A `tests/shells.rs` check holds them to what the runtime reflects. Importing the module opens
   `libgnoblin-std.so.1` and raises `ImportError` without it, as `gnoblin.std` does.
 
+### The functions of `gnoblin-std` in the generated classes
+
+A bare function of the TypeScript `gnoblin-std` is a function of a class in `gnoblin.objects.std`, with the same behaviour. The
+Python spellings are `snake_case`.
+
+| `gnoblin-std` (TypeScript) | `gnoblin.objects.std`                                                                                                          |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `openLauncher`             | `Launcher.open(spawn=None)`: one launcher lives at a time, and a second call focuses it and returns it                         |
+| `toast`                    | `Toast.show(text, fade_in=None, hold=None, fade_out=None, clock=None)`: the card removes itself after 4420 ms by default       |
+| `onSwipe`, `onPinch`       | `SwipeActionBinding()` and `PinchActionBinding()`, then `set_action(way, name)` or `set_function(way, fn)`, then `install()`   |
+| `direction`                | `Gestures.direction(dx, dy, threshold=None)`: a `SwipeDirection` with the `way`, or `None` while the gesture has gone less far |
+| `estimateText`             | `Ui.estimate_text(text, size)`: a `TextMetrics` of `width`, `height` and `ascent`, and no desktop is asked                     |
+| `encodePaintList`          | `Ui.encode_paint_list(ops)`: `bytes` (the TypeScript function answered a list of numbers) for a canvas's `content`             |
+
+`Ui.encode_paint_list` refuses the whole list when one operation cannot be encoded, with an error that names it (`draw op 2: ...`).
+
 `examples/20-native-object/shell.py` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the
 Rust and TypeScript shells of the same example.
 

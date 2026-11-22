@@ -41,6 +41,9 @@ gesture went; a cancelled gesture runs nothing.
 - `gnoblin.gestures.actions` holds them as functions.
 - `onSwipe(map, threshold?)`, `onPinch(map, threshold?)` and `direction(event, threshold?)` of `gnoblin.gestures` build
   bindings for `gnoblin.input.primary.bind`.
+- The generated classes of `gnoblin-std/generated/objects` make the same bindings: `SwipeActionBinding` and `PinchActionBinding` take
+  `setAction(way, name)` or `setFunction(way, fn)` for each way and are installed with `install()`. `Gestures.direction` gives the way a
+  gesture has gone.
 - A gesture bound on `Swipe3` is refused while the stock three-finger slide holds that trigger, so delete the starter's
   `Swipe3` line first.
 - A gesture event carries the raw `dx`, `dy`, `scale` and `rotation` beside `progress`.

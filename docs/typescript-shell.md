@@ -324,6 +324,26 @@ const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", he
 - Classes keep the names of the shell API: `Camera2D`, `Camera3D`, `ClientStyle`, `InputDevice`, `IdleMonitor` and
   `LaunchFeedback`. The generated Rust and Python classes use the same names.
 
+### The functions of `gnoblin-std` in the generated classes
+
+A bare function of `gnoblin-std` is a function of a class here, with the same behaviour. The record arguments are plain objects, and an
+argument the TypeScript function took in an options object follows the others, in the order of the catalog.
+
+| `gnoblin-std`                        | `gnoblin-std/generated/objects`                                                                                       |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `openLauncher({ spawn })`            | `Launcher.open(spawn?)`: one launcher lives at a time, and a second call focuses it and returns it                    |
+| `toast(text, { fadeIn, hold, ... })` | `Toast.show(text, fadeIn?, hold?, fadeOut?, clock?)`: the card removes itself after 4420 ms unless a time is given    |
+| `onSwipe(map, threshold?)`           | `new SwipeActionBinding()`, then `setAction(way, name)` or `setFunction(way, fn)` for each way, then `install()`      |
+| `onPinch(map, threshold?)`           | `new PinchActionBinding()`, the same three calls with `"in"` and `"out"` for the ways                                 |
+| `gnoblin.gestures.direction(...)`    | `Gestures.direction(dx, dy, threshold?)`: a record with the `way`, or `undefined` while the gesture has gone less far |
+| `estimateText(text, size)`           | `Ui.estimateText(text, size)`: a `{ width, height, ascent }` record, and no desktop is asked                          |
+| `encodePaintList(ops)`               | `Ui.encodePaintList(ops)`: a `Uint8Array` (the TypeScript function answered a `number[]`) for a canvas's `content`    |
+
+`Ui.encodePaintList` refuses the whole list when one operation cannot be encoded, with an error that names it (`draw op 2: ...`).
+
+`Ui.estimateText` is what a `Text` takes the size of its string to be when the string cannot be measured: half the font size for each
+character in the widest line, a line of one and a half font sizes for each line, and a baseline at 1.1 font sizes.
+
 `examples/20-native-object/shell.ts` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the Rust
 and Python shells of the same example, and checked with `gnoblinctl check --types`.
 
