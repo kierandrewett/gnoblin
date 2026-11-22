@@ -35,11 +35,12 @@ mod inherit;
 mod model;
 mod parse;
 pub mod proto;
+mod variants;
 
 pub use error::SchemaError;
 pub use gnoblin_types::{InvalidVersion, Version};
 pub use model::{
     CallbackDecl, Catalog, DefaultValue, EnumDecl, ErrorDecl, Export, Extras, Field, Method, Namespace, ObjectKind,
-    ObjectType, Property, Schema, Signal, Type, is_class_ref, is_error_code, is_lower_name,
+    ObjectType, Property, Schema, Signal, TaggedVariant, Type, is_class_ref, is_error_code, is_lower_name,
 };
 pub use parse::parse_schema;

@@ -64,6 +64,11 @@
 //! - `optional = true` on a method: its result (an `object:` type) may be none, as `undefined` in TypeScript, `None` in Python and
 //!   `Option::None` in Rust. The library answers a nothing value; without the key a missing member is an error.
 //! - `python = { dunder = "__len__" }` on a method: the Python special method the member is.
+//! - `tag = "<property>"` on a record, with a `[[object.variant]]` for each value of that enum property: the record is the family of a
+//!   tagged value (a filter that is a blur, a grade or a shader), and each variant is a value class of its own in every language.
+//!   A variant has a `name`, the `tag` value it stands for and `[[object.variant.property]]` entries, each with a `field` that says
+//!   where the family record carries it (`amount`, or `shader.source` for a field of the record a family field holds). The wire
+//!   carries the family's record, so a variant adds no class to the object table.
 //! - `optional = true` on a property: a record may leave the field out (the same key a method parameter has). A field with neither a
 //!   default nor this is always there.
 //! - `inert = "reason"` on a member: accepted and not applied. `abi = "fn:<name>"`: served by an existing typed table function.
@@ -76,7 +81,7 @@ use serde::Deserialize;
 use crate::error::SchemaError;
 use crate::model::{
     CallbackDecl, DefaultValue, EnumDecl, ErrorDecl, Export, Extras, Field, Method, Namespace, ObjectKind, ObjectType,
-    Property, Schema, Signal, Type, is_class_ref, is_error_code, is_lower_name,
+    Property, Schema, Signal, TaggedVariant, Type, is_class_ref, is_error_code, is_lower_name,
 };
 use gnoblin_types::Version;
 
@@ -129,12 +134,28 @@ struct RawObject {
     retained: bool,
     #[serde(default)]
     export: Option<RawExport>,
+    #[serde(default)]
+    tag: Option<String>,
+    #[serde(default, rename = "variant")]
+    variants: Vec<RawVariant>,
     #[serde(default, rename = "property")]
     properties: Vec<RawProperty>,
     #[serde(default, rename = "method")]
     methods: Vec<RawMethod>,
     #[serde(default, rename = "signal")]
     signals: Vec<RawSignal>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawVariant {
+    name: String,
+    tag: String,
+    since: Option<String>,
+    #[serde(default)]
+    export: Option<RawExport>,
+    #[serde(default, rename = "property")]
+    properties: Vec<RawProperty>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -167,6 +188,8 @@ struct RawProperty {
     #[serde(default)]
     optional: bool,
     default: Option<toml::Value>,
+    #[serde(default)]
+    field: Option<String>,
     #[serde(default)]
     inert: Option<String>,
     #[serde(default)]
@@ -496,7 +519,15 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
         // binding and a subscriber all address `object.member`, so a property and
         // a method may not share a name.
         let mut members = BTreeSet::new();
-        let properties = parse_properties(&raw_object.properties, &owner, since, scope, &mut members, problems);
+        let properties = parse_properties(
+            &raw_object.properties,
+            &owner,
+            since,
+            scope,
+            &mut members,
+            false,
+            problems,
+        );
         let methods = parse_methods(&raw_object.methods, &owner, since, kind, scope, &mut members, problems);
         let signals = parse_signals(&raw_object.signals, &owner, since, scope, &mut members, problems);
 
@@ -511,6 +542,23 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
         if kind == ObjectKind::Interface && !raw_object.signals.is_empty() {
             problems.push(format!("{owner}: an interface declares no signals"));
         }
+        local_only(scope, problems, &owner, "tag", raw_object.tag.is_some());
+        local_only(
+            scope,
+            problems,
+            &owner,
+            "[[object.variant]]",
+            !raw_object.variants.is_empty(),
+        );
+        if kind != ObjectKind::Record && (raw_object.tag.is_some() || !raw_object.variants.is_empty()) {
+            problems.push(format!("{owner}: `tag` and variants belong to a record"));
+        }
+        if raw_object.tag.is_some() != !raw_object.variants.is_empty() {
+            problems.push(format!(
+                "{owner}: a family of variants needs both its `tag` and at least one `[[object.variant]]`"
+            ));
+        }
+        let variants = parse_variants(&raw_object.variants, &owner, since, scope, problems);
         objects.push(ObjectType {
             name: raw_object.name.clone(),
             base: raw_object.base.clone(),
@@ -521,12 +569,63 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
             ctor: raw_object.ctor.clone(),
             retained: raw_object.retained,
             export: export_of(raw_object.export.as_ref()),
+            tag: raw_object.tag.clone(),
+            variants,
             properties,
             methods,
             signals,
         });
     }
     objects
+}
+
+/// The variants of a family record. The catalog checks them against the family's `tag` and fields, which a file may not hold whole.
+fn parse_variants(
+    raw_variants: &[RawVariant],
+    object: &str,
+    object_since: Version,
+    scope: Scope,
+    problems: &mut Vec<String>,
+) -> Vec<TaggedVariant> {
+    let mut variants = Vec::new();
+    let mut names = BTreeSet::new();
+    for raw_variant in raw_variants {
+        let owner = format!("variant `{}` of {object}", raw_variant.name);
+        if !is_lower_name(&raw_variant.name) {
+            problems.push(format!("{owner}: name must match [a-z][a-z0-9_]*"));
+        }
+        if !names.insert(raw_variant.name.as_str()) {
+            problems.push(format!("{object}: duplicate variant `{}`", raw_variant.name));
+        }
+        local_only(scope, problems, &owner, "export", raw_variant.export.is_some());
+        let Some(since) = member_since(
+            problems,
+            raw_variant.since.as_deref(),
+            &owner,
+            object_since,
+            scope.version,
+        ) else {
+            continue;
+        };
+        let mut members = BTreeSet::new();
+        let properties = parse_properties(
+            &raw_variant.properties,
+            &owner,
+            since,
+            scope,
+            &mut members,
+            true,
+            problems,
+        );
+        variants.push(TaggedVariant {
+            name: raw_variant.name.clone(),
+            tag: raw_variant.tag.clone(),
+            since,
+            export: export_of(raw_variant.export.as_ref()),
+            properties,
+        });
+    }
+    variants
 }
 
 /// Read a property's `default` as its declared type. TOML has no literal for an
@@ -561,11 +660,19 @@ fn parse_properties(
     object_since: Version,
     scope: Scope,
     members: &mut BTreeSet<String>,
+    in_variant: bool,
     problems: &mut Vec<String>,
 ) -> Vec<Property> {
     let mut properties = Vec::new();
     for raw_property in raw_properties {
         let owner = format!("property `{}` of {object}", raw_property.name);
+        match (in_variant, &raw_property.field) {
+            (true, None) => problems.push(format!(
+                "{owner}: a property of a variant needs `field`, the family field that carries it"
+            )),
+            (false, Some(_)) => problems.push(format!("{owner}: `field` belongs to a property of a variant")),
+            _ => {}
+        }
         if !members.insert(raw_property.name.clone()) {
             problems.push(format!("{object}: duplicate member name `{}`", raw_property.name));
         }
@@ -619,6 +726,7 @@ fn parse_properties(
             readonly: raw_property.readonly,
             animated: raw_property.animated,
             optional: raw_property.optional,
+            field: raw_property.field.clone(),
             extras,
         });
     }

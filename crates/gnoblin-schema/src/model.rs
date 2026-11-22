@@ -298,6 +298,11 @@ pub struct ObjectType {
     pub retained: bool,
     /// The object's name in each language when it differs from the mechanical conversion.
     pub export: Export,
+    /// For a record that is the family of a tagged value: the enum property whose value says which variant a value is.
+    pub tag: Option<String>,
+    /// For a family: its variants, one for each value of the `tag` enum, in the enum's order. A variant is a value class of its own in
+    /// each language, and the family is the type that holds any of them; on the wire a variant is the family's record.
+    pub variants: Vec<TaggedVariant>,
     /// Typed properties of the object.
     pub properties: Vec<Property>,
     /// Calls a client can make on the object.
@@ -334,6 +339,8 @@ impl ObjectType {
             ctor: self.ctor.clone(),
             retained: self.retained,
             export: self.export.clone(),
+            tag: self.tag.clone(),
+            variants: self.variants.clone(),
             properties: self
                 .properties
                 .iter()
@@ -381,6 +388,22 @@ impl ObjectType {
     }
 }
 
+/// One variant of a tagged family: a value class that is the family's record with one value of its `tag` property and the fields its own
+/// properties carry. It is not a class of the namespace: the object table, the wire and the catalog's class ids know only the family.
+#[derive(Clone, Debug)]
+pub struct TaggedVariant {
+    /// The class name as declared; the variant's name in each language is its conversion, or `export`.
+    pub name: String,
+    /// The value of the family's `tag` enum that says a value is this variant.
+    pub tag: String,
+    /// The version that added the variant.
+    pub since: Version,
+    /// The variant's name in each language when it differs from the mechanical conversion.
+    pub export: Export,
+    /// The variant's own properties, in order. Each says in `field` where the family record carries it.
+    pub properties: Vec<Property>,
+}
+
 /// A property's default, read as the property's declared type. An object
 /// reference or bytes has no TOML literal, so those types take no default.
 #[derive(Clone, Debug, PartialEq)]
@@ -419,6 +442,9 @@ pub struct Property {
     /// True when a record may leave the field out because it has no value to say (a delay that is none, a flag an event of another kind
     /// does not use). A field with neither a default nor this is always there. Local namespaces only, and not with a default.
     pub optional: bool,
+    /// For a property of a variant: where the family record carries the value, as a field of the family (`amount`) or a field of a
+    /// record that field holds (`shader.source`). The property's own name is what a script calls it, and may differ.
+    pub field: Option<String>,
     /// What only a local namespace's property carries: `inert`, `abi` and the names in each language.
     pub extras: Extras,
 }
@@ -664,6 +690,8 @@ impl Catalog {
                 }
             }
         }
+
+        crate::variants::check(&schemas, &mut problems);
 
         if let Err(inheritance) = crate::inherit::resolve(&mut schemas) {
             problems.extend(inheritance);
@@ -960,6 +988,28 @@ impl Catalog {
                     property.optional,
                     property.extras
                 );
+            }
+            if let Some(tag) = &object.tag {
+                let _ = writeln!(text, "tag {tag}");
+            }
+            for variant in &object.variants {
+                let _ = writeln!(
+                    text,
+                    "variant {} tag={} export={:?}",
+                    variant.name, variant.tag, variant.export
+                );
+                for property in &variant.properties {
+                    let _ = writeln!(
+                        text,
+                        "vp {} {} default={:?} optional={} field={:?} export={:?}",
+                        property.name,
+                        property.ty,
+                        property.default,
+                        property.optional,
+                        property.field,
+                        property.extras.export
+                    );
+                }
             }
             for method in &object.methods {
                 let _ = write!(
