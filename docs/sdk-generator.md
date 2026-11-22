@@ -90,6 +90,12 @@ A local file may use keys a compositor file may not:
 - `optional` on a method: its `object:` result may be none, as `Option<T>` in Rust, `T | undefined` in TypeScript and `T | None` in
   Python. The library flags the method `MEMBER_OPTIONAL` and refuses a none answer from a method that is not marked.
 - `python = { dunder = ".." }`, `inert`, `abi = "fn:<name>"` and `export = { js, py, rust }`.
+- `find = "Kind"` on a method of a service that returns a list of objects and takes one optional record (its filter). Each method of a
+  service names a kind of its own. In the core, `find_clients` is `find = "Window"` and `find_outputs` is `find = "Output"`. The service
+  then gets:
+    - `find(kind, filter)` in JavaScript, TypeScript and Python. It calls the method of the kind, and refuses a kind it has no method for
+      with an error that lists the kinds that work.
+    - `find::<T>(filter)` in Rust, over the trait `Finds` that each kind implements.
 - A `base` of another namespace's class.
 
 The wire never carries such a namespace and the `gnoblin` catalog hash (`gnoblin_catalog_hash`) does not include it. The namespace has

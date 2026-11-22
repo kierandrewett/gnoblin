@@ -120,6 +120,9 @@ fn method_detail(method: &Method) -> String {
     if let Some(abi) = &method.extras.abi {
         let _ = write!(text, " abi={abi}");
     }
+    if let Some(kind) = &method.extras.find {
+        let _ = write!(text, " find={kind}");
+    }
     if method.secret {
         text.push_str(" secret");
     }

@@ -226,6 +226,9 @@ pub struct Extras {
     pub abi: Option<String>,
     /// The member's name in each language when it differs from the mechanical conversion.
     pub export: Export,
+    /// A method that lists the live objects of one kind, and the name of that kind (`Window`): a shell reads it as `find(kind, filter)`
+    /// on the object that has the method. Every method of an object that carries one names a kind of its own.
+    pub find: Option<String>,
 }
 
 /// A closed set of named values: `[[enum]]`. The value's id is its place in `values`, counted from 1.

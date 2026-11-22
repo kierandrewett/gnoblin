@@ -71,6 +71,9 @@
 //!   carries the family's record, so a variant adds no class to the object table.
 //! - `optional = true` on a property: a record may leave the field out (the same key a method parameter has). A field with neither a
 //!   default nor this is always there.
+//! - `find = "Kind"` on a method of a service that returns a list of objects and takes one optional record, its filter: a shell reads the
+//!   service's `find(kind, filter)` as a call of this method, and an unknown kind is refused with the kinds that work. Each method names
+//!   a kind of its own.
 //! - `inert = "reason"` on a member: accepted and not applied. `abi = "fn:<name>"`: served by an existing typed table function.
 //! - `base = "<namespace>.<class>"`: a class of another namespace's catalog; the members are not copied into the derived class.
 
@@ -228,6 +231,8 @@ struct RawMethod {
     abi: Option<String>,
     #[serde(default)]
     export: Option<RawExport>,
+    #[serde(default)]
+    find: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -357,6 +362,12 @@ fn local_only(scope: Scope, problems: &mut Vec<String>, owner: &str, key: &str, 
     }
 }
 
+/// A kind a `find` names: `Window`, `Workspace`.
+fn is_kind_name(text: &str) -> bool {
+    let mut chars = text.chars();
+    chars.next().is_some_and(|first| first.is_ascii_uppercase()) && chars.all(|c| c.is_ascii_alphanumeric())
+}
+
 fn export_of(raw: Option<&RawExport>) -> Export {
     raw.map_or_else(Export::default, |raw| Export {
         js: raw.js.clone(),
@@ -386,6 +397,7 @@ fn extras_of(
         inert: inert.cloned(),
         abi: abi.cloned(),
         export: export_of(export),
+        find: None,
     }
 }
 
@@ -742,7 +754,7 @@ fn parse_methods(
     members: &mut BTreeSet<String>,
     problems: &mut Vec<String>,
 ) -> Vec<Method> {
-    let mut methods = Vec::new();
+    let mut methods: Vec<Method> = Vec::new();
     for raw_method in raw_methods {
         let owner = format!("method `{}` of {object}", raw_method.name);
         if !members.insert(raw_method.name.clone()) {
@@ -751,7 +763,7 @@ fn parse_methods(
         if !is_lower_name(&raw_method.name) {
             problems.push(format!("{owner}: name must match [a-z][a-z0-9_]*"));
         }
-        let extras = extras_of(
+        let mut extras = extras_of(
             scope,
             problems,
             &owner,
@@ -759,6 +771,8 @@ fn parse_methods(
             raw_method.abi.as_ref(),
             raw_method.export.as_ref(),
         );
+        local_only(scope, problems, &owner, "find", raw_method.find.is_some());
+        extras.find = raw_method.find.clone();
         local_only(scope, problems, &owner, "returns", raw_method.returns.is_some());
         local_only(scope, problems, &owner, "optional", raw_method.optional);
         local_only(scope, problems, &owner, "required", raw_method.required);
@@ -798,6 +812,31 @@ fn parse_methods(
             problems.push(format!(
                 "{owner}: `optional` belongs to a method a library serves, not to an interface"
             ));
+        }
+        if let Some(found) = &raw_method.find {
+            if !is_kind_name(found) {
+                problems.push(format!(
+                    "{owner}: `find` names a kind that starts with a capital letter and has letters and digits only, got `{found}`"
+                ));
+            }
+            if methods
+                .iter()
+                .any(|earlier| earlier.extras.find.as_deref() == Some(found.as_str()))
+            {
+                problems.push(format!(
+                    "{owner}: another method of {object} already finds the kind `{found}`"
+                ));
+            }
+            let lists_objects = matches!(&returns, Some(Type::List(inner)) if matches!(**inner, Type::ObjectRef(_)));
+            let one_query = matches!(
+                params.as_slice(),
+                [query] if query.optional && matches!(query.ty, Type::ObjectRef(_))
+            );
+            if kind != ObjectKind::Service || !lists_objects || !one_query || raw_method.function {
+                problems.push(format!(
+                    "{owner}: `find` belongs to a method of a service that returns a list of objects and takes one optional record as its filter"
+                ));
+            }
         }
         methods.push(Method {
             name: raw_method.name.clone(),
@@ -1315,6 +1354,97 @@ mod tests {
             found
                 .iter()
                 .any(|problem| problem.contains("`optional`") && problem.contains("local = true")),
+            "the compositor's own files do not use it: {found:?}"
+        );
+    }
+    /// A namespace with a record `query`, a handle `thing` and a service `root` whose methods are `methods`.
+    fn finder(kind: &str, methods: &str) -> String {
+        format!(
+            "namespace = \"test\"\nversion = \"0.2.0\"\nlocal = true\n\n\
+             [[object]]\nname = \"query\"\nsince = \"0.2.0\"\nkind = \"record\"\n\n\
+             [[object]]\nname = \"thing\"\nsince = \"0.2.0\"\nkind = \"handle\"\n\n\
+             [[object]]\nname = \"root\"\nsince = \"0.2.0\"\nkind = \"{kind}\"\n\n{methods}"
+        )
+    }
+
+    /// One method `name` that returns `returns` and takes the optional record `query`, with `extra` after its keys.
+    fn finding(name: &str, returns: &str, extra: &str) -> String {
+        format!(
+            "[[object.method]]\nname = \"{name}\"\nsince = \"0.2.0\"\nreturns = \"{returns}\"\n{extra}\n\
+             [[object.method.param]]\nname = \"query\"\ntype = \"object:query\"\noptional = true\n\n"
+        )
+    }
+
+    #[test]
+    fn a_find_kind_belongs_to_a_service_method_that_lists_objects_and_names_a_kind_once() {
+        let good = format!(
+            "{}{}",
+            finding("find_things", "list<object:thing>", "find = \"Thing\"\n"),
+            finding("find_others", "list<object:thing>", "find = \"Other\"\n")
+        );
+        let schema = parse_schema("test.toml", &finder("service", &good)).expect("schema");
+        let root = schema
+            .objects
+            .iter()
+            .find(|object| object.name == "root")
+            .expect("root");
+        let kinds: Vec<_> = root
+            .methods
+            .iter()
+            .map(|method| method.extras.find.as_deref())
+            .collect();
+        assert_eq!(kinds, [Some("Thing"), Some("Other")]);
+
+        let plain = finding("find_things", "list<object:thing>", "");
+        let schema = parse_schema("test.toml", &finder("service", &plain)).expect("schema");
+        assert_eq!(
+            schema.objects[2].methods[0].extras.find, None,
+            "a method names no kind unless it says so"
+        );
+
+        let twice = format!(
+            "{}{}",
+            finding("find_things", "list<object:thing>", "find = \"Thing\"\n"),
+            finding("find_more", "list<object:thing>", "find = \"Thing\"\n")
+        );
+        let found = refused(&finder("service", &twice));
+        assert!(
+            found
+                .iter()
+                .any(|problem| problem.contains("already finds the kind `Thing`")),
+            "{found:?}"
+        );
+
+        let lower = finding("find_things", "list<object:thing>", "find = \"thing\"\n");
+        let found = refused(&finder("service", &lower));
+        assert!(
+            found
+                .iter()
+                .any(|problem| problem.contains("starts with a capital letter")),
+            "{found:?}"
+        );
+
+        let one = finding("find_things", "object:thing", "find = \"Thing\"\n");
+        let found = refused(&finder("service", &one));
+        assert!(
+            found
+                .iter()
+                .any(|problem| problem.contains("returns a list of objects")),
+            "{found:?}"
+        );
+
+        let on_handle = finding("find_things", "list<object:thing>", "find = \"Thing\"\n");
+        let found = refused(&finder("handle", &on_handle));
+        assert!(
+            found.iter().any(|problem| problem.contains("method of a service")),
+            "{found:?}"
+        );
+
+        let found = problems("\n[[object.method]]\nname = \"find\"\nsince = \"0.2.0\"\nfind = \"Thing\"\n");
+        assert!(
+            found
+                .iter()
+                .any(|problem| problem.contains("`find`") && problem.contains("local = true")),
             "the compositor's own files do not use it: {found:?}"
         );
     }
