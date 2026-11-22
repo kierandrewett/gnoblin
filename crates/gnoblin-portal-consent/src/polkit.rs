@@ -2,7 +2,7 @@
 //! prompt with a masked entry, and Cancel.
 //!
 //! The compositor draws this for `auth.polkit` and checks the password with polkit's helper itself
-//! (design/js/research/polkit.md). A script never draws it, reads what is typed in it or decides whether the
+//! (polkitd trusts only the helper). A script never draws it, reads what is typed in it or decides whether the
 //! password was right. This crate holds only the card's own state: what the helper asked is told to it
 //! ([`PolkitUi::ask`], [`PolkitUi::info`], [`PolkitUi::error`]), and what the user did comes back as
 //! [`PolkitEvent`]s for the owner to act on ([`PolkitUi::take_events`]). The owner runs the helper.

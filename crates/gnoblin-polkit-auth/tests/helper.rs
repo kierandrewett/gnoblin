@@ -1,6 +1,6 @@
 //! `HelperSession` against fake `polkit-agent-helper-1` scripts.
 //!
-//! The scripts speak the real helper's protocol (design/js/research/polkit.md): the cookie as the first line of
+//! The scripts speak the real helper's protocol: the cookie as the first line of
 //! standard input, one escaped line per PAM event on standard output, an answer per prompt, a last line of
 //! `SUCCESS` or `FAILURE`. They are not the real helper: nothing here runs PAM, and no polkitd is involved.
 

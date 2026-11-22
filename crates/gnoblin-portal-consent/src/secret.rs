@@ -1,7 +1,7 @@
 //! The passphrase dialog: a lock, the question, who asks, a masked entry, Cancel and Unlock.
 //!
 //! The compositor draws this when no shell has claimed `prompt.secret`, or the claimant went away,
-//! so the keyring can always be unlocked (design/js/research/popups-portals.md, row 5). Its one
+//! so the keyring can always be unlocked. Its one
 //! difference from [`ConsentUi`](crate::ConsentUi) is that it holds a secret, which shapes how keys
 //! reach it:
 //!

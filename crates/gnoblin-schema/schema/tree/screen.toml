@@ -121,7 +121,7 @@ readonly = true
 # The factor the output composes above its mode: the compositor draws the output on a surface of `mode * supersample`
 # pixels at `output_scale * supersample` and shows it at `mode`, so the logical size (`screen_width`, `screen_height`)
 # does not change. 1 is no supersampling. Set with `apply`. An owner-requested addition beyond the display
-# specification; see design/supersample.md.
+# specification.
 [[object.property]]
 name = "supersample"
 type = "double"

@@ -1,7 +1,7 @@
 //! The strike policy for a generation that was interrupted or that panicked.
 //!
 //! An interrupted script skipped its cleanup and a panic unwound through the host's frames, so the generation it ran in
-//! is suspect (design/js/research/quickjs-embedding.md, section 6). The recovery is to stage a fresh generation from the
+//! is suspect. The recovery is to stage a fresh generation from the
 //! files on disk. A shell that always trips the budget would then trip it again, so the supervisor counts strikes:
 //! `max_strikes` faults within `window` latch [`Health::Degraded`] and the caller stops restaging until the `cool_down`
 //! has passed or the user reloads on purpose. The policy is the same for every language the host runs.

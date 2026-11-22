@@ -18,7 +18,7 @@ gnoblin-lock = { path = "../gnoblin-lock" }
 # renderer-neutral and holds no device code (design/rust-compositor.md, "Dependency rules").
 gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 # The PipeWire client library. The `v0_3_34` feature adds the trigger call a DRIVER stream
-# needs to produce a frame on its own schedule (design/capture/pipewire-spike.md).
+# needs to produce a frame on its own schedule.
 # Only this crate links PipeWire.
 pipewire = { version = "0.10", features = ["v0_3_34"] }
 

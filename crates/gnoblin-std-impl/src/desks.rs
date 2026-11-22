@@ -261,7 +261,7 @@ impl State {
     }
 
     /// Writes the id of the workspace the primary output shows to the seat's `active_workspace`, which the compositor serves to a client of
-    /// `ext-workspace-v1` as that workspace's `active` state (`design/wayland-protocol-gaps.md`). It is written when it changes, and once
+    /// `ext-workspace-v1` as that workspace's `active` state. It is written when it changes, and once
     /// a shell uses the workspace classes; a seat without the property, or none, is left alone.
     pub(crate) fn publish_active_workspace(&mut self) {
         if !self.desktop || !self.publish_active {

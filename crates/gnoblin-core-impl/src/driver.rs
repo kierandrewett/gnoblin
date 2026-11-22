@@ -6,7 +6,7 @@
 //! `gnoblin-fixture-launcher` binary, which links the stub and calls this one extra export. Each scenario is one process
 //! so its statics start fresh, and each prints `key=value` lines the tests assert on.
 //!
-//! This is the proof spike's scenario set (`design/modular-framework-spike.md`, results 3 to 6) as product code.
+//! This is the scenario set that proved the linking, panic, reload and upgrade rules, as product code.
 #![allow(unsafe_code)]
 
 use core::ffi::{CStr, c_char, c_int, c_void};

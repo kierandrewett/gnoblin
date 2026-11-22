@@ -3,7 +3,7 @@
 //! An output driven at `mode` with scale `u` and supersample factor `s` is composed on a virtual surface of
 //! `mode * s` pixels at the compositing scale `u * s`, then shown at `mode`. The logical size (`mode / u`) does not
 //! change, so this module is only about the factor itself: how it is written, which values are recommended, and
-//! whether a factor suits a mode (a whole virtual size, within the limit). See `design/supersample.md`.
+//! whether a factor suits a mode (a whole virtual size, within the limit).
 
 use gnoblin_types::{Scale, Size};
 

@@ -3,7 +3,7 @@
 //! The call goes through the real `gnoblinctl` library entry, the real IPC server and the real session on a virtual
 //! output, and it runs the same engine as a shell's `screen.apply` and a `zwlr_output_configuration_v1`: the layout
 //! is resolved, the mode and scale are tested on the backend, the output is driven, and a refusal keeps what was
-//! there. What it does not prove: a modeset on hardware (see `design/js/outputs.md`).
+//! there. What it does not prove: a modeset on hardware.
 
 mod support;
 

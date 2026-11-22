@@ -41,44 +41,24 @@
 //! native protocols are governed by the per-client access policy in
 //! `gnoblin-wayland`.
 //!
-//! # PipeWire: what is proven, what is missing, and where it goes
+//! # PipeWire
 //!
-//! No file in `src/` speaks PipeWire yet, and there is no placeholder for it. The
-//! decision and its evidence are in `design/capture/pipewire-spike.md`:
-//!
-//! - The round trip is proven by a spike. `tests/pipewire_stream.rs` starts a private
-//!   `pipewire` daemon, runs a producer and a consumer stream in one process and
-//!   checks every frame's bytes. The spike uses the `pipewire` crate directly, not
-//!   this crate's code. `pipewire` is a dev-dependency, so no shipped binary links it.
-//! - The `pipewire` crate did not build on the first workstation it was tried on:
-//!   `pipewire-sys` and `libspa-sys` run `bindgen`, which failed on glibc's
-//!   `bits/floatn.h` with the installed libclang 21 and passed only with
-//!   `LIBCLANG_PATH` pointing at an older libclang. The spike itself ran on an
-//!   Agent37 instance.
-//! - The real producer belongs in an engine-side crate, not here. This crate holds
-//!   policy and no mechanism. A producer there implements [`CaptureSource`] and drives
-//!   [`Table::request`] and [`Table::capture`], so every rule in this crate applies to
-//!   it unchanged.
-//! - Shipping needs a packaging decision, because a release binary would load the
-//!   system libpipewire at run time.
-//!
-//! Until the producer exists, a PipeWire stream is a missing feature, not a function
-//! that returns nothing.
+//! This crate holds policy and no mechanism. The PipeWire producer lives in `gnoblin-pipewire-export`: it implements
+//! [`CaptureSource`] and drives [`Table::request`] and [`Table::capture`], so every rule in this crate applies to it
+//! unchanged. A release binary loads the system libpipewire at run time.
 //!
 //! # Failure modes: the capture embargo
 //!
-//! The list the plan asks for before isolated tests or code (`design/rust-compositor.md`, "Session lock" and "Renderer"
-//! cards: "capture requested during locking", "model tests show no reachable state where a non-lock surface ... is
-//! captured while not unlocked"). It is built from the rules the design states and checked against the code, not from
-//! what happens to be tested:
+//! The list of ways a capture could leak, written before the tests and checked against the code, not built from what
+//! happens to be tested:
 //!
 //! - the lock card and the lock's own list ([`gnoblin_lock`], entries 10 and 11), which give the states and who may see
 //!   what in each;
-//! - `design/capture/api.md`: "Locked session refuses" (every target kind, the check before any pixel is read, a View
-//!   stream stopped and not resumed), "Secure treatment", and the consent and ownership rules for streams;
+//! - a locked session refuses every target kind, the check runs before any pixel is read, and a View stream is stopped
+//!   and not resumed; secure content is masked; streams follow their consent and ownership rules;
 //! - The lock surface is secure, and secure content is never drawn into any capture, whoever asks;
-//! - `design/supersample.md`, "Captures": a capture is the composed frame, `mode * supersample` on each axis, and secure
-//!   treatment is applied before any resampling.
+//! - a capture is the composed frame, `mode * supersample` on each axis, and secure treatment is applied before any
+//!   resampling.
 //!
 //! Each entry says what fails, then names the test that would catch it. A test in another crate says which. The paths
 //! that read pixels are the table here ([`Table::capture`]), the still ([`still`]), the protocol handlers and the PipeWire
@@ -259,15 +239,15 @@
 //!
 //! Each of these is a gap in what exists, not a rule with a test missing:
 //!
-//! - **`capture.still` (window and region targets).** `design/capture/api.md` says phase 1 is the only phase to build and
-//!   that window stills must not ship until the secure-window question is answered. Nothing implements it, so no test
-//!   exists and none is faked. When it lands, entries 1, 12 and 30 apply to it and it needs its own.
-//! - **The privacy indicator for a still.** `design/capture/api.md` says whether `org.gnoblin.Privacy` reports a still at
-//!   all is unverified, so the "signal before pixels are read" rule has nothing to be tested against.
-//! - **DRM capture.** `Drm::capture` is `None` (`design/supersample.md`), so no output is screenshot-able on hardware at any
-//!   factor. That refuses every capture; it does not leak one.
-//! - **The magnifier.** `design/capture/api.md` says whether the output screenshot includes the magnifier's zoom is
-//!   unverified. No test pins either answer.
+//! - **`capture.still` (window and region targets).** Window stills must not ship until the secure-window question is
+//!   answered. Nothing implements it, so no test exists and none is faked. When it lands, entries 1, 12 and 30 apply to
+//!   it and it needs its own.
+//! - **The privacy indicator for a still.** Whether `org.gnoblin.Privacy` reports a still at all is unverified, so the
+//!   "signal before pixels are read" rule has nothing to be tested against.
+//! - **DRM capture.** `Drm::capture` is `None`, so no output is screenshot-able on hardware at any factor. That refuses
+//!   every capture; it does not leak one.
+//! - **The magnifier.** Whether the output screenshot includes the magnifier's zoom is unverified. No test pins either
+//!   answer.
 //! - **A PipeWire frame a consumer already took.** The producer cannot recall it, so the secure-mark and lock guarantees
 //!   do not reach it (the `gnoblin-pipewire-export` crate docs state this).
 //!

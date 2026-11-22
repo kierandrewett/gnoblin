@@ -1,8 +1,8 @@
 //! The Vulkan renderer: an [`OutputFrame`] drawn through `ash` into an offscreen image and read
 //! back as an [`Image`].
 //!
-//! This is the third implementation of the frame description (see `gnoblin-render-frame`) and the one
-//! `design/vulkan-backend.md` chose `ash` and `naga` for. Slice 1 is the offscreen renderer:
+//! This is the third implementation of the frame description (see `gnoblin-render-frame`), built on `ash` and
+//! `naga`. Slice 1 is the offscreen renderer:
 //! it draws what the software renderer draws, plus the rounded corners the shared shaders
 //! already clip, and it reads the result back. It does not present, import dmabufs or draw the
 //! shipped effects (blur, shadow, border) yet; the design note lists what is next and in what order.

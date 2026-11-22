@@ -3,7 +3,7 @@
 //! polkitd asks the session's agent to authenticate somebody (`BeginAuthentication`). The agent does not
 //! check a password itself, and neither does anything that draws a prompt: it starts polkit's own setuid
 //! helper, `polkit-agent-helper-1`, which runs the PAM stack, and which, only when PAM says yes, tells polkitd
-//! itself with `AuthenticationAgentResponse2` before it prints `SUCCESS` (design/js/research/polkit.md). This
+//! itself with `AuthenticationAgentResponse2` before it prints `SUCCESS`. This
 //! crate is the compositor's half of that conversation:
 //!
 //! - [`AuthRequest`] is what the services role's agent hands the compositor for one `BeginAuthentication`: the

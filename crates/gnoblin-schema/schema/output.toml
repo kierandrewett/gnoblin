@@ -62,7 +62,7 @@ type = "double"
 since = "0.2.0"
 
 # The factor the output is composed above its mode: 1 for none, 2 for a surface of twice the mode's pixels in each
-# direction. The logical size does not change with it. See `design/supersample.md`.
+# direction. The logical size does not change with it.
 [[object.property]]
 name = "supersample"
 type = "double"

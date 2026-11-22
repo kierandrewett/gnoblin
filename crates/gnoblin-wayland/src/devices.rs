@@ -189,7 +189,7 @@ fn modifiers_of(state: &xkb::State) -> Modifiers {
 }
 
 /// The seat a device attaches to: the seat its tag names when the session serves one of that name, otherwise the
-/// default seat. Device-to-seat rules beyond the tag (`design/multi-seat.md` lane 2.2) extend this function.
+/// default seat. Device-to-seat rules beyond the tag extend this function.
 pub(crate) fn attached_seat<'a>(tag: &'a str, served: &[&'a str], default: &'a str) -> &'a str {
     served.iter().copied().find(|seat| *seat == tag).unwrap_or(default)
 }
@@ -224,8 +224,8 @@ impl State {
     /// Records a device the backend announced: it joins the list, the router learns its name, and the list is
     /// published. A device announced twice replaces its first entry.
     ///
-    /// The device keeps the logical seat the system tagged it with: lane 2.2 of `design/multi-seat.md` routes
-    /// devices by that tag once a session serves a second seat. Which seat it attaches to today is
+    /// The device keeps the logical seat the system tagged it with: devices will be routed by that tag once a
+    /// session serves a second seat. Which seat it attaches to today is
     /// [`attached_seat`]: the one input seat, `seat0` unless the session names another, for a device whose tag
     /// names no seat this session serves (libinput's `default`, a `WL_SEAT` of another machine's). A device that
     /// was already announced, or one announced while a binding-only claim names it, takes the same path, so a

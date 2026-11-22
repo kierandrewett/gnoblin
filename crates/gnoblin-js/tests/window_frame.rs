@@ -1,4 +1,4 @@
-//! The window frame (`data/js/gnoblin-std/frame/`, design/window-frame.md): a surface round each window with outlets a script
+//! The window frame (`data/js/gnoblin-std/frame/`): a surface round each window with outlets a script
 //! fills, over the fake compositor of `tests/common`.
 //!
 //! Nodes are read from the fake compositor the way the compositor would hold them: an outlet is a canvas that is a

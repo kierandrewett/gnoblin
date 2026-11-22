@@ -1,7 +1,7 @@
 //! Test support for anything that streams through this crate: a private `pipewire` daemon, a second
 //! client that watches what the daemon holds, and a consumer that reads the frames of one node.
 //!
-//! The recipe is `design/capture/pipewire-spike.md`. A private daemon runs no session manager, so
+//! A private daemon runs no session manager, so
 //! nothing links a producer to a consumer: [`FrameConsumer::connect`] makes the link a user session would.
 //!
 //! It is compiled for this crate's own tests and, behind the `testing` feature, for the integration

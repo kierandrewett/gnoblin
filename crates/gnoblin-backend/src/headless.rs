@@ -1459,7 +1459,7 @@ mod tests {
         );
     }
 
-    /// Secure content is replaced before any resampling (`design/supersample.md`, "Captures"): the displayed frame of a
+    /// Secure content is replaced before any resampling: the displayed frame of a
     /// supersampled output is the average of a frame that already holds the mask, so no averaged pixel can carry a trace
     /// of the layer's own pixels. A red secure square is the probe: any pixel with a channel that differs from the
     /// neutral grey the mask is would be red leaking through the average. The factor 3/2 is the case a box average

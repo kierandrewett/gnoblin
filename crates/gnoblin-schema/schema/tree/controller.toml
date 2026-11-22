@@ -1,8 +1,8 @@
 namespace = "tree"
 version = "0.2.0"
 
-# The `controller` class: one tracked hand of the XR program (design/js/xr.md, "Only the controllers need a schema
-# addition"). Draws nothing. The XR program, an observer on the owner socket, makes one for each hand while the runtime
+# The `controller` class: one tracked hand of the XR program, and the only schema addition XR needs. Draws nothing.
+# The XR program, an observer on the owner socket, makes one for each hand while the runtime
 # tracks it, writes it at most once a frame and destroys it when the hand is lost or the program's connection closes.
 # The shell reads every property but `claimed`. The aim ray's pose is the node's own `x`, `y`, `z` and `rotation`, in
 # the placement frame the XR program draws the room in (metres, y up, the viewer at the origin looking down negative z),

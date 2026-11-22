@@ -205,7 +205,7 @@ pub struct Output {
     pub scale: Scale,
     /// The supersample factor: the output is composed on a virtual surface of `mode * supersample` pixels at the
     /// compositing scale `scale * supersample` and shown at `mode`. One is no supersampling. The logical size does
-    /// not depend on it. See `design/supersample.md`.
+    /// not depend on it.
     pub supersample: Scale,
     /// The monitor's EDID identity (`MAN:product:serial`), or `None` for an output that reports none. A saved profile
     /// is keyed by the connector and this, so a different panel on the same port does not inherit it.

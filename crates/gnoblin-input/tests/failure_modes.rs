@@ -585,7 +585,7 @@ fn a_name_is_one_rule_everywhere() {
     assert!(spec.validate().is_err());
 }
 
-// Failure modes 13 to 15: device identity (multi-seat phase 1, `design/multi-seat.md`, lanes 1.2 and 1.4).
+// Failure modes 13 to 15: device identity (multi-seat, phase 1).
 
 const DESK: DeviceId = DeviceId::new(1);
 const PAD: DeviceId = DeviceId::new(2);

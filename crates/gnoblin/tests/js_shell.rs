@@ -12,7 +12,7 @@
 //! shell's crate is an IPC client and may link neither (`xtask deps`).
 //!
 //! The tests run in parallel and on a loaded machine. They wait for the state they need, with a deadline, and do not
-//! sleep for the time they guess a state will take (design/js/runtime-testing.md, "Real-compositor tests").
+//! sleep for the time they guess a state will take.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -1865,7 +1865,7 @@ fn a_strip_workspace_places_two_real_windows_in_columns_and_scrolls_to_the_focus
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 
-/// Live verification (design/js/runtime-live-verification.md, "Live verification"): a screenshot of `MasterStackLayout({ ratio: 0.6, gap:
+/// Live verification (`scripts/js-shell-screenshots.sh`): a screenshot of `MasterStackLayout({ ratio: 0.6, gap:
 /// 12 })` on 1024 by 768 showed a black column at the screen's right edge. The stack was 404 wide and started at 619, so
 /// it ended at 1023: a width floored on its own, where the floors of the master and the gap had already fallen short.
 #[test]

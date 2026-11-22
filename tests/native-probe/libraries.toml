@@ -204,7 +204,7 @@ nix = ["pipewire"]
 id = "libclang"
 kind = "build"
 crates = ["clang-sys", "libspa-sys"]
-evidence = "libspa-sys and pipewire-sys run bindgen, which loads libclang.so (scripts/ci-install-system-libraries.sh; design/capture/pipewire-spike.md: libclang 21 failed on glibc's bits/floatn.h)"
+evidence = "libspa-sys and pipewire-sys run bindgen, which loads libclang.so (scripts/ci-install-system-libraries.sh; libclang 21 failed on glibc's bits/floatn.h)"
 pkg-config = []
 sonames = ["libclang.so", "libclang-"]
 [library.packages]

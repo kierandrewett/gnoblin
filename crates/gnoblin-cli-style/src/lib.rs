@@ -2,7 +2,7 @@
 //! decisions (`theme`), text measuring (`text`), the human-output building
 //! blocks (`components`) and timestamps (`time`).
 //!
-//! The design rules are in `design/cli/design-system.md`. Components return
+//! The design rules are in `DESIGN.md` beside this crate's manifest. Components return
 //! strings and never print, so callers decide where output goes.
 
 /// Human-output building blocks: each returns a `String` for the caller to print.

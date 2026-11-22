@@ -2,7 +2,7 @@
 //!
 //! The runtime's side is scripted `Hands`; the owner's side is [`owner::serve`], which applies the program's `new`, `set`
 //! and `destroy` ops to a tree of its own and publishes the changes. What these tests prove is the program's side of the
-//! contract in `design/js/xr.md`: which nodes exist, what they hold, how often they are written, and how a claim is read
+//! controller contract: which nodes exist, what they hold, how often they are written, and how a claim is read
 //! back. Nothing here met a real compositor, a shell or a headset.
 
 use std::os::unix::net::UnixStream;

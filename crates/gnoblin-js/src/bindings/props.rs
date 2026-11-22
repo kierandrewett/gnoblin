@@ -221,7 +221,7 @@ const CAMERA: &[JsPropDef] = &[
     def("layer_budget", JsPropKind::Double, false),
 ];
 
-/// A `controller`: one tracked hand of the XR program (`design/js/xr.md`, "New native work"). The program writes
+/// A `controller`: one tracked hand of the XR program. The program writes
 /// every property but `claimed`, so a script reads them all and writes only the claims of its own bindings.
 const CONTROLLER: &[JsPropDef] = &[
     def("name", JsPropKind::Text, false),

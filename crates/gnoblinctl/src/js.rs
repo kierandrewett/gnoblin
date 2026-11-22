@@ -6,8 +6,8 @@
 //! what a session refuses is refused here: a syntax error, an import that does not resolve, a name the `gnoblin`
 //! module does not export, a bad trigger, a refused value and a top-level throw, all at the line the author wrote, in
 //! `.ts` coordinates. It needs no session and no Node. A file that reads live state sees an empty world. `--types` then
-//! runs an external type checker when one is installed; none is embedded (design/js/research/ts-in-quickjs.md,
-//! section 6), and a machine without one skips that step with a plain line and exit 0.
+//! runs an external type checker when one is installed; none is embedded, and a machine without one skips that step
+//! with a plain line and exit 0.
 
 use std::ffi::OsString;
 use std::io::{self, IsTerminal, Write};

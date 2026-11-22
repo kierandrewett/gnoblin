@@ -1,4 +1,4 @@
-//! XR on the JS shell (`data/js/gnoblin-std/{scene,extensions/xr}.ts`, `design/js/xr.md`) over the fake compositor of `tests/common`.
+//! XR on the JS shell (`data/js/gnoblin-std/{scene,extensions/xr}.ts`) over the fake compositor of `tests/common`.
 //!
 //! The XR program is out of process, so what the shell sees of it is nodes: the seat named `xr`, the camera named
 //! `head`, and `controller` nodes. These tests make those nodes the way the program does (unparented, while the shell

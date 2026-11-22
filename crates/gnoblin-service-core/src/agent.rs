@@ -6,7 +6,7 @@
 //! the helper authenticated; the D-Bus call returns that decision. This crate never
 //! sees a password, and nothing that draws a prompt answers for the helper: polkitd
 //! only accepts an authentication from the helper, which runs as root
-//! (design/js/research/polkit.md). The slot registry mirrors the compositor's, which
+//! (`polkit-agent-helper-1`). The slot registry mirrors the compositor's, which
 //! refuses a shell's claim of `auth.polkit`, and refuses the offer itself when the
 //! services role has not claimed the slot.
 //!

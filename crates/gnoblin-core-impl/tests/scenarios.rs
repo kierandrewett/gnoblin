@@ -1,4 +1,4 @@
-//! The proof spike's scenarios as tests (`design/modular-framework-spike.md`, results 3 to 6), against the real core.
+//! The scenarios that proved the linking, panic, reload and upgrade rules, as tests against the real core.
 //!
 //! The core is a `cdylib` that a launcher links, so each scenario runs a launcher process that loads fixture shells into it
 //! (`gnoblin-core-impl`'s `test-driver` feature) and prints `key=value` lines these tests assert on. The fixtures are real

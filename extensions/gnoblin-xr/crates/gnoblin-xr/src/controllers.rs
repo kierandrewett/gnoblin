@@ -1,6 +1,7 @@
 //! The controllers in the tree: one `controller` node for each hand the runtime reports.
 //!
-//! The program is an observer on the owner socket, and a binding in the shell reads these nodes (`design/js/xr.md`):
+//! The program is an observer on the owner socket, and a binding in the shell reads these nodes (the `controller`
+//! class of `gnoblin-schema`):
 //!
 //! - A node is made when the runtime reports a hand's controller, with every value in one transaction, so a reader never
 //!   sees a hand without its pose. It is destroyed when the runtime stops reporting the hand, and when the session ends.

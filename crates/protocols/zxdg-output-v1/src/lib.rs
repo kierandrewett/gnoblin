@@ -6,7 +6,7 @@
 //! scale, with no way to say otherwise. A supersampled output is told a scale of `u * s` while its mode stays the
 //! real one, so Smithay's arithmetic would report `mode / (u * s)` and shrink the desktop. This module reads the
 //! logical rectangle from the layout instead, which is what the protocol describes ("the size of the output in the
-//! global compositor space") and which does not depend on the supersample factor. See `design/supersample.md`.
+//! global compositor space") and which does not depend on the supersample factor.
 //!
 //! The event order is the one the protocol and Smithay's own handler use: position and size, then name and description
 //! (version 2 and later), then `done` for versions before 3, then `wl_output.done` so a client applies everything at

@@ -1,6 +1,6 @@
 name: wlcs conformance
 
-# Canonical's Wayland Conformance Suite against the Rust compositor, headless (design/e2e-wlcs.md). The job runs only
+# Canonical's Wayland Conformance Suite against the Rust compositor, headless (crates/gnoblin-wlcs). The job runs only
 # the tests tests/wlcs/expected.toml lists as passing, so a regression in a protocol the compositor already serves
 # fails the job and a known failure never does. wlcs is GPL-2.0: it is built in the job's workspace, never shipped.
 

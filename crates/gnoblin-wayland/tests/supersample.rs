@@ -1,4 +1,4 @@
-//! Supersampling on the real compositor: an output composed at `mode * s` and shown at its mode (design/supersample.md).
+//! Supersampling on the real compositor: an output composed at `mode * s` and shown at its mode.
 //!
 //! Everything runs the real `State`, the real frame loop and the software renderer on virtual (headless) outputs.
 //! A stand-in shell sends `screen.apply`, real `wayland-client` connections bind `wl_output`, `zxdg_output_manager_v1`,

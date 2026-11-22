@@ -1,6 +1,6 @@
 //! One generation: a QuickJS runtime and context with the limits the shell needs.
 //!
-//! A generation is the unit of hot reload (design/js/runtime.md, J5): reloading builds a new one and
+//! A generation is the unit of hot reload: reloading builds a new one and
 //! drops the old, because QuickJS cannot evict a module. It owns exactly one [`Runtime`] and one
 //! [`Context`], so two generations share no script state.
 //!
@@ -57,7 +57,7 @@ pub struct JsConfig {
 }
 
 impl JsConfig {
-    /// The defaults of design/js/runtime.md: the staging budget of `crate::budget`, a 64 MiB heap and a 512 KiB stack.
+    /// The defaults: the staging budget of `crate::budget`, a 64 MiB heap and a 512 KiB stack.
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             root: root.into(),
@@ -283,8 +283,8 @@ impl JsGeneration {
 
         // The `Eval` intrinsic is not optional: QuickJS compiles modules for the host through it, and
         // the host's own `eval_module` fails with "eval is not supported" without it. So scripts have
-        // `eval` too. The config is the user's own code, and the boundary that matters is the process
-        // (design/js/runtime.md, J1), not the global object. `performance` is left out.
+        // `eval` too. The config is the user's own code, and the boundary that matters is the process,
+        // not the global object. `performance` is left out.
         let context = Context::builder()
             .with::<(
                 intrinsic::Date,

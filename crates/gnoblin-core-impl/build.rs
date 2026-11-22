@@ -4,7 +4,7 @@
 //! from the crate; the SONAME is a link argument and dist installs the file under the SONAME), `-z nodelete` (a core that is
 //! never unloaded is what makes retired shell generations safe), and `-z defs` (an unresolved symbol fails the link, not
 //! the first call). The export list is not a version script: rustc already restricts a cdylib to its `#[no_mangle]`
-//! symbols, and a second script is rejected by the linker (spike result 1 in `design/modular-framework-spike.md`).
+//! symbols, and a second script is rejected by the linker.
 //!
 //! The catalog the `catalog_*` functions answer from is generated from `gnoblin-schema`'s files: every class with its
 //! properties, methods and signals, as `static` slices, plus a hash that `gnoblin_catalog_hash` returns.

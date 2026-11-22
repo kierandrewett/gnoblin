@@ -1233,7 +1233,7 @@ fn a_gpu_screencopy_respects_the_cursor_flag_and_an_image_copy_frame_carries_non
 }
 
 /// A supersampled output is composed at `mode * s` and a capture is of that frame, so both capture protocols offer
-/// a GPU buffer of that size and a buffer of the mode's size is too small (design/supersample.md, "Captures").
+/// a GPU buffer of that size and a buffer of the mode's size is too small.
 #[test]
 fn a_supersampled_output_is_captured_into_a_gpu_buffer_at_its_composed_size() {
     let factor = 2;

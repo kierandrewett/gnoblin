@@ -1,4 +1,4 @@
-# What wlcs is expected to do against the Rust compositor (design/e2e-wlcs.md).
+# What wlcs is expected to do against the Rust compositor.
 #
 # `core` is the subset scripts/wlcs.sh runs by default: the Phase 2 core and the later-phase protocol suites (pointer
 # constraints, relative pointer, text input, data device, primary selection, xdg-decoration, fractional scale). `passing`

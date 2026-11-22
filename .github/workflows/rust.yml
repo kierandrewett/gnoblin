@@ -108,7 +108,7 @@ jobs:
 
   # The PipeWire export (`gnoblin-pipewire-export`) and the capture end-to-end tests start a private `pipewire` daemon
   # in a runtime directory of their own, link a producer to a consumer the way a session manager would, and read the
-  # frames that arrive (design/capture/pipewire-spike.md). The workspace job runs them too, among everything else; this
+  # frames that arrive. The workspace job runs them too, among everything else; this
   # job runs only them, so a PipeWire failure is named by the job and shows within minutes. They fail, never skip,
   # when the daemon is missing.
   pipewire:

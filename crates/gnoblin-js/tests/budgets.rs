@@ -1,6 +1,6 @@
 //! What the product's call budgets guard, and the numbers they were set from.
 //!
-//! The budgets are wall-clock limits on one call into a script (design/js/runtime-budgets.md, "Product budgets"): they
+//! The budgets are wall-clock limits on one call into a script: they
 //! bound a script that hangs the shell, and nothing else. A limit on wall time also trips when the machine does not
 //! schedule the thread, so what matters is how far the work a call really does is from the limit.
 //!

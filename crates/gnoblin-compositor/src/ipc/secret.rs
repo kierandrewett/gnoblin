@@ -2,10 +2,9 @@
 //!
 //! A stock shell draws the prompt for the keyring when it claims the `prompt.secret` slot. This is the
 //! built-in that serves the request when none does, so a session with no shell, a crashed runtime or a
-//! script that never claimed the slot can still unlock the keyring (design/js/research/popups-portals.md,
-//! row 5, and section 5). The same service draws the polkit authentication dialog for `auth.polkit`, which no
-//! shell may claim: the compositor runs polkit's helper and the user's password never reaches a script
-//! (row 6, and design/js/research/polkit.md). The request layer decides when a request is the built-in's
+//! script that never claimed the slot can still unlock the keyring. The same service draws the polkit authentication
+//! dialog for `auth.polkit`, which no shell may claim: the compositor runs polkit's helper and the user's password never
+//! reaches a script. The request layer decides when a request is the built-in's
 //! ([`super::requests`]): it holds the request and its deadline, and this module only draws it and reports how the
 //! user ended it.
 //!

@@ -2,8 +2,8 @@
 
 One visual language for every Gnoblin command-line tool: `gnoblinctl`, `gnoblin`,
 `gnoblin-parity` and `xtask`. The shared code lives in the `gnoblin-cli-style` crate.
-The rules for command shape, arguments and exit codes stay in
-[development.md](development.md); this document covers how output looks.
+The rules for command shape, arguments and exit codes are in the user reference
+(`docs/cli/index.md`); this document covers how output looks.
 
 ## Principles
 
@@ -27,8 +27,7 @@ The rules for command shape, arguments and exit codes stay in
 - **One visual language.** A heading looks the same in `gnoblinctl status` and in
   `xtask deps`. A new tool reuses the components; it does not invent a style.
 - **The machine formats stay byte-stable.** `--json` output, the `[deps]`-style
-  line prefixes other tools grep for, and the report files under `design/` are
-  not restyled.
+  line prefixes other tools grep for, and generated report files are not restyled.
 
 ## Tokens
 

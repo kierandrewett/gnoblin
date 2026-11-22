@@ -1,7 +1,7 @@
 //! The lock card: a padlock, the time of day, a masked password entry and one line that says how the last attempt went.
 //!
 //! The compositor draws this over its lock cover when no shell holds the lock screen (none attached, or one that died
-//! or never engaged), so a locked session can always be unlocked (design/js/research/popups-portals.md, row 9). It is
+//! or never engaged), so a locked session can always be unlocked. It is
 //! the same kind of card as [`SecretUi`](crate::SecretUi) and shares its rules for the text:
 //!
 //! - Typed characters, Backspace and Enter are given to [`LockUi`] by its owner through [`LockUi::type_char`] and

@@ -1,6 +1,6 @@
 //! polkit authentication through a real compositor: the services role offers an authentication, the compositor
 //! draws its own dialog, a fake `polkit-agent-helper-1` checks the password, and only the helper's success
-//! answers the request (design/js/research/polkit.md).
+//! answers the request.
 //!
 //! The helper here is a shell script speaking the real helper's protocol; no PAM and no polkitd is involved, so
 //! these tests prove the compositor's half: who may offer and observe, what the dialog does with the helper's

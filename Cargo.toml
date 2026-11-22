@@ -215,7 +215,7 @@ protox = "0.10.0"
 # it. Licence MIT OR Apache-2.0, on the allow-list in deny.toml.
 naga = { version = "30.0.1", features = ["wgsl-in", "glsl-out"] }
 # The Vulkan bindings of the Vulkan renderer (`gnoblin-backend`, feature `vulkan`),
-# chosen in `design/vulkan-backend.md`. `loaded` opens the Vulkan loader with `dlopen`
+# chosen over wgpu, which picks the device and queues a DRM path needs to control. `loaded` opens the Vulkan loader with `dlopen`
 # at run time, so a machine without one still builds and starts and the renderer
 # reports a named error instead. `debug` is the debug-utils extension the validation
 # layer reports through. Licence MIT OR Apache-2.0, on the allow-list in deny.toml.
@@ -295,11 +295,11 @@ wayland-client = "0.31.15"
 wayland-scanner = "0.31.11"
 wayland-backend = "0.3.17"
 
-# The JavaScript engine the JS shell runtime embeds (design/js/runtime.md, J1-J9),
+# The JavaScript engine the JS shell runtime embeds,
 # QuickJS-ng through its Rust bindings. Only `gnoblin-js` names it. `std` gives the
 # libc allocator, which the memory limit needs; `loader` gives the module resolver
 # and loader traits. No `dyn-load`, `parallel` or `futures`: the runtime owns its own
-# job loop and loads no native code from scripts (design/js/research/quickjs-embedding.md).
+# job loop and loads no native code from scripts.
 rquickjs = { version = "0.14.0", default-features = false, features = ["std", "loader"] }
 # The TypeScript transformer, pinned exactly because the 0.x releases break their
 # API. `oxc_transformer` strips types, `oxc_codegen` prints the result and its source
@@ -315,7 +315,7 @@ oxc_semantic = "=0.158.0"
 oxc_span = "=0.158.0"
 oxc_sourcemap = "=9.0.0"
 oxc_transformer = "=0.158.0"
-# The file watcher behind JS hot reload (design/js/runtime.md, J5): inotify on Linux, CC0-1.0.
+# The file watcher behind JS hot reload: inotify on Linux, CC0-1.0.
 # No default features: they only add the macOS FSEvents backend, which this workspace does not
 # target.
 notify = { version = "8.2.1", default-features = false }

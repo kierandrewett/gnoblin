@@ -43,7 +43,7 @@ impl RendererKind {
     /// Software, because it is the reference every other renderer is compared against, it
     /// needs no GPU, no EGL and no session, and so it is the one choice that cannot fail on
     /// a machine where the session starts at all. Vulkan is not eligible until it draws
-    /// effects and can scan out (`design/vulkan-backend.md`), and GLES is not chosen for a
+    /// effects and can scan out, and GLES is not chosen for a
     /// session that did not ask for it because a missing EGL library would then stop a
     /// session that software would have run. The rule is written here so a backend that
     /// honours the setting cannot grow its own.

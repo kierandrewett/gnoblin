@@ -41,8 +41,7 @@
 //! | DRM      | GLES, hard-wired in `gnoblin-backend-drm` on the device's EGL display          |
 //!
 //! Nested and DRM do not go through `AnyRenderer` yet: DRM needs to draw into a scan-out
-//! buffer the device owns, which the offscreen constructor does not offer (see "Target
-//! ownership" in `design/vulkan-backend.md`).
+//! buffer the device owns, which the offscreen constructor does not offer.
 //!
 //! ## Why an enum and not a trait
 //!
