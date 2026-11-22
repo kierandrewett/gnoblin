@@ -1,7 +1,7 @@
 //! The served interface: `org.gnome.Mutter.IdleMonitor`.
 //!
 //! This is the name Mutter owns at `/org/gnome/Mutter/IdleMonitor/Core`, and the one
-//! `gsd-power`, `gnome-screensaver` and Gnoblin's own `src/idle.c` talk to. Every member
+//! `gsd-power` and `gnome-screensaver` talk to. Every member
 //! admits its call through [`crate::compat::IdleMonitorAdmission`] first, so a disabled
 //! adapter answers nothing and an unsupported member answers with the matrix's reason.
 //!

@@ -3,9 +3,8 @@
 //! This is `gnoblin-compat-dbus-mutter-idlemonitor` of `design/rust-compositor.md`
 //! ("Compatibility crates" and the redirect map's `IdleMonitor` row): the adapter that
 //! answers "how long has the user been away" and fires when a caller's threshold is
-//! reached. Gnoblin's own `src/idle.c` talks to this interface today, and so do `gsd-power`
-//! and every GNOME screensaver, which is why it is one of the adapters that is on by
-//! default.
+//! reached. `gsd-power` and every GNOME screensaver talk to this interface, which is why
+//! it is one of the adapters that is on by default.
 //!
 //! # What it is
 //!
