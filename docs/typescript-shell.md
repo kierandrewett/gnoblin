@@ -301,8 +301,15 @@ entry.on("textChanged", (text) => console.log(text)); // `<property>Changed` is 
 const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", held: false }); // records in, a record out
 ```
 
-- A **record** is a plain object (a field with a default may be left out, an optional one is `undefined`), an **enum** its name
-  (`"follow-mouse"`), a list an array and a callback a function.
+- A **record** is a class (`Border`, `Shadow`, `TextRange`). Its constructor takes an object of fields. A field with a default may be
+  left out and starts at it, an optional one is `undefined`, and a field the class does not have is a `TypeError`.
+- A call that takes a record also takes a plain object of the same fields, and a record comes back as an instance of its class.
+- The record of a **family** has no class of its own. It is one of its variants, each a class, and a call takes an instance of one:
+  `style.backdropFilter = [new BlurFilter(), new SaturateFilter({ amount: 1.5 })]`. A `BlurFilter` starts at a `radius` of 12 and a
+  grade at an `amount` of 1.
+- A record is a detached value. One you read is a copy, so write it or its list back to change anything (`style.borders[0].width = 5`
+  changes the copy). The library checks it when it takes it, not when you build it.
+- An **enum** is its name (`"follow-mouse"`), a list an array and a callback a function.
 - `on(event, handler)` returns a `Listener` with `stop()`. It lasts until stopped or the generation ends, not until the object is
   collected; the library's object itself lives until `destroy()` or the generation's end, and the script's reference is dropped when the
   object is collected.

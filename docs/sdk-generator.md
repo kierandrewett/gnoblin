@@ -117,7 +117,7 @@ Rust type for each catalog type:
 - an **enum** is a Rust enum whose discriminants are the ids the protocol numbers its values with (`ALL`, `as_str`);
 - a **record** is a struct of its properties in catalog order. A field with a schema default starts at it, an `optional` field is an
   `Option` that starts as `None`, and any other field is always there: a record that has some is made with `new`, and one that has none
-  has `Default`;
+  has `Default`. The record of a family (see [Value classes](#value-classes)) is an enum of structs, one for each variant;
 - a **handle** or a **service** is a struct that holds a reference and releases it when dropped. It has a constructor (`new`, or `get`
   for a service), a getter and a setter for each property, a method for each method, and an associated function for each `function`.
   An object or a record reads as an `Option`, and so does the result of a method marked `optional`. A listener ends when the returned
@@ -147,11 +147,74 @@ The names follow the language: `camelCase` members and `PascalCase` classes in T
 | Catalog type | TypeScript (`gnoblin-std/generated/objects`)                   | Python (`gnoblin.objects.std`)                       |
 | ------------ | -------------------------------------------------------------- | ---------------------------------------------------- |
 | enum         | a string-literal union (`"click" \| "sloppy"`)                 | an `IntEnum`; a name is accepted where one is read   |
-| record       | an interface, and an `Init` one when a field has a default     | a `dataclass`                                        |
+| record       | a class, and an `Init` option bag for its constructor          | a `dataclass`                                        |
 | handle       | a class: accessors, methods, `on(event, handler)`, `destroy()` | a class: properties, methods, `on(event[, handler])` |
 | service      | a class of static functions (and `get()` when it has members)  | the same                                             |
 | interface    | an abstract class a shell extends, optional methods optional   | a base class a shell subclasses                      |
 | callback     | a function                                                     | a callable                                           |
+
+### Value classes
+
+A record is a value class in every language, from one model (`crates/gnoblin-sdkgen/src/values.rs`), so a name, a field, the order of
+the fields and a default cannot differ between languages. `cargo test -p gnoblin-sdkgen` proves it for every record of both catalogs.
+
+| Language   | A value class                                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------------------------------- |
+| TypeScript | `class Border` with the fields as properties, and `BorderInit`, the option bag its constructor takes                  |
+| Python     | a `dataclass`, with keyword defaults                                                                                  |
+| Rust       | a struct with `Default` (or `new` for the fields that must be given), so `Border { width: 3.0, ..Border::default() }` |
+
+In JavaScript the constructor starts each field at its default. A value of `0`, `false` or `""` that a caller gives stays. A list default
+is a new list for each value. A field that is not in the class, and a required field that is missing, are a `TypeError`. A call that takes
+a record also takes a plain object of its fields.
+
+A value class is a **detached value**. It holds what it was given and checks nothing itself.
+
+A record you read (`style.borders[0]`) is a copy, so changing its field does not change the window. Write the record or the list back to
+change it (`style.borders = borders`).
+
+The library checks a value when it takes it. It refuses a bad one with the path of the field (`Client#42.style.borders[0].width: ...`)
+and changes nothing.
+
+A record can be the **family** of a tagged value. A family has a `tag`, an enum property that says what a value is, and a
+`[[object.variant]]` for each value of that enum (the catalog refuses a value without a variant, and two variants for one):
+
+```toml
+[[object]]
+name = "filter"
+kind = "record"
+tag = "kind"
+
+[[object.variant]]
+name = "blur_filter"
+tag = "blur"
+
+[[object.variant.property]]
+name = "radius"
+type = "double"
+default = 12.0
+field = "amount"
+```
+
+Each variant is a value class of its own, so a filter is one of five classes:
+
+- `BlurFilter`
+- `SaturateFilter`
+- `BrightnessFilter`
+- `ContrastFilter`
+- `ShaderFilter`
+
+The family is the type that holds any of them: a union in TypeScript and Python, and in Rust the enum `Filter`, with `From` for each
+variant and a `kind()` method.
+
+A call that takes the family takes an instance of a variant and refuses anything else with an error that names them. A family read from
+the library is an instance of the variant its tag says. A tag no variant has is an error.
+
+The `field` of a variant's property says where the family's record carries it: a field of the family (`amount`), or a field of a record
+that field holds (`shader.source`).
+
+The wire carries the family's record and nothing else, so a variant adds no class to the object table and no byte to the encoding of a
+record. A variant's name is not a class of the namespace, and its surface is in the module's lock (`variant` and `variant_field` lines).
 
 An object is held by a reference that ends when the script's last reference goes (a `FinalizationRegistry` in JavaScript, the dealloc of
 the handle in Python, queued to the shell thread): the library's object lives on until `destroy()`, its parent's end or the generation's.

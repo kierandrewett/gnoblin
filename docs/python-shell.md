@@ -311,8 +311,14 @@ action = FocusPolicy.focus_decision(           # a function of a service: record
     FocusSettings(mode=FocusMode.SLOPPY), FocusEvent(kind=FocusEventKind.ENTER, held=False))
 ```
 
-- A **record** is a `dataclass` (a field with a default starts at it, an optional one at `None`), an **enum** an `IntEnum` (a method also
-  takes its name, `"follow-mouse"`), and a list a `list`.
+- A **record** is a `dataclass`. A field with a default starts at it and an optional one at `None`: `Border()` is one pixel wide and
+  white.
+- The record of a **family** has no class of its own. It is one of its variants, each a `dataclass`, and `Filter` is the union of them:
+  `style.backdrop_filter = [BlurFilter(), SaturateFilter(amount=1.5)]`. A `BlurFilter` starts at a `radius` of 12 and a grade at an
+  `amount` of 1. A call that takes a family refuses anything but an instance of a variant, with a `TypeError` that names them.
+- A record is a detached value. One you read is a copy, so write it or its list back to change anything. The library checks it when it
+  takes it, not when you build it.
+- An **enum** is an `IntEnum` (a method also takes its name, `"follow-mouse"`), and a list a `list`.
 - `on(event, handler)` returns a `Listener` with `stop()`; without a handler it is a decorator. It lasts until stopped or the
   generation ends, not until the object is collected.
 - An **interface** (`gnoblin.objects.std.<Name>` of kind `interface`) is a base class: a subclass defines the methods it wants to answer
