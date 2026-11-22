@@ -97,6 +97,8 @@ extensions![
     (c"ext_background_effect_manager_v1", 1),
     (c"ext_idle_notifier_v1", 2),
     (c"ext_session_lock_manager_v1", 1),
+    (c"org_kde_kwin_appmenu_manager", 2),
+    (c"org_kde_kwin_server_decoration_manager", 1),
     (c"wl_compositor", 5),
     (c"wl_data_device_manager", 3),
     (c"wl_output", 4),
