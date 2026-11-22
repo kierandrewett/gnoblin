@@ -199,14 +199,17 @@ def snapshot(
             for entry_count, entry in enumerate(entries):
                 if not budget():
                     break
+                # The process limit is checked first so that the reported limit does not depend on the order
+                # in which scandir returns /proc entries.
+                is_process = entry.name.isdecimal()
+                if is_process and coverage["processes"] >= max_processes:
+                    limits.add("processes")
+                    break
                 if entry_count >= max_processes * 2:
                     limits.add("directoryEntries")
                     break
-                if not entry.name.isdecimal():
+                if not is_process:
                     continue
-                if coverage["processes"] >= max_processes:
-                    limits.add("processes")
-                    break
                 if coverage["fdinfoFiles"] >= max_fds:
                     limits.add("fds")
                     break
