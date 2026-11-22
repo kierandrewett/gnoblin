@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type};
 
 use super::object_script::{ScriptView, quote};
-use super::objects::{ClassMember, Member, check_foreign, slots_of};
+use super::objects::{ClassMember, Member, check_foreign, finds_of, slots_of};
 use super::text::{CodeWriter, pascal, python_ident, snake};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family, py_field};
 
@@ -176,6 +176,25 @@ def ref(value: Any, implement: Callable[[Any], Any] | None = None) -> Any:
         handle = implement(value)
         value._h = handle
     return handle
+
+
+def find(service: Any, label: str, finders: dict[str, tuple[str, type]], kind: Any, filter: Any = None) -> list[Any]:
+    """`find(kind, filter)` of a service: the objects of one kind that match `filter`: a query, a dict of field values, or a function that keeps an object when it returns a true value."""
+    entry = finders.get(kind) if isinstance(kind, str) else None
+    if entry is None:
+        raise TypeError(f"{label}.find: no kind {kind!r}; the kinds that work are {', '.join(finders)}")
+    method, query = entry
+    if filter is not None and not isinstance(filter, query):
+        if callable(filter):
+            return [found for found in getattr(service, method)() if filter(found)]
+        if not isinstance(filter, dict):
+            raise TypeError(f"{label}.find({kind!r}): the filter is a {query.__name__}, a dict of fields or a function, not {type(filter).__name__}")
+        known = [field.name for field in dataclasses.fields(query)]
+        for key in filter:
+            if key not in known:
+                raise TypeError(f"{label}.find({kind!r}): no field {key!r} (known: {', '.join(known)})")
+        filter = query(**filter)
+    return getattr(service, method)(filter)
 
 
 def callback(fn: Callable[..., Any], decoders: tuple[Callable[[Any], Any], ...], encode: Callable[[Any], Any]) -> Callable[[int, list[Any]], Any]:
@@ -947,6 +966,11 @@ impl<'a> Py<'a> {
                 Member::Signal(_) => {}
             }
         }
+        let finds = finds_of(object);
+        if has_instance_members && !finds.is_empty() {
+            claim("find")?;
+            self.find_source(c, object, &finds)?;
+        }
         if self.stub && has_instance_members {
             self.on_stubs(c, &events);
         }
@@ -956,6 +980,53 @@ impl<'a> Py<'a> {
             c.line(format!("_B.register(_NS_NAME, {}, {name})", quote(&object.name)));
             c.blank();
         }
+        Ok(())
+    }
+
+    /// `find(kind, filter)` of a service: in a module the call of `_B.find` with the kinds the catalog gives the service, in a stub one
+    /// overload for each kind and one for a kind a package adds.
+    fn find_source(&self, c: &mut CodeWriter, object: &ObjectType, finds: &[(&str, &Method)]) -> Result<(), String> {
+        if self.stub {
+            for (kind, method) in finds {
+                let Some(Type::List(inner)) = &method.returns else {
+                    return Err(format!(
+                        "`{}`: the finder of `{kind}` does not return a list",
+                        object.name
+                    ));
+                };
+                let found = self.ty(inner, false)?;
+                let query = self.ty(&method.params[0].ty, true)?;
+                c.line("@overload");
+                c.line(format!(
+                    "def find(self, kind: Literal[{}], filter: {query} | dict[str, object] | Callable[[{found}], object] | None = None) -> list[{found}]: ...",
+                    quote(kind)
+                ));
+            }
+            c.line("@overload");
+            c.line("def find(self, kind: str, filter: dict[str, object] | Callable[[Any], object] | None = None) -> list[Any]: ...");
+            return Ok(());
+        }
+        let mut kinds = Vec::new();
+        for (kind, method) in finds {
+            let query = self.ty(&method.params[0].ty, true)?;
+            kinds.push(format!(
+                "{}: ({}, {query})",
+                quote(kind),
+                quote(&member_name(&method.name, &method.extras.export.py))
+            ));
+        }
+        c.line("def find(self, kind, filter=None):");
+        c.indent();
+        c.line(format!(
+            "\"\"\"The live objects of one kind that match `filter`: {}. A filter is a query, a dict of field values or a function; an unknown kind or field raises and names what works.\"\"\"",
+            finds.iter().map(|(kind, _)| format!("`{kind}`")).collect::<Vec<_>>().join(", ")
+        ));
+        c.line(format!(
+            "return _B.find(self, {}, {{{}}}, kind, filter)",
+            quote(&object.name),
+            kinds.join(", ")
+        ));
+        c.dedent();
         Ok(())
     }
 
@@ -1289,7 +1360,7 @@ pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String
         c.line("import builtins");
         c.line("import dataclasses");
         c.line("import enum");
-        c.line("from typing import Callable, Literal, TypeVar, overload");
+        c.line("from typing import Any, Callable, Literal, TypeVar, overload");
         c.blank();
         c.line("from gnoblin.objects import Listener as Listener, Timing as Timing");
         c.blank();

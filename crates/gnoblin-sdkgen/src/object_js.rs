@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type};
 
 use super::object_script::{ScriptView, quote};
-use super::objects::{ClassMember, Member, check_foreign, slots_of};
+use super::objects::{ClassMember, Member, check_foreign, finds_of, slots_of};
 use super::text::{CodeWriter, camel, pascal, snake, ts_ident};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family, js_field};
 
@@ -87,6 +87,29 @@ export function fields(init, label, known) {
       throw new TypeError(`${label}: no field "${key}" (known: ${known.join(", ")})`);
     }
   }
+}
+
+/**
+ * `find(kind, filter)` of a service: the objects of one kind that match `filter`, a table of field values or a predicate. `finders`
+ * maps each kind the service knows to the method that lists it and a function that answers the class of its filter, so a kind it does
+ * not know is refused with the kinds that work, and so is a table with a field the class lacks.
+ */
+export function find(self, label, finders, kind, filter) {
+  const entry = typeof kind === "string" && Object.hasOwn(finders, kind) ? finders[kind] : undefined;
+  if (entry === undefined) {
+    throw new TypeError(
+      `${label}.find: no kind ${JSON.stringify(kind)}; the kinds that work are ${Object.keys(finders).join(", ")}`,
+    );
+  }
+  const [method, queryClass] = entry;
+  if (typeof filter === "function") {
+    return self[method]().filter((found) => filter(found));
+  }
+  if (filter !== undefined && filter !== null && typeof filter === "object" && !(filter instanceof queryClass())) {
+    const Query = queryClass();
+    filter = new Query(filter);
+  }
+  return self[method](filter);
 }
 
 /** A record on its way in: its fields, in the catalog's order. */
@@ -725,6 +748,25 @@ impl<'a> Js<'a> {
             }
         };
 
+        let finds = finds_of(object);
+        if has_instance_members && !finds.is_empty() {
+            claim("find", false)?;
+            let mut kinds = Vec::new();
+            for (kind, method) in &finds {
+                let Some(Type::ObjectRef(query)) = method.params.first().map(|param| &param.ty) else {
+                    return Err(format!(
+                        "`{}`: the finder of `{kind}` takes no filter record",
+                        object.name
+                    ));
+                };
+                kinds.push(format!(
+                    "{kind}: [{}, () => {}]",
+                    quote(&member_name(&method.name, &method.extras.export.js)),
+                    class_name(self.view.class(query)?)
+                ));
+            }
+            c.line(format!("const finders_{snake_name} = {{ {} }};", kinds.join(", ")));
+        }
         c.line(format!(
             "/** The class `{}` of `{}`. */",
             object.name, self.view.namespace
@@ -769,6 +811,29 @@ impl<'a> Js<'a> {
                         );
                     }
                 }
+            }
+            if !finds.is_empty() {
+                c.line("/**");
+                c.line(" * The live objects of one kind that match `filter`, a table of field values or a function that keeps an object when it");
+                c.line(format!(
+                    " * returns a truthy value: {}. An unknown kind or field throws and names what works.",
+                    finds
+                        .iter()
+                        .map(|(kind, _)| format!("`{kind}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+                c.line(" */");
+                c.block(
+                    "find(kind, filter) {",
+                    |c| {
+                        c.line(format!(
+                            "return B.find(this, {}, finders_{snake_name}, kind, filter);",
+                            quote(&object.name)
+                        ))
+                    },
+                    "}",
+                );
             }
             c.line("/** Ends the object and its children, whoever else holds it. */");
             c.block("destroy() {", |c| c.line("N.destroy(this[B.HANDLE]);"), "}");
@@ -1206,6 +1271,7 @@ impl Js<'_> {
             check_foreign(&object.name, slot)?;
         }
         let events = Self::events(&slots);
+        let finds = finds_of(object);
         let has_instance_members = object.kind == ObjectKind::Handle
             || slots.iter().any(|slot| match &slot.member {
                 Member::Method(method) => !method.function,
@@ -1325,6 +1391,23 @@ impl Js<'_> {
                         ));
                     }
                 }
+            }
+            for (kind, method) in &finds {
+                let Some(Type::List(inner)) = &method.returns else {
+                    return Err(format!(
+                        "`{}`: the finder of `{kind}` does not return a list",
+                        object.name
+                    ));
+                };
+                let found = self.ts(inner, false)?;
+                let query = self.ts(&method.params[0].ty, true)?;
+                c.line(format!(
+                    "find(kind: {}, filter?: {query} | ((found: {found}) => unknown)): {found}[];",
+                    quote(kind)
+                ));
+            }
+            if !finds.is_empty() {
+                c.line("find(kind: string, filter?: Record<string, unknown> | ((found: never) => unknown)): object[];");
             }
             c.line("destroy(): void;");
         }

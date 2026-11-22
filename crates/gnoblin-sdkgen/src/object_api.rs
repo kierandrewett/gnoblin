@@ -29,7 +29,7 @@ use gnoblin_schema::{
     Type,
 };
 
-use super::objects::{Member, check_foreign, slots_of, stem_of};
+use super::objects::{Member, check_foreign, finds_of, slots_of, stem_of};
 use super::text::{pascal, rust_ident, snake};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family};
 use super::{Comment, File, SdkSpec, Target};
@@ -827,6 +827,37 @@ impl @Ids@ {
             }
         }
 
+        let finds = finds_of(object);
+        let mut found_impls = String::new();
+        if has_instance_members && !finds.is_empty() {
+            claim("find")?;
+            let kinds: Vec<String> = finds.iter().map(|(kind, _)| format!("`{kind}`")).collect();
+            let Some(Type::List(first)) = finds.first().and_then(|(_, method)| method.returns.as_ref()) else {
+                return Err(format!("`{}`: the first finder does not return a list", object.name));
+            };
+            let first = self.owned(first)?;
+            let _ = write!(
+                methods,
+                "    /// The live objects of the kind `T` that match `filter`, in list order, or every one when it is left out. The kinds are {}: `find::<{first}>(None)`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library refuses the filter.\n    pub fn find<T: Finds<{name}>>(&self, filter: Option<&T::Filter>) -> go::Res<Vec<T>> {{\n        T::find_in(self, filter)\n    }}\n\n",
+                kinds.join(", ")
+            );
+            for (kind, method) in &finds {
+                let Some(Type::List(inner)) = &method.returns else {
+                    return Err(format!(
+                        "`{}`: the finder of `{kind}` does not return a list",
+                        object.name
+                    ));
+                };
+                let _ = write!(
+                    found_impls,
+                    "impl Finds<{name}> for {found} {{\n    type Filter = {filter};\n    const KIND: &'static str = {kind:?};\n\n    fn find_in(service: &{name}, filter: Option<&{filter}>) -> go::Res<Vec<{found}>> {{\n        service.{ident}(filter)\n    }}\n}}\n\n",
+                    found = self.owned(inner)?,
+                    filter = self.owned(&method.params[0].ty)?,
+                    ident = member_ident(&method.name, &method.extras.export.rust),
+                );
+            }
+        }
+
         let mut text = String::new();
         let _ = writeln!(text, "/// The class `{}`.", object.name);
         if has_instance_members {
@@ -869,6 +900,7 @@ impl go::typed::FromVal<Objects> for @Name@ {
 "#,
                 &[("Name", &name), ("Methods", &methods)],
             ));
+            text.push_str(&found_impls);
         } else {
             text.push_str(&fill(
                 "#[derive(Clone, Copy, Debug)]\npub struct @Name@;\n\nimpl @Name@ {\n@Methods@}\n\n",
@@ -1220,6 +1252,24 @@ impl go::typed::FromVal<Objects> for @Name@ {
 }
 
 /// The typed API of `namespace`.
+/// The trait a service's generic `find` is written over: a kind of object the service can list, and the filter that kind takes.
+const FINDS: &str = r#"/// A kind of object the service `S` can list: `S::find::<Self>(filter)`. A kind a service does not list has no impl, so asking
+/// for it is refused when the shell is built, with the service named.
+pub trait Finds<S>: Sized {
+    /// The record the kind is filtered by.
+    type Filter;
+    /// The kind's name, as a script writes it (`"Window"`).
+    const KIND: &'static str;
+    /// Lists the objects of the kind that match `filter`, or every one when it is left out.
+    ///
+    /// # Errors
+    ///
+    /// The service is gone, or the library refuses the filter.
+    fn find_in(service: &S, filter: Option<&Self::Filter>) -> go::Res<Vec<Self>>;
+}
+
+"#;
+
 pub(super) fn render(catalog: &Catalog, namespace: &Namespace) -> Result<String, String> {
     let gen_ = Renderer::new(catalog, namespace)?;
     let mut body = String::new();
@@ -1285,6 +1335,9 @@ impl Objects {
 "#,
         &[("Namespace", namespace.as_str()), ("IdFields", &ids_fields.join("\n"))],
     );
+    if body.contains("impl Finds<") {
+        text.push_str(FINDS);
+    }
     text.push_str(&body);
     text.push_str(&ids);
     Ok(text)

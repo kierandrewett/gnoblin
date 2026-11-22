@@ -59,6 +59,15 @@ pub(super) fn foreign_base<'a>(catalog: &'a Catalog, object: &ObjectType) -> Opt
     Some((home, members))
 }
 
+/// The kinds a service's `find` knows and the method that lists each, in the order the catalog declares them.
+pub(super) fn finds_of(object: &ObjectType) -> Vec<(&str, &gnoblin_schema::Method)> {
+    object
+        .methods
+        .iter()
+        .filter_map(|method| method.extras.find.as_deref().map(|kind| (kind, method)))
+        .collect()
+}
+
 /// One member of a class, before it is written.
 pub(super) enum Member<'a> {
     Property(&'a Property),

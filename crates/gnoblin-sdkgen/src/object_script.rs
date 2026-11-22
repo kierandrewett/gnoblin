@@ -656,4 +656,262 @@ const number: number = entry.text;
             "only the marked method: {tables}"
         );
     }
+    /// A catalog with a service `root` whose `find` knows two kinds, `Thing` and `Other`.
+    fn finder_catalog(dir: &Path) -> Catalog {
+        fs::write(
+            dir.join("root.toml"),
+            "namespace = \"lib.r\"\nversion = \"0.1.0\"\nlocal = true\n\n\
+             [[object]]\nname = \"query\"\nsince = \"0.1.0\"\nkind = \"record\"\n\n\
+             [[object.property]]\nname = \"label\"\ntype = \"string\"\nsince = \"0.1.0\"\noptional = true\n\n\
+             [[object]]\nname = \"thing\"\nsince = \"0.1.0\"\nkind = \"handle\"\n\n\
+             [[object]]\nname = \"other\"\nsince = \"0.1.0\"\nkind = \"handle\"\n\n\
+             [[object]]\nname = \"root\"\nsince = \"0.1.0\"\nkind = \"service\"\n\n\
+             [[object.method]]\nname = \"find_things\"\nsince = \"0.1.0\"\nreturns = \"list<object:thing>\"\nfind = \"Thing\"\n\n\
+             [[object.method.param]]\nname = \"query\"\ntype = \"object:query\"\noptional = true\n\n\
+             [[object.method]]\nname = \"find_others\"\nsince = \"0.1.0\"\nreturns = \"list<object:other>\"\nfind = \"Other\"\n\n\
+             [[object.method.param]]\nname = \"query\"\ntype = \"object:query\"\noptional = true\n",
+        )
+        .expect("a schema");
+        Catalog::load_dirs(&[dir], &[]).expect("a catalog")
+    }
+
+    /// A service with `find` methods gets `find(kind, filter)` in every language, written from the kinds the catalog names, and a service
+    /// without them gets none.
+    #[test]
+    fn a_service_with_finders_has_find_in_every_language() {
+        let root = tempfile::tempdir().expect("a directory");
+        let catalog = finder_catalog(root.path());
+        let namespaces = catalog.namespaces();
+        let view = ScriptView::new(&catalog, &namespaces[0]);
+
+        let js = object_js::render_js(&view).expect("the JavaScript renders");
+        assert!(
+            js.contains(
+                r#"const finders_root = { Thing: ["findThings", () => Query], Other: ["findOthers", () => Query] };"#
+            ),
+            "{js}"
+        );
+        assert!(
+            js.contains(r#"return B.find(this, "root", finders_root, kind, filter);"#),
+            "{js}"
+        );
+        let dts = object_js::render_dts(&view).expect("declarations render");
+        assert!(
+            dts.contains(r#"find(kind: "Thing", filter?: "#) && dts.contains("((found: Thing) => unknown)): Thing[];"),
+            "{dts}"
+        );
+        assert!(
+            dts.contains(r#"find(kind: "Other""#) && dts.contains("find(kind: string,"),
+            "{dts}"
+        );
+
+        let py = object_py::render(&view, false).expect("the Python renders");
+        assert!(
+            py.contains(r#"return _B.find(self, "root", {"Thing": ("find_things", Query), "Other": ("find_others", Query)}, kind, filter)"#),
+            "{py}"
+        );
+        let stub = object_py::render(&view, true).expect("the stub renders");
+        assert!(stub.contains(r#"def find(self, kind: Literal["Thing"]"#), "{stub}");
+        assert!(stub.contains(r#"def find(self, kind: Literal["Other"]"#), "{stub}");
+
+        let rust = crate::object_api::render(&catalog, &namespaces[0]).expect("the typed API renders");
+        assert!(rust.contains("pub trait Finds<S>: Sized"), "{rust}");
+        assert!(
+            rust.contains("pub fn find<T: Finds<Root>>(&self, filter: Option<&T::Filter>)"),
+            "{rust}"
+        );
+        assert!(
+            rust.contains(
+                "impl Finds<Root> for Thing {\n    type Filter = Query;\n    const KIND: &'static str = \"Thing\";"
+            ),
+            "{rust}"
+        );
+        assert!(rust.contains("service.find_others(filter)"), "{rust}");
+
+        // The catalog of the library without finders has no `find`: nothing is added to a service that names no kind.
+        let plain = tempfile::tempdir().expect("a directory");
+        fs::write(
+            plain.path().join("plain.toml"),
+            "namespace = \"lib.p\"\nversion = \"0.1.0\"\nlocal = true\n\n[[object]]\nname = \"root\"\nsince = \"0.1.0\"\nkind = \"service\"\n\n\
+             [[object.method]]\nname = \"ping\"\nsince = \"0.1.0\"\n",
+        )
+        .expect("a schema");
+        let catalog = Catalog::load_dirs(&[plain.path()], &[]).expect("a catalog");
+        let namespaces = catalog.namespaces();
+        let view = ScriptView::new(&catalog, &namespaces[0]);
+        assert!(!object_js::render_js(&view).expect("renders").contains("find("));
+        assert!(!object_py::render(&view, false).expect("renders").contains("def find"));
+        assert!(
+            !crate::object_api::render(&catalog, &namespaces[0])
+                .expect("renders")
+                .contains("Finds")
+        );
+    }
+
+    /// `B.find` of the JavaScript runtime: a table goes to the method of the kind, a function filters what the method lists, and a kind that is
+    /// not listed (or one that only the object prototype has) is refused with the kinds that work. Skipped where there is no `node`.
+    #[test]
+    fn the_javascript_find_picks_the_method_of_the_kind_and_refuses_the_rest() {
+        let Some(node) = tool("node", "GNOBLIN_NODE") else {
+            eprintln!("node is not installed: the check is skipped");
+            return;
+        };
+        let dir = tempfile::tempdir().expect("a directory");
+        let files = rendered_files();
+        let base = files
+            .iter()
+            .find(|(file, _)| file == "js/native/gnoblin-core/generated/object_base.js")
+            .expect("the base is rendered");
+        fs::write(dir.path().join("object_base.mjs"), &base.1).expect("the base");
+        fs::write(
+            dir.path().join("check.mjs"),
+            r##"
+globalThis.__gnoblinObjects = {};
+const B = await import("./object_base.mjs");
+const calls = [];
+const service = {
+  findThings(filter) { calls.push(["findThings", filter]); return [{ n: 1 }, { n: 2 }, { n: 3 }]; },
+  findOthers(filter) { calls.push(["findOthers", filter]); return []; },
+};
+class Query {
+  constructor(init = {}) {
+    B.fields(init, "Query", ["label"]);
+    this.label = init.label;
+  }
+}
+const finders = { Thing: ["findThings", () => Query], Other: ["findOthers", () => Query] };
+const find = (kind, filter) => B.find(service, "gnoblin", finders, kind, filter);
+const eq = (what, got, want) => {
+  if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${what}: got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+};
+const refuses = (what, run, words) => {
+  try { run(); } catch (error) {
+    if (!(error instanceof TypeError) || !words.every((word) => error.message.includes(word))) throw new Error(`${what}: the error was ${error}`);
+    return;
+  }
+  throw new Error(`${what}: nothing was refused`);
+};
+eq("every object", find("Thing"), [{ n: 1 }, { n: 2 }, { n: 3 }]);
+eq("a table goes to the method as the filter class", (find("Other", { label: "x" }), calls.at(-1)[1] instanceof Query && calls.at(-1)), ["findOthers", { label: "x" }]);
+const own = new Query({ label: "y" });
+find("Other", own);
+eq("a filter that is the class goes through as it is", calls.at(-1)[1] === own, true);
+refuses("a field the class lacks", () => find("Thing", { lable: "x" }), ['no field "lable"', "known: label"]);
+eq("a refused table called no method", calls.at(-1)[0], "findOthers");
+eq("a function keeps what it likes", find("Thing", (found) => found.n !== 2), [{ n: 1 }, { n: 3 }]);
+eq("a function is not handed to the method", calls.at(-1), ["findThings", undefined]);
+eq("a function gets one argument", (() => { const seen = []; find("Thing", (...args) => seen.push(args.length)); return seen; })(), [1, 1, 1]);
+refuses("a kind the service lacks", () => find("Workspace"), ['no kind "Workspace"', "the kinds that work are Thing, Other"]);
+refuses("a prototype name", () => find("toString"), ['no kind "toString"']);
+refuses("the prototype itself", () => find("__proto__"), ['no kind "__proto__"']);
+refuses("a kind that is not a string", () => find(3), ["no kind 3"]);
+refuses("no kind at all", () => find(), ["the kinds that work"]);
+console.log("ok");
+"##,
+        )
+        .expect("the check");
+        let ran = Command::new(&node)
+            .arg(dir.path().join("check.mjs"))
+            .output()
+            .expect("node runs");
+        assert!(
+            ran.status.success() && String::from_utf8_lossy(&ran.stdout).trim() == "ok",
+            "{}{}",
+            String::from_utf8_lossy(&ran.stdout),
+            String::from_utf8_lossy(&ran.stderr)
+        );
+    }
+
+    /// `_B.find` of the Python runtime: a query, a dict and a function are filters, and a kind or a field the service lacks is refused with
+    /// what works. Skipped where there is no `python3`.
+    #[test]
+    fn the_python_find_picks_the_method_of_the_kind_and_refuses_the_rest() {
+        let Some(python) = tool("python3", "GNOBLIN_PYTHON") else {
+            eprintln!("python3 is not installed: the check is skipped");
+            return;
+        };
+        let dir = tempfile::tempdir().expect("a directory");
+        let files = rendered_files();
+        let base = files
+            .iter()
+            .find(|(file, _)| file == "python/gnoblin/objects/_base.py")
+            .expect("the base is rendered");
+        let package = dir.path().join("gnoblin/objects");
+        fs::create_dir_all(&package).expect("a package");
+        fs::write(dir.path().join("gnoblin/__init__.py"), "").expect("the package");
+        fs::write(package.join("__init__.py"), "").expect("the package");
+        fs::write(package.join("_base.py"), &base.1).expect("the base");
+        fs::write(dir.path().join("_gnoblin_objects.py"), "").expect("the native stand-in");
+        fs::write(
+            dir.path().join("check.py"),
+            r#"
+import dataclasses
+
+from gnoblin.objects import _base as B
+
+
+@dataclasses.dataclass
+class Query:
+    label: str | None = None
+    width: float | None = None
+
+
+calls = []
+
+
+class Service:
+    def find_things(self, query=None):
+        calls.append(("find_things", query))
+        return [1, 2, 3]
+
+    def find_others(self, query=None):
+        calls.append(("find_others", query))
+        return []
+
+
+finders = {"Thing": ("find_things", Query), "Other": ("find_others", Query)}
+
+
+def find(kind, filter=None):
+    return B.find(Service(), "gnoblin", finders, kind, filter)
+
+
+def refuses(what, run, *words):
+    try:
+        run()
+    except TypeError as error:
+        assert all(word in str(error) for word in words), f"{what}: the error was {error}"
+        return
+    raise AssertionError(f"{what}: nothing was refused")
+
+
+assert find("Thing") == [1, 2, 3]
+assert calls[-1] == ("find_things", None)
+assert find("Other", {"label": "x"}) == [] and calls[-1] == ("find_others", Query(label="x")), calls[-1]
+query = Query(width=4)
+find("Other", query)
+assert calls[-1] == ("find_others", query), "a query goes through as it is"
+assert find("Thing", lambda found: found != 2) == [1, 3]
+assert calls[-1] == ("find_things", None), "a function is not handed to the method"
+refuses("a kind the service lacks", lambda: find("Workspace"), "'Workspace'", "the kinds that work are Thing, Other")
+refuses("a kind that is not a string", lambda: find(3), "no kind 3")
+refuses("a field the query lacks", lambda: find("Thing", {"lable": "x"}), "'lable'", "known: label, width", "'Thing'")
+refuses("a filter that is nothing of the sort", lambda: find("Thing", 7), "Query", "int")
+print("ok")
+"#,
+        )
+        .expect("the check");
+        let ran = Command::new(&python)
+            .arg(dir.path().join("check.py"))
+            .env("PYTHONPATH", dir.path())
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .output()
+            .expect("python3 runs");
+        assert!(
+            ran.status.success() && String::from_utf8_lossy(&ran.stdout).trim() == "ok",
+            "{}{}",
+            String::from_utf8_lossy(&ran.stdout),
+            String::from_utf8_lossy(&ran.stderr)
+        );
+    }
 }
