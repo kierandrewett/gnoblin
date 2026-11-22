@@ -4,9 +4,12 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use gnoblin_fixture_object_probe::api::{Paint, PaintHandlers, Point, Probe, Shade, Span};
+use gnoblin_fixture_object_probe::api::{
+    CircleShape, Form, Paint, PaintHandlers, Point, PolygonShape, Probe, Shade, Shape, Span,
+};
 use gnoblin_fixture_object_probe::{live_objects, objects, problems, turn};
-use gnoblin_object::Fail;
+use gnoblin_object::typed::FromVal;
+use gnoblin_object::{Fail, Val};
 
 #[test]
 fn the_catalog_is_implemented() {
@@ -88,6 +91,54 @@ fn an_enum_a_record_and_a_list_cross_as_rust_types() {
     assert!(probe.names().unwrap().is_empty());
     probe.set_names(&["a".to_owned(), "b".to_owned()]).unwrap();
     assert_eq!(probe.names().unwrap(), ["a", "b"]);
+}
+
+/// F5, F6, F7, F9, F13, F15: the family of a tagged value crosses the real protocol as its one record. Each variant starts at its defaults
+/// (a circle of radius 1, a polygon that is closed), keeps the value it is given even when that is the zero or the default of the other
+/// variant's field, and comes back as the variant its tag says.
+#[test]
+fn a_family_crosses_as_the_variant_its_tag_says() {
+    let objects = objects();
+    let probe = Probe::new(&objects, 0).unwrap();
+    let shapes: Vec<Shape> = vec![
+        CircleShape::default().into(),
+        CircleShape { radius: 0.0 }.into(),
+        PolygonShape::new(vec![0.0, 1.0, 2.0]).into(),
+        PolygonShape {
+            closed: false,
+            ..PolygonShape::new(vec![])
+        }
+        .into(),
+    ];
+    assert_eq!(CircleShape::default().radius, 1.0);
+    assert!(PolygonShape::new(vec![]).closed, "a polygon starts closed");
+    let echoed = probe.echo_shapes(&shapes).unwrap();
+    assert_eq!(echoed, shapes, "every shape comes back as the variant it went in as");
+    assert_eq!(
+        echoed.iter().map(Shape::kind).collect::<Vec<_>>(),
+        [Form::Circle, Form::Circle, Form::Polygon, Form::Polygon]
+    );
+    assert!(
+        matches!(&echoed[1], Shape::Circle(circle) if circle.radius == 0.0),
+        "a zero is not the default"
+    );
+    assert!(
+        matches!(&echoed[3], Shape::Polygon(polygon) if !polygon.closed),
+        "a false is not the default"
+    );
+
+    // A record whose tag no variant has is an error and not a wrong variant, and so is a variant read from another variant's record.
+    let unknown = Val::Record {
+        class: 0,
+        fields: vec![Val::Enum { class: 0, value: 99 }, Val::None, Val::None],
+    };
+    assert!(Shape::from_val(&objects, &unknown).is_err());
+    let circle_record = go_record(&shapes[0]);
+    assert!(PolygonShape::from_val(&objects, &circle_record).is_err());
+}
+
+fn go_record(shape: &Shape) -> Val {
+    gnoblin_object::typed::ToVal::to_val(shape)
 }
 
 #[test]

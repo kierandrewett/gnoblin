@@ -10,6 +10,12 @@ name = "shade"
 since = "0.1.0"
 values = ["light", "dark", "half-tone"]
 
+# The kind of a shape, which says what a value of the family `shape` is.
+[[enum]]
+name = "form"
+since = "0.1.0"
+values = ["circle", "polygon"]
+
 # A closure the shell gives a property: it takes a number and answers one.
 [[callback]]
 name = "tick"
@@ -71,6 +77,79 @@ name = "closed"
 type = "bool"
 since = "0.1.0"
 optional = true
+
+# A record a variant carries part of: the points are always there, and a polygon is closed unless it says otherwise.
+[[object]]
+name = "outline"
+since = "0.1.0"
+kind = "record"
+
+[[object.property]]
+name = "points"
+type = "list<double>"
+since = "0.1.0"
+
+[[object.property]]
+name = "closed"
+type = "bool"
+since = "0.1.0"
+default = false
+
+# The family of a tagged value: a circle is a size, and a polygon is an outline. On the wire it is one record, `(form, size, outline)`.
+[[object]]
+name = "shape"
+since = "0.1.0"
+kind = "record"
+tag = "form"
+
+[[object.property]]
+name = "form"
+type = "enum:form"
+since = "0.1.0"
+
+[[object.property]]
+name = "size"
+type = "double"
+since = "0.1.0"
+optional = true
+
+[[object.property]]
+name = "outline"
+type = "object:outline"
+since = "0.1.0"
+optional = true
+
+# A circle: its radius is the family's `size`.
+[[object.variant]]
+name = "circle_shape"
+tag = "circle"
+since = "0.1.0"
+
+[[object.variant.property]]
+name = "radius"
+type = "double"
+since = "0.1.0"
+default = 1.0
+field = "size"
+
+# A polygon: its points and its closing are the family's `outline`. A polygon is closed by default, where an outline is not.
+[[object.variant]]
+name = "polygon_shape"
+tag = "polygon"
+since = "0.1.0"
+
+[[object.variant.property]]
+name = "points"
+type = "list<double>"
+since = "0.1.0"
+field = "outline.points"
+
+[[object.variant.property]]
+name = "closed"
+type = "bool"
+since = "0.1.0"
+default = true
+field = "outline.closed"
 
 # What a probe asks the shell: the shell implements it, and the library calls it from its turn.
 [[object]]
@@ -214,6 +293,16 @@ returns = "double"
 [[object.method.param]]
 name = "points"
 type = "list<object:point>"
+
+# The shapes, as the library holds them: the same shapes, each as its variant.
+[[object.method]]
+name = "echo_shapes"
+since = "0.1.0"
+returns = "list<object:shape>"
+
+[[object.method.param]]
+name = "shapes"
+type = "list<object:shape>"
 
 # Tells `on_tick` about `x` from the next turn, and then the `ticked` signal.
 [[object.method]]

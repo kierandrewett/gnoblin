@@ -208,6 +208,7 @@ fn build() -> Library {
             }
             Ok(Val::Double(total))
         })
+        .method("echo_shapes", |_, _, args| Ok(args[0].clone()))
         .method("fire", |s, cx, args| {
             let x = args[0].int()?;
             if let Some(tick) = s.on_tick.clone() {

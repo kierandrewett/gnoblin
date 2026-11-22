@@ -41,6 +41,7 @@ mod surface;
 mod text;
 mod typescript;
 mod typescript_std;
+mod values;
 mod verbs;
 
 use std::collections::BTreeSet;

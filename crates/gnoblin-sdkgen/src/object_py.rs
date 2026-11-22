@@ -12,6 +12,7 @@ use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, Object
 use super::object_script::{ScriptView, quote};
 use super::objects::{ClassMember, Member, check_foreign, slots_of};
 use super::text::{CodeWriter, pascal, python_ident, snake};
+use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family, py_field};
 
 /// `gnoblin/objects/__init__.py`: the names a script imports.
 pub(super) const INIT_PY: &str = r#""""The classes of the libraries' object protocol.
@@ -234,7 +235,7 @@ class Object(_Held):
 "#;
 
 fn class_name(object: &ObjectType) -> String {
-    object.export.py.clone().unwrap_or_else(|| pascal(&object.name))
+    values::py_class(&object.name, &object.export)
 }
 
 fn member_name(name: &str, export: &Option<String>) -> String {
@@ -253,19 +254,6 @@ fn enum_member(value: &str) -> String {
     } else {
         name
     }
-}
-
-/// Whether a record's fields force keyword-only construction: a field that must be given follows one that has a default.
-fn keyword_only(object: &ObjectType) -> bool {
-    let mut defaulted = false;
-    for property in &object.properties {
-        if property.default.is_some() || property.optional {
-            defaulted = true;
-        } else if defaulted {
-            return true;
-        }
-    }
-    false
 }
 
 /// An event of a class: a signal, or a property's change.
@@ -495,6 +483,8 @@ impl<'a> Py<'a> {
         Ok(())
     }
 
+    /// The classes and the conversion of a record: one `dataclass` and its codec, or for the family of a tagged value, a class and a codec
+    /// for each variant, the union of them, and the codec that tells them apart.
     fn record_source(&self, c: &mut CodeWriter, object: &ObjectType) -> Result<(), String> {
         if !object.methods.is_empty() || !object.signals.is_empty() {
             return Err(format!(
@@ -502,20 +492,65 @@ impl<'a> Py<'a> {
                 object.name
             ));
         }
-        let name = class_name(object);
-        c.line(if keyword_only(object) {
+        for class in values::value_classes([object]) {
+            self.class_source(c, &class)?;
+            if self.stub {
+                continue;
+            }
+            match class.of {
+                None => self.record_codec(c, object)?,
+                Some((family, variant)) => self.variant_codec(c, &class, family, variant)?,
+            }
+        }
+        if is_family(object) {
+            let classes: Vec<String> = object
+                .variants
+                .iter()
+                .map(|variant| values::py_class(&variant.name, &variant.export))
+                .collect();
+            c.line(format!("{} = {}", class_name(object), classes.join(" | ")));
+            c.blank();
+            if !self.stub {
+                self.family_codec(c, object)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// A value class as a `dataclass`: the fields in the schema's order, each with its default.
+    fn class_source(&self, c: &mut CodeWriter, class: &ValueClass<'_>) -> Result<(), String> {
+        let name = class.py();
+        let keyword_only = {
+            let mut defaulted = false;
+            let mut forced = false;
+            for property in class.properties {
+                if property.default.is_some() || property.optional {
+                    defaulted = true;
+                } else if defaulted {
+                    forced = true;
+                }
+            }
+            forced
+        };
+        c.line(if keyword_only {
             "@dataclasses.dataclass(kw_only=True)"
         } else {
             "@dataclasses.dataclass"
         });
         c.line(format!("class {name}:"));
         c.indent();
-        c.line(format!("\"\"\"The record `{}`.\"\"\"", object.name));
-        for property in &object.properties {
-            let field = member_name(&property.name, &property.extras.export.py);
+        match class.of {
+            None => c.line(format!("\"\"\"The record `{}`.\"\"\"", class.name)),
+            Some((family, variant)) => c.line(format!(
+                "\"\"\"The `{}` variant of the record `{}`.\"\"\"",
+                variant.tag, family.name
+            )),
+        }
+        for property in class.properties {
+            let field = py_field(property);
             let ty = self.ty(&property.ty, false)?;
-            match (&property.default, property.optional) {
-                (Some(default), _) => {
+            match absent(property) {
+                Absent::Default(default) => {
                     let value = self.default_expr(&property.ty, default)?;
                     if self.stub {
                         c.line(format!("{field}: {ty} = ..."));
@@ -527,45 +562,68 @@ impl<'a> Py<'a> {
                         c.line(format!("{field}: {ty} = {value}"));
                     }
                 }
-                (None, true) => c.line(format!(
+                Absent::None => c.line(format!(
                     "{field}: {ty} | None = {}",
                     if self.stub { "..." } else { "None" }
                 )),
-                (None, false) => c.line(format!("{field}: {ty}")),
+                Absent::Required => c.line(format!("{field}: {ty}")),
             }
         }
         c.dedent();
         c.blank();
-        if self.stub {
-            return Ok(());
-        }
+        Ok(())
+    }
+
+    /// The expression that makes the library's value of `property` from the script's `given`; a field left at none starts at its default.
+    fn field_in(&self, owner: &str, property: &Property, given: &str) -> Result<String, String> {
+        Ok(match absent(property) {
+            Absent::Default(default) => {
+                let value = self.default_expr(&property.ty, default)?;
+                self.enc(&property.ty, &format!("({given} if {given} is not None else {value})"))?
+            }
+            Absent::None => format!("_B.opt({given}, lambda value: {})", self.enc(&property.ty, "value")?),
+            Absent::Required => self.enc(
+                &property.ty,
+                &format!(
+                    "_B.need({given}, {})",
+                    quote(&format!("{owner}.{}", py_field(property)))
+                ),
+            )?,
+        })
+    }
+
+    /// The script value of `property` from the library's `read`; a field the sender left out is none, or its default.
+    fn field_out(&self, property: &Property, read: &str) -> Result<String, String> {
+        let decoded = self.dec(&property.ty, read, false)?;
+        Ok(match absent(property) {
+            Absent::Required => decoded,
+            Absent::None => format!(
+                "_B.opt({read}, lambda value: {})",
+                self.dec(&property.ty, "value", false)?
+            ),
+            Absent::Default(default) => format!(
+                "({decoded} if {read} is not None else {})",
+                self.default_expr(&property.ty, default)?
+            ),
+        })
+    }
+
+    fn record_codec(&self, c: &mut CodeWriter, object: &ObjectType) -> Result<(), String> {
+        let name = class_name(object);
         let helper = snake(&object.name);
         let mut writes = Vec::new();
         let mut reads = Vec::new();
         for (index, property) in object.properties.iter().enumerate() {
-            let field = member_name(&property.name, &property.extras.export.py);
-            let given = format!("record.{field}");
-            let value = if property.optional {
-                format!("_B.opt({given}, lambda value: {})", self.enc(&property.ty, "value")?)
-            } else if property.default.is_some() {
-                self.enc(&property.ty, &given)?
-            } else {
-                self.enc(
-                    &property.ty,
-                    &format!("_B.need({given}, {})", quote(&format!("{name}.{field}"))),
-                )?
-            };
-            writes.push(format!("{}: {value}", quote(&property.name)));
-            let read = format!("fields[{index}]");
-            let decoded = if property.optional {
-                format!(
-                    "_B.opt({read}, lambda value: {})",
-                    self.dec(&property.ty, "value", false)?
-                )
-            } else {
-                self.dec(&property.ty, &read, false)?
-            };
-            reads.push(format!("{field}={decoded}"));
+            let field = py_field(property);
+            writes.push(format!(
+                "{}: {}",
+                quote(&property.name),
+                self.field_in(&name, property, &format!("record.{field}"))?
+            ));
+            reads.push(format!(
+                "{field}={}",
+                self.field_out(property, &format!("fields[{index}]"))?
+            ));
         }
         c.line(format!("def _enc_rec_{helper}(record):"));
         c.line(format!("    if not isinstance(record, {name}):"));
@@ -576,6 +634,133 @@ impl<'a> Py<'a> {
         c.blank();
         c.line(format!("def _dec_rec_{helper}(fields):"));
         c.line(format!("    return {name}({})", reads.join(", ")));
+        c.blank();
+        Ok(())
+    }
+
+    /// The conversion of one variant to and from the family's record: the record's fields, by the record's names and in its order.
+    fn variant_codec(
+        &self,
+        c: &mut CodeWriter,
+        class: &ValueClass<'_>,
+        family: &ObjectType,
+        variant: &gnoblin_schema::TaggedVariant,
+    ) -> Result<(), String> {
+        let helper = snake(class.name);
+        let py_name = class.py();
+        let slots = values::slots(&|record| self.view.class(record), family, variant)?;
+        let mut writes = Vec::new();
+        let mut setup = Vec::new();
+        let mut reads = Vec::new();
+        for (index, slot) in slots.iter().enumerate() {
+            let key = quote(&slot.field.name);
+            match &slot.slot {
+                CarrySlot::Tag(tag) => writes.push(format!("{key}: {}", self.enc(&slot.field.ty, &quote(tag))?)),
+                CarrySlot::Whole(own) => {
+                    writes.push(format!(
+                        "{key}: {}",
+                        self.field_in(&py_name, own, &format!("record.{}", py_field(own)))?
+                    ));
+                    reads.push(format!(
+                        "{}={}",
+                        py_field(own),
+                        self.field_out(own, &format!("fields[{index}]"))?
+                    ));
+                }
+                CarrySlot::Part { record, parts } => {
+                    let given: Vec<String> = parts
+                        .iter()
+                        .map(|carried| {
+                            let own = format!("record.{}", py_field(carried.own));
+                            let value = match absent(carried.own) {
+                                Absent::Default(default) => Ok(format!(
+                                    "{own} if {own} is not None else {}",
+                                    self.default_expr(&carried.own.ty, default)?
+                                )),
+                                _ => Ok::<String, String>(own),
+                            }?;
+                            Ok(format!("{}={value}", py_field(carried.inner)))
+                        })
+                        .collect::<Result<_, String>>()?;
+                    writes.push(format!(
+                        "{key}: _enc_rec_{}({}({}))",
+                        snake(&record.name),
+                        class_name(record),
+                        given.join(", ")
+                    ));
+                    let held = format!("part_{}", snake(&slot.field.name));
+                    setup.push(format!(
+                        "{held} = _dec_rec_{}(_B.need(fields[{index}], {}))",
+                        snake(&record.name),
+                        quote(&format!("{}.{}", class_name(family), py_field(slot.field)))
+                    ));
+                    for carried in parts {
+                        let value = format!("{held}.{}", py_field(carried.inner));
+                        reads.push(match absent(carried.own) {
+                            Absent::Default(default) => format!(
+                                "{}=({value} if {value} is not None else {})",
+                                py_field(carried.own),
+                                self.default_expr(&carried.own.ty, default)?
+                            ),
+                            _ => format!("{}={value}", py_field(carried.own)),
+                        });
+                    }
+                }
+                CarrySlot::Empty => writes.push(format!("{key}: None")),
+            }
+        }
+        c.line(format!("def _enc_var_{helper}(record):"));
+        c.line(format!("    return {{{}}}", writes.join(", ")));
+        c.blank();
+        c.line(format!("def _dec_var_{helper}(fields):"));
+        for line in &setup {
+            c.line(format!("    {line}"));
+        }
+        c.line(format!("    return {py_name}({})", reads.join(", ")));
+        c.blank();
+        Ok(())
+    }
+
+    /// The conversion of a family: a script's value is an instance of one variant's class, and the library's record says by its tag which.
+    fn family_codec(&self, c: &mut CodeWriter, family: &ObjectType) -> Result<(), String> {
+        let helper = snake(&family.name);
+        let name = class_name(family);
+        let tag = family
+            .properties
+            .iter()
+            .position(|property| Some(property.name.as_str()) == family.tag.as_deref())
+            .ok_or_else(|| format!("the family `{}` has no `tag` property", family.name))?;
+        let Type::Enum(tag_enum) = &family.properties[tag].ty else {
+            return Err(format!("the `tag` of the family `{}` is not an enum", family.name));
+        };
+        let tag_class = pascal(&self.view.enum_decl(tag_enum)?.name);
+        let classes: Vec<String> = family
+            .variants
+            .iter()
+            .map(|variant| values::py_class(&variant.name, &variant.export))
+            .collect();
+        c.line(format!("def _enc_rec_{helper}(record):"));
+        for (variant, class) in family.variants.iter().zip(&classes) {
+            c.line(format!("    if isinstance(record, {class}):"));
+            c.line(format!("        return _enc_var_{}(record)", snake(&variant.name)));
+        }
+        c.line(format!(
+            "    raise TypeError(f\"expected a {name} (one of {}), got {{type(record).__name__}}\")",
+            classes.join(", ")
+        ));
+        c.blank();
+        c.line(format!("def _dec_rec_{helper}(fields):"));
+        c.line(format!(
+            "    kind = _dec_enum_{}(fields[{tag}])",
+            snake(&self.view.enum_decl(tag_enum)?.name)
+        ));
+        for variant in &family.variants {
+            c.line(format!("    if kind == {tag_class}.{}:", enum_member(&variant.tag)));
+            c.line(format!("        return _dec_var_{}(fields)", snake(&variant.name)));
+        }
+        c.line(format!(
+            "    raise TypeError(f\"the library sent a {name} of the kind {{kind!r}}, which this SDK has no class for\")"
+        ));
         c.blank();
         Ok(())
     }

@@ -339,6 +339,104 @@ mod tests {
         }
     }
 
+    /// F6, F8, F9, F11, F12, F13, F15: the generated JavaScript value classes run under `node` against a stand-in for the native layer that
+    /// hands a value back the way the library does (a record as an array of its fields, an enum as its id). Defaults start once and keep a
+    /// zero or a `false` that is given, a required field and a field the class lacks are a `TypeError`, a family takes only the classes of
+    /// its variants and reads back as the variant its tag says, and a tag no variant has is an error. Skipped where there is no `node`.
+    #[test]
+    fn the_javascript_value_classes_default_check_their_fields_and_tell_variants_apart() {
+        let Some(node) = tool("node", "GNOBLIN_NODE") else {
+            eprintln!("node is not installed: the check is skipped");
+            return;
+        };
+        let dir = tempfile::tempdir().expect("a directory");
+        let files = rendered_files();
+        let text = |path: &str| {
+            files
+                .iter()
+                .find(|(file, _)| file == path)
+                .unwrap_or_else(|| panic!("{path} is not rendered"))
+                .1
+                .replace("gnoblin-core/generated/object_base", "./object_base.mjs")
+        };
+        fs::write(
+            dir.path().join("object_base.mjs"),
+            text("js/native/gnoblin-core/generated/object_base.js"),
+        )
+        .expect("the base");
+        fs::write(
+            dir.path().join("std.mjs"),
+            text("js/native/gnoblin-std/generated/objects.js"),
+        )
+        .expect("std");
+        fs::write(dir.path().join("probe.mjs"), text("probe/objects.js")).expect("probe");
+        fs::write(
+            dir.path().join("check.mjs"),
+            r##"
+const lib = (v) => (v && v.$t === 1 ? v.$v.map(lib) : v && v.$t === 2 ? v.$v : Array.isArray(v) ? v.map(lib) : v === undefined ? null : v);
+globalThis.__gnoblinObjects = {
+  open: () => 1,
+  ids: (ns, name, names) => [0, ...names.map((_, i) => i + 1)],
+  create: () => 7,
+  release: () => {},
+  classOf: () => "",
+  call: (slot, id, args) => (globalThis.__answer ?? lib(args[0])),
+};
+const std = await import("./std.mjs");
+const probe = await import("./probe.mjs");
+const eq = (what, got, want) => {
+  if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${what}: got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+};
+const refuses = (what, run, words) => {
+  try { run(); } catch (error) {
+    if (!(error instanceof TypeError) || !error.message.includes(words)) throw new Error(`${what}: the error was ${error}`);
+    return;
+  }
+  throw new Error(`${what}: nothing was refused`);
+};
+
+// F9: a default starts, and a value that is given stays, even when it is zero, false or the other variant's default.
+eq("a border", new std.Border(), { width: 1, color: "#ffffff", offset: 0, inset: false });
+eq("a border keeps a zero", new std.Border({ width: 0 }).width, 0);
+eq("a shadow", new std.Shadow().blur, 12);
+eq("a blur", new std.BlurFilter().radius, 12);
+eq("a blur keeps a zero", new std.BlurFilter({ radius: 0 }).radius, 0);
+eq("the grades", [new std.SaturateFilter().amount, new std.BrightnessFilter().amount, new std.ContrastFilter().amount], [1, 1, 1]);
+const a = new std.ShaderFilter({ source: "x" });
+a.params.push(1);
+eq("a list default is new for each value", new std.ShaderFilter({ source: "x" }).params, []);
+// F11, F12: a field that must be given, and a field the class lacks.
+refuses("a shader needs its source", () => new std.ShaderFilter(), "ShaderFilter.source is required");
+refuses("a typo", () => new std.Border({ wdith: 2 }), 'no field "wdith"');
+refuses("not an object", () => new std.Border(3), "expects an object");
+// F6: a call that takes a family takes the classes of its variants.
+const { CircleShape, PolygonShape, Probe } = probe;
+const shapes = [new CircleShape(), new CircleShape({ radius: 0 }), new PolygonShape({ points: [0, 1, 2] }), new PolygonShape({ points: [], closed: false })];
+const p = new Probe(0);
+const back = p.echoShapes(shapes);
+eq("the shapes come back", back, shapes);
+eq("each is its variant", back.map((s) => s.constructor.name), ["CircleShape", "CircleShape", "PolygonShape", "PolygonShape"]);
+refuses("a plain object is not a shape", () => p.echoShapes([{ form: "circle" }]), "expected a Shape (one of CircleShape, PolygonShape)");
+refuses("a record that is not a variant", () => p.echoShapes([new std.Border()]), "got Border");
+// F8: a tag no variant has.
+globalThis.__answer = [[9, null, null]];
+refuses("an unknown kind", () => p.echoShapes([]), "which this SDK has no class for");
+console.log("ok");
+"##,
+        )
+        .expect("the check");
+        let ran = Command::new(&node)
+            .arg(dir.path().join("check.mjs"))
+            .output()
+            .expect("node runs");
+        assert!(
+            ran.status.success() && String::from_utf8_lossy(&ran.stdout).trim() == "ok",
+            "{}{}",
+            String::from_utf8_lossy(&ran.stdout),
+            String::from_utf8_lossy(&ran.stderr)
+        );
+    }
+
     /// The declarations type-check under `strict`, and a script that uses them as the golden script does compiles while a wrong one does
     /// not. Skipped where there is no `tsc` (`GNOBLIN_TSC` names one).
     #[test]

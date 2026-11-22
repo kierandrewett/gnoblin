@@ -30,7 +30,8 @@ use gnoblin_schema::{
 };
 
 use super::objects::{Member, check_foreign, slots_of, stem_of};
-use super::text::{pascal, raw_ident, rust_ident, snake};
+use super::text::{pascal, rust_ident, snake};
+use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family};
 use super::{Comment, File, SdkSpec, Target};
 
 /// Writes the typed Rust API.
@@ -74,7 +75,7 @@ struct Renderer<'a> {
 }
 
 fn class_name(object: &ObjectType) -> String {
-    object.export.rust.clone().unwrap_or_else(|| pascal(&object.name))
+    values::rust_class(&object.name, &object.export)
 }
 
 fn member_ident(name: &str, export: &Option<String>) -> String {
@@ -92,7 +93,7 @@ fn property_stem(property: &Property) -> String {
 }
 
 fn property_ident(property: &Property) -> String {
-    raw_ident(&property_stem(property))
+    values::rust_field(property)
 }
 
 impl<'a> Renderer<'a> {
@@ -349,48 +350,172 @@ impl go::typed::FromVal<Objects> for @Name@ {
         text
     }
 
+    /// The types of a record: one struct, or for the family of a tagged value, a struct for each variant and the enum that holds any.
     fn record_source(&self, object: &ObjectType) -> Result<String, String> {
-        let name = class_name(object);
         if !object.methods.is_empty() || !object.signals.is_empty() {
             return Err(format!(
                 "the record `{}` declares members that are not properties",
                 object.name
             ));
         }
+        let mut text = String::new();
+        for class in values::value_classes([object]) {
+            text.push_str(&self.class_source(&class)?);
+        }
+        if is_family(object) {
+            text.push_str(&self.family_source(object)?);
+        }
+        Ok(text)
+    }
+
+    /// Whether a value of the type is `Copy`, so it is passed on without a `clone`.
+    fn is_copy(ty: &Type) -> bool {
+        matches!(ty, Type::Bool | Type::Int | Type::Uint | Type::Double | Type::Enum(_))
+    }
+
+    /// `expr` as an owned value of a field of type `ty`.
+    fn taken(ty: &Type, expr: &str) -> String {
+        if Self::is_copy(ty) {
+            expr.to_owned()
+        } else {
+            format!("{expr}.clone()")
+        }
+    }
+
+    /// The Rust expression for the value a field of the record `record` holds, when a variant's property `own` carries it.
+    fn carried_value(own: &Property, inner: &Property) -> String {
+        let value = Self::taken(&own.ty, &format!("self.{}", values::rust_field(own)));
+        if inner.optional && !own.optional {
+            format!("Some({value})")
+        } else {
+            value
+        }
+    }
+
+    /// A value class as a struct: its fields in the schema's order, each started at its default, and the conversion to and from the
+    /// library's record (for a variant, the family's record).
+    fn class_source(&self, class: &ValueClass<'_>) -> Result<String, String> {
+        let name = class.rust();
         let mut declared = Vec::new();
         let mut starts = Vec::new();
         let mut required: Vec<(String, String)> = Vec::new();
-        let mut writes = Vec::new();
+        // The fields a read makes, and what the read needs to have before them (a record a variant carries part of).
         let mut reads = Vec::new();
-        for (index, property) in object.properties.iter().enumerate() {
-            let field = property_ident(property);
+        let mut setup = Vec::new();
+        let mut writes = Vec::new();
+        let mut guard = String::new();
+        let slots = match class.of {
+            Some((family, variant)) => Some(values::slots(&|record| self.class(record), family, variant)?),
+            None => None,
+        };
+        for (index, property) in class.properties.iter().enumerate() {
+            let field = values::rust_field(property);
             let owned = self.owned(&property.ty)?;
             // A field with a default starts at it; one marked `optional` is an `Option` that starts as `None`; any other is always there,
             // so a value of the record is made with it (`new`) and a read that finds it missing is an error.
-            let (ty, start, read) = match (&property.default, property.optional) {
-                (Some(default), _) => {
-                    let default = self.default_expr(&property.ty, default)?;
-                    let read = format!("go::typed::field(cx, fields, {index}, || {default})?");
-                    (owned, default, read)
-                }
-                (None, true) => (
-                    format!("Option<{owned}>"),
-                    "None".to_owned(),
-                    format!("go::typed::field(cx, fields, {index}, || None)?"),
-                ),
-                (None, false) => {
+            let (ty, start) = match absent(property) {
+                Absent::Default(default) => (owned, self.default_expr(&property.ty, default)?),
+                Absent::None => (format!("Option<{owned}>"), "None".to_owned()),
+                Absent::Required => {
                     required.push((field.clone(), owned.clone()));
-                    (owned, field.clone(), format!("go::typed::arg(cx, fields, {index})?"))
+                    (owned, field.clone())
                 }
             };
             declared.push(format!("    pub {field}: {ty},"));
             starts.push(format!("            {field}: {start},"));
-            writes.push(format!("go::typed::ToVal::to_val(&self.{field})"));
-            reads.push(format!("            {field}: {read},"));
+            if slots.is_none() {
+                writes.push(format!("go::typed::ToVal::to_val(&self.{field})"));
+                reads.push(format!("            {field}: {},", self.read_whole(property, index)?));
+            }
         }
-        let plain = object.properties.iter().all(|property| self.plain(&property.ty, 0));
+        if let (Some(slots), Some((family, variant))) = (&slots, class.of) {
+            let tag_at = slots
+                .iter()
+                .position(|slot| matches!(slot.slot, CarrySlot::Tag(_)))
+                .ok_or_else(|| format!("the family `{}` has no `tag` property", family.name))?;
+            let Type::Enum(tag_enum) = &slots[tag_at].field.ty else {
+                return Err(format!("the `tag` of the family `{}` is not an enum", family.name));
+            };
+            let tag_type = self.enum_name(tag_enum)?;
+            let tag_value = format!("{tag_type}::{}", pascal(&variant.tag));
+            guard = format!(
+                "        let kind: {tag_type} = go::typed::arg(cx, fields, {tag_at})?;\n        if kind != {tag_value} {{\n            return Err(go::Fail::type_error(format!(\"expected a `{}` {}, got `{{}}`\", kind.as_str())));\n        }}\n",
+                variant.tag, family.name
+            );
+            for (index, slot) in slots.iter().enumerate() {
+                match &slot.slot {
+                    CarrySlot::Tag(_) => writes.push(format!("go::typed::ToVal::to_val(&{tag_value})")),
+                    CarrySlot::Whole(own) => {
+                        writes.push(format!("go::typed::ToVal::to_val(&self.{})", values::rust_field(own)));
+                        reads.push(format!(
+                            "            {}: {},",
+                            values::rust_field(own),
+                            self.read_whole(own, index)?
+                        ));
+                    }
+                    CarrySlot::Part { record, parts } => {
+                        let part = format!("part_{}", snake(&slot.field.name));
+                        let record_name = class_name(record);
+                        setup.push(format!(
+                            "        let {part}: {record_name} = go::typed::arg(cx, fields, {index})?;\n"
+                        ));
+                        let mut literal = Vec::new();
+                        for inner in &record.properties {
+                            let value = match parts.iter().find(|carried| carried.inner.name == inner.name) {
+                                Some(carried) => Self::carried_value(carried.own, inner),
+                                None => match absent(inner) {
+                                    Absent::Default(default) => self.default_expr(&inner.ty, default)?,
+                                    Absent::None => "None".to_owned(),
+                                    Absent::Required => {
+                                        return Err(format!(
+                                            "the variant `{}` leaves out `{}.{}`, which is always there",
+                                            variant.name, record.name, inner.name
+                                        ));
+                                    }
+                                },
+                            };
+                            literal.push(format!("{}: {value}", values::rust_field(inner)));
+                        }
+                        writes.push(format!(
+                            "go::typed::ToVal::to_val(&{record_name} {{ {} }})",
+                            literal.join(", ")
+                        ));
+                        for carried in parts {
+                            let held = format!("{part}.{}", values::rust_field(carried.inner));
+                            let value = match (absent(carried.own), carried.inner.optional) {
+                                (Absent::Default(default), true) => {
+                                    format!(
+                                        "{held}.unwrap_or_else(|| {})",
+                                        self.default_expr(&carried.own.ty, default)?
+                                    )
+                                }
+                                (Absent::Required, true) => format!(
+                                    "{held}.ok_or_else(|| go::Fail::type_error(\"`{}.{}` is missing\"))?",
+                                    record.name, carried.inner.name
+                                ),
+                                _ => held,
+                            };
+                            reads.push(format!("            {}: {value},", values::rust_field(carried.own)));
+                        }
+                    }
+                    CarrySlot::Empty => writes.push("go::Val::None".to_owned()),
+                }
+            }
+        }
+        let plain = class.properties.iter().all(|property| self.plain(&property.ty, 0));
         let mut text = String::new();
-        let _ = writeln!(text, "/// The record `{}`.", object.name);
+        match class.of {
+            None => {
+                let _ = writeln!(text, "/// The record `{}`.", class.name);
+            }
+            Some((family, variant)) => {
+                let _ = writeln!(
+                    text,
+                    "/// The `{}` variant of the record `{}`.",
+                    variant.tag, family.name
+                );
+            }
+        }
         if plain {
             text.push_str("#[derive(Clone, Debug, PartialEq)]\n");
         }
@@ -407,6 +532,8 @@ impl go::typed::FromVal<Objects> for @Name@ {
                 &[("Name", &name), ("Params", &params.join(", ")), ("Starts", &starts)],
             )
         };
+        // A variant's writes are in the family record's order, whatever the order of the variant's own fields.
+        let writes = writes.join(", ");
         text.push_str(&fill(
             r#"pub struct @Name@ {
 @Declared@
@@ -422,7 +549,7 @@ impl go::typed::ToVal for @Name@ {
 impl go::typed::FromVal<Objects> for @Name@ {
     fn from_val(cx: &Objects, value: &go::Val) -> go::Res<@Name@> {
         let fields = value.record()?;
-        Ok(@Name@ {
+@Guard@@Setup@        Ok(@Name@ {
 @Reads@
         })
     }
@@ -433,8 +560,111 @@ impl go::typed::FromVal<Objects> for @Name@ {
                 ("Name", &name),
                 ("Declared", &declared.join("\n")),
                 ("Start", &start),
-                ("Writes", &writes.join(", ")),
+                ("Writes", &writes),
+                ("Guard", &guard),
+                ("Setup", &setup.concat()),
                 ("Reads", &reads.join("\n")),
+            ],
+        ));
+        Ok(text)
+    }
+
+    /// The Rust expression that reads `property` from the field `index` of a record.
+    fn read_whole(&self, property: &Property, index: usize) -> Result<String, String> {
+        Ok(match absent(property) {
+            Absent::Default(default) => format!(
+                "go::typed::field(cx, fields, {index}, || {})?",
+                self.default_expr(&property.ty, default)?
+            ),
+            Absent::None => format!("go::typed::field(cx, fields, {index}, || None)?"),
+            Absent::Required => format!("go::typed::arg(cx, fields, {index})?"),
+        })
+    }
+
+    /// The enum that holds any variant of a family: a script's value is one of them, and the library's record says by its tag which.
+    fn family_source(&self, family: &ObjectType) -> Result<String, String> {
+        let name = class_name(family);
+        let tag = family
+            .properties
+            .iter()
+            .position(|property| Some(property.name.as_str()) == family.tag.as_deref())
+            .ok_or_else(|| format!("the family `{}` has no `tag` property", family.name))?;
+        let Type::Enum(tag_enum) = &family.properties[tag].ty else {
+            return Err(format!("the `tag` of the family `{}` is not an enum", family.name));
+        };
+        let tag_type = self.enum_name(tag_enum)?;
+        let mut members = Vec::new();
+        let mut converts = Vec::new();
+        let mut kinds = Vec::new();
+        let mut writes = Vec::new();
+        let mut reads = Vec::new();
+        let mut plain = true;
+        for variant in &family.variants {
+            let member = pascal(&variant.tag);
+            let class = values::rust_class(&variant.name, &variant.export);
+            plain &= variant.properties.iter().all(|property| self.plain(&property.ty, 0));
+            members.push(format!(
+                "    /// The `{}` variant.\n    {member}({class}),",
+                variant.tag
+            ));
+            converts.push(format!(
+                "impl From<{class}> for {name} {{\n    fn from(value: {class}) -> {name} {{\n        {name}::{member}(value)\n    }}\n}}\n"
+            ));
+            kinds.push(format!("{name}::{member}(_) => {tag_type}::{member},"));
+            writes.push(format!("{name}::{member}(value) => go::typed::ToVal::to_val(value),"));
+            reads.push(format!(
+                "{tag_type}::{member} => <{class} as go::typed::FromVal<Objects>>::from_val(cx, value).map({name}::{member}),"
+            ));
+        }
+        let mut text = String::new();
+        let _ = writeln!(text, "/// The record `{}`: any one of its variants.", family.name);
+        if plain {
+            text.push_str("#[derive(Clone, Debug, PartialEq)]\n");
+        }
+        text.push_str(&fill(
+            r#"pub enum @Name@ {
+@Members@
+}
+
+impl @Name@ {
+    /// The value of `@Tag@` that says which variant this is.
+    pub const fn kind(&self) -> @TagType@ {
+        match self {
+            @Kinds@
+        }
+    }
+}
+
+@Converts@
+impl go::typed::ToVal for @Name@ {
+    fn to_val(&self) -> go::Val {
+        match self {
+            @Writes@
+        }
+    }
+}
+
+impl go::typed::FromVal<Objects> for @Name@ {
+    fn from_val(cx: &Objects, value: &go::Val) -> go::Res<@Name@> {
+        let fields = value.record()?;
+        let kind: @TagType@ = go::typed::arg(cx, fields, @TagAt@)?;
+        match kind {
+            @Reads@
+        }
+    }
+}
+
+"#,
+            &[
+                ("Name", &name),
+                ("Members", &members.join("\n")),
+                ("Tag", &family.properties[tag].name),
+                ("TagType", &tag_type),
+                ("TagAt", &tag.to_string()),
+                ("Kinds", &kinds.join("\n            ")),
+                ("Converts", &converts.join("\n")),
+                ("Writes", &writes.join("\n            ")),
+                ("Reads", &reads.join("\n            ")),
             ],
         ));
         Ok(text)

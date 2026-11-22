@@ -12,6 +12,7 @@ use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, Object
 use super::object_script::{ScriptView, quote};
 use super::objects::{ClassMember, Member, check_foreign, slots_of};
 use super::text::{CodeWriter, camel, pascal, snake, ts_ident};
+use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family, js_field};
 
 /// The runtime every generated module imports (`gnoblin-core/generated/object_base`).
 pub(super) const BASE_JS: &str = r#"// The runtime the generated object classes share: the native layer, the handle of a library object and the encoding of the values that
@@ -74,6 +75,18 @@ export function need(value, what) {
     throw new TypeError(`${what} is required`);
   }
   return value;
+}
+
+/** Checks the option bag of a value class: an object, and no field the class lacks. */
+export function fields(init, label, known) {
+  if (init === null || typeof init !== "object" || Array.isArray(init)) {
+    throw new TypeError(`${label}: expects an object of fields`);
+  }
+  for (const key of Object.keys(init)) {
+    if (!known.includes(key)) {
+      throw new TypeError(`${label}: no field "${key}" (known: ${known.join(", ")})`);
+    }
+  }
 }
 
 /** A record on its way in: its fields, in the catalog's order. */
@@ -184,7 +197,7 @@ export interface Timing {
 "#;
 
 fn class_name(object: &ObjectType) -> String {
-    object.export.js.clone().unwrap_or_else(|| pascal(&object.name))
+    values::js_class(&object.name, &object.export)
 }
 
 fn member_name(name: &str, export: &Option<String>) -> String {
@@ -335,6 +348,8 @@ impl<'a> Js<'a> {
         Ok(())
     }
 
+    /// The classes and the conversion of a record: one value class and its codec, or for the family of a tagged value, a class and a
+    /// codec for each variant and the codec that tells them apart.
     fn record_source(&self, c: &mut CodeWriter, object: &ObjectType) -> Result<(), String> {
         if !object.methods.is_empty() || !object.signals.is_empty() {
             return Err(format!(
@@ -342,31 +357,86 @@ impl<'a> Js<'a> {
                 object.name
             ));
         }
+        for class in values::value_classes([object]) {
+            self.class_source(c, &class);
+            match class.of {
+                None => self.record_codec(c, object)?,
+                Some((family, variant)) => self.variant_codec(c, &class, family, variant)?,
+            }
+        }
+        if is_family(object) {
+            self.family_codec(c, object)?;
+        }
+        Ok(())
+    }
+
+    /// A value class: the fields in the schema's order, each taken from the option bag or started at its default.
+    fn class_source(&self, c: &mut CodeWriter, class: &ValueClass<'_>) {
+        let name = class.js();
+        let known: Vec<String> = class
+            .properties
+            .iter()
+            .map(|property| quote(&js_field(property)))
+            .collect();
+        c.line(format!("/** The value class `{}`. */", class.name));
+        c.line(format!("export class {name} {{"));
+        c.indent();
+        c.line("constructor(init = {}) {");
+        c.indent();
+        c.line(format!("B.fields(init, {}, [{}]);", quote(&name), known.join(", ")));
+        for property in class.properties {
+            let field = js_field(property);
+            let value = match absent(property) {
+                Absent::Default(default) => format!("init.{field} ?? {}", self.default_expr(default)),
+                Absent::None => format!("init.{field}"),
+                Absent::Required => format!("B.need(init.{field}, {})", quote(&format!("{name}.{field}"))),
+            };
+            c.line(format!("this.{field} = {value};"));
+        }
+        c.dedent();
+        c.line("}");
+        c.dedent();
+        c.line("}");
+        c.blank();
+    }
+
+    /// The expression that makes the library's value of `property` from the script's `given`.
+    fn field_in(&self, owner: &str, property: &Property, given: &str) -> Result<String, String> {
+        Ok(match absent(property) {
+            Absent::Default(default) => {
+                self.enc(&property.ty, &format!("({given} ?? {})", self.default_expr(default)))?
+            }
+            Absent::None => format!("B.opt({given}, (value) => {})", self.enc(&property.ty, "value")?),
+            Absent::Required => self.enc(
+                &property.ty,
+                &format!("B.need({given}, {})", quote(&format!("{owner}.{}", js_field(property)))),
+            )?,
+        })
+    }
+
+    /// The script value of `property` from the library's `read`. A field the sender may leave out is read through `B.opt`, and the class's
+    /// constructor makes it its default.
+    fn field_out(&self, property: &Property, read: &str) -> Result<String, String> {
+        let decoded = self.dec(&property.ty, read, false)?;
+        Ok(if decoded == read || matches!(absent(property), Absent::Required) {
+            decoded
+        } else {
+            format!("B.opt({read}, (value) => {})", self.dec(&property.ty, "value", false)?)
+        })
+    }
+
+    fn record_codec(&self, c: &mut CodeWriter, object: &ObjectType) -> Result<(), String> {
         let name = snake(&object.name);
         let class = class_name(object);
         let mut writes = Vec::new();
         let mut reads = Vec::new();
         for (index, property) in object.properties.iter().enumerate() {
-            let field = member_name(&property.name, &property.extras.export.js);
-            let given = format!("record.{field}");
-            let value = match (&property.default, property.optional) {
-                (Some(default), _) => {
-                    self.enc(&property.ty, &format!("({given} ?? {})", self.default_expr(default)))?
-                }
-                (None, true) => format!("B.opt({given}, (value) => {})", self.enc(&property.ty, "value")?),
-                (None, false) => self.enc(
-                    &property.ty,
-                    &format!("B.need({given}, {})", quote(&format!("{class}.{field}"))),
-                )?,
-            };
-            writes.push(value);
-            let read = format!("fields[{index}]");
-            let decoded = if property.optional {
-                format!("B.opt({read}, (value) => {})", self.dec(&property.ty, "value", false)?)
-            } else {
-                self.dec(&property.ty, &read, false)?
-            };
-            reads.push(format!("{field}: {decoded}"));
+            let field = js_field(property);
+            writes.push(self.field_in(&class, property, &format!("record.{field}"))?);
+            reads.push(format!(
+                "{field}: {}",
+                self.field_out(property, &format!("fields[{index}]"))?
+            ));
         }
         c.line(format!("function enc_rec_{name}(record) {{"));
         c.indent();
@@ -379,7 +449,130 @@ impl<'a> Js<'a> {
         c.dedent();
         c.line("}");
         c.line(format!("function dec_rec_{name}(fields) {{"));
-        c.line(format!("  return {{ {} }};", reads.join(", ")));
+        c.line(format!("  return new {class}({{ {} }});", reads.join(", ")));
+        c.line("}");
+        c.blank();
+        Ok(())
+    }
+
+    /// The conversion of one variant to and from the family's record: the record's fields in the record's order.
+    fn variant_codec(
+        &self,
+        c: &mut CodeWriter,
+        class: &ValueClass<'_>,
+        family: &ObjectType,
+        variant: &gnoblin_schema::TaggedVariant,
+    ) -> Result<(), String> {
+        let name = snake(class.name);
+        let js_name = class.js();
+        let slots = values::slots(&|record| self.view.class(record), family, variant)?;
+        let mut writes = Vec::new();
+        let mut setup = Vec::new();
+        let mut reads = Vec::new();
+        for (index, slot) in slots.iter().enumerate() {
+            match &slot.slot {
+                CarrySlot::Tag(tag) => writes.push(self.enc(&slot.field.ty, &quote(tag))?),
+                CarrySlot::Whole(own) => {
+                    writes.push(self.field_in(&js_name, own, &format!("record.{}", js_field(own)))?);
+                    reads.push(format!(
+                        "{}: {}",
+                        js_field(own),
+                        self.field_out(own, &format!("fields[{index}]"))?
+                    ));
+                }
+                CarrySlot::Part { record, parts } => {
+                    let record_class = class_name(record);
+                    let given: Vec<String> = parts
+                        .iter()
+                        .map(|carried| {
+                            let own = format!("record.{}", js_field(carried.own));
+                            let value = match absent(carried.own) {
+                                Absent::Default(default) => format!("{own} ?? {}", self.default_expr(default)),
+                                _ => own,
+                            };
+                            format!("{}: {value}", js_field(carried.inner))
+                        })
+                        .collect();
+                    writes.push(format!(
+                        "enc_rec_{}(new {record_class}({{ {} }}))",
+                        snake(&record.name),
+                        given.join(", ")
+                    ));
+                    let held = format!("part_{}", snake(&slot.field.name));
+                    setup.push(format!(
+                        "const {held} = dec_rec_{}(B.need(fields[{index}], {}));",
+                        snake(&record.name),
+                        quote(&format!("{}.{}", class_name(family), js_field(slot.field)))
+                    ));
+                    for carried in parts {
+                        reads.push(format!("{}: {held}.{}", js_field(carried.own), js_field(carried.inner)));
+                    }
+                }
+                CarrySlot::Empty => writes.push("undefined".to_owned()),
+            }
+        }
+        c.line(format!("function enc_var_{name}(record) {{"));
+        c.line(format!("  return B.rec([{}]);", writes.join(", ")));
+        c.line("}");
+        c.line(format!("function dec_var_{name}(fields) {{"));
+        c.indent();
+        for line in &setup {
+            c.line(line);
+        }
+        c.line(format!("return new {js_name}({{ {} }});", reads.join(", ")));
+        c.dedent();
+        c.line("}");
+        c.blank();
+        Ok(())
+    }
+
+    /// The conversion of a family: a script's value is one of its variants' classes, and the library's record says by its tag which.
+    fn family_codec(&self, c: &mut CodeWriter, family: &ObjectType) -> Result<(), String> {
+        let name = snake(&family.name);
+        let class = class_name(family);
+        let tag = family
+            .properties
+            .iter()
+            .position(|property| Some(property.name.as_str()) == family.tag.as_deref())
+            .ok_or_else(|| format!("the family `{}` has no `tag` property", family.name))?;
+        let classes: Vec<String> = family
+            .variants
+            .iter()
+            .map(|variant| values::js_class(&variant.name, &variant.export))
+            .collect();
+        c.line(format!("function enc_rec_{name}(record) {{"));
+        c.indent();
+        for (variant, js_name) in family.variants.iter().zip(&classes) {
+            c.line(format!(
+                "if (record instanceof {js_name}) return enc_var_{}(record);",
+                snake(&variant.name)
+            ));
+        }
+        c.line(format!(
+            "throw new TypeError(`expected a {class} (one of {}), got ${{record === null ? \"null\" : typeof record === \"object\" ? record.constructor.name : typeof record}}`);",
+            classes.join(", ")
+        ));
+        c.dedent();
+        c.line("}");
+        c.line(format!("function dec_rec_{name}(fields) {{"));
+        c.indent();
+        c.line(format!(
+            "const kind = {};",
+            self.dec(&family.properties[tag].ty, &format!("fields[{tag}]"), false)?
+        ));
+        c.line("switch (kind) {");
+        for variant in &family.variants {
+            c.line(format!(
+                "  case {}: return dec_var_{}(fields);",
+                quote(&variant.tag),
+                snake(&variant.name)
+            ));
+        }
+        c.line(format!(
+            "  default: throw new TypeError(`the library sent a {class} of the kind ${{kind}}, which this SDK has no class for`);"
+        ));
+        c.line("}");
+        c.dedent();
         c.line("}");
         c.blank();
         Ok(())
@@ -923,12 +1116,34 @@ impl Js<'_> {
     }
 
     fn record_dts(&self, c: &mut CodeWriter, object: &ObjectType) -> Result<(), String> {
-        let name = class_name(object);
-        c.line(format!("/** The record `{}`. */", object.name));
-        c.line(format!("export interface {name} {{"));
+        for class in values::value_classes([object]) {
+            self.class_dts(c, &class)?;
+        }
+        if is_family(object) {
+            let classes: Vec<String> = object
+                .variants
+                .iter()
+                .map(|variant| values::js_class(&variant.name, &variant.export))
+                .collect();
+            c.line(format!(
+                "/** The record `{}`: any one of its variants, told apart by its class. */",
+                object.name
+            ));
+            c.line(format!("export type {} = {};", class_name(object), classes.join(" | ")));
+            c.blank();
+        }
+        Ok(())
+    }
+
+    /// A value class: its fields as the class holds them, and the option bag its constructor takes, where a field that has a default (or
+    /// is optional) may be left out.
+    fn class_dts(&self, c: &mut CodeWriter, class: &ValueClass<'_>) -> Result<(), String> {
+        let name = class.js();
+        c.line(format!("/** The value class `{}`. */", class.name));
+        c.line(format!("export class {name} {{"));
         c.indent();
-        for property in &object.properties {
-            let field = member_name(&property.name, &property.extras.export.js);
+        for property in class.properties {
+            let field = js_field(property);
             let ty = self.ts(&property.ty, false)?;
             if property.optional {
                 c.line(format!("{field}?: {ty} | undefined;"));
@@ -936,29 +1151,35 @@ impl Js<'_> {
                 c.line(format!("{field}: {ty};"));
             }
         }
+        let all_optional = class
+            .properties
+            .iter()
+            .all(|property| property.default.is_some() || property.optional);
+        c.line(format!(
+            "constructor(init{}: {name}Init);",
+            if all_optional { "?" } else { "" }
+        ));
         c.dedent();
         c.line("}");
-        if has_init(object) {
-            c.line(format!(
-                "/** What a caller gives for a `{name}`: the fields that have a default may be left out. */"
-            ));
-            c.line(format!("export interface {name}Init {{"));
-            c.indent();
-            for property in &object.properties {
-                let field = member_name(&property.name, &property.extras.export.js);
-                let ty = self.ts(&property.ty, true)?;
-                if property.default.is_some() || property.optional {
-                    c.line(format!(
-                        "{field}?: {ty}{};",
-                        if property.optional { " | undefined" } else { "" }
-                    ));
-                } else {
-                    c.line(format!("{field}: {ty};"));
-                }
+        c.line(format!(
+            "/** What a caller gives for a `{name}`: the fields that have a default may be left out. */"
+        ));
+        c.line(format!("export interface {name}Init {{"));
+        c.indent();
+        for property in class.properties {
+            let field = js_field(property);
+            let ty = self.ts(&property.ty, true)?;
+            if property.default.is_some() || property.optional {
+                c.line(format!(
+                    "{field}?: {ty}{};",
+                    if property.optional { " | undefined" } else { "" }
+                ));
+            } else {
+                c.line(format!("{field}: {ty};"));
             }
-            c.dedent();
-            c.line("}");
         }
+        c.dedent();
+        c.line("}");
         c.blank();
         Ok(())
     }
@@ -1175,7 +1396,7 @@ impl Js<'_> {
 
 /// Whether a record has a field with a default, so a parameter takes its `Init` form (an optional field is optional in both).
 fn has_init(object: &ObjectType) -> bool {
-    object.properties.iter().any(|property| property.default.is_some())
+    !is_family(object) && object.properties.iter().any(|property| property.default.is_some())
 }
 
 /// The declarations of `view`'s namespace.

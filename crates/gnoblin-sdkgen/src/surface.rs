@@ -188,6 +188,9 @@ fn object_entries(namespace: &str, object: &ObjectType, entries: &mut Vec<Surfac
     if object.secret {
         detail.push_str(" secret");
     }
+    if let Some(tag) = &object.tag {
+        let _ = write!(detail, " tag({tag})");
+    }
     let _ = namespace;
     entries.push(SurfaceEntry {
         kind: "object",
@@ -202,6 +205,27 @@ fn object_entries(namespace: &str, object: &ObjectType, entries: &mut Vec<Surfac
             detail: property_detail(property),
             since: property.since,
         });
+    }
+    for variant in &object.variants {
+        entries.push(SurfaceEntry {
+            kind: "variant",
+            key: format!("{}.{}", object.name, variant.name),
+            detail: format!("tag {}", variant.tag),
+            since: variant.since,
+        });
+        for property in &variant.properties {
+            let mut detail = property_detail(property);
+            if let Some(default) = &property.default {
+                let _ = write!(detail, ",default={default:?}");
+            }
+            let _ = write!(detail, " field={}", property.field.as_deref().unwrap_or("-"));
+            entries.push(SurfaceEntry {
+                kind: "variant_field",
+                key: format!("{}.{}.{}", object.name, variant.name, property.name),
+                detail,
+                since: property.since,
+            });
+        }
     }
     for method in &object.methods {
         entries.push(SurfaceEntry {
@@ -324,6 +348,8 @@ fn parse_lock(text: &str, path: &str) -> Result<ParsedLock, String> {
         let kind = match *kind {
             "object" => "object",
             "member" => "member",
+            "variant" => "variant",
+            "variant_field" => "variant_field",
             "enum" => "enum",
             "callback" => "callback",
             other => return Err(at(format!("unknown kind `{other}`"))),

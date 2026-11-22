@@ -44,6 +44,33 @@ try:
 except TypeError as error:
     check("the missing field is named", "Span.end is required" in str(error), True)
 
+# The family of a tagged value: each variant is a class, the record goes in with the family's fields (the tag, then what the variant
+# carries), and what comes back is the variant its tag says. A zero is not the default.
+shapes = [
+    p.CircleShape(),
+    p.CircleShape(radius=0),
+    p.PolygonShape(points=[0, 1, 2]),
+    p.PolygonShape(points=[], closed=False),
+]
+check("a family round trips as its variants", probe.echo_shapes(shapes), shapes)
+check("a circle starts at radius 1", p.CircleShape().radius, 1.0)
+check("a polygon starts closed", p.PolygonShape(points=[]).closed, True)
+check(
+    "a variant goes in as the family's record",
+    p._enc_rec_shape(shapes[2]),
+    {"form": p.Form.POLYGON, "size": None, "outline": {"points": [0, 1, 2], "closed": True}},
+)
+try:
+    p._enc_rec_shape({"form": "circle"})
+    failures.append("a plain dict was accepted for a family")
+except TypeError as error:
+    check("the error names the variants", "CircleShape, PolygonShape" in str(error), True)
+try:
+    p._dec_rec_shape((9, None, None))
+    failures.append("a record of a kind no variant has was accepted")
+except ValueError:
+    pass
+
 # A closure property is called with decoded arguments, and its answer is encoded.
 probe.on_tick = lambda x: x * 2
 check(
