@@ -54,8 +54,9 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
   interface.
 - Keep internal implementation rationale, design proposals, security analysis,
   test plans, rollout status, and release evidence out of the published site.
-  Put those in source comments where useful, contributor material, or a
-  repository-level design area.
+  Rationale goes in source comments or a `DESIGN.md` beside the code it
+  describes; the map of the tree is `ARCHITECTURE.md`. Open work and status go
+  in Beads, not in a document. Do not recreate a top-level `design/` directory.
 - Start with the reader's task and give direct instructions. Explain only the
   concepts needed to complete that task. Keep prose, navigation, page titles,
   and URLs plain, consistent, and easy to scan.
