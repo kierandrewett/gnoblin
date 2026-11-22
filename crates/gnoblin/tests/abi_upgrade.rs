@@ -181,17 +181,20 @@ fn build_libs() -> Result<NextLibs, String> {
             "-p",
             "gnoblin-core-impl",
             "-p",
-            "gnoblin-std-impl",
-            "-p",
             "gnoblin-fixture-shell-min",
             "--features",
-            "gnoblin-core-impl/next-minor,gnoblin-std-impl/next-minor,gnoblin-fixture-shell-min/next-minor",
+            "gnoblin-core-impl/next-minor,gnoblin-fixture-shell-min/next-minor",
         ],
     )?;
     let minor_core = keep(
         &debug.join("libgnoblin_core_impl.so"),
         &out.join("minor/libgnoblin_core_impl.so"),
     );
+    // The std library is built alone, and its feature is spelled bare. `gnoblin-std-impl` is a development dependency of itself (its own
+    // tests enable `testing` through that edge), so cargo reads `--features gnoblin-std-impl/next-minor` as a feature of that dependency, which
+    // a build does not activate, and drops it: the library comes out as ABI 1.0 with no error. A bare feature names the package's own, and
+    // is accepted only with one `-p`.
+    cargo_build(&target, &["-p", "gnoblin-std-impl", "--features", "next-minor"])?;
     let minor_std = keep(
         &debug.join("libgnoblin_std_impl.so"),
         &out.join("minor/libgnoblin_std_impl.so"),
@@ -208,10 +211,7 @@ fn build_libs() -> Result<NextLibs, String> {
         &out.join("major/libgnoblin_core_impl.so"),
     );
     // A std library that says it is major 2, over the unchanged core ABI.
-    cargo_build(
-        &target,
-        &["-p", "gnoblin-std-impl", "--features", "gnoblin-std-impl/next-major"],
-    )?;
+    cargo_build(&target, &["-p", "gnoblin-std-impl", "--features", "next-major"])?;
     let major_std = keep(
         &debug.join("libgnoblin_std_impl.so"),
         &out.join("major/libgnoblin_std_impl.so"),
