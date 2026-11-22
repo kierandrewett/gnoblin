@@ -16,6 +16,8 @@ Every line it logs starts with ``shell-ui:``, spelt as the Rust shell of the sam
 reads all three.
 """
 
+import struct
+
 from gnoblin import gnoblin
 from gnoblin.objects.std import Launcher, LockScreen, NotRespondingAlerts, Overview, PaintKind, PaintOp, Toast, Ui
 
@@ -65,8 +67,16 @@ estimate = Ui.estimate_text("Hello", 10.0)
 say(f"estimate {estimate.width:g}x{estimate.height:g} ascent {estimate.ascent:g}")
 
 # The bytes of a paint list: the magic ``GNPL``, a version, a count, then the operations. A list with one bad operation is refused whole.
-listing = Ui.encode_paint_list([PaintOp(op=PaintKind.PUSH_OPACITY, alpha=0.5), PaintOp(op=PaintKind.POP_OPACITY)])
-say(f"paint list of {len(listing)} bytes {bytes(listing[:4]).decode()}")
+# The line's width is its ``width``, as it is in the TypeScript library: the bytes carry it as a little-endian f32 after the line's four ends.
+listing = Ui.encode_paint_list(
+    [
+        PaintOp(op=PaintKind.PUSH_OPACITY, alpha=0.5),
+        PaintOp(op=PaintKind.LINE, x1=0.0, y1=0.0, x2=5.0, y2=6.0, width=3.0),
+        PaintOp(op=PaintKind.POP_OPACITY),
+    ]
+)
+line_width = struct.unpack_from("<f", listing, 31)[0]
+say(f"paint list of {len(listing)} bytes {bytes(listing[:4]).decode()}, line width {line_width:g}")
 try:
     Ui.encode_paint_list([PaintOp(op=PaintKind.POP_OPACITY), PaintOp(op=PaintKind.RECT, fill="red")])
 except Exception as error:

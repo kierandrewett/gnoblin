@@ -83,9 +83,14 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     // The bytes of a paint list: the magic `GNPL`, a version, a count, then the operations. A list with one bad operation is refused whole.
     let mut push = PaintOp::new(PaintKind::PushOpacity);
     push.alpha = Some(0.5);
-    let list = Ui::encode_paint_list(&objects, &[push, PaintOp::new(PaintKind::PopOpacity)])?;
+    // The line's width is its `width`, as it is in the TypeScript library: the bytes carry it as a little-endian f32 after the line's four
+    // ends.
+    let mut line = PaintOp::new(PaintKind::Line);
+    (line.x2, line.y2, line.width) = (Some(5.0), Some(6.0), Some(3.0));
+    let list = Ui::encode_paint_list(&objects, &[push, line, PaintOp::new(PaintKind::PopOpacity)])?;
+    let line_width = f32::from_le_bytes([list.0[31], list.0[32], list.0[33], list.0[34]]);
     g.log(&format!(
-        "shell-ui: paint list of {} bytes {}",
+        "shell-ui: paint list of {} bytes {}, line width {line_width}",
         list.0.len(),
         String::from_utf8_lossy(&list.0[..4])
     ));

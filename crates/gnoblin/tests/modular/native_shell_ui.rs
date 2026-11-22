@@ -14,7 +14,7 @@
 //! - `<Super>o` flips the overview.
 //! - `<Super>t` shows a toast, which paints its text and removes itself after its hold.
 //! - The shell calls `Ui.estimateText` and `Ui.encodePaintList` once when it starts, and the test reads what they answered: the estimate of
-//!   "Hello" at size 10, the first bytes and the length of a two-operation paint list, and the refusal of a list with a bad operation.
+//!   "Hello" at size 10, the first bytes, the length and a line's width read back from a three-operation paint list, and the refusal of a list with a bad operation.
 //!
 //! One core and one std are mapped.
 
@@ -66,7 +66,7 @@ fn the_shell_ui_works(session: &mut Gnoblin) {
     // The two functions that need no canvas answered when the shell started.
     for needed in [
         "shell-ui: estimate 25x15 ascent 11",
-        "shell-ui: paint list of 15 bytes GNPL",
+        "shell-ui: paint list of 40 bytes GNPL, line width 3",
         "shell-ui: bad paint list refused:",
     ] {
         assert!(

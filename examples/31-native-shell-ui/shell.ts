@@ -49,8 +49,16 @@ const estimate = Ui.estimateText("Hello", 10);
 console.log(`shell-ui: estimate ${estimate.width}x${estimate.height} ascent ${estimate.ascent}`);
 
 // The bytes of a paint list: the magic `GNPL`, a version, a count, then the operations. A list with one bad operation is refused whole.
-const list = Ui.encodePaintList([{ op: "push-opacity", alpha: 0.5 }, { op: "pop-opacity" }]);
-console.log(`shell-ui: paint list of ${list.length} bytes ${String.fromCharCode(...list.slice(0, 4))}`);
+// The line's width is its `width`, as it is in the TypeScript library: the bytes carry it as a little-endian f32 after the line's four ends.
+const list = Ui.encodePaintList([
+    { op: "push-opacity", alpha: 0.5 },
+    { op: "line", x1: 0, y1: 0, x2: 5, y2: 6, width: 3 },
+    { op: "pop-opacity" },
+]);
+const lineWidth = new DataView(list.buffer, list.byteOffset + 31, 4).getFloat32(0, true);
+console.log(
+    `shell-ui: paint list of ${list.length} bytes ${String.fromCharCode(...list.slice(0, 4))}, line width ${lineWidth}`,
+);
 try {
     Ui.encodePaintList([{ op: "pop-opacity" }, { op: "rect", fill: "red" }]);
 } catch (error) {
