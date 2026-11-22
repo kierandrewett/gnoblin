@@ -8,10 +8,8 @@ import { Gnoblin } from "gnoblin-core/generated/objects";
 import { gnoblin } from "gnoblin-core";
 
 const model = Gnoblin.get();
-const version = model.version;
-if (version !== undefined) {
-    console.log(`services: gnoblin ${version.gnoblin} speaks api ${version.api}`);
-}
+const version = model.version();
+console.log(`services: gnoblin ${version.gnoblin} speaks api ${version.api}`);
 
 const process = model.shell("printf hello; exit 3", { stdout: "capture" });
 process.on("exited", (ended) => {

@@ -22,9 +22,8 @@ def say(text):
 
 
 model = Gnoblin.get()
-version = model.version
-if version is not None:
-    say(f"gnoblin {version.gnoblin} speaks api {version.api}")
+version = model.version()
+say(f"gnoblin {version.gnoblin} speaks api {version.api}")
 
 process = model.shell("printf hello; exit 3", SpawnOptions(stdout=StreamMode.CAPTURE))
 

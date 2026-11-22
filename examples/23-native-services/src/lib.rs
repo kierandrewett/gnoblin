@@ -21,12 +21,11 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = ModelRoot::get(&objects)?;
 
-    if let Some(version) = model.version()? {
-        g.log(&format!(
-            "services: gnoblin {} speaks api {}",
-            version.gnoblin, version.api
-        ));
-    }
+    let version = model.version()?;
+    g.log(&format!(
+        "services: gnoblin {} speaks api {}",
+        version.gnoblin, version.api
+    ));
 
     // A program: the end is told from the library's turn, with how it ended and what it printed.
     let process = model.shell(

@@ -27,6 +27,7 @@ mod native_object;
 mod native_objects;
 mod native_pointer;
 mod native_policy;
+mod native_root;
 mod native_scene;
 mod native_services;
 mod native_shell_ui;

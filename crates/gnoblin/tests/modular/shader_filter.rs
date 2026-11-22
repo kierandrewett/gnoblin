@@ -49,13 +49,21 @@ const WORKING_JS: &str = "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8
 /// A home whose last accepted configuration document says `compositor.user-shaders = user_shaders`, for the configuration file `config_text`
 /// (`shell.ts` of the configuration directory, which the binary discovers). Returns the home and that file's path.
 fn home_with(user_shaders: bool, config_text: &str) -> (Home, PathBuf) {
+    home_with_document(
+        serde_json::json!({"compositor": {"user-shaders": user_shaders}}),
+        config_text,
+    )
+}
+
+/// A home whose last accepted configuration document is `document`, for the configuration file `config_text` (`shell.ts` of the configuration
+/// directory, which the binary discovers). Returns the home and that file's path.
+pub(crate) fn home_with_document(document: serde_json::Value, config_text: &str) -> (Home, PathBuf) {
     let home = Home::new();
     let source = home.write("config/gnoblin/shell.ts", config_text);
     let state = home.root().join("state");
     fs::create_dir(&state).expect("the state directory");
     fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).expect("the state mode");
-    let document =
-        Value::from_json(&serde_json::json!({"compositor": {"user-shaders": user_shaders}})).expect("a document");
+    let document = Value::from_json(&document).expect("a document");
     Store::new(&state)
         .save(&source, &Config::from_value(document).expect("a valid document"))
         .expect("the last accepted document is stored");

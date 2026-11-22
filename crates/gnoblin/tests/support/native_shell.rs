@@ -60,6 +60,8 @@ pub struct Shells {
     pub model: PathBuf,
     /// Example 23: the session services of the core: a program, an idle watch, a launch that times out, the session lock.
     pub services: PathBuf,
+    /// Example 35: the members of the core's root object: timers, the build identity, `find`, `motion` and the compositor's settings.
+    pub root: PathBuf,
     /// Example 28: key chords on the seat's input context of the core, in generation 1.
     pub input: PathBuf,
     /// Example 30: a pointer drag, a click and a swipe on the seat's input context of the core, in generation 1.
@@ -108,6 +110,8 @@ fn build_shells() -> Result<Shells, String> {
             "gnoblin-example-native-input",
             "-p",
             "gnoblin-example-native-pointer",
+            "-p",
+            "gnoblin-example-native-root",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -130,6 +134,7 @@ fn build_shells() -> Result<Shells, String> {
         services: debug.join("libnative_services.so"),
         input: debug.join("libnative_input.so"),
         pointer: debug.join("libnative_pointer.so"),
+        root: debug.join("libnative_root.so"),
     })
 }
 
