@@ -21,7 +21,10 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, OnceLock};
 
+use crate::choice::StockRuntime;
 use crate::error::JsTsError;
 use crate::loader::JsTypeScriptModule;
 use crate::ts::strip_shared;
@@ -353,6 +356,131 @@ pub(crate) fn failing_module(name: &str, error: &JsTsError) -> String {
     format!("throw new Error(\"stock module {name} does not compile: {reason}\");\n")
 }
 
+/// The module the engine imports into a generation on the native library to read the document the core's input manager declares (the
+/// device settings the script wrote). It installs `__gnoblinDocument` and nothing else.
+pub(crate) const DOCUMENT_MODULE: &str = "gnoblin-core/generated/document";
+
+const DOCUMENT_SOURCE: &str = "import { InputManager } from \"gnoblin-core/generated/objects\";\nglobalThis.__gnoblinDocument = {\n  revision: () => InputManager.get().documentRevision,\n  text: () => InputManager.get().document,\n};\n";
+
+/// The modules of the native library by import name: the object classes and the package entries the generator rendered when this
+/// crate was built, and the engine's own module that reads the document, as the embedded TypeScript the loader strips (they are
+/// plain JavaScript, which strips to itself).
+fn native_modules() -> HashMap<String, JsTypeScriptModule> {
+    let module = |name: &str, source: &'static str| {
+        (
+            name.to_owned(),
+            JsTypeScriptModule {
+                path: Path::new(EMBEDDED_ROOT).join(format!("native/{name}.js")),
+                source: Cow::Borrowed(source),
+            },
+        )
+    };
+    NATIVE
+        .iter()
+        .map(|(name, source)| module(name, source))
+        .chain(std::iter::once(module(DOCUMENT_MODULE, DOCUMENT_SOURCE)))
+        .collect()
+}
+
+/// The stock library of a shell: both of the libraries a generation may run on (see [`StockRuntime`]), each built when the first
+/// generation that needs it asks, and which of them the running generation uses.
+///
+/// The TypeScript library is read from `dirs` and its package entries get [`host_export`]; the native one is the table the build
+/// embedded. The starter (the shell that runs when there is no entry) is part of both, under [`STARTER_MODULE_NAME`].
+#[derive(Debug)]
+pub struct StockLibrary {
+    dirs: Vec<PathBuf>,
+    starter: Option<JsTypeScriptModule>,
+    typescript: OnceLock<Result<Arc<HashMap<String, JsTypeScriptModule>>, StockError>>,
+    generated: OnceLock<Arc<HashMap<String, JsTypeScriptModule>>>,
+    serving: AtomicU8,
+}
+
+/// What [`StockLibrary::serving`] holds before any generation that runs a user's code is installed.
+const SERVING_NONE: u8 = 0;
+const SERVING_GENERATED: u8 = 1;
+const SERVING_TYPESCRIPT: u8 = 2;
+
+impl StockLibrary {
+    /// A library whose TypeScript half is read from `dirs` and whose starter is `starter`.
+    pub fn new(dirs: Vec<PathBuf>, starter: Option<JsTypeScriptModule>) -> Self {
+        Self {
+            dirs,
+            starter,
+            typescript: OnceLock::new(),
+            generated: OnceLock::new(),
+            serving: AtomicU8::new(SERVING_NONE),
+        }
+    }
+
+    /// The directories the TypeScript library is read from.
+    pub fn dirs(&self) -> &[PathBuf] {
+        &self.dirs
+    }
+
+    /// The modules of `runtime` by import name.
+    ///
+    /// # Errors
+    ///
+    /// The TypeScript library has a file that cannot be read.
+    pub fn modules(&self, runtime: StockRuntime) -> Result<Arc<HashMap<String, JsTypeScriptModule>>, StockError> {
+        match runtime {
+            StockRuntime::Generated => Ok(Arc::clone(self.generated.get_or_init(|| {
+                let mut modules = native_modules();
+                if let Some(starter) = &self.starter {
+                    modules.insert(STARTER_MODULE_NAME.to_owned(), starter.clone());
+                }
+                Arc::new(modules)
+            }))),
+            StockRuntime::Typescript => self
+                .typescript
+                .get_or_init(|| {
+                    let mut stock = stock_sources_in(&self.dirs)?;
+                    for package in PACKAGES {
+                        if let Some(index) = stock.get_mut(package) {
+                            index.source.to_mut().push_str(&host_export(package));
+                        }
+                    }
+                    // The explicit object paths (`gnoblin-std/generated/objects`) are served on this library too, as they were before
+                    // the native one existed: a shell that mixes them with the package entries is on this library, and runs as it ran.
+                    for (name, module) in native_modules() {
+                        if name.ends_with("generated/objects") || name.ends_with("generated/object_base") {
+                            stock.entry(name).or_insert(module);
+                        }
+                    }
+                    if let Some(starter) = &self.starter {
+                        stock.insert(STARTER_MODULE_NAME.to_owned(), starter.clone());
+                    }
+                    Ok(Arc::new(stock))
+                })
+                .clone(),
+        }
+    }
+
+    /// The shell that runs when there is no entry, if the shell has one.
+    pub(crate) fn starter(&self) -> Option<&JsTypeScriptModule> {
+        self.starter.as_ref()
+    }
+
+    /// The library the generation that runs the user's code uses, once there is one. A reload that would change it is refused.
+    pub fn serving(&self) -> Option<StockRuntime> {
+        match self.serving.load(Ordering::Acquire) {
+            SERVING_GENERATED => Some(StockRuntime::Generated),
+            SERVING_TYPESCRIPT => Some(StockRuntime::Typescript),
+            _ => None,
+        }
+    }
+
+    /// Records the library of the generation that now runs the user's code.
+    pub(crate) fn note_serving(&self, runtime: StockRuntime) {
+        let value = match runtime {
+            StockRuntime::Generated => SERVING_GENERATED,
+            StockRuntime::Typescript => SERVING_TYPESCRIPT,
+        };
+        self.serving.store(value, Ordering::Release);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,22 +609,19 @@ mod tests {
         let dirs = source_tree();
         let sources = stock_sources_in(&dirs).expect("the library reads");
         let library = editor_library_in(&dirs).expect("the library reads");
-        // The generated classes of the object protocol are JavaScript for the engine and declarations for the editor: each side has its
-        // own and neither has the other's.
+        // The generated classes of the object protocol are declarations for the editor here; their JavaScript is the native library's
+        // (`NATIVE`), which is not part of the TypeScript library.
         let (declarations, library): (Vec<_>, Vec<_>) =
             library.into_iter().partition(|(file, _)| file.ends_with(".d.ts"));
-        let scripts = sources
-            .values()
-            .filter(|module| module.path.extension().is_some_and(|extension| extension == "js"))
-            .count();
+        assert_eq!(declarations.len(), 3, "object_base and the two objects declarations");
         assert!(
-            scripts > 0 && declarations.len() == scripts,
-            "{scripts} scripts, {} declarations",
-            declarations.len()
+            sources
+                .values()
+                .all(|module| module.path.extension().is_none_or(|extension| extension != "js"))
         );
         assert!(library.iter().all(|(file, _)| !file.ends_with(".js")));
         assert!(sources.keys().all(|name| !name.ends_with(".d")));
-        assert_eq!(library.len(), sources.len() - scripts);
+        assert_eq!(library.len(), sources.len());
         for (file, text) in &library {
             let source = &sources[&import_name(file)].source;
             if PACKAGES.contains(&import_name(file).as_str()) {
@@ -632,17 +757,30 @@ mod tests {
             "gnoblin-core/generated/verbs.ts",
             "gnoblin-std/generated/classes.ts",
             "gnoblin-std/generated/native.ts",
-            "gnoblin-core/generated/object_base.js",
             "gnoblin-core/generated/object_base.d.ts",
-            "gnoblin-core/generated/objects.js",
-            "gnoblin-std/generated/objects.js",
             "gnoblin-std/generated/objects.d.ts",
         ] {
             assert!(files.contains(expected), "{expected} is not embedded: {files:?}");
         }
         assert!(
+            files.iter().all(|file| !file.ends_with(".js")),
+            "the native modules are not part of the TypeScript library: {files:?}"
+        );
+        let native: BTreeSet<&str> = NATIVE.iter().map(|(name, _)| *name).collect();
+        for expected in [
+            "gnoblin-core/generated/object_base",
+            "gnoblin-core/generated/objects",
+            "gnoblin-std/generated/objects",
+        ] {
+            assert!(
+                native.contains(expected),
+                "{expected} is not in the native library: {native:?}"
+            );
+        }
+        assert!(
             GENERATED
                 .iter()
+                .chain(NATIVE.iter())
                 .all(|(_, source)| source.starts_with("// GENERATED by gnoblin-sdkgen"))
         );
     }

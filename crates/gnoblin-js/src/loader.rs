@@ -33,7 +33,7 @@ use crate::stock::PACKAGES;
 use crate::ts::{JsStripped, position, strip_shared, strip_types};
 
 mod files;
-use files::resolve_file;
+pub(crate) use files::resolve_file;
 
 /// The source map of a `.ts` module: made when it was stripped, or still to be made from its source.
 #[derive(Debug)]

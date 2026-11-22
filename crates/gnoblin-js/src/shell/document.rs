@@ -1,12 +1,13 @@
 //! The configuration document: what device settings the script wrote, committed to the compositor, and
 //! what a commit means for the generation.
 
-use rquickjs::Function;
+use rquickjs::{FromJs, Function, Module, Object, Value};
 
 use super::log;
 use super::{JsShell, JsShellError};
 use crate::config::{JsApplied, JsConfigLink, parse_patch};
 use crate::error::{JsError, JsErrorKind};
+use crate::stock::DOCUMENT_MODULE;
 
 impl JsShell {
     /// Gives the shell its connection for the configuration document. A generation's document settings are
@@ -58,16 +59,71 @@ impl JsShell {
         Ok(diagnostics)
     }
 
-    /// The `documentRevision` of the running generation's entry.
+    /// The `documentRevision` of the running generation: of its entry on the TypeScript library, of the core's input manager on
+    /// the native one.
     fn document_revision_now(&self) -> Result<u32, JsShellError> {
+        if !self.legacy() {
+            return Ok(self.native_document::<u32>("revision")?.unwrap_or(0));
+        }
         self.call_entry(self.entry_budget, |entry| {
             entry.get::<_, Function<'_>>("documentRevision")?.call(())
         })
     }
 
+    /// The document the running generation declares, as text.
+    fn document_text_now(&self) -> Result<String, JsShellError> {
+        if !self.legacy() {
+            return Ok(self
+                .native_document::<String>("text")?
+                .unwrap_or_else(|| "{}".to_owned()));
+        }
+        self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("document")?.call(())
+        })
+    }
+
+    /// Asks the core's input manager (`InputManager.document`, `.documentRevision`) through the module `DOCUMENT_MODULE`, which
+    /// the engine imports into the generation the first time it asks. `None` when the script has not loaded the object classes:
+    /// it has written no setting.
+    fn native_document<R>(&self, member: &str) -> Result<Option<R>, JsShellError>
+    where
+        R: for<'js> FromJs<'js>,
+    {
+        let loaded = self
+            .generation
+            .embedded_modules()
+            .iter()
+            .any(|name| name == "gnoblin-core/generated/objects");
+        if !loaded {
+            return Ok(None);
+        }
+        self.generation
+            .call_budgeted(self.entry_budget, |ctx| {
+                let globals = ctx.globals();
+                let mut helper: Option<Object<'_>> = globals.get("__gnoblinDocument")?;
+                if helper.is_none() {
+                    match Module::import(ctx, DOCUMENT_MODULE).and_then(|promise| promise.finish::<Value<'_>>()) {
+                        Ok(_) => helper = globals.get("__gnoblinDocument")?,
+                        Err(rquickjs::Error::Exception) => {
+                            let _ = ctx.catch();
+                        }
+                        Err(other) => return Err(other),
+                    }
+                }
+                match helper {
+                    Some(helper) => helper.get::<_, Function<'_>>(member)?.call::<_, R>(()).map(Some),
+                    None => Ok(None),
+                }
+            })
+            .map_err(JsShellError::from)
+    }
+
     /// Commits the document again when a device setting was written since the last commit (`Mouse.sensitivity = 0.5`
     /// in a listener, after the entry has run). A write the entry made while loading is in the first commit.
     pub(super) fn commit_document_changes(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        if !self.legacy() && !self.has_config_link() {
+            return Ok(());
+        }
         if self.document_revision_now()? != self.document_revision {
             self.apply_document(diagnostics, true)?;
         }
@@ -79,9 +135,7 @@ impl JsShell {
     /// returns to its default. A refusal is a diagnostic: the document in force stays.
     pub(super) fn apply_document(&mut self, diagnostics: &mut Vec<String>, retract: bool) -> Result<(), JsShellError> {
         self.document_revision = self.document_revision_now()?;
-        let text: String = self.call_entry(self.entry_budget, |entry| {
-            entry.get::<_, Function<'_>>("document")?.call(())
-        })?;
+        let text = self.document_text_now()?;
         let patch = match parse_patch(&text) {
             Ok(patch) => patch,
             Err(reason) => {
@@ -127,9 +181,7 @@ impl JsShell {
     ///
     /// The entry's `document` could not be read, or is not what the shell parses.
     pub fn declared_document(&mut self) -> Result<gnoblin_config::Value, JsShellError> {
-        let text: String = self.call_entry(self.entry_budget, |entry| {
-            entry.get::<_, Function<'_>>("document")?.call(())
-        })?;
+        let text = self.document_text_now()?;
         parse_patch(&text).map_err(|reason| {
             JsShellError::Js(JsError {
                 kind: JsErrorKind::Exception,

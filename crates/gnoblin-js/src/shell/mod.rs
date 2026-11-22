@@ -50,11 +50,12 @@ use gnoblin_shell_host::supervisor::{Clock, SystemClock};
 
 use crate::bindings::{HostState, SharedState, StageMark};
 use crate::budget::{ENTRY_BUDGET, FRAME_BUDGET};
+use crate::choice::{Choice, StockRuntime, choose, choose_source};
 use crate::dialogs::JsDialogs;
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
 use crate::host_idle::JsIdle;
-use crate::stock::{HOST_MODULE_NAME, PACKAGES, STARTER_MODULE_NAME, host_export, starter_module, stock_sources_in};
+use crate::stock::{HOST_MODULE_NAME, STARTER_MODULE_NAME, StockLibrary, starter_module};
 use crate::workspaces::JsWorkspaceSnapshot;
 use crate::{bindings, input};
 
@@ -246,34 +247,21 @@ impl JsShell {
         let mut js = config.js.clone();
         // The console's rate limit counts on the clock the scripts read, so a test that moves it moves that too.
         js.clock = Arc::clone(&config.clock);
-        let typescript = Arc::make_mut(&mut js.typescript);
-        // Each package entry (`gnoblin-core`, `gnoblin-std`) is the stock index plus its host module's exports
-        // (`stock::host_export`, which `editor_library` appends to the index an editor reads too). A module the
-        // caller embedded under a name stays: the caller knows what it wants. The library is embedded as TypeScript
-        // and stripped only when a module is imported and the bytecode cache lacks it.
-        let mut stock = stock_sources_in(&config.stock_dirs).map_err(stock_failure)?;
-        js.stock_dirs = Arc::new(config.stock_dirs.clone());
-        for package in PACKAGES {
-            if let Some(index) = stock.get_mut(package) {
-                index.source.to_mut().push_str(&host_export(package));
-            }
-        }
-        for (name, module) in stock {
-            typescript.entry(name).or_insert(module);
-        }
-        // The stock desktop is the starter file itself, which a shell with no user entry runs as its entry.
-        let has_starter = match &config.starter {
-            Some(path) => {
-                typescript
-                    .entry(STARTER_MODULE_NAME.to_owned())
-                    .or_insert(starter_module(path).map_err(stock_failure)?);
-                true
-            }
-            None => false,
+        // The stock library is chosen for each generation by the import graph of its entry (`choice`): the native library, which
+        // is embedded, or the TypeScript one, which is read from the directories when a shell needs it. A module the caller
+        // embedded under a name stays. The stock desktop is the starter file itself, which a shell with no user entry runs as
+        // its entry.
+        let starter = match &config.starter {
+            Some(path) => Some(starter_module(path).map_err(stock_failure)?),
+            None => None,
         };
-        // Generation 0 is the bare one (the host objects and no user code); the reloader numbers the ones it
-        // stages from 1.
-        let generation = JsGeneration::new(&js, 0)?;
+        let has_starter = starter.is_some();
+        js.stock_dirs = Arc::new(config.stock_dirs.clone());
+        js.stock = Some(Arc::new(StockLibrary::new(config.stock_dirs.clone(), starter)));
+        // Generation 0 is the bare one (no user code); the reloader numbers the ones it stages from 1. It starts on the TypeScript
+        // library, which every shell ran on before the native one existed, and is built again on the native library when the entry
+        // loaded into it needs that.
+        let generation = JsGeneration::new(&js.for_runtime(StockRuntime::Typescript)?, 0)?;
         install_host(&generation, &state, &js, js.stage_budget)?;
 
         Ok(Self {
@@ -296,6 +284,32 @@ impl JsShell {
             gate: gate::FrameGate::default(),
             has_starter,
         })
+    }
+
+    /// Whether the running generation is on the TypeScript library, whose object model the engine drives with the frame's
+    /// stages. A generation on the native library has none: the core serves the objects and calls the script back.
+    pub(super) fn legacy(&self) -> bool {
+        self.generation.runtime() == StockRuntime::Typescript
+    }
+
+    /// Makes the running generation, which has run nothing of the user's yet, one on the library `choice` names, and records the
+    /// library as the one the shell runs on. A choice that cannot be made (the graph could not be read) leaves the generation as it
+    /// is: the load that follows fails the same way on either library.
+    fn use_library_for(&mut self, choice: Choice) -> Result<(), JsError> {
+        let wanted = match choice {
+            Choice::Typescript(_) => StockRuntime::Typescript,
+            Choice::Generated => StockRuntime::Generated,
+            Choice::Unknown => self.generation.runtime(),
+        };
+        if wanted != self.generation.runtime() {
+            let generation = JsGeneration::new(&self.js.for_runtime(wanted)?, self.generation.id())?;
+            install_host(&generation, &self.state, &self.js, self.js.stage_budget)?;
+            self.generation = generation;
+        }
+        if let Some(stock) = &self.js.stock {
+            stock.note_serving(wanted);
+        }
+        Ok(())
     }
 
     /// What a reload stages its generations from. See [`JsStaging`].
@@ -362,6 +376,9 @@ impl JsShell {
     /// Finishes a loaded entry: a config that declared no workspace gets the stock one now, so
     /// `gnoblin.workspaces` is never empty for what runs after the entry.
     fn finish_load(&mut self) -> Result<(), JsShellError> {
+        if !self.legacy() {
+            return Ok(());
+        }
         self.call_entry(self.entry_budget, |entry| {
             entry.get::<_, Function<'_>>("finishLoad")?.call::<_, ()>(())
         })
@@ -416,6 +433,7 @@ impl JsShell {
     /// and counts a strike when it is a budget trip.
     pub fn load_entry(&mut self, entry: &Path) -> Result<Vec<String>, JsShellError> {
         self.note_script_ran();
+        self.use_library_for(choose(&self.js.root, entry))?;
         let loaded = self.generation.eval_module(entry);
         self.finish_entry(loaded)
     }
@@ -440,6 +458,11 @@ impl JsShell {
         // A load, like `load_entry`, so it has the stage budget: it evaluates the whole starter, which took as long as
         // any config under load, and a listener call's budget would interrupt it.
         self.note_script_ran();
+        let choice = match self.js.stock.as_ref().and_then(|stock| stock.starter()) {
+            Some(starter) => choose_source(&self.js.root, &starter.path, &starter.source),
+            None => Choice::Unknown,
+        };
+        self.use_library_for(choice)?;
         let loaded = self.generation.eval_specifier(STARTER_MODULE_NAME.to_owned());
         self.finish_entry(loaded)
     }
@@ -462,6 +485,9 @@ impl JsShell {
     /// Which window is on which workspace and which workspace is shown, to hand to the shell of the next
     /// generation. Workspaces are script objects, so the compositor cannot say.
     pub fn workspace_snapshot(&mut self) -> Result<JsWorkspaceSnapshot, JsShellError> {
+        if !self.legacy() {
+            return Ok(JsWorkspaceSnapshot::default());
+        }
         self.call_entry(self.entry_budget, |entry| {
             let snapshot: Object<'_> = entry.get::<_, Function<'_>>("snapshot")?.call(())?;
             JsWorkspaceSnapshot::from_js(&snapshot)
@@ -474,6 +500,9 @@ impl JsShell {
     /// Windows `previous` did not know join a workspace by the initial-workspace rule on the first frame.
     pub fn reconcile(&mut self, previous: &JsWorkspaceSnapshot) -> Result<(), JsShellError> {
         self.note_script_ran();
+        if !self.legacy() {
+            return Ok(());
+        }
         self.call_entry(self.entry_budget, |entry| {
             let previous = previous.to_js(entry.ctx())?;
             entry.get::<_, Function<'_>>("reconcile")?.call::<_, ()>((previous,))
@@ -518,6 +547,12 @@ impl JsShell {
     /// which nobody observes its dialogs.
     fn end_generation(&mut self, keep_slots: bool) -> Result<JsFrame, JsShellError> {
         let mut diagnostics = Vec::new();
+        if !self.legacy() {
+            // The core ends what a generation of the native library holds (its claims, its drags, its dialogs) when the
+            // generation closes; there is nothing of the engine's to give back.
+            self.generation.flush_console();
+            return Ok(JsFrame { diagnostics });
+        }
         let pending: usize = self.call_entry(self.frame_budget, |entry| {
             entry.get::<_, Function<'_>>("cancelAll")?.call(())
         })?;
@@ -609,6 +644,9 @@ impl SwapHost for ShellSwap<'_> {
 
     fn install(&mut self, generation: JsGeneration) {
         self.shell.stage.commit();
+        if let Some(stock) = &self.shell.js.stock {
+            stock.note_serving(generation.runtime());
+        }
         self.shell.generation = generation;
         self.shell.strikes = 0;
         self.shell.reported.clear();
@@ -638,21 +676,28 @@ impl SwapHost for ShellSwap<'_> {
     }
 }
 
-/// Installs the host functions in `generation` and loads `gnoblin-core/host`, under `budget` or
-/// [`HOST_INSTALL_BUDGET`], whichever is longer.
+/// Installs the host functions in `generation` and, for a generation on the TypeScript library, loads `gnoblin-core/host`, under
+/// `budget` or [`HOST_INSTALL_BUDGET`], whichever is longer. A generation on the native library has the objects of the libraries
+/// (`config.natives`) and nothing of the engine's own object model: no `__gnoblinHost`, no host module.
 fn install_host(
     generation: &JsGeneration,
     state: &SharedState,
     config: &JsConfig,
     budget: Duration,
 ) -> Result<(), JsError> {
+    let legacy = generation.runtime() == StockRuntime::Typescript;
     generation.call_budgeted(budget.max(HOST_INSTALL_BUDGET), |ctx| {
-        bindings::install(ctx, state)?;
+        if legacy {
+            bindings::install(ctx, state)?;
+        }
         let ids = crate::natives::ScriptIds::new(state);
         for native in &config.natives {
             native.install(ctx, &ids)?;
         }
-        Module::import(ctx, HOST_MODULE_NAME)?.finish::<Value<'_>>().map(drop)
+        if legacy {
+            Module::import(ctx, HOST_MODULE_NAME)?.finish::<Value<'_>>().map(drop)?;
+        }
+        Ok(())
     })
 }
 

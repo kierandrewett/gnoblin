@@ -249,7 +249,7 @@ mod tests {
         assert!(types.contains("export declare class DwindleLayout {"));
         assert!(types.contains("export declare abstract class Layout {"));
         assert!(types.contains("toggleSplit("));
-        let script = text("js/gnoblin-std/generated/objects.js");
+        let script = text("js/native/gnoblin-std/generated/objects.js");
         assert!(script.contains("export class DwindleLayout {"));
         let rust = text("rust-objects/std_api.rs");
         assert!(rust.contains("pub struct DwindleLayout"));

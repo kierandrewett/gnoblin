@@ -99,6 +99,21 @@ const STAGES: &[FrameStage] = &[
     stage("send", JsShell::stage_send),
 ];
 
+/// The stages of a frame of a generation on the native library. The core's dispatch announces what happened and calls the script
+/// back (the runtime's turn runs it beside the frame), so what is left to the engine is the tree link, the promise jobs and the
+/// console.
+const NATIVE_STAGES: &[FrameStage] = &[
+    stage("drain", JsShell::stage_drain),
+    stage("settle", JsShell::stage_settle),
+    // Nothing announces `ready` to the script: the core does, for the windows it holds.
+    stage("boot", JsShell::stage_boot),
+    stage("graveyard", JsShell::stage_graveyard),
+    stage("jobs", JsShell::stage_jobs),
+    stage("document", JsShell::stage_document),
+    stage("console", JsShell::stage_console),
+    stage("send", JsShell::stage_send),
+];
+
 impl JsShell {
     /// Runs one frame: applies what the compositor sent, tells the script's listeners, runs them, and
     /// sends what the script wrote as one transaction.
@@ -129,7 +144,8 @@ impl JsShell {
             pending: 0,
             diagnostics,
         };
-        for step in STAGES {
+        let steps = if self.legacy() { STAGES } else { NATIVE_STAGES };
+        for step in steps {
             log::trace!(area = "shell", "frame stage {}", step.name);
             if let Err(error) = (step.run)(self, &mut work) {
                 // A stage that fails ends the shell. The graveyard is emptied all the same: a destroyed node's last
@@ -150,7 +166,13 @@ impl JsShell {
     /// Applies the compositor's batches to the mirror and sorts the rest of what arrived to the inboxes of the stages that
     /// serve it.
     fn stage_drain(&mut self, work: &mut FrameWork) -> Result<(), JsShellError> {
+        let legacy = self.legacy();
         for message in std::mem::take(&mut work.incoming) {
+            // A generation on the native library has no use for what the engine's own object model sorts: the core serves the
+            // chords, the events and the answers to the libraries, so the engine keeps the tree and its own transactions only.
+            if !legacy && !matches!(&message, TreeIncoming::Changes { .. } | TreeIncoming::Reply(_)) {
+                continue;
+            }
             match message {
                 TreeIncoming::Changes { serial, changes } => {
                     let mut state = self.state.borrow_mut();
@@ -311,6 +333,24 @@ impl JsShell {
     /// Forgets the destroyed nodes' last values.
     fn stage_graveyard(&mut self, _work: &mut FrameWork) -> Result<(), JsShellError> {
         self.state.borrow_mut().graveyard.clear();
+        Ok(())
+    }
+
+    /// Takes the boot snapshot's mark: on the native library the core announces the windows it holds, and the engine has
+    /// nothing to announce.
+    fn stage_boot(&mut self, _work: &mut FrameWork) -> Result<(), JsShellError> {
+        self.boot_ready = None;
+        Ok(())
+    }
+
+    /// Runs the promise jobs a callback of the core left, which no message announces.
+    fn stage_jobs(&mut self, work: &mut FrameWork) -> Result<(), JsShellError> {
+        self.pump_jobs(&mut work.diagnostics)
+    }
+
+    /// Flushes the script's console.
+    fn stage_console(&mut self, _work: &mut FrameWork) -> Result<(), JsShellError> {
+        self.generation.flush_console();
         Ok(())
     }
 
@@ -478,6 +518,10 @@ impl JsShell {
 
     /// Takes the failures the listeners recorded and reports each site once.
     pub(super) fn collect_reports(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        if !self.legacy() {
+            // A callback of the core that throws is the core's to report: the failure comes back to it from the call.
+            return Ok(());
+        }
         let generation = &self.generation;
         let failures: Vec<(String, JsError)> = generation.call_budgeted(self.entry_budget, |ctx| {
             let host: Object<'_> = ctx.globals().get("__gnoblinHost")?;

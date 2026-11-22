@@ -25,9 +25,11 @@ use rquickjs::{Context, Ctx, Error, Exception, FromJs, Module, Runtime, Value};
 
 use crate::budget::{STAGE_BUDGET, WALL_BACKSTOP_FACTOR};
 use crate::bytecode::JsBytecodeCache;
+use crate::choice::StockRuntime;
 use crate::error::{JsError, JsErrorKind, JsLoadError, JsLocation};
 use crate::loader::{JsLoadState, JsLoader, JsResolver, JsTypeScriptModule};
 use crate::script_console::{JsConsoleLine, JsScriptConsole};
+use crate::stock::StockLibrary;
 use gnoblin_shell_host::supervisor::{Clock, SystemClock};
 
 /// What a generation is built from. Cheap to clone, so a host builds every generation from one value.
@@ -54,6 +56,12 @@ pub struct JsConfig {
     pub clock: Arc<dyn Clock>,
     /// The native objects the host library gives every generation, installed beside `__gnoblinHost`.
     pub natives: Vec<crate::natives::JsNative>,
+    /// The stock library the generations of a shell choose from (see [`StockLibrary`]). `None` for a config whose `typescript` and
+    /// `embedded` modules are all the stock library there is.
+    pub stock: Option<Arc<StockLibrary>>,
+    /// The stock library this config's generations run on. [`JsConfig::for_runtime`] sets it; a config that has no [`StockLibrary`]
+    /// is the TypeScript one, which is what a library of its own is.
+    pub runtime: StockRuntime,
 }
 
 impl JsConfig {
@@ -70,6 +78,8 @@ impl JsConfig {
             max_stack_size: 512 << 10,
             clock: Arc::new(SystemClock),
             natives: Vec::new(),
+            stock: None,
+            runtime: StockRuntime::Typescript,
         }
     }
 
@@ -93,6 +103,47 @@ impl JsConfig {
     pub fn with_cache(mut self, cache: JsBytecodeCache) -> Self {
         self.cache = cache;
         self
+    }
+
+    /// Gives the generations this config makes the stock library of the shell ([`StockLibrary`]), from which each generation takes the
+    /// library its import graph needs.
+    #[must_use]
+    pub fn with_stock(mut self, stock: Arc<StockLibrary>) -> Self {
+        self.stock = Some(stock);
+        self
+    }
+
+    /// This config for a generation that runs on `runtime`: its stock modules are that library's, and a module embedded under a
+    /// name stays what the caller made it.
+    ///
+    /// # Errors
+    ///
+    /// The TypeScript library has a file that cannot be read.
+    pub fn for_runtime(&self, runtime: StockRuntime) -> Result<Self, JsError> {
+        let mut config = self.clone();
+        config.runtime = runtime;
+        if let Some(stock) = &self.stock {
+            let modules = stock.modules(runtime).map_err(|error| JsError {
+                kind: JsErrorKind::Load,
+                message: error.to_string(),
+                location: None,
+                stack: None,
+            })?;
+            config.typescript = if self.typescript.is_empty() {
+                modules
+            } else {
+                let mut merged = (*modules).clone();
+                merged.extend(
+                    self.typescript
+                        .iter()
+                        .map(|(name, module)| (name.clone(), module.clone())),
+                );
+                Arc::new(merged)
+            };
+            config.stock_dirs = Arc::new(stock.dirs().to_vec());
+            config.stock = None;
+        }
+        Ok(config)
     }
 }
 
@@ -318,6 +369,11 @@ impl JsGeneration {
     /// The number the host gave this generation.
     pub fn id(&self) -> u64 {
         self.id
+    }
+
+    /// The stock library this generation runs on.
+    pub fn runtime(&self) -> StockRuntime {
+        self.config.runtime
     }
 
     /// A second handle on the same runtime and context. The engine frees them when the last handle is dropped.

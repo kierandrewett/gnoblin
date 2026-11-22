@@ -31,6 +31,7 @@
 mod bindings;
 mod budget;
 mod bytecode;
+mod choice;
 mod config;
 mod console;
 mod diagnostics;
@@ -61,6 +62,7 @@ pub use budget::{ENTRY_BUDGET, FRAME_BUDGET, STAGE_BUDGET, WALL_BACKSTOP_FACTOR}
 pub use bytecode::{
     CACHE_VARIABLE, JsBytecodeCache, JsCacheStats, MAX_ENTRIES as CACHE_MAX_ENTRIES, toolchain_versions,
 };
+pub use choice::StockRuntime;
 pub use config::{JsClientConfigLink, JsCommitLog, JsCommitRecord, JsConfigCommit, JsConfigLink, JsLinkError};
 pub use console::{
     CONSOLE_FILE, CONSOLE_SOCKET, CONSOLE_VARIABLE, DEFAULT_MAX_BYTES, JsConsole, JsConsoleError, JsConsoleSite,
@@ -82,8 +84,8 @@ pub use rquickjs;
 pub use script_console::{JsConsoleLevel, JsConsoleLine, MAX_LINE_BYTES, MAX_LINES_PER_SECOND};
 pub use shell::{JsFrame, JsFrameStats, JsShell, JsShellConfig, JsShellError, JsStaging, STALE_RETRIES};
 pub use stock::{
-    PACKAGES as STOCK_PACKAGES, STOCK_DIR_VARIABLE, StockError, default_shell_path, editor_library_in, source_starter,
-    stock_modules_in, stock_search_path, stock_sources_in,
+    PACKAGES as STOCK_PACKAGES, STOCK_DIR_VARIABLE, StockError, StockLibrary, default_shell_path, editor_library_in,
+    source_starter, stock_modules_in, stock_search_path, stock_sources_in,
 };
 pub use ts::{JsStripped, strip_types};
 pub use workspaces::{JsKeptInset, JsKeptRect, JsKeptWindow, JsOutputShown, JsWorkspaceEntry, JsWorkspaceSnapshot};

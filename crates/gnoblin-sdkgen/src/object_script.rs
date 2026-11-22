@@ -16,8 +16,10 @@
 //! Nothing is written by hand per class: the constructor, a property's accessor, a method, a signal and the conversion of every value
 //! are rendered from the catalog. The small runtime the classes share (`object_base`) is a fixed text each generator carries.
 //!
-//! Paths: `js/<package>/generated/objects.js` (and `objects.d.ts`) for each namespace, with `js/gnoblin-core/generated/object_base.{js,d.ts}`
-//! once; `python/gnoblin/objects/{model,std}.py` (and `.pyi`) with `python/gnoblin/objects/__init__.py` and `_base.py` once.
+//! Paths: `js/native/<package>/generated/objects.js` for each namespace, with `js/native/gnoblin-core/generated/object_base.js` once (the
+//! modules the native library is, named by their import names: the JavaScript runtime embeds them apart from the TypeScript library),
+//! and `js/<package>/generated/objects.d.ts` with `js/gnoblin-core/generated/object_base.d.ts` for the editor; `python/gnoblin/objects/{model,std}.py`
+//! (and `.pyi`) with `python/gnoblin/objects/__init__.py` and `_base.py` once.
 
 use std::collections::BTreeMap;
 
@@ -131,13 +133,13 @@ impl Target for ObjectJsTarget {
 
     fn generate(&self, spec: &SdkSpec) -> Result<Vec<File>, String> {
         let mut files = vec![File {
-            path: "js/gnoblin-core/generated/object_base.js".to_owned(),
+            path: "js/native/gnoblin-core/generated/object_base.js".to_owned(),
             comment: Some(Comment::Slashes),
             text: object_js::BASE_JS.to_owned(),
         }];
         for namespace in spec.objects.namespaces() {
             files.push(File {
-                path: format!("js/{}/generated/objects.js", package_of(&namespace)?),
+                path: format!("js/native/{}/generated/objects.js", package_of(&namespace)?),
                 comment: Some(Comment::Slashes),
                 text: object_js::render_js(&ScriptView::new(&spec.objects, &namespace))?,
             });

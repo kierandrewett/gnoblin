@@ -2,9 +2,11 @@
 //! generated half of the stock library.
 //!
 //! The hand-written stock library is not embedded: it is installed data (`share/gnoblin/js`), read at run time (`src/stock.rs`).
-//! What `gnoblin-sdkgen` generates from the schema and the ABI crates (`gnoblin-core/generated/*` and `gnoblin-std/generated/*`)
-//! is nobody's source and is committed nowhere: this script renders it into `OUT_DIR` and writes `stock_embedded.rs`, the table
-//! `src/stock.rs` serves those modules from, so they cannot be older or newer than the libraries the runtime is built with.
+//! What `gnoblin-sdkgen` generates from the schema and the ABI crates is nobody's source and is committed nowhere: this script
+//! renders it into `OUT_DIR` and writes `stock_embedded.rs`, which holds two tables `src/stock.rs` serves from, so the modules
+//! cannot be older or newer than the libraries the runtime is built with. `GENERATED` is the generated half of the TypeScript
+//! library (`gnoblin-core/generated/*`, `gnoblin-std/generated/*`) and the declarations an editor reads. `NATIVE` is the library a
+//! shell runs on when it does not use the TypeScript one: the object classes and the package entries, by import name.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -24,21 +26,29 @@ fn main() -> ExitCode {
 fn embed_generated() {
     let paths = gnoblin_sdkgen::emit_for_build(&["typescript", "object-js", "object-types"]);
     let out = PathBuf::from(std::env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
-    let mut table = String::from("/// The generated modules of the stock library, by path under the library root.\n");
-    table.push_str("pub(crate) static GENERATED: &[(&str, &str)] = &[\n");
+    let mut generated =
+        String::from("/// The generated modules of the stock library, by path under the library root.\n");
+    generated.push_str("pub(crate) static GENERATED: &[(&str, &str)] = &[\n");
+    let mut native = String::from("/// The modules of the native library, by import name.\n");
+    native.push_str("pub(crate) static NATIVE: &[(&str, &str)] = &[\n");
     for path in &paths {
         let Some(file) = path.strip_prefix("js/") else {
             continue;
         };
-        let source = out.join(path);
-        let _ = writeln!(
-            table,
-            "    ({file:?}, include_str!({:?})),",
-            source.display().to_string()
-        );
+        let source = out.join(path).display().to_string();
+        match file.strip_prefix("native/").and_then(|rest| rest.strip_suffix(".js")) {
+            Some(name) => {
+                let _ = writeln!(native, "    ({name:?}, include_str!({source:?})),");
+            }
+            None => {
+                let _ = writeln!(generated, "    ({file:?}, include_str!({source:?})),");
+            }
+        }
     }
-    table.push_str("];\n");
-    fs::write(out.join("stock_embedded.rs"), table).expect("OUT_DIR is writable");
+    generated.push_str("];\n");
+    native.push_str("];\n");
+    generated.push_str(&native);
+    fs::write(out.join("stock_embedded.rs"), generated).expect("OUT_DIR is writable");
 }
 
 /// The crates whose versions decide what bytecode a module compiles to: the engine, and the oxc crates that strip the

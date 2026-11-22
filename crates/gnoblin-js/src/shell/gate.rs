@@ -149,6 +149,9 @@ impl JsShell {
         if gate.external.get() || gate.echo || gate.deferred || self.boot_ready.is_some() {
             return true;
         }
+        if !self.legacy() {
+            return matches!(self.gate.wake, ScriptWake::At(at) if at <= self.now_ms());
+        }
         let mut diagnostics = Vec::new();
         let api = self.state.borrow_mut().api.poll();
         let dialogs = self.dialogs.poll(&mut diagnostics);
@@ -185,9 +188,15 @@ impl JsShell {
     pub(super) fn plan_next_frame(&mut self, worked: bool) -> Result<(), JsShellError> {
         self.gate.stats.run = self.gate.stats.run.saturating_add(1);
         self.gate.echo = worked || std::mem::take(&mut self.gate.deferred);
-        let at: f64 = self.call_entry(self.entry_budget, |entry| {
-            entry.get::<_, Function<'_>>("wake")?.call(())
-        })?;
+        // A generation on the native library has no wake registry of its own: the core's wake descriptor is what the turn
+        // sleeps on, and the engine asks for a frame only for the promise jobs it left.
+        let at: f64 = if self.legacy() {
+            self.call_entry(self.entry_budget, |entry| {
+                entry.get::<_, Function<'_>>("wake")?.call(())
+            })?
+        } else {
+            f64::INFINITY
+        };
         // Promise jobs the pump left (it runs at most `MAX_JOBS_PER_PUMP`) are script work no message announces.
         self.gate.wake = if self.generation.jobs_pending() {
             ScriptWake::At(0.0)

@@ -8,7 +8,8 @@
 
 use std::path::Path;
 
-use crate::error::JsError;
+use crate::choice::{Choice, StockRuntime, choose};
+use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
 
 /// What runs on a fresh generation before the entry module does: a host installs its native objects here.
@@ -59,14 +60,51 @@ impl JsHost {
     /// On success the generation is returned for the caller to inspect and [`commit`](Self::commit). On
     /// failure it is dropped and the current generation is exactly as it was.
     pub fn stage(&mut self, entry: &Path) -> Result<JsGeneration, JsError> {
+        let config = self.config_for(entry)?;
         let id = self.next_id;
         self.next_id += 1;
-        let generation = JsGeneration::new(&self.config, id)?;
+        let generation = JsGeneration::new(&config, id)?;
         if let Some(prepare) = self.prepare.as_mut() {
             prepare(&generation)?;
         }
         generation.eval_module(entry)?;
         Ok(generation)
+    }
+
+    /// The config of the generation that runs `entry`: when the host has a stock library, the one its import graph needs
+    /// ([`choose`]). A shell keeps the library it runs on, so an entry that needs the other one is refused here, before anything is
+    /// built, and the running generation stays as it was.
+    fn config_for(&self, entry: &Path) -> Result<JsConfig, JsError> {
+        let Some(stock) = &self.config.stock else {
+            return Ok(self.config.clone());
+        };
+        let serving = stock.serving();
+        let wanted = match choose(&self.config.root, entry) {
+            Choice::Typescript(reason) => Some((StockRuntime::Typescript, reason)),
+            Choice::Generated => Some((
+                StockRuntime::Generated,
+                "no longer imports gnoblin-std/extensions/xr and has no import()".to_owned(),
+            )),
+            Choice::Unknown => None,
+        };
+        let runtime = match (wanted, serving) {
+            (Some((runtime, _)), None) => runtime,
+            (Some((runtime, _)), Some(running)) if runtime == running => runtime,
+            (Some((runtime, reason)), Some(running)) => {
+                return Err(JsError {
+                    kind: JsErrorKind::Load,
+                    message: format!(
+                        "the new code needs the {} stock library ({reason}) and this shell runs on the {} one; restart gnoblin to change the stock library",
+                        runtime.word(),
+                        running.word(),
+                    ),
+                    location: None,
+                    stack: None,
+                });
+            }
+            (None, running) => running.unwrap_or(StockRuntime::Typescript),
+        };
+        self.config.for_runtime(runtime)
     }
 
     /// Makes `generation` the current one and drops the previous generation.

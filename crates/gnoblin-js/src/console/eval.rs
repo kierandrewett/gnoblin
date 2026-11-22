@@ -8,10 +8,14 @@ use rquickjs::{Ctx, Function, Object, Value};
 use serde_json::{Map, Value as Json, json};
 
 use super::{CONSOLE_FILE, MAX_JOBS};
+use crate::choice::StockRuntime;
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::JsGeneration;
 use crate::script_console::JsConsoleLine;
 use crate::shell::JsShell;
+
+/// How a generation on the native library renders a console value: JSON, or the text of what has none, cut to the reply's limit.
+const PLAIN_RENDER: &str = "(function (value, max) { let text; try { text = typeof value === 'function' || value === undefined ? String(value) : JSON.stringify(value, (key, item) => typeof item === 'bigint' ? String(item) : item); } catch (error) { text = String(value); } if (text === undefined) { text = String(value); } return text.length > max ? text.slice(0, max) : text; })";
 
 /// The reply to one request line.
 pub(super) fn answer(shell: &JsShell, line: &[u8], max_bytes: usize) -> Json {
@@ -129,11 +133,16 @@ fn evaluate(generation: &JsGeneration, budget: Duration, source: &str, max_bytes
         options.filename = Some(CONSOLE_FILE.to_owned());
         let value: Value<'_> = ctx.eval_with_options(source, options)?;
         let settled = settle(ctx, value)?;
-        let host: Object<'_> = ctx.globals().get("__gnoblinHost")?;
-        let entry: Object<'_> = host.get("entry")?;
-        entry
-            .get::<_, Function<'_>>("render")?
-            .call::<_, String>((settled, max_bytes))
+        if generation.runtime() == StockRuntime::Typescript {
+            let host: Object<'_> = ctx.globals().get("__gnoblinHost")?;
+            let entry: Object<'_> = host.get("entry")?;
+            return entry
+                .get::<_, Function<'_>>("render")?
+                .call::<_, String>((settled, max_bytes));
+        }
+        // A generation on the native library has no `inspect` of its own yet: a value is shown as JSON when it has one.
+        let render: Function<'_> = ctx.eval(PLAIN_RENDER)?;
+        render.call::<_, String>((settled, max_bytes))
     })
 }
 
