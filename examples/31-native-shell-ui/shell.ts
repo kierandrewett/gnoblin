@@ -8,12 +8,14 @@
 //   waits, Tab moves to Force quit, and Force quit takes a press only after `armMs`;
 // - puts the stock lock screen to work: a clock and a password entry over the screen while the session is locked;
 // - opens the launcher with `Super+space`: Return runs the command typed and closes it, Escape closes it;
-// - flips the overview with `Super+o`.
+// - flips the overview with `Super+o`;
+// - shows a toast with `Super+t`;
+// - calls the toolkit's two functions that need no canvas: `Ui.estimateText` and `Ui.encodePaintList`.
 //
 // Every line it logs starts with `shell-ui:`, spelt as the Rust shell of the same example (`31-native-shell-ui`) spells it, so that one test
 // reads all three.
 import { gnoblin } from "gnoblin-core";
-import { Launcher, LockScreen, NotRespondingAlerts, Overview } from "gnoblin-std/generated/objects";
+import { Launcher, LockScreen, NotRespondingAlerts, Overview, Toast, Ui } from "gnoblin-std/generated/objects";
 import type {} from "gnoblin-std";
 
 // A long delay, so that a Return pressed at once finds Force quit still off.
@@ -35,5 +37,24 @@ gnoblin.input.primary.bind("Super+space", () => {
     Launcher.open((command) => console.log(`shell-ui: the launcher ran ${command}`));
     console.log("shell-ui: the launcher is open");
 });
+
+// A toast fades in for 20 ms, holds for 400 ms and fades out for 20 ms, then removes itself.
+gnoblin.input.primary.bind("Super+t", () => {
+    Toast.show("Toast of the shell", 20, 400, 20);
+    console.log("shell-ui: the toast is up");
+});
+
+// What a text is taken to measure until it is measured: 5 pixels for each of 5 characters at size 10, a line of 15, a baseline at 11.
+const estimate = Ui.estimateText("Hello", 10);
+console.log(`shell-ui: estimate ${estimate.width}x${estimate.height} ascent ${estimate.ascent}`);
+
+// The bytes of a paint list: the magic `GNPL`, a version, a count, then the operations. A list with one bad operation is refused whole.
+const list = Ui.encodePaintList([{ op: "push-opacity", alpha: 0.5 }, { op: "pop-opacity" }]);
+console.log(`shell-ui: paint list of ${list.length} bytes ${String.fromCharCode(...list.slice(0, 4))}`);
+try {
+    Ui.encodePaintList([{ op: "pop-opacity" }, { op: "rect", fill: "red" }]);
+} catch (error) {
+    console.log(`shell-ui: bad paint list refused: ${(error as Error).message}`);
+}
 
 console.log("shell-ui: running");

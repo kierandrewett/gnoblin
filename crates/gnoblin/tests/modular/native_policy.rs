@@ -27,6 +27,33 @@ fn window_of(session: &Gnoblin, app: &str) -> Window {
 #[track_caller]
 fn a_window_asks_and_the_policy_answers(session: &mut Gnoblin) {
     session.wait_log("the shell started the policy", |line| line.contains("policy: running"));
+    // The gesture bindings: made, set with ways and actions, installed, and the way of a gesture told, as the replays of the std crate hold
+    // the gestures themselves to the TypeScript library's. A touchpad is not something this session can give a shell.
+    for needed in [
+        "policy: the gesture bindings are installed",
+        "policy: an action that is not one is refused",
+    ] {
+        assert!(
+            session.log().iter().any(|line| line.text.contains(needed)),
+            "the shell never said {needed:?}: {}",
+            session.log_text()
+        );
+    }
+    let directions: Vec<String> = session
+        .log()
+        .iter()
+        .filter_map(|line| {
+            let rest = line.text.split("policy: gesture direction ").nth(1)?;
+            rest.split_whitespace().next().map(str::to_owned)
+        })
+        .collect();
+    assert_eq!(
+        directions,
+        ["left", "none", "right"],
+        "a swipe of -100 and 5 goes left, one of 1 and 1 has not gone the default 48 units, and with a threshold of 0.5 it has and the tie goes \
+         to the horizontal axis: {}",
+        session.log_text()
+    );
     let (width, height) = screen_of(session);
     let mut mapper = Mapper::connect(&session.wayland());
     mapper.map_window("plain", "plain");

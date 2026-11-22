@@ -12,6 +12,9 @@
 //!   password with PAM, so a right password cannot be typed here: the right password and every other message are the replay's.
 //! - `<Super>space` opens the launcher, typed text is painted, Return runs the command through the shell's callback.
 //! - `<Super>o` flips the overview.
+//! - `<Super>t` shows a toast, which paints its text and removes itself after its hold.
+//! - The shell calls `Ui.estimateText` and `Ui.encodePaintList` once when it starts, and the test reads what they answered: the estimate of
+//!   "Hello" at size 10, the first bytes and the length of a two-operation paint list, and the refusal of a list with a bad operation.
 //!
 //! One core and one std are mapped.
 
@@ -20,7 +23,7 @@ use std::time::Duration;
 
 use crate::support::lock_session::view;
 use crate::support::native_shell::{
-    Gnoblin, Home, KEY_A, KEY_B, KEY_ENTER, KEY_ESC, KEY_O, KEY_SPACE, KEY_TAB, Launch, Start, Typist,
+    Gnoblin, Home, KEY_A, KEY_B, KEY_ENTER, KEY_ESC, KEY_O, KEY_SPACE, KEY_T, KEY_TAB, Launch, Start, Typist,
     staged_library_path, start_script_in, std_shells,
 };
 use crate::support::{Mapper, snapshot, take_lock};
@@ -59,6 +62,28 @@ fn the_shell_ui_works(session: &mut Gnoblin) {
             .any(|line| line.text.contains("shell-ui: the lock screen is ready, shown false")),
         "{}",
         session.log_text()
+    );
+    // The two functions that need no canvas answered when the shell started.
+    for needed in [
+        "shell-ui: estimate 25x15 ascent 11",
+        "shell-ui: paint list of 15 bytes GNPL",
+        "shell-ui: bad paint list refused:",
+    ] {
+        assert!(
+            session.log().iter().any(|line| line.text.contains(needed)),
+            "the shell never said {needed:?}: {}",
+            session.log_text()
+        );
+    }
+    let refused = session
+        .find(|line| line.contains("shell-ui: bad paint list refused:"))
+        .expect("a refusal");
+    assert!(
+        refused
+            .text
+            .contains("draw op 2: a colour is #rgb, #rgba, #rrggbb or #rrggbbaa, not red"),
+        "the refusal names the bad operation: {}",
+        refused.text
     );
     let ipc = session.ipc();
     let mut mapper = Mapper::connect(&session.wayland());
@@ -105,6 +130,12 @@ fn the_shell_ui_works(session: &mut Gnoblin) {
         line.contains("shell-ui: the launcher ran ab")
     });
     session.wait_for("the launcher is gone", |_| !paints(&ipc, "ab"));
+
+    // A toast shows its text and removes itself once its hold has run out.
+    typist.super_plus(KEY_T);
+    session.wait_log("the toast is up", |line| line.contains("shell-ui: the toast is up"));
+    session.wait_for("the toast paints its text", |_| paints(&ipc, "Toast of the shell"));
+    session.wait_for("the toast removed itself", |_| !paints(&ipc, "Toast of the shell"));
 
     // The overview flips with its chord.
     typist.super_plus(KEY_O);

@@ -11,10 +11,13 @@ from gnoblin import gnoblin as session
 from gnoblin.objects.std import (
     ClientRequestKind,
     FocusPolicy,
+    Gestures,
     MoveBinding,
+    PinchActionBinding,
     Repositioning,
     RequestListener,
     ResizeBinding,
+    SwipeActionBinding,
     WindowState,
     WorkspaceSlideBinding,
 )
@@ -44,5 +47,27 @@ Repositioning.get().start()
 MoveBinding().install()
 ResizeBinding().install()
 WorkspaceSlideBinding().install()
+
+# The gestures that run actions: a four-finger swipe up maximises (or restores) the window with the keyboard, a swipe left runs a function, and
+# a pinch in minimises. The ways and the actions are checked when they are set.
+swipe = SwipeActionBinding()
+swipe.trigger = "Swipe4"
+swipe.set_action("up", "window.toggle-maximise")
+swipe.set_function("left", lambda event: say(f"swipe left went {event.dx:g}"))
+swipe.install()
+pinch = PinchActionBinding()
+pinch.set_action("in", "window.minimise")
+pinch.set_function("out", lambda event: say(f"pinch out to {event.scale:g}"))
+pinch.install()
+say("the gesture bindings are installed")
+
+# The way a gesture has gone, by its longer axis, and none while it has gone less than the threshold.
+for dx, dy, threshold in ((-100.0, 5.0, None), (1.0, 1.0, None), (1.0, 1.0, 0.5)):
+    way = Gestures.direction(dx, dy, threshold)
+    say(f"gesture direction {way.way.name.lower() if way is not None else 'none'}")
+try:
+    swipe.set_action("down", "window.fly")
+except Exception:
+    say("an action that is not one is refused")
 
 say("running")

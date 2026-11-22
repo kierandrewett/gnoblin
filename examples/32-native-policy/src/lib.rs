@@ -9,14 +9,16 @@
 //!   each request first, logs it, and answers `fullscreen` itself by refusing it: the stock answer does not run for a request a listener took;
 //! - `Repositioning`: the window menu's Move and Resize move a window with the arrow keys;
 //! - the drags and the gesture: `Super` and the left button move a window, `Super` and the right button resize it, and a three-finger swipe
-//!   slides to the next or the previous workspace.
+//!   slides to the next or the previous workspace;
+//! - the gestures that run actions: a four-finger swipe up toggles maximise and a swipe left runs a function, a pinch in minimises and a pinch
+//!   out runs a function. `Gestures::direction` says which way a gesture has gone.
 //!
 //! Every line it logs starts with `policy:`. Build it with `cargo build -p gnoblin-example-native-policy` and run it with
 //! `gnoblin ./target/debug/libnative_policy.so`.
 
 use gnoblin_std::objects::{
-    ClientRequestKind, FocusPolicy, MoveBinding, Repositioning, RequestListenerHandlers, ResizeBinding, WindowState,
-    WorkspaceSlideBinding,
+    ClientRequestKind, FocusPolicy, Gestures, MoveBinding, PinchActionBinding, PinchWay, Repositioning,
+    RequestListenerHandlers, ResizeBinding, SwipeActionBinding, SwipeWay, WindowState, WorkspaceSlideBinding,
 };
 use gnoblin_std::prelude::*;
 
@@ -60,6 +62,38 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let slide = WorkspaceSlideBinding::new(&objects)?;
     slide.install(None)?;
     std::mem::forget(slide);
+
+    // The gestures that run actions. The ways and the actions are checked when they are set.
+    let swipe = SwipeActionBinding::new(&objects)?;
+    swipe.set_trigger("Swipe4")?;
+    swipe.set_action(SwipeWay::Up, "window.toggle-maximise")?;
+    swipe.set_function(SwipeWay::Left, move |event| {
+        g.log(&format!("policy: swipe left went {}", event.dx));
+        Ok(())
+    })?;
+    swipe.install(None)?;
+    let pinch = PinchActionBinding::new(&objects)?;
+    pinch.set_action(PinchWay::In, "window.minimise")?;
+    pinch.set_function(PinchWay::Out, move |event| {
+        g.log(&format!("policy: pinch out to {}", event.scale));
+        Ok(())
+    })?;
+    pinch.install(None)?;
+    g.log("policy: the gesture bindings are installed");
+
+    // The way a gesture has gone, by its longer axis, and none while it has gone less than the threshold.
+    for (dx, dy, threshold) in [(-100.0, 5.0, None), (1.0, 1.0, None), (1.0, 1.0, Some(0.5))] {
+        let way = Gestures::direction(&objects, dx, dy, threshold)?;
+        g.log(&format!(
+            "policy: gesture direction {}",
+            way.map_or("none", |direction| direction.way.as_str())
+        ));
+    }
+    if swipe.set_action(SwipeWay::Down, "window.fly").is_err() {
+        g.log("policy: an action that is not one is refused");
+    }
+    std::mem::forget(swipe);
+    std::mem::forget(pinch);
 
     g.log("policy: running");
     Ok(())

@@ -6,12 +6,14 @@
 //!   Escape waits, Tab moves to Force quit, and Force quit takes a press only after `arm_ms`;
 //! - puts the stock lock screen to work: a clock and a password entry over the screen while the session is locked;
 //! - opens the launcher with `<Super>space`: Return runs the command typed and closes it, Escape closes it;
-//! - flips the overview with `<Super>o`.
+//! - flips the overview with `<Super>o`;
+//! - shows a toast with `<Super>t`;
+//! - calls the toolkit's two functions that need no canvas: `Ui::estimate_text` and `Ui::encode_paint_list`.
 //!
 //! Every line it logs starts with `shell-ui:`. Build it with `cargo build -p gnoblin-example-native-shell-ui` and run it with
 //! `gnoblin ./target/debug/libnative_shell_ui.so`.
 
-use gnoblin_std::objects::{Launcher, LockScreen, NotRespondingAlerts, Overview};
+use gnoblin_std::objects::{Launcher, LockScreen, NotRespondingAlerts, Overview, PaintKind, PaintOp, Toast, Ui};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
@@ -51,6 +53,47 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             Err(error) => g.log(&format!("shell-ui: the launcher failed: {error}")),
         }
     })?;
+
+    // A toast fades in for 20 ms, holds for 400 ms and fades out for 20 ms, then removes itself.
+    let library = objects.clone();
+    g.bind("<Super>t", move || {
+        // The toast reads this clock in milliseconds, in place of the toolkit's, so the fade follows the shell's own time.
+        let started = std::time::Instant::now();
+        let clock = move || Ok(started.elapsed().as_secs_f64() * 1000.0);
+        match Toast::show(
+            &library,
+            "Toast of the shell",
+            Some(20.0),
+            Some(400.0),
+            Some(20.0),
+            Some(clock),
+        ) {
+            Ok(_) => g.log("shell-ui: the toast is up"),
+            Err(error) => g.log(&format!("shell-ui: the toast failed: {error}")),
+        }
+    })?;
+
+    // What a text is taken to measure until it is measured: 5 pixels for each of 5 characters at size 10, a line of 15, a baseline at 11.
+    let estimate = Ui::estimate_text(&objects, "Hello", 10.0)?;
+    g.log(&format!(
+        "shell-ui: estimate {}x{} ascent {}",
+        estimate.width, estimate.height, estimate.ascent
+    ));
+
+    // The bytes of a paint list: the magic `GNPL`, a version, a count, then the operations. A list with one bad operation is refused whole.
+    let mut push = PaintOp::new(PaintKind::PushOpacity);
+    push.alpha = Some(0.5);
+    let list = Ui::encode_paint_list(&objects, &[push, PaintOp::new(PaintKind::PopOpacity)])?;
+    g.log(&format!(
+        "shell-ui: paint list of {} bytes {}",
+        list.0.len(),
+        String::from_utf8_lossy(&list.0[..4])
+    ));
+    let mut bad = PaintOp::new(PaintKind::Rect);
+    bad.fill = Some("red".to_owned());
+    if let Err(error) = Ui::encode_paint_list(&objects, &[PaintOp::new(PaintKind::PopOpacity), bad]) {
+        g.log(&format!("shell-ui: bad paint list refused: {error}"));
+    }
 
     g.log("shell-ui: running");
     Ok(())

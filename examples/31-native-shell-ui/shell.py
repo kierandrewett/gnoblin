@@ -8,14 +8,16 @@ The classes are generated from the catalog the library serves, so ``gnoblin.obje
   waits, Tab moves to Force quit, and Force quit takes a press only after ``arm_ms``;
 - puts the stock lock screen to work: a clock and a password entry over the screen while the session is locked;
 - opens the launcher with ``<Super>space``: Return runs the command typed and closes it, Escape closes it;
-- flips the overview with ``<Super>o``.
+- flips the overview with ``<Super>o``;
+- shows a toast with ``<Super>t``;
+- calls the toolkit's two functions that need no canvas: ``Ui.estimate_text`` and ``Ui.encode_paint_list``.
 
 Every line it logs starts with ``shell-ui:``, spelt as the Rust shell of the same example (``31-native-shell-ui``) spells it, so that one test
 reads all three.
 """
 
 from gnoblin import gnoblin
-from gnoblin.objects.std import Launcher, LockScreen, NotRespondingAlerts, Overview
+from gnoblin.objects.std import Launcher, LockScreen, NotRespondingAlerts, Overview, PaintKind, PaintOp, Toast, Ui
 
 
 def say(text):
@@ -48,5 +50,26 @@ def open_launcher():
 
 
 gnoblin.bind("<Super>space", open_launcher)
+
+
+# A toast fades in for 20 ms, holds for 400 ms and fades out for 20 ms, then removes itself.
+def show_toast():
+    Toast.show("Toast of the shell", 20.0, 400.0, 20.0)
+    say("the toast is up")
+
+
+gnoblin.bind("<Super>t", show_toast)
+
+# What a text is taken to measure until it is measured: 5 pixels for each of 5 characters at size 10, a line of 15, a baseline at 11.
+estimate = Ui.estimate_text("Hello", 10.0)
+say(f"estimate {estimate.width:g}x{estimate.height:g} ascent {estimate.ascent:g}")
+
+# The bytes of a paint list: the magic ``GNPL``, a version, a count, then the operations. A list with one bad operation is refused whole.
+listing = Ui.encode_paint_list([PaintOp(op=PaintKind.PUSH_OPACITY, alpha=0.5), PaintOp(op=PaintKind.POP_OPACITY)])
+say(f"paint list of {len(listing)} bytes {bytes(listing[:4]).decode()}")
+try:
+    Ui.encode_paint_list([PaintOp(op=PaintKind.POP_OPACITY), PaintOp(op=PaintKind.RECT, fill="red")])
+except Exception as error:
+    say(f"bad paint list refused: {error}")
 
 say("running")
