@@ -1,5 +1,5 @@
-//! `cargo xtask oracle`: the golden fixtures of the native std port (`design/native-std-port.md`, lane NpOracle; the map is
-//! `design/native-std-port-tests.md`).
+//! `cargo xtask oracle`: the golden fixtures of the native std port (the map is
+//! `crates/gnoblin-std-impl/tests/ORACLE.md`).
 //!
 //! The TypeScript library under `data/js` is the specification of the desktop's toolkit, frame, menus, style, scene and input
 //! behaviour until the last lane deletes it. The fixtures hold what it does: the transactions it sends, the order of its listener calls,

@@ -1,6 +1,6 @@
 #![allow(unsafe_code)]
 //! A Vulkan program that shares nothing with the renderer but the shader compiler, to tell the renderer's memory
-//! growth from the driver's (design/gpu-memory.md, "Vulkan on lavapipe").
+//! growth from the driver's (tests/gpu-memory-soak/DESIGN.md, "Vulkan on lavapipe").
 //!
 //! The renderer on lavapipe (Mesa 22.3.6, llvmpipe) grew the process by about 0.8 MiB a frame whatever the frame
 //! held, and every allocation that was never freed was made by `libvulkan_lvp.so` on the driver's own queue thread

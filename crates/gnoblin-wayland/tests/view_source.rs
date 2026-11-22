@@ -8,7 +8,7 @@
 //!
 //! The `view` role is the guardian-started extension: capture authority only. Its registry is
 //! exactly the capture globals, and a global it was never told about is refused when it guesses
-//! the name (`design/xr-extension.md`, G7).
+//! the name.
 
 use gnoblin_wayland_testkit::stock;
 mod owned;

@@ -1,4 +1,4 @@
-//! A hostile client against the real compositor: what it can make the session hold (design/gpu-memory.md).
+//! A hostile client against the real compositor: what it can make the session hold (tests/gpu-memory-soak/DESIGN.md).
 //!
 //! Every test runs the real session on a headless backend and a real `wayland-client` connection. Two things are
 //! proven here and one is measured:

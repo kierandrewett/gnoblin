@@ -173,7 +173,7 @@ is the crate and the binary alike. Library crates take their area prefix, such a
 [install layout](docs/install-layout.md)); `just dist-check` checks how it links and what it installs. The release
 workflow that builds distribution packages from that install, and runs them through a clean-install and login check on
 each target, is tracked in [issue 379](https://github.com/kierandrewett/gnoblin/issues/379).
-[Package repositories](design/package-repositories.md) describes the signed repository that `scripts/pkgrepo` builds and
+[Package repositories](scripts/pkgrepo/DESIGN.md) describes the signed repository that `scripts/pkgrepo` builds and
 `.github/workflows/package-repository.yml` publishes.
 
 Use small conventional commits. Keep unrelated working-tree changes out of a

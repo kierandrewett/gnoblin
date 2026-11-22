@@ -209,8 +209,8 @@ pub enum ClientRole {
     Privileged,
     /// The extension process the guardian started to read Views for the owner. It is promised
     /// by pid before spawn. Its authority is capture only: it sees the
-    /// interfaces in [`VIEW_INTERFACES`] and no other global, core or privileged
-    /// (`design/xr-extension.md`, G7). [`decide`] answers for the privileged globals and
+    /// interfaces in [`VIEW_INTERFACES`] and no other global, core or privileged.
+    /// [`decide`] answers for the privileged globals and
     /// [`ClientRole::sees_interface`] for every global by interface name, so a core global such
     /// as `wl_compositor`, `xdg_wm_base` or `ext_session_lock_manager_v1` is hidden from it too.
     View,

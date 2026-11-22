@@ -58,8 +58,8 @@ members = [
     "crates/gnoblin-portal-filechooser",
     "crates/gnoblin-portal-ui",
     "crates/gnoblin-provider-wire",
-    # One crate per Wayland protocol, the api seam and the aggregate (design/protocol-crates.md); the list is
-    # `xtask/protocols.toml`, so a new protocol does not touch this manifest.
+    # One crate per Wayland protocol, the api seam and the aggregate (crates/protocols/api/DESIGN.md); the list
+    # is `xtask/protocols.toml`, so a new protocol does not touch this manifest.
     "crates/protocols/*",
     "crates/gnoblin-input",
     "crates/gnoblin-input-eis",
@@ -140,7 +140,7 @@ members = [
     "examples/32-native-policy",
     "xtask",
 ]
-# `extensions/` packages are separate workspaces with their own lockfiles and target dirs (design/xr-extension.md).
+# `extensions/` packages are separate workspaces with their own lockfiles and target dirs (extensions/README.md).
 exclude = ["extensions"]
 
 [workspace.package]
@@ -399,7 +399,7 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
     "std",
 ] }
 # The SQLite library behind the log and keyring databases. `bundled-sqlcipher` compiles SQLCipher
-# (SQLite 3.53.4, see design/keyring.md "Phased implementation") into the binary. Without a key set,
+# (SQLite 3.53.4, see crates/gnoblin-service-keyring/DESIGN.md "Build facts") into the binary. Without a key set,
 # SQLCipher opens a file exactly as SQLite does, so the store's plain files are unchanged.
 rusqlite = { version = "0.42.0", features = ["bundled-sqlcipher"] }
 

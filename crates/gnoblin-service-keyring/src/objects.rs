@@ -583,8 +583,8 @@ impl ServiceObject {
 /// a searchable index outside the cipher is the choice that is still open.
 ///
 /// The design asks whether hashed attributes should be kept outside the cipher so that search
-/// works while locked, as GNOME does. That is open in `design/keyring.md` under "Needs Kieran"
-/// item 1. Until it is decided, a locked search returns nothing. Choosing the other option would
+/// works while locked, as GNOME does. That is an open owner decision (gnoblin-6szp). Until it is
+/// decided, a locked search returns nothing. Choosing the other option would
 /// need a new column or table, with a migration from the phase 1 schema, which this function is
 /// the only place to change.
 fn search_locked() -> (Vec<OwnedObjectPath>, Vec<OwnedObjectPath>) {

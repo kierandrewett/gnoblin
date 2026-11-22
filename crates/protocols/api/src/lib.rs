@@ -5,7 +5,7 @@
 //! `gnoblin-wayland`: it states the compositor operations it needs as a trait, and
 //! `gnoblin-wayland` implements that trait on its `State`. The direction of the edges is what
 //! lets one protocol change, build and test without the compositor behind it
-//! (`design/protocol-crates.md`).
+//! (`DESIGN.md` beside this crate's manifest).
 //!
 //! The crate holds only what two or more protocol crates share:
 //!

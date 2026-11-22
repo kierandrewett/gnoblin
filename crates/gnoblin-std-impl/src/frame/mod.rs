@@ -1,7 +1,7 @@
 //! The window frame as native classes of `gnoblin.std`: the frame round one window's content, its outlets, the stock titlebar and its parts,
 //! the window's actions and drag, and the decorations that give every window a frame.
 //!
-//! Its behaviour is held to the recorded fixtures `reference/frame_*.json` (`design/native-std-port-tests.md`). The frame is built over the UI toolkit (`crate::ui`): an outlet and every part is a canvas of the
+//! Its behaviour is held to the recorded fixtures `reference/frame_*.json` (`tests/ORACLE.md`). The frame is built over the UI toolkit (`crate::ui`): an outlet and every part is a canvas of the
 //! toolkit that carries a [`FramePart`], so it is updated, painted and written to the compositor by the toolkit's turn, and a shell adds its own
 //! canvases to an outlet as it adds them to any box. The pieces:
 //!

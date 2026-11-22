@@ -1,7 +1,7 @@
 name: Package repository
 
 # Builds the signed RPM, APT, pacman and Alpine repository of one Gnoblin channel from the packages a release pipeline
-# built, checks it the way a client would, and uploads it. design/package-repositories.md has the layout, the version
+# built, checks it the way a client would, and uploads it. scripts/pkgrepo/DESIGN.md has the layout, the version
 # rules and the key handling.
 #
 # It is a reusable workflow. The caller uploads the packages it built as artifacts named packages-<release_tag>-<arch>
@@ -83,7 +83,7 @@ jobs:
       PROJECT: gnoblin
       CHANNEL: ${{ inputs.channel }}
       # The Debian suite the deb packages are for. The prefix needs glibc 2.43, glib 2.86, GTK 4.20 and the other
-      # libraries of design/package-repositories.md, which Debian testing has.
+      # libraries the prefix links, which Debian testing has.
       DEB_SUITE: forky
       REPO_URL: ${{ vars.REPO_URL || 'https://repo.gnoblin.org' }}
     steps:

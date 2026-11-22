@@ -1162,7 +1162,7 @@ impl ControlHandle {
     }
 
     /// Adopts `stream` as a Wayland client with the `view` role: the capture globals and nothing
-    /// else (`design/xr-extension.md`, G7).
+    /// else.
     ///
     /// The guardian made the stream's other end and gave it to the extension process, so the
     /// role belongs to the connection and nothing the process does can change it. A stream the

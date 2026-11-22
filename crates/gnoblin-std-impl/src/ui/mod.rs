@@ -2,7 +2,7 @@
 //! out, text and icons, the entry, the clock, the bar and the toast.
 //!
 //! This is what `data/js/gnoblin-std/ui/*` and `widgets.ts` did in TypeScript, held to the same behaviour (the fixtures of
-//! `design/native-std-port-tests.md`). The pieces:
+//! `tests/ORACLE.md`). The pieces:
 //!
 //! - `widget`: the canvases of a generation and the handle an object holds on one;
 //! - `tree`: making and ending canvases, putting them under each other and under nodes of the compositor;

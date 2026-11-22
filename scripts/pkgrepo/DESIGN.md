@@ -1,16 +1,12 @@
 # Package repositories
 
-This is internal release engineering material. It describes the signed RPM, APT,
-pacman and Alpine repositories that serve Gnoblin and Bingux (Bingux has no
-Alpine packages), the channels they have, and how the CI builds and publishes them. Users read
-[`docs/package-repositories.md`](../docs/package-repositories.md). The tool is
-`scripts/pkgrepo` (see its [README](../scripts/pkgrepo/README.md)).
+How the signed RPM, APT, pacman and Alpine repositories that serve Gnoblin and Bingux are laid out, versioned,
+signed and published (Bingux has no Alpine packages). Users read
+[`docs/package-repositories.md`](../../docs/package-repositories.md); the commands are in the [README](README.md).
+The targets CI builds are listed in `packaging/targets.json`.
 
-Nothing described here is published yet. Set up so far: the R2 bucket `gnoblin-repo`
-behind `repo.gnoblin.org`, and the signing key (fingerprint in the user documentation).
-The key's private part and passphrase are the CI secrets `REPO_GPG_PRIVATE_KEY` and
-`REPO_GPG_PASSPHRASE` of the Gnoblin and Bingux repositories. The upload credentials and
-the `REPO_*` variables are still missing; "What is left to do" lists them.
+The GnuPG key's private part and passphrase are the CI secrets `REPO_GPG_PRIVATE_KEY` and `REPO_GPG_PASSPHRASE`
+of the Gnoblin and Bingux repositories.
 
 ## Decisions
 
@@ -391,55 +387,3 @@ Jobs are gated so that a fork builds and verifies only. Publication needs all of
 | `REPO_RSYNC_KEY`, `REPO_RSYNC_KNOWN_HOSTS`    | secret   | The `rsync` back end                                  |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`  | secret   | The `s3` back end; variable `AWS_ENDPOINT_URL` for R2 |
 | `REPO_PAGES_TOKEN`                            | secret   | The `pages` back end                                  |
-
-## What each project builds today
-
-| Project | Format | Targets built by CI                           | Not built                                        |
-| ------- | ------ | --------------------------------------------- | ------------------------------------------------ |
-| Gnoblin | RPM    | Fedora 45 and openSUSE Tumbleweed, both archs | Fedora 43 and 44, Enterprise Linux, Leap         |
-| Gnoblin | pacman | Arch Linux, both archs                        |                                                  |
-| Gnoblin | deb    | Debian testing (`forky`), both archs          | Debian 13 and Ubuntu: the libraries are older    |
-| Gnoblin | apk    | Alpine edge, both archs                       | Alpine release branches: the libraries are older |
-
-Both architectures are built, installed in containers and published by the same jobs.
-The arm64 packages have been written and checked here only from an amd64 prefix (names, metadata);
-the first arm64 CI run is the first real arm64 build.
-
-## Rejected alternatives
-
-- One repository tree per distribution release (`repo.gnoblin.org/fedora-45/…`).
-  The layout the owner asked for groups by project and channel, which is also
-  how a user thinks about it.
-- A single channel that users pin by version. Nightly users would have to edit a
-  repository file every day.
-- Publishing the nightly under the stable name with a higher epoch. Epochs never
-  decrease, so a user could not go back to stable.
-- Signing only metadata. RPM and pacman check package signatures, and an
-  unsigned package would be installed from a repository that was compromised
-  after its metadata was signed.
-- GitHub release assets as the repository (what `gnoblin.db` does today). They
-  have no per-channel layout, no signatures and no retention. The release asset
-  database stays until the repositories are live.
-
-## What is left to do
-
-Nothing was published. Done: the R2 bucket `gnoblin-repo` (S3 API token to be created for
-it), `repo.gnoblin.org` as its custom domain (minimum TLS 1.2), the signing key (RSA 4096,
-no expiry, stored in the owner's Bitwarden) and the signing secrets in both repositories.
-
-1. Done: the key is created and its fingerprint is in the user documentation.
-2. Done: `repo.gnoblin.org` points at the bucket. Upload `gpg.key` to its root.
-3. Create the Alpine key as described above and add `REPO_APK_PRIVATE_KEY` to the Gnoblin
-   repository. Until it exists the repository carries no Alpine packages.
-4. Add the upload secrets and the variables in the table above to the Gnoblin and
-   Bingux repositories: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL`,
-   `REPO_BACKEND` (`s3`) and `REPO_DESTINATION` (`s3://gnoblin-repo`). Only the signing
-   secrets exist so far.
-5. Run the tool once by hand with `--apply` for each project and channel
-   (`scripts/pkgrepo/README.md`), and install from the result on a clean machine.
-6. Merge the branch. Cut a release to publish the first stable channel.
-7. Bingux: after the Gnoblin branch is merged, set `packaging/pkgrepo.ref` of
-   Bingux to the merged commit if it is not the one it names.
-8. Done: `infra.yml` no longer copies an APT archive from the `gh-pages` branch into
-   `gnoblin.org/apt`, and `scripts/prepare-apt-pages.py` is gone. Apt sources that name
-   `gnoblin.org/apt` stop working. Users move to `repo.gnoblin.org`.

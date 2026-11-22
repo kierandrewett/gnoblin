@@ -1,5 +1,5 @@
 //! `pam_gnoblin_keyring`: the PAM module that hands the login password to the Gnoblin keyring
-//! service. See `design/keyring.md` "Key source" and "Failure modes".
+//! service. See `crates/gnoblin-service-keyring/DESIGN.md` "Key source" and "Failure modes".
 //!
 //! The module never fails a login and never grants one. Every auth-type entry point returns
 //! `PAM_IGNORE`, so a `sufficient` entry cannot be the only check. A hand-off that fails leaves the

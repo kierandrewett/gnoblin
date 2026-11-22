@@ -1,7 +1,7 @@
 # Native std port: golden fixtures and the test map
 
-Lane NpOracle of `design/native-std-port.md`. It records what the TypeScript library under `data/js` does, as files the native lanes
-match. It changes no production code and deletes nothing.
+The oracle records what the TypeScript library under `data/js` does, as files the native std matches. It changes no
+production code.
 
 ## 1. How it works
 

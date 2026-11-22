@@ -1,7 +1,7 @@
 # Reference fixtures: what the TypeScript std did
 
 Recorded from `data/js` by `cargo xtask oracle record` and held by `cargo xtask oracle check`
-(`design/native-std-port-tests.md` is the map). Native lanes compare their output with these files, and never rewrite them.
+(`../../ORACLE.md` is the map). Native code compares its output with these files, and never rewrites them.
 
 - `tiling_*.json`, `examples_*.json`, `anim_style_transitions.json`: written by the tests of this crate (`tests/tiling.rs`, `examples.rs`,
   `anim_style.rs`). `tiling_*` holds the script (the language of `gnoblin-core-impl/src/driver_script.rs`) and, for each `step`, the

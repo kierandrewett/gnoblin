@@ -10,7 +10,7 @@
 //!
 //! The name is requested with `DO_NOT_QUEUE`. When another service already owns it (gnome-keyring
 //! or a second gnoblin), `serve` fails and nothing is registered, so the two can run side by side:
-//! the one that lost the name simply does not serve. See `design/keyring.md`.
+//! the one that lost the name simply does not serve. See `DESIGN.md` beside this crate's manifest.
 
 pub mod dh;
 mod handoff;

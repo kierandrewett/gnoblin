@@ -1,5 +1,4 @@
-# The gnoblin-xr extension workspace (design/xr-extension.md, "What the extension
-# contains"). It ships as its own package, so it has its own lockfile and
+# The gnoblin-xr extension workspace. It ships as its own package, so it has its own lockfile and
 # dependency tree and is kept out of the root Gnoblin workspace, which excludes
 # `extensions`. The toolchain comes from the repository root's rust-toolchain.toml.
 

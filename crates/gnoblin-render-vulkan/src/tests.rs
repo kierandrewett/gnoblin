@@ -932,7 +932,8 @@ fn probe_child() {
 fn frames_with_no_upload_do_not_grow_the_process() {
     match measured_in_a_child("renderer") {
         // Mesa's lavapipe leaks about 0.8 MiB for every frame that draws the shared solid pass, and the loop of
-        // `driver_probe.rs`, which has no renderer in it, leaks the same (design/gpu-memory.md, "Vulkan on lavapipe").
+        // `driver_probe.rs`, which has no renderer in it, leaks the same (tests/gpu-memory-soak/DESIGN.md,
+        // "Vulkan on lavapipe").
         // A machine with a GPU runs this test; a CPU driver cannot pass it whatever the renderer does.
         ChildProbe::Skipped(why) => println!("skipping: {why}"),
         ChildProbe::Grew(kib) => {

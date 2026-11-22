@@ -120,7 +120,7 @@ gen-sdks-check:
     cargo xtask gen-sdks --check
 
 # Prove the golden fixtures of the native std port are what the TypeScript std does now, over three runs
-# (design/native-std-port-tests.md). `cargo xtask oracle record` rewrites them.
+# (crates/gnoblin-std-impl/tests/ORACLE.md). `cargo xtask oracle record` rewrites them.
 oracle-check:
     cargo xtask oracle check --repeat 3
 

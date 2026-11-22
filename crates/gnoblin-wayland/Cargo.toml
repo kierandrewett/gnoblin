@@ -100,7 +100,7 @@ wayland-scanner = "0.31.11"
 # The PipeWire video streams the portal ScreenCast serves. The export is the only place
 # PipeWire is linked; this crate names its `PipewireExport` and `PlaneSource` types.
 gnoblin-pipewire-export = { path = "../gnoblin-pipewire-export" }
-# The Wayland protocols this crate serves, one crate each (design/protocol-crates.md). The aggregate re-exports every
+# The Wayland protocols this crate serves, one crate each (crates/protocols/api/DESIGN.md). The aggregate re-exports every
 # crate and holds the table of what they advertise; the api crate is the seam they are written against: the traits this
 # crate implements on its state, in its glue module.
 gnoblin-wayland-protocols = { path = "../protocols/all" }

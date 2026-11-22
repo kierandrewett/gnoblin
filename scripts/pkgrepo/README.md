@@ -3,7 +3,7 @@
 Builds, signs and uploads the package repositories (RPM, APT, pacman and Alpine) of Gnoblin and Bingux. One
 tool serves both projects. The repository layout, the channels, the version
 rules and the key handling are in
-[design/package-repositories.md](../../design/package-repositories.md). Users
+[DESIGN.md](DESIGN.md). Users
 install from the repositories as described in
 [docs/package-repositories.md](../../docs/package-repositories.md).
 

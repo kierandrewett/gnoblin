@@ -1,14 +1,9 @@
 # Keyring service
 
-Status: **Decided 2026-11-06** (D27 in `rust-compositor.md`). The key source
-is decided: the login password, handed over by a PAM module, with one unlock
-prompt when there is no password (see "Key source"). Two choices remain
-under "Needs Kieran".
-
 ## Summary
 
 Gnoblin runs its own keyring service, `gnoblin-service-keyring`, in the
-services role (D4). It implements the Secret Service API on the session bus,
+services role. It implements the Secret Service API on the session bus,
 so existing clients (libsecret, `secret-tool`, browsers, mail clients) use it
 without change. Its items live in one SQLCipher-encrypted file. The Secret
 portal serves per-app secrets from the same store.
@@ -17,13 +12,11 @@ Gnoblin does not depend on gnome-keyring, KWallet or KeePassXC. If another
 provider already owns the Secret Service name, Gnoblin's service does not take
 it (see "Coexistence").
 
-## Decision
+## Design
 
 - Gnoblin owns the store. No secret is kept by another provider on Gnoblin's
   behalf.
-- The store is a SQLCipher database. The `rusqlite` crate (0.41.1) has the
-  `bundled-sqlcipher` feature. The workspace `Cargo.toml` (line 297) enables
-  only `bundled`, so enabling SQLCipher is part of phase 1.
+- The store is a SQLCipher database, through the `bundled-sqlcipher` feature of `rusqlite`.
 - Compatibility target: the Secret Service specification, version 0.2 draft
   (dated 2026-10-19). The service implements the `Service`, `Collection`,
   `Item`, `Session` and `Prompt` interfaces.
@@ -33,7 +26,7 @@ it (see "Coexistence").
 
 ## Key source
 
-**Decided 2026-11-06 by Kieran.** The store is unlocked by the login password,
+The store is unlocked by the login password,
 handed over by a PAM module. This is what GNOME and KDE do. TPM sealing is not
 the default. It is an optional later add-on, with the facts in the appendix.
 
@@ -125,7 +118,7 @@ Consequences for the design:
 - **Locked search.** The store is one SQLCipher file, so `SearchItems` cannot
   read attributes while locked. Until unlock, a search returns the collection
   as locked and no items. GNOME keeps hashed attributes outside its cipher so
-  search works while locked. That is a choice for Kieran (see "Needs Kieran").
+  search works while locked; Gnoblin does not (`search_locked` in `objects.rs`).
 - **Plain-text attributes are a trap.** KWallet's attribute file is readable
   without the wallet key. Gnoblin keeps attributes inside the cipher.
 - **Fingerprint login.** The no-password prompt path in "Key source" covers
@@ -216,16 +209,15 @@ secret in the store. It creates the master on first run, with 64 random bytes
 in the default collection and a fixed attribute `gnoblin-purpose=portal-secret`.
 
 Each app gets a secret derived from the master with HKDF-SHA256, using the app
-id as `info`. [INFERENCE] This follows the portal model; check the Secret portal
-specification before the code is written.
+id as `info`.
 
-Consent follows the Secret row in `rust-compositor.md`: confirm first retrieval
+Consent is confirmed on the first retrieval
 per app. The grant lasts for the session, is held in memory, and is never
 written to disk.
 
 ## Component
 
-- **`gnoblin-service-keyring`** (services role, D4). It restarts without taking
+- **`gnoblin-service-keyring`** (services role). It restarts without taking
   the compositor down. It owns the SQLCipher file and the bus name, or none of
   the bus name under coexistence.
 - **`pam_gnoblin_keyring`.** The PAM module that hands the login password to
@@ -269,32 +261,12 @@ written to disk.
   and an authenticated check on open.
 - The KDF cost for a key derived from a password must be set explicitly.
 
-## Phased implementation
+## Build facts
 
-Each phase is one commit. Each commit has Agent37 verification before the next
-phase starts.
+Measured with rusqlite 0.41.1 and libsqlite3-sys 0.39.1:
 
-1. **Store.** Enable `bundled-sqlcipher` in the workspace. Add the crate skeleton
-   and the SQLCipher schema: collections, items, attributes, aliases. Tests:
-   open with key, wrong key refused, rekey.
-2. **Secret Service server.** The `Service`, `Collection`, `Item` and `Prompt`
-   interfaces over zbus, with `dh-ietf1024` only. Bus name taken under the
-   coexistence rule. Tests: method replies match the specification.
-   Built in `gnoblin-service-keyring`. Serves `dh-ietf1024` sessions only and
-   requests the bus name with `DO_NOT_QUEUE`, so gnome-keyring keeps its name.
-   A locked store returns no items; that choice lives in `search_locked` and is
-   still open under "Needs Kieran" item 1.
-3. **Unlock path.** The PAM hand-off (`pam_gnoblin_keyring`), the password-change
-   hook, and the unlock prompt for the no-password case. Tests:
-   login with a password unlocks; login without one prompts on the first unlock request.
-4. **Secret portal.** `RetrieveSecret`, the per-app derivation, the session grant
-   in memory, consent through the compositor.
-5. **Prompt UI.** Done for unlock (3fc351de6): the keyring offers `prompt.secret`
-   requests and never draws UI. The shell answers them.
-6. **Compat acceptance.** Run the acceptance checks below.
-
-Phase 1 facts, measured on Agent37 (rusqlite 0.41.1, libsqlite3-sys 0.39.1):
-
+- The service serves `dh-ietf1024` sessions only and requests the bus name with `DO_NOT_QUEUE`, so gnome-keyring
+  keeps its name.
 - `bundled-sqlcipher` builds SQLCipher 4.19.0 from `sqlcipher-src` 419.0.6, which
   contains SQLite 3.53.4. Plain `bundled` builds SQLite 3.54.1, so the store moves
   back one SQLite minor version. The plain-file fixture opens unchanged with an
@@ -304,44 +276,27 @@ Phase 1 facts, measured on Agent37 (rusqlite 0.41.1, libsqlite3-sys 0.39.1):
 - The build links libcrypto dynamically (`dylib=crypto`) unless `OPENSSL_LIB_DIR` and
   `OPENSSL_INCLUDE_DIR` point elsewhere. It needs the OpenSSL 3 headers at build time.
   The runtime dependency is `libcrypto.so.3`, which each package format must
-  declare as a runtime dependency once `gnoblin-service-keyring` ships. `bundled-sqlcipher-vendored-openssl` would vendor it instead; not used.
+  declare as a runtime dependency. `bundled-sqlcipher-vendored-openssl` would vendor it instead; not used.
 
-Phase 3 facts, for `pam_gnoblin_keyring`:
+## The PAM module
+
+`pam_gnoblin_keyring` hands the login password to the service:
 
 - The module sits in the login stack after `pam_systemd`, so `XDG_RUNTIME_DIR` exists by the session stage. Without it, the module uses `/run/user/<uid>`.
 - It never fails a login and never grants one. Every auth entry point returns `PAM_IGNORE`, and the session and password stages return `PAM_SUCCESS`.
 - A hand-off that fails leaves the service to prompt on the next unlock request, as the no-password case does.
 - The password-change stage re-keys the store only when both old and new passwords are present. If the service is down, the store stays locked with the old password.
 
-Acceptance is compatibility with existing software:
-
-- `secret-tool store` and `secret-tool lookup` (libsecret) round trip a value
-  through `org.freedesktop.secrets` without change to libsecret or the caller.
-- The portal `Retrieve` call returns the per-app secret after consent.
-- An existing Secret Service client works without any change to its code or
-  configuration.
-
 ## Out of scope
 
-- Migrating secrets from gnome-keyring or KWallet, unless Kieran says yes.
+- Migrating secrets from gnome-keyring or KWallet.
 - TPM sealing in the tree. It is an optional later add-on (appendix).
 - Locking the store on screen lock, unless `keyring.lock-on-screen-lock` is
   built and turned on.
 
-## Needs Kieran
-
-These are real choices. Each one changes the work.
-
-1. **Locked search:** a locked store returns no items (the current design, as
-   KeePassXC does), or attributes are kept as hashed values outside the cipher
-   so search works while locked (as GNOME does). The second weakens what an
-   attacker learns from the file.
-2. **Import of an existing gnome-keyring file:** yes or no.
-
 ## Appendix: TPM2 sealing (optional later add-on)
 
-Not the default. Kept for when Kieran wants a disk-theft guard that needs no
-password. The facts below were read from the sources named.
+Not the default. Kept for a disk-theft guard that needs no password. The facts below were read from the sources named.
 
 - **`systemd-creds` (man page).** A `tpm2` key cannot be used without the
   original TPM2 chip. The `host+tpm2` key also needs

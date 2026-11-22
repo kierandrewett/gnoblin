@@ -1,5 +1,5 @@
 //! What each client holds, and the bounds that stop a client or the session from holding without limit
-//! (design/gpu-memory.md, section 6).
+//! (tests/gpu-memory-soak/DESIGN.md, section 6).
 //!
 //! The ledger is the one place the budget is decided. It counts three things per client (the bytes of its live
 //! buffers, its live surfaces, and which buffers they are, so that a release names exactly what it gives back) and

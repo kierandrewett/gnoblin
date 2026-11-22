@@ -1,6 +1,6 @@
 //! The client that leans on the memory budget in a soak: it asks for one large shared-memory buffer, as a client that
-//! is about to draw a huge window does, and finds out whether the compositor accepted it (design/gpu-memory.md,
-//! section 6).
+//! is about to draw a huge window does, and finds out whether the compositor accepted it
+//! (tests/gpu-memory-soak/DESIGN.md, section 6).
 //!
 //! A buffer the budget cannot hold ends the connection with `wl_display.error.no_memory`, so the answer is the connection
 //! itself: still up after a round trip, or ended with that error. Nothing is drawn into the pool, which is sparse: what

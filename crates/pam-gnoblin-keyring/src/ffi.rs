@@ -198,7 +198,7 @@ pub unsafe extern "C" fn pam_sm_close_session(
 
 /// Password change: re-key the store from the old password to the new one, once, in the update
 /// phase. Always `PAM_SUCCESS`. If the service is not running, the store stays locked with the
-/// old password, as `design/keyring.md` describes.
+/// old password, as `crates/gnoblin-service-keyring/DESIGN.md` describes.
 ///
 /// # Safety
 ///

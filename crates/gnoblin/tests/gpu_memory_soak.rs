@@ -1,4 +1,5 @@
-//! A soak of the real session's memory: the compositor, the stock shell and a client that churns (design/gpu-memory.md).
+//! A soak of the real session's memory: the compositor, the stock shell and a client that churns
+//! (tests/gpu-memory-soak/DESIGN.md).
 //!
 //! The session is [`Compositor::run`] on a headless backend with the renderer the soak is told to use, the stock
 //! JavaScript shell runs over its owner socket as it does in a real session, and a Wayland client opens, resizes and

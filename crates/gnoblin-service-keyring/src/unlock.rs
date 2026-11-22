@@ -1,4 +1,4 @@
-//! The unlock path. The store key is the login password, as `design/keyring.md` "Key source"
+//! The unlock path. The store key is the login password, as `DESIGN.md` "Key source"
 //! decides. The password reaches this module from the PAM hand-off, or from one request answered
 //! by the user when the login had no password. The SQLCipher key derivation (PBKDF2 with an
 //! explicit `kdf_iter`) runs in the store crate, so this module only chooses between create, open

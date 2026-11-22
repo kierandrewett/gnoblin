@@ -1,8 +1,7 @@
 # GPU memory soak series
 
-The series of the three 25-minute soaks of lane GpuMemory (issue gnoblin-4z5), recorded by
-`crates/gnoblin/tests/gpu_memory_soak.rs`. The method, what each run held in the churn and what the numbers say are in
-`design/gpu-memory.md`, section 3.
+The series of the three 25-minute soaks (issue gnoblin-4z5), recorded by `crates/gnoblin/tests/gpu_memory_soak.rs`. The
+method, what each run held in the churn and what the numbers say are in [DESIGN.md](DESIGN.md), section 3.
 
 | File             | What it is                                                                                       |
 | ---------------- | ------------------------------------------------------------------------------------------------ |
@@ -25,7 +24,7 @@ lock cycles, the capture frames, refusals and sessions, the process's resident s
 - The Vulkan run had the validation layer removed from the instance and stopped at 6144 MiB on purpose.
 - Twenty-five minutes shows a leak of kilobytes a cycle only when it adds up to more than the allocator's noise.
 
-## The budget series (lane GpuBudget)
+## The budget series
 
 Four more 25-minute runs, on the compositor with the enforced memory budget (issue gnoblin-4z5 stays open: the legacy
 31 GiB `GPUActive` is still unattributed). Each is the same churn as above; a run with `GNOBLIN_SOAK_BUDGET_MIB=384` adds

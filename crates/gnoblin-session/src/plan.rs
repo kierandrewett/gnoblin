@@ -33,7 +33,7 @@ pub enum ChildKind {
     Front,
     /// One autostart application, from the configuration's `autostart` table.
     Autostart,
-    /// `gnoblin-xr`: the out-of-process OpenXR extension (`design/xr-extension.md`, G7).
+    /// `gnoblin-xr`: the out-of-process OpenXR extension, with a Wayland connection the guardian creates.
     ///
     /// It is optional and off unless the user opts in. The guardian starts it with a connected
     /// Wayland socket of the `view` role and nothing else privileged, and a failure of it never

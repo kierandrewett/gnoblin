@@ -4,7 +4,7 @@
 //!
 //! A screenshot over the control socket is one request that ends; a screen recorder is a session that stays and is
 //! fed a frame for every frame the compositor presents. The second is the one that keeps a compositor's capture
-//! cache, readback and per-session state alive, so it is the one a leak would show in (design/gpu-memory.md).
+//! cache, readback and per-session state alive, so it is the one a leak would show in (tests/gpu-memory-soak/DESIGN.md).
 
 use std::fs::File;
 use std::os::fd::AsFd as _;

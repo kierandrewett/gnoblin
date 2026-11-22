@@ -3,7 +3,7 @@
 `gnoblin-xr` is the XR extension for Gnoblin. It is an out-of-process program on the owner socket. It attaches to the tree,
 reads the `View` nodes under the node named `room`, and plans them into OpenXR layers on every frame. It is purely
 translational: it does not decide what is drawn or where it sits. It copies each View's picture into a swapchain and submits
-the layers. The design is in design/xr-extension.md (D34).
+the layers. Each crate's README gives its rules.
 
 ## What exists
 
@@ -96,5 +96,4 @@ GNOBLIN_XR_MONADO=1 XR_RUNTIME_JSON=<monado build>/openxr_monado-dev.json \
 
 `monado_headless_runs_one_empty_frame` fails on Monado `7336a90` with `XR_ERROR_CALL_ORDER_INVALID` at `xrBeginFrame`, and
 failed the same way before the Vulkan session was added. The null compositor draws nothing, so these tests check what the
-runtime accepts and what the swapchain image holds, not what a headset shows. See the "Verified on Agent37" part of
-`design/xr-extension.md`.
+runtime accepts and what the swapchain image holds, not what a headset shows.

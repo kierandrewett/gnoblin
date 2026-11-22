@@ -1,4 +1,4 @@
-//! The memory an output holds, published on its screen node (`gpu_memory_*`, design/gpu-memory.md).
+//! The memory an output holds, published on its screen node (`gpu_memory_*`, tests/gpu-memory-soak/DESIGN.md).
 //!
 //! The numbers come from two places that only this crate sees together: the renderer's own footprint (the backend
 //! states it) and the frames capture keeps. They are published at most once a period (a second by default,
@@ -10,7 +10,7 @@
 //! The same module holds the budget: [`Ledger`] counts what each client holds and decides a request
 //! (`gpu_memory/ledger.rs`), and the methods of [`State`] below measure what the renderers and capture hold, give
 //! caches back when a client's buffer needs the room, and refuse with `wl_display.error.no_memory` when giving back
-//! is not enough (design/gpu-memory.md, section 6).
+//! is not enough (tests/gpu-memory-soak/DESIGN.md, section 6).
 //!
 //! # Failure modes
 //!

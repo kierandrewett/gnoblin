@@ -1192,7 +1192,7 @@ fn dev_crates(package: &Package, dep: &Dep) -> Option<String> {
     ))
 }
 
-/// The prefix of every crate of the Wayland protocol tier (design/protocol-crates.md).
+/// The prefix of every crate of the Wayland protocol tier (crates/protocols/api/DESIGN.md).
 const WAYLAND_PREFIX: &str = "gnoblin-wayland-";
 
 /// The seam the protocol crates are written against: the traits `gnoblin-wayland` implements on its state, and the table each
@@ -1203,8 +1203,8 @@ const WAYLAND_API: &str = "gnoblin-wayland-api";
 /// depends on it.
 const WAYLAND_AGGREGATE: &str = "gnoblin-wayland-protocols";
 
-/// The plain data the compositor and the protocol crates both name (`design/protocol-crates.md`). It sits beside the api crate at
-/// the bottom of the tier: it names the foundation crates and nothing above them.
+/// The plain data the compositor and the protocol crates both name (`crates/protocols/api/DESIGN.md`). It sits beside
+/// the api crate at the bottom of the tier: it names the foundation crates and nothing above them.
 const WAYLAND_TYPES: &str = "gnoblin-wayland-types";
 
 /// The real-client session harness the protocol crates' tests share. A development dependency of the crates it tests, and the

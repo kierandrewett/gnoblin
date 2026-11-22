@@ -3,7 +3,7 @@
 //! `gnoblin-xr` mirrors the node graph from the owner socket. This crate is the
 //! part that needs no runtime, no socket and no GPU: it decides which `View`
 //! nodes under the node named `room` become layers, where they sit, and in what
-//! order. The rules are in `design/xr-extension.md` (D34).
+//! order. The rules are in this crate's README.
 //!
 //! - [`tree`]: the mirrored node model ([`TreeView`], [`TreeNode`], [`Class`]).
 //! - [`plan`]: [`plan`] turns the `room` subtree into a [`Plan`] of [`Layer`]s.

@@ -1,6 +1,6 @@
 //! The stock lock screen as native classes of `gnoblin.std`: a clock and a password entry over the screen while the session is locked.
 //!
-//! Its behaviour is held to the recorded fixtures `reference/parts_lock*.json` (`design/native-std-port-tests.md`). The screen is built over
+//! Its behaviour is held to the recorded fixtures `reference/parts_lock*.json` (`tests/ORACLE.md`). The screen is built over
 //! the UI toolkit (`crate::ui`): every canvas of it is a canvas of the toolkit, mounted under the lock node, updated, painted and written to
 //! the compositor by the toolkit's turn. The pieces:
 //!

@@ -1,6 +1,6 @@
 //! The Secret portal's secret: one master in the store, one secret per app derived from it.
 //!
-//! `design/keyring.md`, "Secret portal". The master is 64 random bytes kept in the default
+//! `DESIGN.md` beside this crate's manifest, "Secret portal". The master is 64 random bytes kept in the default
 //! collection under the attribute `gnoblin-purpose=portal-secret`, created on first use. Each app
 //! gets 32 bytes from HKDF-SHA256 over that master, with the app id as `info`, so two app ids
 //! never share a secret and the same app id always gets the same one.

@@ -4,7 +4,7 @@ const require = createRequire(process.argv[1]);
 const tseslint = require("typescript-eslint");
 
 export default [
-    // A recorded declaration emit, compared and never edited (design/native-std-port-tests.md, section 5).
+    // A recorded declaration emit, compared and never edited (crates/gnoblin-std-impl/tests/ORACLE.md, section 5).
     { ignores: ["tests/ts-compat/old-surface/**"] },
     {
         files: ["**/*.js", "**/*.mjs", "**/*.cjs"],

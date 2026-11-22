@@ -1,5 +1,6 @@
-//! The memory budget against the real compositor and real `wayland-client` connections (design/gpu-memory.md,
-//! section 6): what a client may hold, what the session may hold, and what happens at the bound.
+//! The memory budget against the real compositor and real `wayland-client` connections
+//! (tests/gpu-memory-soak/DESIGN.md, section 6): what a client may hold, what the session may hold, and what happens at
+//! the bound.
 //!
 //! Every test starts the session with bounds it chose, so the numbers are small and the tests are fast; the default
 //! bounds are asserted where a test is about them. The ledger the session keeps is read from outside while the loop

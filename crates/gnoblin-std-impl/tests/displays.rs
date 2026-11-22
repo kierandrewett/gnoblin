@@ -4,7 +4,7 @@
 //!
 //! Each test replays a case of `crates/gnoblin-js/tests/displays.rs` as a shell written over the object protocol: the same screens, the same
 //! windows, the same steps, over the real core and the real library and the fake compositor. The TypeScript run asserted these; nothing was
-//! recorded as a fixture for displays (`design/native-std-port-tests.md`), so the expectations below are the ones of the TypeScript tests,
+//! recorded as a fixture for displays (`tests/ORACLE.md`), so the expectations below are the ones of the TypeScript tests,
 //! with the words of the native checks.
 //!
 //! **Allowances of the replay** (each is where it is made, with its reason):

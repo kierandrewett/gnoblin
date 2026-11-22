@@ -5,7 +5,7 @@
 //! seat needs: a button press or release when an input crosses a threshold, and scroll amounts over time. It has no
 //! OpenXR types, no socket and no clock, so every rule here runs under `cargo test` with no headset.
 //!
-//! The mapping is fixed (design/xr-extension.md, "Input"):
+//! The mapping is fixed:
 //!
 //! | Input             | Pointer event                                                                  |
 //! |-------------------|--------------------------------------------------------------------------------|

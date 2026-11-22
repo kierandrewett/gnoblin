@@ -1,7 +1,7 @@
 //! The window menu as native classes of `gnoblin.std`: the card and its rows, the keyboard navigator, the metrics, and the
 //! `window_menus` service that answers a client's `menu` request.
 //!
-//! Its behaviour is held to the recorded fixtures (the `menus_*` files of `design/native-std-port-tests.md`). The pieces:
+//! Its behaviour is held to the recorded fixtures (the `menus_*` files of `tests/ORACLE.md`). The pieces:
 //!
 //! - `metrics`: the sizes and colours of the card, where it goes, and what a key means to it;
 //! - `navigator`: the keyboard selection across a card and its submenu;

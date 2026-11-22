@@ -1,4 +1,4 @@
-# The table of the Wayland protocol crates (design/protocol-crates.md): one row per crate under
+# The table of the Wayland protocol crates (crates/protocols/api/DESIGN.md): one row per crate under
 # crates/protocols/. `cargo xtask protocol-crates` writes each crate's Cargo.toml and the aggregate
 # crate (crates/protocols/all) from it, and `--check` fails when the tree and the table differ.
 #

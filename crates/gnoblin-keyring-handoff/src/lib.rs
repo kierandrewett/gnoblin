@@ -1,5 +1,5 @@
 //! The hand-off from `pam_gnoblin_keyring` to `gnoblin-service-keyring`: the login password, or a
-//! password change, sent over a unix socket. See `design/keyring.md` "Key source".
+//! password change, sent over a unix socket. See `crates/gnoblin-service-keyring/DESIGN.md` "Key source".
 //!
 //! A frame is a version byte, an operation byte, a big-endian `u32` payload length and the
 //! payload. The reply is a version byte and a status byte. The payload is the password itself,

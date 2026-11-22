@@ -1,7 +1,7 @@
 //! What has not yet moved into a crate of its own: the capture engine and the view-source protocol.
 //!
 //! Every Wayland protocol this crate serves becomes a crate under `crates/protocols/`, named
-//! `gnoblin-wayland-<protocol>` (`design/protocol-crates.md`). The three standard capture protocols
+//! `gnoblin-wayland-<protocol>` (`crates/protocols/api/DESIGN.md`). The three standard capture protocols
 //! (`ext_image_capture_source_v1`, `ext_image_copy_capture_v1` and `zwlr_screencopy_v1`) have moved. Their
 //! crates hold the wire objects and ask the compositor for each answer through a host trait, and
 //! `glue/` forwards those asks to the capture engine here.

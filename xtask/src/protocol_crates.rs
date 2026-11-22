@@ -1,7 +1,7 @@
 //! `cargo xtask protocol-crates`: write the manifests of the Wayland protocol crates from one table.
 //!
 //! Every protocol `gnoblin-wayland` serves is a crate of its own under `crates/protocols/`, named
-//! `gnoblin-wayland-<protocol>` (`design/protocol-crates.md`). Their manifests are alike, so they
+//! `gnoblin-wayland-<protocol>` (`crates/protocols/api/DESIGN.md`). Their manifests are alike, so they
 //! are not written by hand: `xtask/protocols.toml` has one row per crate and one table of the
 //! dependency lines a row may name, and this command writes
 //!

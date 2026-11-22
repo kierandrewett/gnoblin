@@ -16,4 +16,4 @@ The files a distribution package of Gnoblin puts into the system, and the list o
 - `targets.json` is the list of distributions and releases Gnoblin targets, with the evidence that exists for each.
   `scripts/check-packaging-targets.py` validates it, and `cargo xtask native-probe` reads it.
 
-The package repositories are built by `scripts/pkgrepo` (see `design/package-repositories.md`).
+The package repositories are built by `scripts/pkgrepo` (see `scripts/pkgrepo/DESIGN.md`).

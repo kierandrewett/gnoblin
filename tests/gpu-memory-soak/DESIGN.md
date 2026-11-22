@@ -1,8 +1,8 @@
 # GPU and large-host memory: attribution, the findings and what is proven
 
-Lane GpuMemory (gnoblin-4z5, GitHub #170, kept open). The legacy Mutter session grew to about 31 GiB of `GPUActive`
-(TTM pages) with an RSS under 1 GiB and the owner was never attributed. That was Mutter's session. This lane asks whether
-the Rust compositor can grow GPU or host memory without bound, and makes every large allocation attributable.
+Tracked by gnoblin-4z5 (GitHub #170). The legacy Mutter session grew to about 31 GiB of `GPUActive` (TTM pages) with an
+RSS under 1 GiB and the owner was never attributed. This note asks whether the Rust compositor can grow GPU or host
+memory without bound, and makes every large allocation attributable.
 
 ## 1. Method
 
@@ -123,7 +123,7 @@ legacy 31 GiB `GPUActive`: that was Mutter; what this lane adds is the
 method and the finding that a Rust compositor using Smithay's GLES renderer without its frame API leaks every imported
 texture, which is a plausible shape for the same symptom on a real GPU. The issue stays open.
 
-## 6. The enforced budget (lane GpuBudget)
+## 6. The enforced budget
 
 Sections 1 to 5 made memory attributable. This section makes it bounded: the compositor refuses or evicts where it used to
 grow. `crates/gnoblin-wayland/src/gpu_memory/ledger.rs` is the one place a request is decided; `gpu_memory.rs` measures,
@@ -197,8 +197,7 @@ still holds; its refused request was never counted.
 objects themselves (each holds a descriptor and a sparse mapping, so a client that makes thousands of pools is bounded by
 the descriptor limit, not by the budget), and a client that holds nothing (an idle connection), which costs nothing here.
 
-**Verification (lane GpuBudget).** Each claim here is exercised by a named test or series and stored under
-`tests/gpu-memory-soak/`.
+**Verification.** Each claim here is exercised by a named test or series and stored in this directory.
 
 - _Red with the check off._ 34 new tests each fail on a copy of the tree with the piece they test switched off (admission,
   release, eviction, publication, configuration, the dmabuf accounting order, the DRM arithmetic) and pass as committed.

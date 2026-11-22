@@ -1,7 +1,7 @@
 //! The Secret Service the services role serves, when `keyring.enabled` is true.
 //!
-//! `design/keyring.md` ("Coexistence"): with `keyring.enabled` on, which is the default, Gnoblin
-//! takes `org.freedesktop.secrets` and serves its own store. With it off, the role does not request
+//! `crates/gnoblin-service-keyring/DESIGN.md` ("Coexistence"): with `keyring.enabled` on, which is the default,
+//! Gnoblin takes `org.freedesktop.secrets` and serves its own store. With it off, the role does not request
 //! the name, creates no store file or directory, and serves nothing; another program keeps the name.
 //!
 //! The flag comes from the configuration the compositor has accepted in this session, not from the

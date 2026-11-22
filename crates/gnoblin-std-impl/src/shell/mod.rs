@@ -1,7 +1,7 @@
 //! The parts of the stock shell that sit above the toolkit, as native classes of `gnoblin.std`: the not-responding alert, the launcher and
 //! the overview. (The toast is a widget of the toolkit.)
 //!
-//! Their behaviour is held to the recorded fixtures `reference/parts_*.json` (`design/native-std-port-tests.md`). The alert and the launcher
+//! Their behaviour is held to the recorded fixtures `reference/parts_*.json` (`tests/ORACLE.md`). The alert and the launcher
 //! are built over the UI toolkit (`crate::ui`): every canvas of theirs is a canvas of the toolkit that carries a [`ShellPart`], so it is
 //! updated, painted and written to the compositor by the toolkit's turn. The pieces:
 //!

@@ -1,6 +1,6 @@
 //! The `keyring` section: whether Gnoblin runs its built-in keyring.
 //!
-//! `design/keyring.md` ("Coexistence"): Gnoblin serves the Secret Service name and the Secret
+//! `crates/gnoblin-service-keyring/DESIGN.md` ("Coexistence"): Gnoblin serves the Secret Service name and the Secret
 //! portal only when `keyring.enabled` is true, which is the default. Gnoblin does not need to know
 //! which other program holds the name when it is off. The services role and the portal relay read
 //! the same rule from here, so they cannot disagree about it.

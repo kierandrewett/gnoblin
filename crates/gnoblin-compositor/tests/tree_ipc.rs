@@ -2616,7 +2616,7 @@ fn a_key_reaches_the_shell_node_holding_the_focus_and_nothing_reaches_it_while_l
 }
 
 // ---------------------------------------------------------------------------
-// The head camera: what the XR extension, an observer, may write on it (design/xr-extension.md).
+// The head camera: what the XR extension, an observer, may write on it.
 
 /// The serial after the shell made the head camera and the nodes beside it: what an observer's first write is built on.
 const CREATED: u64 = 1;

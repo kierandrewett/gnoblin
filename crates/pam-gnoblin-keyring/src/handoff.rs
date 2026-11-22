@@ -10,7 +10,7 @@ use zeroize::Zeroizing;
 /// Send the login password to the keyring service listening under `runtime_dir`.
 ///
 /// Returns `Ok(None)` without touching the socket when there is no password, which is the
-/// fingerprint and autologin case. The service then prompts once, as `design/keyring.md` says.
+/// fingerprint and autologin case. The service then prompts once, as `crates/gnoblin-service-keyring/DESIGN.md` says.
 pub fn unlock(runtime_dir: &Path, password: &[u8]) -> Result<Option<UnlockReply>, FrameError> {
     if password.is_empty() {
         return Ok(None);
