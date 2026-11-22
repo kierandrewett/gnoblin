@@ -2,7 +2,6 @@
 #
 # A `client` is a toplevel window the compositor manages and an `output` a connected display. Both are made and ended by the compositor:
 # a shell never creates one. An object that is gone keeps its last values readable (`alive` is false) and refuses a write.
-# `design/native-std-port.md` section 4.4 is the table this file implements.
 namespace = "gnoblin.model"
 version = "0.2.0"
 local = true

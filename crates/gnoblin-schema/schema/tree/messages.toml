@@ -1,7 +1,7 @@
 namespace = "tree"
 version = "0.2.0"
 
-# The `tree` messages: the owner-socket protocol of the scene tree (design/node-core.md, sections 4.1 and 4.6).
+# The `tree` messages: the owner-socket protocol of the scene tree.
 # Requests are methods (shell to compositor); events and replies are signals (compositor to shell).
 # The owner socket is the only transport for this namespace; it is not in the sensitive table.
 [[object]]
@@ -21,7 +21,7 @@ since = "0.2.0"
 
 # How the connection attaches: `holder` (the default when empty) takes the tree as the shell and is the only one that
 # may change it; `observer` reads the snapshot and the change stream and may only create and destroy its own seats and
-# send pointer input (design/node-core.md, F2 and F2b).
+# send pointer input.
 [[object.method.param]]
 name = "mode"
 type = "string"
@@ -76,7 +76,7 @@ type = "uint"
 since = "0.2.0"
 
 # The reply to `attach`: the epoch this shell holds, the root node id and the serial of the snapshot.
-# The schema has no typed method return, so the reply is a signal (design/node-core.md, section 4.1).
+# The schema has no typed method return, so the reply is a signal.
 [[object.signal]]
 name = "attached"
 since = "0.2.0"

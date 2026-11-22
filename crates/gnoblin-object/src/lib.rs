@@ -11,7 +11,7 @@
 //!   that releases itself;
 //! - [`catalog`] is the static form of a namespace's schema files that a library is built from (`gnoblin-sdkgen` writes it).
 //!
-//! `design/native-std-port.md` section 4.2 is the contract and `docs/abi-compatibility.md` states what may change.
+//! `docs/abi-compatibility.md` states what may change.
 
 pub mod catalog;
 pub mod client;

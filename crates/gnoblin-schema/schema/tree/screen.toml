@@ -1,7 +1,7 @@
 namespace = "tree"
 version = "0.2.0"
 
-# The `screen` class: an output, derived from `view` (design/node-core.md, section 2.4). Created and destroyed by the compositor.
+# The `screen` class: an output, derived from `view`. Created and destroyed by the compositor.
 [[object]]
 name = "screen"
 since = "0.2.0"

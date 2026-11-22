@@ -1,4 +1,4 @@
-//! The stale-base rule (design/node-core.md §4.5): a transaction built against an older
+//! The stale-base rule: a transaction built against an older
 //! serial is refused only when it names a node that changed since its base.
 
 use gnoblin_render::transaction::{Code, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue};

@@ -1,4 +1,4 @@
-//! Example 21 of `design/native-std-port.md`, run for real: the shipped binary on a headless backend serving a native shell that uses the
+//! Example 21 (`examples/21-native-model`), run for real: the shipped binary on a headless backend serving a native shell that uses the
 //! typed object model of the core (`gnoblin_core::objects`), with a real Wayland client that maps and closes windows.
 //!
 //! What it asserts is what the shell logs about what the library told it: the windows there at the start, a selection (`where`) that

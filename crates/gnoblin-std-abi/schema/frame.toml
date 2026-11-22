@@ -4,7 +4,7 @@
 # A frame is the surface round one window's content. The library makes one for each window while the decorations run (`decorations`), and
 # calls the shell's `frame` callback with the window and its frame to fill it: a shell reads the outlets it wants (`frame.top`, `frame.overlay`)
 # and adds canvases to them, or leaves the stock titlebar (`titlebar.fill`). The frame places its outlets from the window's size and its
-# inset, and tells the window's layout how much room it takes. The surface is described in `design/native-std-port.md`.
+# inset, and tells the window's layout how much room it takes.
 #
 # A window is named by its node number as text (`window_frame.client`), as every client is in this namespace, and the closures of this module
 # are given a `frame_client`: what the window was when the closure was called.

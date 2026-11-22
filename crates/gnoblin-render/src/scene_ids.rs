@@ -1,5 +1,5 @@
 //! Who may create, move and destroy a scene node, and the id ranges and caps the
-//! tree enforces (design/node-core.md §3.1, §3.2 and §3.5).
+//! tree enforces.
 //!
 //! Ownership governs lifecycle and parentage only. A node's creator decides who
 //! may destroy it. A node's parent is set by whoever last gave it one: a node the

@@ -476,7 +476,7 @@ impl Gnoblin {
     /// has not.
     ///
     /// Windows arrive unparented: they are not children of the root until a shell inserts them, so this lists them by class and
-    /// not by walking the root's children (`design/node-core.md`, 3.2). The order is the order the windows opened in; the
+    /// not by walking the root's children. The order is the order the windows opened in; the
     /// compositor's stacking is not in the tree, and a shell that wants an order of its own keeps it.
     pub fn windows(&self) -> Result<Vec<Window>> {
         Ok(self

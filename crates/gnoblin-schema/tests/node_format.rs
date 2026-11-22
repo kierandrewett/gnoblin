@@ -1,5 +1,5 @@
 //! The node-core additions to the schema format: `base` on an object, and `default`,
-//! `readonly` and `animated` on a property (design/node-core.md, section 2.2).
+//! `readonly` and `animated` on a property.
 
 use gnoblin_schema::{Catalog, DefaultValue, ObjectType, SchemaError, parse_schema};
 

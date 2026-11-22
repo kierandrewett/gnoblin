@@ -1,4 +1,4 @@
-//! Replay harness for the scene tree (design/node-core.md §7.3 and F34).
+//! Replay harness for the scene tree.
 //!
 //! A [`Session`] is a list of [`Frame`]s. Each frame has a monotonic clock reading
 //! `now` in milliseconds and the inputs that land on it, in order: transactions,
@@ -15,7 +15,7 @@
 //! It is FNV-1a over `Debug` output, so it covers every field of the transform and
 //! the effects.
 //!
-//! Animated sets follow design/node-core.md §6.1. Each timed `set` starts a track
+//! Animated sets: each timed `set` starts a track
 //! from the current value, or retargets the track in flight on the same node and
 //! key. An instant `set` cancels the track on its key. The tween advances by the
 //! difference between a frame's `now` and the previous frame's `now`, before that

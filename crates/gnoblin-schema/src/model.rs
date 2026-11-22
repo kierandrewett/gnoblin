@@ -689,7 +689,7 @@ impl Catalog {
 
     /// Read every `.toml` file in `dir` except those under the `skip` subdirectories,
     /// in file-name order. A skipped subdirectory is a schema the caller must not
-    /// expose, such as the owner-socket-only tree (design/node-core.md section 2.3).
+    /// expose, such as the owner-socket-only tree.
     pub fn load_dir_except(dir: &Path, skip: &[&str]) -> Result<Catalog, SchemaError> {
         Self::load_dirs(&[dir], skip)
     }

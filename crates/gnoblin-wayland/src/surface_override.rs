@@ -1,5 +1,5 @@
 //! What a shell that holds the tree may do with a popup, a subsurface or a layer surface: the protocol side of
-//! `placement_override`, `stack` and `visible` on a `surface` node (`design/node-core.md`, "Surface overrides").
+//! `placement_override`, `stack` and `visible` on a `surface` node.
 //!
 //! The composer reads the shell's writes off the nodes and draws a subsurface where the shell put it, in the order the
 //! shell gave and not at all when the shell hid it. This module is what only the protocol engine can do, in three parts:

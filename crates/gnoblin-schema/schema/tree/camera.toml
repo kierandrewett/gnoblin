@@ -1,7 +1,7 @@
 namespace = "tree"
 version = "0.2.0"
 
-# The `camera` class: a space that projects its children (design/node-core.md, section 2.4).
+# The `camera` class: a space that projects its children.
 [[object]]
 name = "camera"
 since = "0.2.0"

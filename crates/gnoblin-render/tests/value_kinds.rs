@@ -1,4 +1,4 @@
-//! Each value kind of the transaction layer (design/node-core.md §2.2 and §4.4): a value of the
+//! Each value kind of the transaction layer: a value of the
 //! wrong kind is `wrong-type`, a text or list over its cap is `too-large`, a non-finite number
 //! is `not-finite`, a readonly property is `read-only`, and a node reference names a live node
 //! whose class is the declared class or a subclass of it, or is nil.

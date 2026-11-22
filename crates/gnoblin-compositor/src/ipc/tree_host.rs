@@ -274,7 +274,7 @@ impl TreeHostHandle {
 
     /// Release what `client` has: the hold, when it is the holder, or its observation, when it is an observer. An
     /// observer's seats and controllers are destroyed with its connection, and so are the nodes a holder made
-    /// (design/node-core.md, section 4.6 step 5), except the nodes observers made.
+    /// (so the next holder builds on the compositor's tree), except the nodes observers made.
     pub fn detach(&self, client: ClientId) {
         let shared = Arc::clone(&self.session);
         let (released, made) = {

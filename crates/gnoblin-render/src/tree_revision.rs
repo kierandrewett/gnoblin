@@ -1,4 +1,4 @@
-//! The stale-base rule for tree transactions (design/node-core.md §4.5).
+//! The stale-base rule for tree transactions.
 //!
 //! A transaction built against an older serial is not refused for being old. It is refused
 //! when one of its ops names a node that a batch published since that serial changed, or that

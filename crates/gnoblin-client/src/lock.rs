@@ -3,8 +3,7 @@
 //! A service that reads or takes the lock (the screensaver, the compat adapters, `gnoblinctl status`) is
 //! an *observer* of the tree, not its holder: it attaches in observer mode, reads the lock node's `state`
 //! from the snapshot, and follows the change batches. The only call an observer may make is `lock`, and it
-//! has no answer: the node's `state` is it (design/node-core.md, "The `Lock` class and the old `lock`
-//! object").
+//! has no answer: the node's `state` is it.
 //!
 //! # Failure modes first
 //!

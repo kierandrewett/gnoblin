@@ -1,4 +1,4 @@
-//! TreeTransaction validation and apply (design/node-core.md §4).
+//! TreeTransaction validation and apply.
 //!
 //! A transaction is a batch of [`TreeOp`]s sent together. [`validate_and_apply`] checks
 //! each op in order against the scene as the earlier ops left it, and it applies the
@@ -52,7 +52,7 @@
 //!
 //! # TreeRefusal codes
 //!
-//! [`Code::as_str`] gives each code's spelling in design/node-core.md table 4.4.
+//! [`Code::as_str`] gives each code's wire spelling.
 //! Codes that belong to other slices (`stale-base`, `invalid-serial`,
 //! `not-privileged`, `shell-already-attached`, `not-holder`, `bad-paint`) are declared so the
 //! spellings live in one place; this module never returns them. A scene refusal
@@ -91,7 +91,7 @@ pub const MAX_EFFECTS: usize = 16;
 /// 0 and at most this is refused `out-of-range`.
 const MAX_FRAME_RATE: f64 = 1000.0;
 
-/// A refusal code, spelled as in design/node-core.md table 4.4 by [`Code::as_str`].
+/// A refusal code, with its wire spelling from [`Code::as_str`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Code {
     /// A node or parent id does not name a live node.
@@ -147,7 +147,7 @@ pub enum Code {
 }
 
 impl Code {
-    /// The code's spelling in design/node-core.md table 4.4.
+    /// The code's wire spelling.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -387,7 +387,7 @@ pub trait ClassInfo {
     fn has_method(&self, class: &str, method: &str) -> bool;
 }
 
-/// One applied change, in op order, for the mirror batch (design/node-core.md §4.6).
+/// One applied change, in op order, for the mirror batch.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TreeChange {
     /// A node was created. It starts unparented, at `index` among the root nodes.

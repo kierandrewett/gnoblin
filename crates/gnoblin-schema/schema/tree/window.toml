@@ -1,8 +1,8 @@
 namespace = "tree"
 version = "0.2.0"
 
-# The `window` class: a toplevel (xdg-shell, X11, foreign toplevel), derived from `node`
-# (design/node-core.md, section 2.4). It has every `node` property, then these.
+# The `window` class: a toplevel (xdg-shell, X11, foreign toplevel), derived from `node`. It has every `node`
+# property, then these.
 #
 # A window's rectangle (`x`, `y`, `width`, `height`) is its window geometry, the part of its surface the user sees as
 # the window: an xdg toplevel's `xdg_surface.set_window_geometry` rectangle, or the whole surface while the client set

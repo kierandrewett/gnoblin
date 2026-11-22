@@ -1,7 +1,7 @@
 //! Golden fixtures recorded from the TypeScript std, for the lanes of the native std port to match.
 //!
 //! The TypeScript library under `data/js` is the only specification of the desktop's toolkit, frame, menus, style and input
-//! behaviour (`design/native-std-port.md`, 7.1). A test that runs it calls [`Fixtures::json`] or [`Fixtures::bytes`] with what the
+//! behaviour. A test that runs it calls [`Fixtures::json`] or [`Fixtures::bytes`] with what the
 //! library did. In record mode the value is written to the fixture directory. In check mode (the default) it is compared with the
 //! committed file and the test fails on the first difference, so a change to the TypeScript that alters a fixture is seen, and so is a
 //! fixture that went stale.

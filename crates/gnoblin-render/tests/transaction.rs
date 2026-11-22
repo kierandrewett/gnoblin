@@ -1,4 +1,4 @@
-//! TreeTransaction validation and apply (design/node-core.md §4 and §8). Every refusal
+//! TreeTransaction validation and apply. Every refusal
 //! test asserts that the tree hash is unchanged: a refused transaction changes nothing.
 
 mod common;

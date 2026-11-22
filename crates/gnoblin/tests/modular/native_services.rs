@@ -1,4 +1,4 @@
-//! Example 23 of `design/native-std-port.md`, run for real from three languages: the shipped binary on a headless backend serving a shell that
+//! Example 23 (`examples/23-native-services`), run for real from three languages: the shipped binary on a headless backend serving a shell that
 //! uses the session services of the core: it starts a command line, watches the session for idleness, begins a launch no window answers, and
 //! asks for the session lock with `<Super>e`.
 //!

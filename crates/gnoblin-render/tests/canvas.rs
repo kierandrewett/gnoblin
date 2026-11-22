@@ -1,4 +1,4 @@
-//! A `Canvas`'s `content` is a paint list, and the tree refuses a value that does not decode (design/node-core.md, F42).
+//! A `Canvas`'s `content` is a paint list, and the tree refuses a value that does not decode.
 
 mod common;
 

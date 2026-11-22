@@ -1512,7 +1512,7 @@ fn the_stub_of_the_generated_classes_agrees_with_what_the_runtime_reflects() {
     assert_eq!(reflected, declared, "the stub and the runtime disagree\n{}", run.dump());
 }
 
-/// What a call from a Python script costs, in nanoseconds, for the calls `design/native-std-port.md` 4.2 times from Rust. A measurement
+/// What a call from a Python script costs, in nanoseconds, for the calls the object protocol times from Rust. A measurement
 /// and not a check, so it is ignored: run it with the fixtures built in release (`cargo test -p gnoblin-runtime-python --release --test
 /// shells what_a_call_from_python_costs -- --ignored --nocapture`).
 #[test]

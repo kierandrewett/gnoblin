@@ -1,5 +1,5 @@
 //! The compositor's own record of windows and outputs, and the minimal window policy it applies when no shell
-//! holds the tree (`design/node-core.md`, F1).
+//! holds the tree.
 //!
 //! The record is plain data: for each window its kind, parent, output, rectangle and the three state flags; for each
 //! output its rectangle and the insets layer surfaces reserved. The policy is a handful of pure decisions over it:

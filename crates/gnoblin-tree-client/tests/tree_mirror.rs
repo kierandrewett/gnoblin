@@ -1,5 +1,4 @@
-//! The shell's tree mirror and its transaction builder, with no retired involved
-//! (design/node-core.md, sections 4.1 and 4.6).
+//! The shell's tree mirror and its transaction builder, with no retired involved.
 
 use gnoblin_tree_client::tree_mirror::{
     Attached, MirrorApplied, MirrorChange, MirrorChangeKind, MirrorError, MirrorValue, NIL, NodeId, SnapshotBuilder,

@@ -1,6 +1,6 @@
 //! The object model of `gnoblin-core`: windows, outputs, collections and their listeners, as the classes of `gnoblin.model`.
 //!
-//! `design/native-std-port.md` section 4.4 is the table this implements and `data/js/gnoblin-core/host/*` is the behaviour it ports:
+//! `data/js/gnoblin-core/host/*` is the behaviour it ports:
 //!
 //! - [`world`]: the model of one generation, and how a batch of what the compositor sent becomes events;
 //! - [`collection`]: `client_collection` and `output_collection`, with `where`, listeners and the lists a shell keeps;

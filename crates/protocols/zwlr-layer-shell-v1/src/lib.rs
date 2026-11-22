@@ -34,7 +34,7 @@
 //!
 //! Each layer surface has a `surface` node in the tree, made when the client creates it and removed with it. A shell that
 //! holds the tree reads what the client asked for there (`namespace`, `layer`, `anchor`, `margin`, `requested_size`,
-//! `exclusive_zone`) and may take the placement over with `placement_override` (`design/node-core.md`, "Surface overrides").
+//! `exclusive_zone`) and may take the placement over with `placement_override`.
 //! The protocol's arithmetic (`place`) still runs and stays what the node shows while the shell does not place the
 //! surface. When it does, the shell's rectangle stands, the surface is configured at that size and the surface's popups
 //! and the published rectangle follow it, and the shell's `reserve` replaces the strip the exclusive zone takes out of

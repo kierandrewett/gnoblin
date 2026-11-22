@@ -1,4 +1,4 @@
-// Declaration compatibility of the native std port (design/native-std-port.md, 3.6 item 8, lane NpOracle).
+// Declaration compatibility of the native std port (crates/gnoblin-std-impl/tests/ORACLE.md, section 5).
 //
 // `old-surface/` is the declaration emit of the TypeScript library as it stood before the port (`tsc --declaration --emitDeclarationOnly`
 // over `data/js/gnoblin-core` and `data/js/gnoblin-std`, TypeScript 7.0.2, strict). Each class below that the new generated

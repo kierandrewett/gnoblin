@@ -1,7 +1,7 @@
 //! `input`: the input matcher of the core. A shell binds a trigger on an input context; the library claims the chord, the pointer button or the
 //! gesture on the seat, shares one claim between the bindings of one trigger, and runs the right binding when the input happens.
 //!
-//! `design/native-std-port.md` (lane NpCoreInput) is the contract and `data/js/gnoblin-core/{bindings,input}/*` the behaviour it ports:
+//! `data/js/gnoblin-core/{bindings,input}/*` is the behaviour it ports:
 //!
 //! - [`trigger`]: the grammar, one implementation for every language, and the seat claim a trigger needs;
 //! - [`binding`]: the `binding` and `binding_collection` classes, and the rules a collection keeps (ids, conflicts, who follows it);

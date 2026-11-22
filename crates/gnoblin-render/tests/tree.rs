@@ -816,7 +816,7 @@ fn the_tree_hash_tells_apart_trees_that_differ_in_one_sibling_order() {
     assert_ne!(tree_hash(&first), tree_hash(&second));
 }
 
-// ---- Slice 3: ownership, caps, subtree removal (design/node-core.md §3, §8) ----
+// ---- Slice 3: ownership, caps, subtree removal ----
 //
 // Ids: the compositor allocates from `COMPOSITOR_ID_BASE` (bit 63 set); the shell's ids
 // are below `SHELL_ID_LIMIT` (bit 63 clear). Owner is the actor that inserted the node.

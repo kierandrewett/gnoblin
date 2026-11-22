@@ -1,7 +1,6 @@
-//! Window requests reach the shell as `event` frames on the window's node (design/node-core.md,
-//! section 5). The shell is the policy authority while it holds the tree: a request arrives as
-//! an event and the window manager does not act on it. With no shell the window manager acts as
-//! it always has.
+//! Window requests reach the shell as `event` frames on the window's node. The shell is the policy authority while it
+//! holds the tree: a request arrives as an event and the window manager does not act on it. With no shell the window
+//! manager acts as it always has.
 
 mod support;
 

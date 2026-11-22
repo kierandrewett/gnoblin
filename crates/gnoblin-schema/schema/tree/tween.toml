@@ -1,7 +1,7 @@
 namespace = "tree"
 version = "0.2.0"
 
-# The `tween` class: the play state of the animated writes that joined it (design/node-core.md, "Tweens").
+# The `tween` class: the play state of the animated writes that joined it.
 # Draws nothing and has no place. A shell that wants to scrub, hold or reverse an animation makes one, then names it
 # in the `tween` field of each animated `set` of the animation (`messages.toml`, `op`); every track those writes start
 # joins it. Writing the node's properties drives all of those tracks at once, in the order the writes apply:

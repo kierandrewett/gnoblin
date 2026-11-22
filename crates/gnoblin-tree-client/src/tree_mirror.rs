@@ -1,6 +1,5 @@
 //! The shell's mirror of the scene tree, the transaction builder that writes to it,
-//! and the link trait that carries both over the owner socket (design/node-core.md,
-//! sections 4.1 and 4.6).
+//! and the link trait that carries both over the owner socket.
 //!
 //! The compositor owns the tree. The shell holds a mirror rebuilt from a snapshot and
 //! advanced by change batches, each stamped with a serial. Writes made inside one tick

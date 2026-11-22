@@ -1,4 +1,4 @@
-//! The `tree` namespace on the owner socket (design/node-core.md, sections 4.1 to 4.6).
+//! The `tree` namespace on the owner socket.
 //!
 //! `attach` and `transact` are answered with Reply frames; `snapshot` and `changes` are Event
 //! frames the compositor sends after them. Only one shell holds the tree: a second connection's
@@ -1094,7 +1094,7 @@ fn reattach_skipping_changes(wire: &mut Wire, request_id: u64) -> (AttachedPaylo
     }
 }
 
-/// design/node-core.md, section 4.6 step 5: the nodes the old shell made are destroyed with its connection, so the
+/// The nodes the old shell made are destroyed with its connection, so the
 /// next shell builds on the compositor's tree and not on a second copy of its own.
 #[test]
 fn a_detached_shells_nodes_are_destroyed_with_its_connection() {
@@ -2138,7 +2138,7 @@ fn a_shell_write_of_tiled_false_takes_the_tiled_edges_off_again() {
     session.stop().expect("the session stops cleanly");
 }
 
-// ---- Observers (design/node-core.md, F2 and F2b) ----------------------------------------------
+// ---- Observers ----------------------------------------------------------------------------------
 
 /// Attaches as an observer: it reads the tree and may only make its own seats and send input.
 fn attach_observer(wire: &mut Wire, request_id: u64) -> (AttachedPayload, Vec<snapshot_node::Properties>) {

@@ -10,8 +10,7 @@
 //! `build.rs` loads the same directory with the same loader, so a schema the
 //! graph would refuse fails the build instead of the first session start.
 //!
-//! The `tree/` directory is the owner-socket vocabulary (design/node-core.md
-//! section 2.3). [`catalog`] holds every file and serves the owner connection;
+//! The `tree/` directory is the owner-socket vocabulary. [`catalog`] holds every file and serves the owner connection;
 //! [`public_catalog`] leaves `tree/` out, the same exclusion the script bindings and CLI builds
 //! make with `load_dir_except`, so a non-owner listing cannot name a tree member.
 
@@ -101,7 +100,7 @@ mod tests {
     fn a_public_listing_has_no_tree_members() {
         // The owner-only `tree/` vocabulary (namespace `tree`) is in the owner catalog and
         // absent from the public one, so a listing built from the public catalog cannot
-        // name a tree member (design/node-core.md section 2.3, F28).
+        // name a tree member.
         assert!(
             FILES.iter().any(|(name, _)| is_owner_only(name)),
             "the build embeds the owner-only tree schema"

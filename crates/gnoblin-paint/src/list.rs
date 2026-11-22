@@ -2,7 +2,7 @@
 //!
 //! A shell builds a paint list as an array of drawing operations (the `gnoblin-core` UI backend in `data/js/gnoblin-core/host/ui_backend.ts`) and
 //! the shell's node layer encodes it into the `bytes` value the tree carries. The compositor decodes the
-//! same bytes here, both to refuse a malformed value at write time (`bad-paint`, design/node-core.md F42) and to
+//! same bytes here, both to refuse a malformed value at write time (`bad-paint`) and to
 //! draw it. One decoder serves both, so a value the tree accepts is a value the painter can draw.
 //!
 //! # Encoding

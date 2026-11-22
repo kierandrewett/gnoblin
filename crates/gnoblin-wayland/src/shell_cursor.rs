@@ -2,7 +2,7 @@
 //! under the pointer asked for.
 //!
 //! The shell writes the main seat's `cursor_shape`, `cursor_image`, `cursor_hotspot_x`, `cursor_hotspot_y` and
-//! `cursor_hidden` values (`design/node-core.md`, "Input grabs and the cursor"). Each frame the compositor reads them
+//! `cursor_hidden` values. Each frame the compositor reads them
 //! after the shell's transactions have applied, decodes a changed image once, and draws by this order: hidden, the
 //! image, the named shape, the client's cursor. A shell that writes none of them, or clears them, leaves the client's
 //! cursor as it was; nothing here changes what the client asked for, only what is drawn.

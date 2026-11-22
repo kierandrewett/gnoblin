@@ -1,4 +1,4 @@
-//! The tree classes and messages as stock schema (design/node-core.md, sections 2.3, 2.4, 4.1).
+//! The tree classes and messages as stock schema.
 //!
 //! The classes live in `schema/tree/`, one file each, namespace `tree`, and the messages in
 //! `schema/tree/messages.toml`. These tests read the stock schema directory and pin the
@@ -262,7 +262,7 @@ fn only_the_call_text_tree_members_are_sensitive() {
 }
 #[test]
 fn the_owner_socket_only_tree_is_excluded_by_load_dir_except() {
-    // The retired build excludes `tree` with `load_dir_except` (design/node-core.md section 2.3). The
+    // The retired build excludes `tree` with `load_dir_except`. The
     // stock schema must still hold it, and the excluded catalog must hold nothing from it.
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("schema");
     let full = stock();

@@ -1,4 +1,4 @@
-//! Example 20 of `design/native-std-port.md`, run for real from the three languages: the shipped binary on a headless backend serving a
+//! Example 20 (`examples/20-native-object`), run for real from the three languages: the shipped binary on a headless backend serving a
 //! shell that makes an `EntryModel` through the classes written from the catalog of `libgnoblin-std`, edits it, reads it back, hears its
 //! `changed` signal from the library's turn, and calls a static function of the focus policy, against the libraries the session stages.
 //!

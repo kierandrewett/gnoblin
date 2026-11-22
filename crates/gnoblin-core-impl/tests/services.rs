@@ -6,8 +6,6 @@
 //! and holds the properties it publishes, and `FakeSlot` offers requests and records the verdicts. They stand for the connections the
 //! TypeScript tests (`gnoblin-js/tests/{host_api,host_idle,host_launches,lock,xr,error_codes}.rs`) faked with `JsSessionLink`, `JsIdleLink`
 //! and `SlotLink`. Programs are real: a process test starts `/bin/sh`.
-//!
-//! What is covered is listed in `design/native-std-port.md`, in the NpCoreServices section.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};

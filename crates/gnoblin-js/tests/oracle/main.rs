@@ -1,6 +1,6 @@
 //! The oracle: the TypeScript std and core, run over the fake compositor and recorded as fixtures for the native std port.
 //!
-//! `design/native-std-port.md` (7.1, lane NpOracle) names the TypeScript library as the only specification of the toolkit, the window
+//! The TypeScript library is the only specification of the toolkit, the window
 //! frame, the menus, style, scene and input behaviour. Each scenario below runs it and holds what it did:
 //!
 //! - `crates/gnoblin-std-impl/tests/fixtures/reference/*.json`: the transactions it sent for each step, its log, and snapshots of the

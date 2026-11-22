@@ -206,7 +206,7 @@ fn the_library_object_of_a_released_slot_is_no_longer_reachable_from_the_script(
     assert!(after.contains("released or ended"), "{after}");
 }
 
-/// What a call from a script costs, in nanoseconds, for the calls `design/native-std-port.md` 4.2 times from Rust. The script's own loop is
+/// What a call from a script costs, in nanoseconds, for the calls the object protocol times from Rust. The script's own loop is
 /// timed and taken off. A measurement and not a check, so it is ignored: run it in a release build,
 /// `cargo test -p gnoblin-js --release --test object_classes -- --ignored --nocapture --test-threads=1`.
 #[test]

@@ -1,7 +1,7 @@
 namespace = "tree"
 version = "0.2.0"
 
-# The `seat` class: an input seat (`wl_seat`, libei). Draws nothing (design/node-core.md, section 2.4).
+# The `seat` class: an input seat (`wl_seat`, libei). Draws nothing.
 [[object]]
 name = "seat"
 since = "0.2.0"
@@ -283,7 +283,7 @@ since = "0.2.0"
 # Claim a chord for this seat: the compositor withholds the chord from clients and emits `chord`
 # to the owner. `id` is allocated by the shell, per connection, and never reused. `chord` is
 # canonicalised by the compositor; an unparsable chord is `invalid-value`. `grab` keeps the
-# chord's release on the same claim. Only the owner may claim (design/node-core.md, section 5).
+# chord's release on the same claim. Only the owner may claim.
 # `device` is a device name from `Seat.device`, or empty for every device: the claim then takes the chord
 # only from the devices that report that name (matched exactly), so the same chord can be claimed for a macro
 # pad and left to clients on the desk keyboard. A chord is claimed once per `device`; a claim for a named
