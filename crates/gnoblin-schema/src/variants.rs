@@ -188,7 +188,9 @@ fn check_variant(
             .collect();
         let owner = format!("variant `{}` of family `{}`", variant.name, family.name);
         if mine.is_empty() {
-            if !field.optional && field.default.is_none() {
+            // A default does not excuse it: the codecs of every language write an uncarried field as absent, and a field that
+            // is not optional is never absent on the wire.
+            if !field.optional {
                 problems.push(format!(
                     "{owner}: the family field `{}` is always there, and the variant carries nothing in it",
                     field.name
@@ -207,7 +209,7 @@ fn check_variant(
             continue;
         };
         for inner in &record.properties {
-            if !inner.optional && inner.default.is_none() && !mine.contains(&Some(inner.name.as_str())) {
+            if !inner.optional && !mine.contains(&Some(inner.name.as_str())) {
                 problems.push(format!(
                     "{owner}: the variant carries part of `{}` and leaves out `{}.{}`, which a `{}` always has",
                     field.name, field.name, inner.name, record.name

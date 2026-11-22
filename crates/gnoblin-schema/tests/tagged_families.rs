@@ -258,6 +258,51 @@ fn a_field_the_family_always_has_must_be_carried() {
     );
 }
 
+/// F3: a field the family always has is not carried, though it has a default. Each language's codec writes an uncarried field
+/// as absent, so a default would not reach the wire.
+#[test]
+fn a_field_the_family_always_has_must_be_carried_even_with_a_default() {
+    let family = family(GOOD).replace(
+        "name = \"amount\"\ntype = \"double\"\nsince = \"0.2.0\"\noptional = true",
+        "name = \"amount\"\ntype = \"double\"\nsince = \"0.2.0\"\ndefault = 1.0",
+    );
+    let schema = parse_schema("test.toml", &family).expect("parses");
+    let Err(SchemaError::Invalid { problems, .. }) = Catalog::new(vec![schema]) else {
+        panic!("a variant that leaves out a field the family always has is refused, default or not");
+    };
+    assert!(
+        problems
+            .iter()
+            .any(|problem| problem.contains("the family field `amount` is always there")),
+        "{problems:#?}"
+    );
+}
+
+/// F3: part of a record carried, a field the record always has left out, though it has a default.
+#[test]
+fn part_of_a_record_must_carry_the_fields_that_record_always_has_even_with_a_default() {
+    let family = family(&GOOD.replace(
+        "\n[[object.variant.property]]\nname = \"params\"\ntype = \"list<double>\"\nsince = \"0.2.0\"\ndefault = []\nfield = \"shader.params\"\n",
+        "\n",
+    ))
+    .replace(
+        "name = \"params\"\ntype = \"list<double>\"\nsince = \"0.2.0\"\noptional = true",
+        "name = \"params\"\ntype = \"list<double>\"\nsince = \"0.2.0\"\ndefault = []",
+    );
+    let schema = parse_schema("test.toml", &family).expect("parses");
+    let Err(SchemaError::Invalid { problems, .. }) = Catalog::new(vec![schema]) else {
+        panic!(
+            "a variant that carries part of a record and leaves out a field it always has is refused, default or not"
+        );
+    };
+    assert!(
+        problems
+            .iter()
+            .any(|problem| problem.contains("leaves out `shader.params`")),
+        "{problems:#?}"
+    );
+}
+
 /// F3: part of a record carried, a field the record always has left out.
 #[test]
 fn part_of_a_record_must_carry_the_fields_that_record_always_has() {
