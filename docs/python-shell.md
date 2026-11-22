@@ -330,6 +330,27 @@ action = FocusPolicy.focus_decision(           # a function of a service: record
 - `gnoblin/objects/*.pyi` are the stubs. A `tests/shells.rs` check holds them to what the runtime reflects. Importing the module opens
   `libgnoblin-std.so.1` and raises `ImportError` without it, as `gnoblin.std` does.
 
+`examples/20-native-object/shell.py` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the
+Rust and TypeScript shells of the same example.
+
+### The root of the core: `gnoblin.objects.model`
+
+`Gnoblin.get()` returns the root of the core's model. It has the members the TypeScript library's `gnoblin` has for the core:
+
+```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
+gnoblin.timers.after(40, lambda: print("later"))   # `timers.now()` is the monotonic clock in milliseconds
+print(gnoblin.version().api)                       # a method, not a property
+print(gnoblin.motion(200))                         # 200.0, or 0.0 while the seat asks for reduced motion
+print(gnoblin.compositor.user_shaders)             # what the compositor read when it started
+windows = gnoblin.find("Window", {"app_id": "foot"})   # a dict of fields, a ClientQuery, or a function
+```
+
+`find("Window", ...)` and `find("Output", ...)` raise a `TypeError` for a kind the core does not list (`"Workspace"` in a shell that loads
+no std), naming the kinds that work, and for a field the filter lacks. `examples/35-native-root/shell.py` is this.
+
 ### The functions of `gnoblin-std` in the generated classes
 
 A bare function of the TypeScript `gnoblin-std` is a function of a class in `gnoblin.objects.std`, with the same behaviour. The
@@ -345,9 +366,6 @@ Python spellings are `snake_case`.
 | `encodePaintList`          | `Ui.encode_paint_list(ops)`: `bytes` (the TypeScript function answered a list of numbers) for a canvas's `content`             |
 
 `Ui.encode_paint_list` refuses the whole list when one operation cannot be encoded, with an error that names it (`draw op 2: ...`).
-
-`examples/20-native-object/shell.py` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the
-Rust and TypeScript shells of the same example.
 
 ## Examples
 

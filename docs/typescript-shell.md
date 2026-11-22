@@ -321,6 +321,14 @@ const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", he
 - `gnoblin-core/generated/objects` exports `gnoblin`, the root of the core's object model, made once. Each of its signals also has a
   named subscription: `gnoblin.onClientCreated(handler)` is the same as `gnoblin.on("clientCreated", handler)` and returns the same
   `Listener`.
+- The root has the members the TypeScript library's `gnoblin` has for the core. `examples/35-native-root` uses each of them:
+    - `timers.after(ms, fn)` and `timers.now()`.
+    - `version()`, a method.
+    - `motion(duration)`, which is 0 while the seat asks for reduced motion.
+    - `compositor.userShaders`, read-only here.
+    - `find(kind, filter)`. `find("Window", filter)` and `find("Output", filter)` take a table of fields (`{ appId: "foot" }`) or a
+      function that keeps an object when it returns a true value. A kind the core does not list, such as `"Workspace"` in a shell that
+      loads no std, throws a `TypeError` that names the kinds that work. So does a field the filter lacks.
 - Classes keep the names of the shell API: `Camera2D`, `Camera3D`, `ClientStyle`, `InputDevice`, `IdleMonitor` and
   `LaunchFeedback`. The generated Rust and Python classes use the same names.
 

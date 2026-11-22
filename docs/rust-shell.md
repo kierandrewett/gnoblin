@@ -277,6 +277,28 @@ Python and TypeScript have the same two calls, generated from the same schema: `
 `verbs.idle.inhibit("holder", on_answer=fn)` in Python, `verbs.session.onBell(fn)` and `verbs.idle.inhibit("holder", answer =>
 ...)` in TypeScript (`import { verbs } from "gnoblin-core/generated/verbs"`).
 
+## Read the root object of the core
+
+The typed object model of the core starts at `ModelRoot`. Its members are the ones a script reads on `gnoblin`: `timers()` (`after` and
+`now`), `version()`, `motion(duration)`, `compositor()` (`user_shaders`), and `find`.
+
+```rust
+use gnoblin_core::objects::{Client, ClientQuery, Finds, ModelRoot, Output};
+
+let model = ModelRoot::get(&g.objects()?)?;
+let started = model.timers()?.expect("the core has timers").now()?;
+println!("gnoblin {}", model.version()?.gnoblin);
+let milliseconds = model.motion(200.0)?; // 0 while the seat asks for reduced motion
+let foot = model.find::<Client>(Some(&ClientQuery {
+    app_id: Some("foot".to_owned()),
+    ..ClientQuery::default()
+}))?;
+let outputs = model.find::<Output>(None)?;
+```
+
+`find` takes the kind as a type. A kind the core does not list has no `Finds<ModelRoot>` impl, so asking for it is an error when the
+shell is built and not when it runs. `find` takes no function: filter the list in Rust. `examples/35-native-root` is this.
+
 ## Run your own event loop
 
 A default shell never sees the loop: the host calls `dispatch` for it. A shell that already has a loop (tokio, calloop, GLib, an
