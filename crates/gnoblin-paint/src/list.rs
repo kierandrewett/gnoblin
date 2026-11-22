@@ -456,9 +456,16 @@ fn put_colour(out: &mut Vec<u8>, colour: Rgba8) {
     out.extend_from_slice(&colour.to_word().to_le_bytes());
 }
 
+/// A string with a `u16` byte length in front. The length cannot say more than 65535 bytes, so a longer string is cut at a character
+/// boundary at or before that: the prefix and the bytes always agree, and the ops after the string are read where they are. A caller that
+/// must not lose text refuses a longer string before it gets here (the library's `ui.encode_paint_list` does).
 fn put_str2(out: &mut Vec<u8>, text: &str) {
-    out.extend_from_slice(&u16::try_from(text.len()).unwrap_or(u16::MAX).to_le_bytes());
-    out.extend_from_slice(text.as_bytes());
+    let mut end = text.len().min(usize::from(u16::MAX));
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    out.extend_from_slice(&u16::try_from(end).unwrap_or(u16::MAX).to_le_bytes());
+    out.extend_from_slice(&text.as_bytes()[..end]);
 }
 
 fn encode_op(out: &mut Vec<u8>, op: &PaintOp) {
@@ -703,6 +710,39 @@ mod tests {
             }],
         };
         assert_eq!(decode(&encode(&long)), Err(DecodeError::Text("text")));
+    }
+
+    #[test]
+    fn a_name_over_the_length_prefix_is_cut_so_that_the_ops_after_it_still_read() {
+        // A `u16` length prefix cannot say more than 65535 bytes. The encoder used to write the prefix clamped and the whole name, and
+        // the bytes after the prefix's count were read as the next op.
+        let name = format!("{}\u{e9}", "a".repeat(65534));
+        let mut bytes = Vec::new();
+        put_str2(&mut bytes, &name);
+        assert_eq!(
+            bytes.len(),
+            2 + 65534,
+            "the cut falls before the two-byte character, not inside it"
+        );
+        assert_eq!(u16::from_le_bytes([bytes[0], bytes[1]]), 65534);
+        assert_eq!(std::str::from_utf8(&bytes[2..]).map(str::len), Ok(65534));
+
+        let list = PaintList {
+            ops: vec![
+                PaintOp::Icon {
+                    x: 0.0,
+                    y: 0.0,
+                    size: 16.0,
+                    colour: Rgba8::TRANSPARENT,
+                    name: "a".repeat(70_000),
+                },
+                PaintOp::PopOpacity,
+            ],
+        };
+        let bytes = encode(&list);
+        // 9 bytes of header, the icon (tag, three numbers, a colour, the prefix, the name) and the one byte of the pop.
+        assert_eq!(bytes.len(), 9 + 1 + 12 + 4 + 2 + 65535 + 1);
+        assert_eq!(bytes[bytes.len() - 1], TAG_POP_OPACITY);
     }
 
     #[test]
