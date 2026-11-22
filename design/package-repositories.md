@@ -3,8 +3,8 @@
 This is internal release engineering material. It describes the signed RPM, APT,
 pacman and Alpine repositories that serve Gnoblin and Bingux (Bingux has no
 Alpine packages), the channels they have, and how the CI builds and publishes them. Users read
-[`docs/package-repositories.md`](../../docs/package-repositories.md). The tool is
-`scripts/pkgrepo` (see its [README](../../scripts/pkgrepo/README.md)).
+[`docs/package-repositories.md`](../docs/package-repositories.md). The tool is
+`scripts/pkgrepo` (see its [README](../scripts/pkgrepo/README.md)).
 
 Nothing described here is published yet. Set up so far: the R2 bucket `gnoblin-repo`
 behind `repo.gnoblin.org`, and the signing key (fingerprint in the user documentation).

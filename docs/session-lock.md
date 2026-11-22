@@ -132,7 +132,7 @@ over 1024 bytes is answered `failed: the password is longer than 1024 bytes` and
 
 A `failed` check logs one warning that names the failure. Neither the log nor the answer carries the password.
 
-The service file `data/pam.d/gnoblin-lock` is installed to `lib/pam.d/gnoblin-lock` and holds two lines,
+The service file `packaging/pam.d/gnoblin-lock` is installed to `lib/pam.d/gnoblin-lock` and holds two lines,
 `auth include login` and `account include login`, so the lock accepts what a console login accepts. `login` is a valid
 include target on each distribution below, checked as follows:
 

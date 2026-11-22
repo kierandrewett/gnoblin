@@ -3,7 +3,7 @@
 #
 # usage: scripts/native-probe.sh ID [IMAGE]
 #
-#   ID     a target id from design/packaging/targets.json (`debian-12`), or `alpine-edge`
+#   ID     a target id from packaging/targets.json (`debian-12`), or `alpine-edge`
 #   IMAGE  the registry name; by default the image the target names
 #
 # Run it as root on an Agent37 instance, from the repository root, with XTASK naming a built `xtask` binary (the

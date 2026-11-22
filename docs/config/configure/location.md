@@ -20,9 +20,8 @@ The policy applies to every app, with or without a request.
 
 ## Allow the agent in GeoClue
 
-GeoClue accepts only the agents its `[agent]` `whitelist` names. Gnoblin registers as `gnoblin`, so the system needs a
-drop-in that keeps GeoClue's stock agents and adds it. `data/geoclue/50-gnoblin.conf` in the source tree is that drop-in:
-copy it to `/etc/geoclue/conf.d/50-gnoblin.conf`.
+GeoClue accepts only the agents its `[agent]` `whitelist` names. Gnoblin registers as `gnoblin`, so add a drop-in that
+keeps GeoClue's stock agents and adds it. Save these lines as `/etc/geoclue/conf.d/50-gnoblin.conf`:
 
 ```ini
 [agent]
@@ -34,9 +33,8 @@ GeoClue applies a `conf.d` value as an override, so the line repeats the stock i
 ## Stop the GeoClue demo agent
 
 GeoClue accepts one agent for each user. On Fedora the `geoclue-demo-agent`
-autostart entry hides itself only in GNOME, so it also starts in a Gnoblin
-session. It approves every request, and it can take the agent slot before
-Gnoblin registers.
+autostart entry also starts in a Gnoblin session. It approves every request,
+and it can take the agent slot before Gnoblin registers.
 
 To stop it, create `~/.config/autostart/geoclue-demo-agent.desktop`:
 

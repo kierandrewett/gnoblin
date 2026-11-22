@@ -1,6 +1,6 @@
 """Assemble a repository tree: merge new packages with the published ones, apply retention, write and sign metadata.
 
-Layout, for one project and channel (design/packaging/repositories.md has the reasoning):
+Layout, for one project and channel (design/package-repositories.md has the reasoning):
 
     <root>/gpg.key
     <root>/setup.sh                                           the quick setup script, with the key fingerprint filled in

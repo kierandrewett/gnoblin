@@ -162,7 +162,7 @@ enum Generated {
     TypesConfig,
 }
 
-/// What the session installs. The GeoClue authorisation file (`data/geoclue/`)
+/// What the session installs. The GeoClue authorisation file (`packaging/geoclue/`)
 /// and the man pages are not in this table: their install paths belong to the distribution.
 const ITEMS: &[InstallItem] = &[
     InstallItem::File {
@@ -197,19 +197,19 @@ const ITEMS: &[InstallItem] = &[
         template: false,
     },
     InstallItem::File {
-        from: InstallSource::Repo("data/pam.d/gnoblin-lock"),
+        from: InstallSource::Repo("packaging/pam.d/gnoblin-lock"),
         to: "lib/pam.d/gnoblin-lock",
         mode: FileMode::Data,
         template: false,
     },
     InstallItem::File {
-        from: InstallSource::Repo("data/session/gnoblin.desktop"),
+        from: InstallSource::Repo("packaging/session/gnoblin.desktop"),
         to: "share/wayland-sessions/gnoblin.desktop",
         mode: FileMode::Data,
         template: true,
     },
     InstallItem::File {
-        from: InstallSource::Repo("data/session/systemd-user/gnoblin-session.target"),
+        from: InstallSource::Repo("packaging/session/systemd-user/gnoblin-session.target"),
         to: "lib/systemd/user/gnoblin-session.target",
         mode: FileMode::Data,
         template: false,
@@ -229,7 +229,7 @@ const ITEMS: &[InstallItem] = &[
         template: false,
     },
     InstallItem::File {
-        from: InstallSource::Repo("data/gnoblin-portals.conf"),
+        from: InstallSource::Repo("packaging/gnoblin-portals.conf"),
         to: "share/xdg-desktop-portal/gnoblin-portals.conf",
         mode: FileMode::Data,
         template: false,

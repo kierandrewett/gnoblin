@@ -51,7 +51,7 @@
 #### Documentation and tests
 
 - The JavaScript shell's frame stages are now listed in a table with their ordering requirements recorded and tested, with no change in behaviour.
-- The location settings page now says how to allow the `gnoblin` agent in GeoClue's `[agent]` whitelist, with the drop-in at `data/geoclue/50-gnoblin.conf`.
+- The location settings page now says how to allow the `gnoblin` agent in GeoClue's `[agent]` whitelist, with the drop-in to save (also in the source tree as `packaging/geoclue/50-gnoblin.conf`).
 
 ### Added
 

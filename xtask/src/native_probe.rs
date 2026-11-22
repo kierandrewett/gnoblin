@@ -31,7 +31,7 @@ use crate::native_libs;
 const TABLE: &str = "tests/native-probe/libraries.toml";
 const RESULTS: &str = "tests/native-probe/results";
 const MATRIX: &str = "tests/native-probe/MATRIX.md";
-const TARGETS: &str = "design/packaging/targets.json";
+const TARGETS: &str = "packaging/targets.json";
 
 /// Images the design names that `targets.json` does not list: the apk packages are built in `alpine:edge`,
 /// which is the only Alpine target.
@@ -90,7 +90,7 @@ struct ProbeReport {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct ImageInfo {
-    /// The target id in `design/packaging/targets.json`.
+    /// The target id in `packaging/targets.json`.
     id: String,
     /// The image name the root file system came from.
     image: String,

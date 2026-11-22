@@ -58,12 +58,12 @@ In the build tree the library is `target/<profile>/libgnoblin_core_impl.so`, and
 | `libexec/xdg-desktop-portal-gnoblin`                                                                               | build directory                                                |
 | `libexec/gnoblin-xr` (only when built)                                                                             | build directory                                                |
 | `lib/security/pam_gnoblin_keyring.so`                                                                              | build directory                                                |
-| `lib/pam.d/gnoblin-lock`                                                                                           | `data/pam.d/gnoblin-lock`                                      |
-| `lib/systemd/user/gnoblin-session.target`                                                                          | `data/session/systemd-user/`                                   |
-| `share/wayland-sessions/gnoblin.desktop` (template)                                                                | `data/session/`                                                |
+| `lib/pam.d/gnoblin-lock`                                                                                           | `packaging/pam.d/gnoblin-lock`                                 |
+| `lib/systemd/user/gnoblin-session.target`                                                                          | `packaging/session/systemd-user/`                              |
+| `share/wayland-sessions/gnoblin.desktop` (template)                                                                | `packaging/session/`                                           |
 | `share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service` (template)                             | portal crate `data/`                                           |
 | `share/xdg-desktop-portal/portals/gnoblin.portal`                                                                  | portal crate `data/`                                           |
-| `share/xdg-desktop-portal/gnoblin-portals.conf`                                                                    | `data/gnoblin-portals.conf`                                    |
+| `share/xdg-desktop-portal/gnoblin-portals.conf`                                                                    | `packaging/gnoblin-portals.conf`                               |
 | `<libdir>/libgnoblin-core.so.<major>.<minor>.<patch>`                                                              | `libgnoblin_core_impl.so` of `gnoblin-core-impl`, renamed      |
 | `<libdir>/libgnoblin-core.so.<major>` (symlink to the file above), `<libdir>/libgnoblin-core.so` (symlink to that) | symlinks, recorded in the manifest as `symlink:<target>`       |
 | `include/gnoblin/core.h`                                                                                           | generated from the ABI crate (`cargo xtask abi-header`)        |
