@@ -1,9 +1,9 @@
 //! `cargo xtask native-probe`: the native libraries the workspace needs, checked against an image's root file system.
 //!
-//! `native-libs` proves the CI install list covers every `-sys` crate in the lock files. This is the next question the
-//! design asks (design/rust-compositor.md, "Distribution and toolchain"): on each target image, which version of each
-//! library does a build or a run get, and does it meet the floor the crates declare? The list of libraries and their
-//! floors is data, `tests/native-probe/libraries.toml`, so the table in the design and the check read one source.
+//! `native-libs` proves the CI install list covers every `-sys` crate in the lock files. This check answers the next
+//! question: on each target image, which version of each library does a build or a run get, and does it meet the floor
+//! the crates declare? The list of libraries and their floors is data, `tests/native-probe/libraries.toml`, so the
+//! matrix and the check read one source.
 //!
 //! The probe reads a root file system from outside, so it needs no compiler and no libc inside the image: an Alpine,
 //! a Debian 11 and a Fedora 45 root are all just directories. It looks at three things and keeps them apart:

@@ -1,8 +1,8 @@
 //! The shell's second connection to the compositor: the slots it claims and the requests it is offered.
 //!
 //! The tree socket carries the `tree` namespace only. A slot is claimed, and a request offered to it is
-//! claimed, answered or declined, on the `gnoblin` namespace of the owner socket
-//! (design/rust-compositor.md, "Providers and slots"). The shell VM therefore holds a second owner
+//! claimed, answered or declined, on the `gnoblin` namespace of the owner socket.
+//! The shell VM therefore holds a second owner
 //! connection, a [`SlotLink`], beside its tree link. A script runtime drives it through five calls
 //! (`claim_slot`, `release_slot`, `claim_request`, `answer`, `decline`) and receives what the compositor
 //! sends as [`SlotEvent`]s. Each runtime wraps those in its own vocabulary.

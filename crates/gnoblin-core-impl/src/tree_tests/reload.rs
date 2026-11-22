@@ -1,5 +1,5 @@
-//! What a reload hands from one generation to the next, and what an abandoned stage gives back (`design/modular-framework.md`
-//! section 8.1): nodes found again by name, ephemeral nodes that die with their generation, the versioned state, and the writes,
+//! What a reload hands from one generation to the next, and what an abandoned stage gives back: nodes found again by
+//! name, ephemeral nodes that die with their generation, the versioned state, and the writes,
 //! names and state a failed stage must not leave behind.
 //!
 //! A "reload" here is what `NativeShell::reload` does, done by hand on the registry so that each step can be looked at: a staged

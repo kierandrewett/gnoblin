@@ -1,7 +1,7 @@
 //! Owned buffers and values the core lends to a shell and takes back.
 //!
 //! The shell and the core are separate libraries with separate allocator state, so the core never frees shell memory and
-//! the shell never frees core memory (`design/modular-framework.md` section 5.2, rule 4). A function that returns owned
+//! the shell never frees core memory. A function that returns owned
 //! data hands out a `GnoblinBuf` or an owned `GnoblinValue`, and the shell gives it back through `buf_free` or
 //! `value_free`. Every allocation lent out is recorded here by address, so a pointer the shell forges, or frees twice, is
 //! refused (`E_STALE`) instead of reaching the allocator.

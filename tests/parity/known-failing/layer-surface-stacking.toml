@@ -1,6 +1,5 @@
 # Layer surfaces stack by layer first: background, then bottom, then top, then
-# overlay, and a later surface sits above an earlier one inside its layer
-# (design/rust-compositor.md lists this under the layer shell contract).
+# overlay, and a later surface sits above an earlier one inside its layer.
 #
 # The recording is a candidate run whose overlay surface reported itself below a
 # top-layer surface, which is the difference this scenario exists to catch. The

@@ -1,8 +1,7 @@
 //! Backends (nested, headless) and the extension traits the engine crates share. The DRM/KMS
 //! backend is `gnoblin-backend-drm`.
 //!
-//! This crate is the "Backends and outputs" mechanism layer of
-//! `design/rust-compositor.md`, and the one place the engine's crates are allowed
+//! This crate is the mechanism layer of the backends and outputs, and the one place the engine's crates are allowed
 //! to meet. It owns two things:
 //!
 //! - **The backend contract.** [`Backend`] drives outputs, hands the compositor a
@@ -16,8 +15,7 @@
 //!   [`nested`] is the second: a Wayland *client* of a compositor that hosts the
 //!   session, with one `xdg_toplevel` per output, sized and scaled by the parent's
 //!   configure, drawn into shared memory and paced by the parent's frame
-//!   callbacks. It is how a signed-in session runs under a display manager
-//!   (design/rust-compositor.md, "Hosting sessions").
+//!   callbacks. It is how a signed-in session runs under a display manager.
 //! - **The render path they share.** [`render`] holds the frame description, the
 //!   Pixman renderer, the RGBA8 readback and the session scene that produces a
 //!   frame from the scene graph. It lives here for the same reason: this crate is

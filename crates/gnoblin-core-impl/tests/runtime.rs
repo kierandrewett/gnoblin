@@ -1,4 +1,4 @@
-//! Language dispatch in the loader (`design/modular-framework.md` sections 5.10, 6 and 8.2; M6.1).
+//! Language dispatch in the loader.
 //!
 //! A script is run by a runtime library that exports `gnoruntime_entry_v1`. The loader picks it by the script's extension, opens it
 //! once, and drives its generations through the same stage, commit and abandon protocol as a native shell. The runtime here is the

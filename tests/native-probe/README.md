@@ -1,8 +1,7 @@
 # Native dependency probe
 
 `cargo xtask native-probe` answers one question per target image: which version of each native library would a build
-or a run find there, and does it meet the floor the crates declare? The plan asks for it in "Distribution and
-toolchain" ([design/rust-compositor.md](../../design/rust-compositor.md)) as the Phase 0 dependency-floor audit.
+or a run find there, and does it meet the floor the crates declare?
 
 | File              | What it is                                                                                                                                                                                                                 |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

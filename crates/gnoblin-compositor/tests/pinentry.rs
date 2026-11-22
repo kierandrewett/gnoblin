@@ -6,8 +6,8 @@
 //!
 //! Gnoblin's keyring does not take part in that path: it serves `org.freedesktop.secrets` and asks for its own
 //! unlock password through the `prompt.secret` slot, and the gcr `SystemPrompter` adapter that once routed these
-//! requests is gone (design/rust-compositor.md, "the `prompt.secret` slot only shows a passphrase or confirm prompt
-//! ... GPG's pinentry draws its own prompt"). So the prompt gpg shows is `gcr-prompter`'s own toplevel, and the
+//! requests is gone: the slot only shows a passphrase or confirm prompt, and GPG's pinentry draws its own. So
+//! the prompt gpg shows is `gcr-prompter`'s own toplevel, and the
 //! question is whether the compositor maps it.
 //!
 //! This test starts a private session bus and a headless compositor, runs the real `gcr-prompter` on the bus and

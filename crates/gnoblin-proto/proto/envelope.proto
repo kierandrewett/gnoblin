@@ -4,7 +4,7 @@
 // schema member but the layer that carries them, so `cargo xtask gen-proto`
 // writes the namespace files beside it and leaves this one alone. `build.rs`
 // compiles all of them together, so the envelope is a generated type like the
-// rest (design/rust-compositor.md, "One IPC" and D16).
+// rest.
 //
 // Tags are fixed for good. A field number that has been used is never reused,
 // even after a member is removed, because a client built against an older version

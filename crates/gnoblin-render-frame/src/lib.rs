@@ -3,7 +3,7 @@
 //! they share, the renderer error type, the readback image, and the writer that copies a
 //! readback into a client's `wl_shm` buffer.
 //!
-//! This crate is the seam of `design/rust-compositor.md` (D12): a renderer depends on this
+//! This crate is the seam of the render path: a renderer depends on this
 //! crate and on nothing else in the render path, so a GLES, Vulkan or Pixman renderer is
 //! one crate that reads the same value. It names no GPU API. The modules are:
 //!

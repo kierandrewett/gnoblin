@@ -1,4 +1,4 @@
-//! Which shell `gnoblin` starts, as processes (`design/modular-framework.md`, M4.3 to M4.5; examples 13 to 16).
+//! Which shell `gnoblin` starts, as processes (examples 13 to 16).
 //!
 //! Every test runs the shipped binary in a private home: the config, data and system-data directories discovery reads are
 //! the test's own, so nothing of the machine's reaches it. The shells are the workspace's own `.so` examples (`shells()`).

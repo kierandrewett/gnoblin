@@ -1,4 +1,4 @@
-//! The callback budget (`design/modular-framework.md` section 5.4).
+//! The callback budget.
 //!
 //! Native code cannot be interrupted. A callback that runs for longer than [`CALLBACK_BUDGET`] (2 s) is therefore *observed*: a
 //! watchdog thread sees it run past the budget, logs it once with the registration and the generation, and counts a **strike**

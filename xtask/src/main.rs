@@ -37,7 +37,7 @@ const USAGE: &str = "\
 usage: cargo xtask <subcommand>
 
 subcommands:
-  deps               check the workspace dependency rules from design/rust-compositor.md and design/modular-framework.md,
+  deps               check the workspace dependency rules,
                      and that no Cargo profile sets panic = abort
   native-libs       fail on a -sys crate in a lock file whose system packages the CI install list lacks
   native-probe       probe an image's root file system for the native libraries the workspace needs; see

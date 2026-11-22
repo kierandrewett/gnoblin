@@ -1,4 +1,4 @@
-//! The frame-cost watchdog of the user shader pass (`design/modular-framework.md` 37.2): the policy that reads what the renderers
+//! The frame-cost watchdog of the user shader pass: the policy that reads what the renderers
 //! recorded in [`ShaderTimings`](super::ShaderTimings).
 //!
 //! The state is per source, keyed by [`ShaderKey`] (the hash of the text), because the cost is the program's and two nodes with

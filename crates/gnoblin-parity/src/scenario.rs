@@ -3,8 +3,7 @@
 //! A scenario is data, not code: the same file is run against every target, and
 //! the file records which behaviour it means to prove without knowing how any
 //! target produces it. That is what lets the Mutter reference and the Rust
-//! candidate be compared with one harness instead of two test suites
-//! (design/rust-compositor.md, "The parity harness").
+//! candidate be compared with one harness instead of two test suites.
 //!
 //! The format is TOML so comments survive, unknown keys are rejected by
 //! `deny_unknown_fields`, and a typo in a checked-in scenario fails the run

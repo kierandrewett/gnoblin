@@ -1,4 +1,4 @@
-//! The wake for the return of a switched-off shader pass (`design/modular-framework.md` 37.13).
+//! The wake for the return of a switched-off shader pass.
 //!
 //! The frame-cost watchdog switches a struck pass off for ten seconds and the composer switches it back on when its clock reaches
 //! that time, which damages the nodes that carry it. On an output that is otherwise idle nothing would turn the loop to that clock,

@@ -13,7 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 # The compositor is not a dependency of this binary: the composition root is `libgnoblin-core.so.1`, which this binary links
-# through the stub of `build.rs` and enters through `gnoblin_main` (`design/modular-framework.md`, M2.10). What the binary
+# through the stub of `build.rs` and enters through `gnoblin_main`. What the binary
 # keeps are the roles that are not the compositor's, the logging configuration they read and the IPC version `--version` prints.
 gnoblin-config = { path = "../gnoblin-config" }
 gnoblin-proto = { path = "../gnoblin-proto" }

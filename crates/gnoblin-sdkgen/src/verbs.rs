@@ -2,7 +2,7 @@
 //!
 //! The tree's nodes have typed classes of their own (`python.rs`, `typescript.rs`). What is not a node is the `gnoblin` namespace
 //! the owner socket serves: the session (`logout`, `suspend`, the bell), the idle watch (`inhibit`), the outputs. The core's table
-//! reaches it through two generic functions, `call` and `subscribe` (`design/modular-framework.md` section 5.9), and each runtime
+//! reaches it through two generic functions, `call` and `subscribe`, and each runtime
 //! hands a script the same two as one native function each (`_gnoblin_core.verb_call` and `.verb_subscribe`; `__gnoblinCore.call`
 //! and `.subscribe`). Everything above them is generated here from the catalog, so a method or a signal added to the schema is in
 //! both languages the next time `cargo xtask gen-sdks` runs, with its parameters named and typed and the payload of each signal

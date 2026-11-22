@@ -1,4 +1,4 @@
-//! Golden shell of example 12, on std (`design/modular-framework.md` 5.8 and 12).
+//! Golden shell of example 12, on std.
 //!
 //! Built once against ABI 1.0 of the core and of std, and stored as a binary (see the core-only one for the idea). It logs the
 //! versions it was built for and the versions it finds installed, takes one floating workspace per output from std, and logs

@@ -1,7 +1,7 @@
 //! The nested backend: a session that is a Wayland client of the compositor hosting it.
 //!
-//! This is the production half of `design/rust-compositor.md`'s "Hosting sessions"
-//! (D4): the display manager is a Gnoblin host, and each signed-in user's session is a Gnoblin whose
+//! This is the production half of hosting sessions: the display manager is a Gnoblin host, and each signed-in user's
+//! session is a Gnoblin whose
 //! outputs are surfaces of the host. One nested output is one `xdg_toplevel` on the
 //! parent, which is what makes a session a window of the login screen rather than a
 //! second display server.

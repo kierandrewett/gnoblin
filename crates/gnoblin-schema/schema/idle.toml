@@ -1,7 +1,6 @@
 # The `idle` object: how long the session has been idle.
 #
-# `org.gnome.Mutter.IdleMonitor` is the first reader (design/rust-compositor.md,
-# the redirect map's `IdleMonitor` row), and idle policy, the lock and the
+# `org.gnome.Mutter.IdleMonitor` is the first reader, and idle policy, the lock and the
 # screensaver all read the same counter, so it is published once here rather than
 # kept per consumer.
 #

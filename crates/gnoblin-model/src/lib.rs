@@ -1,7 +1,6 @@
 //! Live object graph, revisions, property diffs and subscriptions.
 //!
-//! This crate is the object model of `design/rust-compositor.md` ("Core
-//! abstractions", "One IPC" and "Object model and IPC"): a live graph of objects
+//! This crate is the object model: a live graph of objects
 //! with identities and lifetimes, typed property values, monotonic revisions, and
 //! one delivery rule.
 //!

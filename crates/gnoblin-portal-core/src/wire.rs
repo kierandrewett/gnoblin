@@ -1,4 +1,4 @@
-//! The byte form portal values take across the provider ABI (`design/modular-framework.md`, 28.3).
+//! The byte form portal values take across the provider ABI.
 //!
 //! A UI provider is a C vtable, and a [`Dialog`], a [`Verdict`] and a [`ScreenKey`] are Rust types with strings and lists in
 //! them. They cross as bytes, in one encoding both sides share, so neither side names the other's layout: every integer is

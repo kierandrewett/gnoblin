@@ -1,7 +1,6 @@
 //! The roles this executable has, and its command line.
 //!
-//! Design/rust-compositor.md, "Process model", gives the executable its roles in one binary, and
-//! `design/modular-framework.md` section 7.1 gives the command line:
+//! The executable has all its roles in one binary. The command line:
 //!
 //! ```text
 //! gnoblin [--shell NAME] [--watch] [--isolate] [--list-shells] [PATH]
@@ -19,7 +18,7 @@ use std::path::PathBuf;
 
 use clap::{Arg, ArgAction, ArgMatches, Command, value_parser};
 
-/// One role of `design/rust-compositor.md`'s process model.
+/// One role of the process model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Role {
     /// The default: session start and end, supervision, environment and recovery. It resolves the shell.

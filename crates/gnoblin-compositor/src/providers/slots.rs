@@ -255,7 +255,7 @@ impl ProviderSlots {
         }
     }
 
-    /// Sets a compositor setting by key (`design/modular-framework.md`, 28.2). Applied to the session at once when it is
+    /// Sets a compositor setting by key. Applied to the session at once when it is
     /// attached, and when it attaches otherwise.
     ///
     /// # Errors

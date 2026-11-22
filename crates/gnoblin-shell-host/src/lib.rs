@@ -1,4 +1,4 @@
-//! The language-neutral shell host (`design/modular-framework.md`, sections 5.5, 6 and 8).
+//! The language-neutral shell host.
 //!
 //! A shell is a generation: one load of one module, in whatever language. The host owns what is the same for every
 //! language, and the language libraries own what is not:

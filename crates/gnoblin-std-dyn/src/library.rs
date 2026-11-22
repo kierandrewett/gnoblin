@@ -1,7 +1,7 @@
 //! `libgnoblin-std.so.1`, found and opened at run time.
 //!
 //! A script runtime cannot link the library the way a native std shell does: the runtime is loaded for every script, and a
-//! script that never imports std must run where the library is not installed (design/modular-framework.md, example 17). So the
+//! script that never imports std must run where the library is not installed (example 17). So the
 //! runtime opens it on the first use, with `dlopen`, and reads the table through the library's own export.
 
 use core::ffi::{c_char, c_int, c_void};

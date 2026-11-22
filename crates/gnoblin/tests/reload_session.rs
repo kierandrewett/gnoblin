@@ -1,4 +1,4 @@
-//! Reloading the shell of a real session (`design/modular-framework.md`, sections 8.1 and 8.4; examples 10 and 18).
+//! Reloading the shell of a real session (examples 10 and 18).
 //!
 //! The shell is example 10, built the way a developer builds it and swapped in under a running `gnoblin --watch`. Windows are
 //! real Wayland windows of a client that stays connected for the whole test, and what each assertion reads is what the compositor's

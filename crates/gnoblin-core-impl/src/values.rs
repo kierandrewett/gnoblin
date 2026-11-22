@@ -1,7 +1,7 @@
 //! Values across the C boundary: the owned form the core keeps, the `GnoblinValue` a callback is lent, and the conversions
 //! to and from the tree's own `MirrorValue`.
 //!
-//! Three directions, three rules (`design/modular-framework.md` section 5.2):
+//! Three directions, three rules:
 //!
 //! - **Into a callback**: an event's values are lent for the call. [`RawScope`] holds the arrays a list value points into, so
 //!   the pointers stay valid until the callback returns.
@@ -360,7 +360,7 @@ const EFFECT_FIRST_SIZE: usize = core::mem::offset_of!(abi::GnoblinEffect, sourc
 /// The `len` effect records at `base` as `GnoblinEffect`s, with every field the shell's records end before read as zero.
 ///
 /// The array's stride is the `size` of its first record, which the shell sets from the struct it was built with. A struct that
-/// starts with `size` may grow by appending fields (`design/modular-framework.md` 5.8), so a shell built before a field existed
+/// starts with `size` may grow by appending fields, so a shell built before a field existed
 /// passes shorter records than this core's `GnoblinEffect`, and a shell built after passes longer ones. Indexing the array with
 /// the core's own size would read the second record from the middle of the first, which is why the stride is the shell's. Every
 /// record must carry that same `size`; a field the record does not reach is zero, which is each field's empty value.

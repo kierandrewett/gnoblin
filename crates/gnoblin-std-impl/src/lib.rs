@@ -2,7 +2,7 @@
 //!
 //! This crate is built as a `cdylib` whose SONAME is `libgnoblin-std.so.1` (set in `build.rs`; Cargo names the file
 //! `libgnoblin_std_impl.so`, and dist installs it under the SONAME). It exports three symbols (`exports.rs`) and one versioned function
-//! table (`table.rs`); everything a shell does with it goes through the table. `design/modular-framework.md` section 9 is the
+//! table (`table.rs`); everything a shell does with it goes through the table. `gnoblin-std-abi` is the
 //! contract, and the TypeScript library in `data/js/gnoblin-std` is the reference for what it does.
 //!
 //! What it holds, in the order a request meets it:

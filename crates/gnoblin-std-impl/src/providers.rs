@@ -1,4 +1,4 @@
-//! The providers std registers with the core (`design/modular-framework.md`, 9.4 and 28).
+//! The providers std registers with the core.
 //!
 //! Core holds mechanism and a minimal safe default: with no provider it places every window at the origin (`NullWm`), refuses a
 //! portal request that needs a dialog (`no-ui`) and leaves the compositor settings at their defaults. What the desktop does by
@@ -32,7 +32,7 @@ use gnoblin_wm_api::{DragConstraint, FocusMode, NewWindowFocus, WmOptions};
 const DEFAULT_ZOOM: f64 = 2.0;
 
 /// How long the desktop's window fades and placement tween take, in milliseconds: the look the compositor played before motion became std's
-/// to set (`design/modular-framework.md`, D11).
+/// to set.
 const STOCK_MOTION_MS: u64 = 200;
 
 /// The size of the frame a portal dialog is first drawn into, before the compositor says how large an output is.

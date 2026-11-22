@@ -1,5 +1,4 @@
-//! The verbs and signals of the compositor's `gnoblin` namespace, called from a native shell in a real session
-//! (`design/modular-framework.md`, section 5.9 and 32).
+//! The verbs and signals of the compositor's `gnoblin` namespace, called from a native shell in a real session.
 //!
 //! The session is the shipped binary on a headless backend with the fixture shell `shell-verbs` loaded in its process. The shell
 //! calls `idle.inhibit` and gets the compositor's answer, is refused for a verb on an object that does not exist, is refused before

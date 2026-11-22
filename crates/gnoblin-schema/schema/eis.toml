@@ -2,8 +2,7 @@
 #
 # This is the compositor-side half of `org.gnome.Mutter.RemoteDesktop.
 # ConnectToEIS` and `org.gnome.Mutter.InputCapture.ConnectToEIS`
-# (design/rust-compositor.md: "one input injection path (EIS)" and the redirect
-# map's `RemoteDesktop` and `InputCapture` rows). The adapter cannot link
+# (one input injection path). The adapter cannot link
 # `gnoblin-input` — compat crates stay out of the engine — so it asks the
 # compositor for an endpoint and hands the caller a connected socket.
 #

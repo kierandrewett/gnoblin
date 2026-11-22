@@ -4,8 +4,7 @@
 //! command name and its typed members. `src/tree.rs` includes the rendered file and
 //! gives it behaviour, so the same table feeds the clap command tree, the typed
 //! argument parsing and the completion scripts without any of them reading the
-//! schema at run time (design/rust-compositor.md, "Generated from the schema: ...
-//! `gnoblinctl` subcommands and completion").
+//! schema at run time.
 //!
 //! Nothing generated is committed: `build.rs` renders it into `OUT_DIR`, so a
 //! clean checkout builds with plain `cargo build` and a schema edit is a rebuild

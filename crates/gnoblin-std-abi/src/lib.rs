@@ -3,7 +3,7 @@
 //! `libgnoblin-std.so.1` is the optional library above the core: the object model of a desktop (clients, collections,
 //! workspaces, layouts). It is reached the way the core is, through one versioned table of function pointers behind a few
 //! exported symbols (`exports.txt`), so a function added in a later minor is invisible to a shell built against an earlier one
-//! instead of changing whether it loads. `design/modular-framework.md` sections 5 and 9 are the contract; this crate is the std
+//! instead of changing whether it loads. This crate is the std
 //! half of its code.
 //!
 //! ## Why a crate of its own

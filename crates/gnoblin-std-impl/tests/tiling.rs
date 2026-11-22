@@ -1,5 +1,5 @@
 //! The dwindle, strip, arc and carousel layouts, the split-resize drag, snapping and the tile swap of the native std, held to the
-//! TypeScript std (`data/js/gnoblin-std`), which is the reference (`design/modular-framework.md` section 22.7).
+//! TypeScript std (`data/js/gnoblin-std`), which is the reference.
 //!
 //! One script of events (a window opens, the keyboard moves, a chord is pressed, a pointer chord is dragged) is played twice over the
 //! same fake compositor: once to a TypeScript shell in this process, once to the native shell `shell-tiling` in the launcher, through

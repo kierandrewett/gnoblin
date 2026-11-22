@@ -1,7 +1,7 @@
 //! The IPC client half: one subscription, folded into the state the adapter reports.
 //!
 //! A compat adapter runs in the services role and reaches the compositor the way every
-//! other client does (design/rust-compositor.md, "Compatibility adapters" rule 4), so
+//! other client does, so
 //! this module is a [`gnoblin_client::Client`] and nothing else. It subscribes once and
 //! then folds every observation into a mirror of the views it was given, because a
 //! subscription delivers diffs and the state a caller asks for is the whole thing.

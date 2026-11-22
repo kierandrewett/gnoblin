@@ -1,4 +1,4 @@
-//! The provider ABI, both ends (`design/modular-framework.md`, 9.4 and 28).
+//! The provider ABI, both ends.
 //!
 //! A provider is a piece of desktop policy the compositor asks for decisions: where windows go, what a portal dialog shows,
 //! what the configuration means. Std implements them as ordinary Rust, and the core calls them across the C ABI, because two

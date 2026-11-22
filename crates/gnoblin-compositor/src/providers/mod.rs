@@ -1,5 +1,4 @@
-//! The provider slots: where a library that is not the core (std) puts the desktop policy the compositor asks it for
-//! (`design/modular-framework.md`, 9.4 and 28).
+//! The provider slots: where a library that is not the core (std) puts the desktop policy the compositor asks it for.
 //!
 //! Core holds mechanism and a minimal safe default. Three things are decided by convention and are therefore a provider's:
 //!

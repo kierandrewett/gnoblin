@@ -1,6 +1,6 @@
 //! The slot vocabulary, re-exported from the model.
 //!
-//! `design/rust-compositor.md` ("Providers and slots"): every optional capability is
+//! Every optional capability is
 //! a named slot with one contract and one provider. The registry needs two readers —
 //! this role, which claims the defaults and publishes them, and the compositor, which
 //! routes an offer to whoever provides the slot — so the vocabulary, the claim rule

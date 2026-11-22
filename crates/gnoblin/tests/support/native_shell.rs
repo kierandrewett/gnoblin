@@ -1,4 +1,4 @@
-//! A real `gnoblin` process that runs a native shell in its compositor (`design/modular-framework.md`, M3.3 and M3.5).
+//! A real `gnoblin` process that runs a native shell in its compositor.
 //!
 //! Nothing here is linked into the test. The session is the shipped binary, which links `libgnoblin-core.so.1` and serves the
 //! compositor role from it, started on a headless backend with its sockets in a temporary directory; the shell is a `.so`

@@ -4,8 +4,7 @@
 //! disagree about the protocol, a message that has to decode before it can be
 //! read might not decode at all, and the peer would learn nothing but "bad
 //! message". A fixed layout is readable by any future version: magic, kind, then
-//! three 32-bit version numbers (design/rust-compositor.md, "Versioning" and
-//! D16).
+//! three 32-bit version numbers.
 //!
 //! Both sides send their full version. The client sends [`HandshakeKind::Hello`]
 //! and waits; the compositor answers [`HandshakeKind::Accept`] with its own

@@ -247,7 +247,7 @@ file. A zone the card cannot read shows UTC.
 ### A shell on gnoblin-core only
 
 The stock lock screen is `gnoblin-std/lock`. A shell that imports only `gnoblin-core` loads no std module, so it draws no
-lock screen. The card is in core on purpose (`design/modular-framework.md`, D7): a locked session whose shell does not draw
+lock screen. The card is in core on purpose: a locked session whose shell does not draw
 a lock screen is never a black screen with no way back.
 
 What a core-only shell must know about the lock is nothing:
@@ -375,7 +375,7 @@ inside a call, and while a frozen shell's socket is not read.
 - `crates/gnoblin-compositor/tests/inproc_shell.rs` runs a shell that lives in the compositor process, on a thread of its
   own, against the same card: a shell thread that builds its lock screen, renews its lease once and then hangs holds up
   no frame (the session locks, the lease lapses and the card takes the password), and the hung shell is then detached
-  because it never reads its mailbox (see `design/modular-framework.md`, section 18).
+  because it never reads its mailbox.
 - `crates/gnoblin/tests/js_lock.rs` runs the JavaScript shell against the real compositor: no shell and the card, the
   shell's screen painted under the `lock` node, a wrong password answered on it, the right one unlocking, and a check the
   compositor refused `stale-base` answered `failed` on the screen.

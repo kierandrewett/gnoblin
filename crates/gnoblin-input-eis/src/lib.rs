@@ -1,9 +1,8 @@
 //! The EIS server: libei's server side, the one input path for remote desktop and for
 //! the test harness.
 //!
-//! `design/rust-compositor.md` states the rule twice: "one input injection path (EIS)
-//! serves remote desktop and the test harness" ("Principles") and "input goes in
-//! through EIS on every target" ("Parity and testing"). A remote desktop session, a
+//! One input injection path (EIS) serves remote desktop and the test harness, and input goes in through EIS on every
+//! target. A remote desktop session, a
 //! parity scenario and an integration test therefore all produce input the same way,
 //! through an EI client that this module answers, so a grab, a binding or the session
 //! lock's input gate cannot behave differently for one of them.

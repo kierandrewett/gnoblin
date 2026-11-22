@@ -1,7 +1,6 @@
 # cargo-deny policy for the Rust workspace.
 #
-# Gnoblin is GPL-2.0-or-later for the whole workspace (design/rust-compositor.md,
-# D8, matching COPYING today). A dependency is allowed only when its licence can
+# Gnoblin is GPL-2.0-or-later for the whole workspace (matching COPYING). A dependency is allowed only when its licence can
 # be combined with that outbound licence; `just deny` runs this on every change.
 [advisories]
 version = 2
@@ -102,8 +101,7 @@ unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # The one git source the workspace allows, and the reason it is a git source
 # rather than a registry release: the Smithay revision pinned in the root
-# `Cargo.toml` is newer than 0.7.0 and carries protocols 0.7.0 does not
-# (design/rust-compositor.md, D7). Adding a second entry here is a reviewable
+# `Cargo.toml` is newer than 0.7.0 and carries protocols 0.7.0 does not. Adding a second entry here is a reviewable
 # change to the pin policy, so a dependency cannot quietly start tracking a
 # branch or someone else's fork.
 allow-git = ["https://github.com/Smithay/smithay"]

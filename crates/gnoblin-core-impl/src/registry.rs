@@ -1,7 +1,7 @@
 //! The ABI face of the shell host: contexts, registrations, the event queue and the dispatch loop, as C handles.
 //!
 //! The machinery is `gnoblin-shell-host`'s ([`GenerationHost`]): generations, the registrations each owns, queued events and the
-//! dispatch loop, with their invariants (`design/modular-framework.md` sections 5.4, 5.5). This module is what is specific to
+//! dispatch loop, with their invariants. This module is what is specific to
 //! the C ABI: a handle the shell holds is an encoded generation or registration id, a callback is an `extern "C"` function
 //! with a `user` pointer and an optional `drop_user`, an error is a code and a last-error text, and an event is a
 //! `GnoblinEvent` built from a published [`SignalDelivery`].
@@ -9,7 +9,7 @@
 //! `dispatch` is also where the shell thread's own work happens, once per turn: the tree link is read and its change batches
 //! applied (so a callback reads the tree as the whole batch left it), the events that brings are published to the mailbox with
 //! the timers that fell due and the programs that ended, the host delivers them, and what the callbacks wrote goes out as one
-//! transaction (`design/modular-framework.md` section 5.4).
+//! transaction.
 #![allow(unsafe_code)]
 
 use core::ffi::c_void;

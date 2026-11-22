@@ -2,7 +2,7 @@
 //!
 //! Edit this file, build it (`cargo build`), and the running compositor loads the new library without a restart and without
 //! disturbing a single client: every window stays open on the same Wayland connection and surface, and the node ids the shell
-//! sees do not change. The reload protocol is `design/modular-framework.md` section 8.1; what makes this shell reload well is
+//! sees do not change. What makes this shell reload well is
 //! five habits, each a few lines below:
 //!
 //! 1. **State goes through `keep_state`.** The count of windows placed so far lives in the kept state, under a name and a

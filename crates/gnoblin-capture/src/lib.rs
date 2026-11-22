@@ -1,6 +1,6 @@
 //! Frame export: capture sessions, the lock embargo, pacing and single-use frames.
 //!
-//! This is the Renderer card's "session owner" half of `design/rust-compositor.md`:
+//! This is the session-owner half of the renderer:
 //! capture and remote-desktop sessions are compositor objects, and a session ends
 //! when the client that opened it disconnects. The crate is pure policy — no
 //! Smithay, no Wayland type, no clock, no device — so the rules it states can be

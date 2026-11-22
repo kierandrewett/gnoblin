@@ -86,7 +86,7 @@ impl Session {
     /// Starts a session that was handed one privileged connection per role, and returns
     /// the ends the roles would hold.
     ///
-    /// The pair is the guardian's, exactly as `design/rust-compositor.md`'s process model
+    /// The pair is the guardian's, exactly as the process model
     /// describes it: this test makes it because this test is the guardian.
     pub fn start_privileged(roles: &[&str]) -> (Session, Vec<(String, UnixStream)>) {
         Session::start_privileged_configured(roles, |_| {})

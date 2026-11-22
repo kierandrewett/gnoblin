@@ -1,6 +1,6 @@
 //! Guardian: supervision, systemd and logind, environment, autostart, logs and recovery.
 //!
-//! This crate is the guardian of the process model in `design/rust-compositor.md`:
+//! This crate is the guardian of the process model:
 //! one process lives for the login and owns the session, while the compositor, the shell, the
 //! services role, the front and the autostart applications are children it
 //! starts, watches and stops.

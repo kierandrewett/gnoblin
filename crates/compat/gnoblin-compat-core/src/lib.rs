@@ -1,7 +1,6 @@
 //! The shared frame every compatibility adapter builds on.
 //!
-//! This crate is `gnoblin-compat-core` of `design/rust-compositor.md`
-//! ("Compatibility crates", "Compatibility adapters" and D13). It holds what
+//! This crate is `gnoblin-compat-core`. It holds what
 //! every adapter shares and none of what any adapter maps:
 //!
 //! - [`SupportMatrix`]: one adapter's declared fidelity per interface and

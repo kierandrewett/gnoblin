@@ -115,7 +115,7 @@ const WAYLAND_SOCKET: &str = "WAYLAND_SOCKET";
 
 /// The shell the session runs: what the launcher's discovery resolved before anything started, and how.
 ///
-/// The guardian resolves the shell once and passes it down (`design/modular-framework.md`, M4.4), so a session never starts
+/// The guardian resolves the shell once and passes it down, so a session never starts
 /// a compositor it cannot give a shell to, and the compositor (or, isolated, the shell's own process) does not discover
 /// again: it loads exactly this file.
 #[derive(Clone, Debug, PartialEq, Eq)]

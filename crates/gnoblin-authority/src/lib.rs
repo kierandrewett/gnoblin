@@ -8,8 +8,7 @@
 //! It holds two machines: launch tokens and activation, which keep an application from
 //! stealing focus, and the user's consent for screen capture and remote input. The
 //! gesture-context machine that once proved a user gesture to a script was deleted: the
-//! shell is trusted code, and the compositor takes no gesture proof from it
-//! (design/rust-compositor.md, "Authority: `gnoblin-authority`").
+//! shell is trusted code, and the compositor takes no gesture proof from it.
 //!
 //! # The three rules
 //!

@@ -6,7 +6,6 @@ name: Parity reference
 # requires every `mutter51` and `mutter-gnoblin` row to have run, so a difference between the compositors is a red job
 # and the report is kept as an artifact. The Mutter-based tree is `main` at the commit pinned below. The pin keeps a run
 # comparable with the stored reports; move it on purpose and store a new report with the move.
-# design/rust-compositor.md, "The parity harness".
 
 on:
   push:

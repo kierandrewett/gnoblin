@@ -1,8 +1,7 @@
 //! `gtk_shell1` and `gtk_surface1`: the redirect GTK applications use every day.
 //!
-//! This is `gnoblin-compat-wayland-gtk-shell1` of `design/rust-compositor.md` (the redirect
-//! map: "activation, titlebar actions, modal, launch, bell", with the note that this
-//! "redirect matters most for daily use"). GTK draws its own titlebars, so without it
+//! This is `gnoblin-compat-wayland-gtk-shell1`: activation, titlebar actions, modal, launch and bell, the redirect that
+//! matters most for daily use. GTK draws its own titlebars, so without it
 //! a titlebar double-click never reaches the compositor, a modal dialog is not known
 //! to be modal, and an application's bell rings nowhere.
 //!

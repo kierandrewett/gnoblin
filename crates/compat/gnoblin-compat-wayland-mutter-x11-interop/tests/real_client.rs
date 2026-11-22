@@ -11,8 +11,7 @@
 //!
 //! ## Why the compositor is a stand-in
 //!
-//! A full session needs a backend, and a compat crate may not link the engine
-//! (`design/rust-compositor.md`, "Dependency rules"). What only a session can answer —
+//! A full session needs a backend, and a compat crate may not link the engine. What only a session can answer —
 //! which windows exist on both sides of the X11 boundary — arrives through
 //! [`gnoblin_wayland::X11InteropHost`], and the real implementation of that (the
 //! compositor's window table and `gnoblin-xwayland`'s) is tested where it lives.

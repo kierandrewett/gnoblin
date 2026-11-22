@@ -1,6 +1,6 @@
 //! Loading a native shell module: unique copy, `dlopen`, entry check, `init`, and the bounded retire list.
 //!
-//! The protocol is `design/modular-framework.md` section 6:
+//! The protocol:
 //!
 //! 1. Refuse the load when the retire list is full ([`LoadError::TooManyRetained`]): retired native code is never unmapped,
 //!    so the number kept is bounded, and past the bound the user restarts.
@@ -425,8 +425,8 @@ impl<E: 'static> NativeLoader<E> {
         self.load_as(path, None, copying, reload_count)
     }
 
-    /// Loads the module at `path` into a staged generation, whatever it is: a native shell, or a script a runtime library runs
-    /// (`design/modular-framework.md` section 6). `language` is a language the caller named (the launcher file's `language =`),
+    /// Loads the module at `path` into a staged generation, whatever it is: a native shell, or a script a runtime library
+    /// runs. `language` is a language the caller named (the launcher file's `language =`),
     /// which wins over what the file's content and extension say.
     ///
     /// A native shell is copied, opened and initialised as [`load`](Self::load) describes. A script's runtime library is found by

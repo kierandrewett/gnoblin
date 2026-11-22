@@ -1,4 +1,4 @@
-//! The egui layer of the portal dialogs (design/rust-compositor.md, D19).
+//! The egui layer of the portal dialogs.
 //!
 //! - [`ui`]: the [`ui::DialogUi`] trait each dialog kind implements, the
 //!   [`ui::DialogShell`] that runs egui frames for it, and the translation from

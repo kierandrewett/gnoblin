@@ -13,8 +13,8 @@
 //! | `--role shell`        | runs the shell host in a process of its own (`--isolate`), over the compositor's socket |
 //! | `--role services`     | runs the D-Bus agents: polkit, the keyring and slots                                    |
 //!
-//! The compositor and shell roles are not in this executable. They are `libgnoblin-core.so.1`'s `gnoblin_main`
-//! (`design/modular-framework.md`, M2.10): the launcher links the library through a stub, forwards
+//! The compositor and shell roles are not in this executable. They are `libgnoblin-core.so.1`'s `gnoblin_main`: the
+//! launcher links the library through a stub, forwards
 //! the command line and exits with the library's code.
 //!
 //! # Which shell

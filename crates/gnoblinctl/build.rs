@@ -2,8 +2,7 @@
 //!
 //! The tree is generated from `crates/gnoblin-schema/schema/*.toml` on every
 //! build, so a schema member cannot exist without a subcommand and a subcommand
-//! cannot exist without a schema member (design/rust-compositor.md, "One IPC":
-//! "Generated from the schema: ... `gnoblinctl` subcommands and completion").
+//! cannot exist without a schema member.
 //!
 //! The generator itself is `src/generate.rs`, included here so `build.rs` and the
 //! crate's tests run exactly the same code. `OUT_DIR/cli_tree.rs` is data;

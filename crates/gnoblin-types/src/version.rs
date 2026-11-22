@@ -1,7 +1,6 @@
 //! The one `MAJOR.MINOR.PATCH` version type the IPC and the schema share.
 //!
-//! design/rust-compositor.md ("Versioning") makes the IPC version exactly the
-//! Gnoblin version and gives every schema member the version that added it, so
+//! The IPC version is exactly the Gnoblin version, and every schema member carries the version that added it, so
 //! both sides need one small ordered type instead of a general range type.
 //! Pre-release ordering is deliberately absent: a candidate build
 //! (`0.2.0-alpha.N`) advertises the triple of the release it becomes, so a

@@ -1,4 +1,4 @@
-//! Example 12: a library upgrade without recompiling an ABI-compatible shell (`design/modular-framework.md` 5.8, 12 and 30).
+//! Example 12: a library upgrade without recompiling an ABI-compatible shell.
 //!
 //! The subject is two shell binaries that were built once, against ABI 1.0, and are stored in `tests/modular/golden/bin/` (a core-only
 //! shell and a std shell; `golden.lock` records their hashes and `cargo xtask abi-check` guards them). Nothing here rebuilds them.

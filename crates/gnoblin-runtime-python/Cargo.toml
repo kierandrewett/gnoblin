@@ -25,7 +25,7 @@ gnoblin-object = { path = "../gnoblin-object" }
 gnoblin-std-dyn = { path = "../gnoblin-std-dyn" }
 # CPython. Linked against the system libpython (`NEEDED libpython3.N.so.1.0`), so a compositor that never runs a Python shell
 # never maps it: this library is opened only when a `.py` shell is selected. MIT OR Apache-2.0; no `abi3`, because an embedding
-# host links one concrete libpython anyway (design/modular-framework.md, 10.1).
+# host links one concrete libpython anyway.
 pyo3 = { version = "0.30", default-features = false, features = ["macros"] }
 
 [build-dependencies]

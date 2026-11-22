@@ -1,5 +1,5 @@
-//! The binding machinery of `libgnoblin-std`, reached from a TypeScript shell through the generated binding (design/modular-framework.md,
-//! section 25.4, lane TsStdBindings): the vtable path for a binding of the shell's own (`Binding.drag`), a binding the library runs
+//! The binding machinery of `libgnoblin-std`, reached from a TypeScript shell through the generated binding: the vtable
+//! path for a binding of the shell's own (`Binding.drag`), a binding the library runs
 //! itself (`MoveBinding.start`), the drag rules a shell that matches its own drags steps (`Drag.step`, and the geometry beside it),
 //! and the proof that the last do not start the library's desktop.
 //!

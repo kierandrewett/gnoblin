@@ -2,9 +2,8 @@
 //!
 //! The prefix is four bytes, big-endian, and counts the body only. A fixed width
 //! keeps the reader trivial and lets a reader refuse an implausible length before
-//! it allocates; the body itself is a prost message (design/rust-compositor.md,
-//! D16). Descriptors that belong to a frame travel beside it, not inside it: see
-//! [`crate::transport`].
+//! it allocates; the body itself is a prost message. Descriptors that belong to a frame travel beside it, not
+//! inside it: see [`crate::transport`].
 
 use std::io::{self, Read, Write};
 

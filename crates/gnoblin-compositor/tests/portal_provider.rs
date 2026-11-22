@@ -1,8 +1,8 @@
 //! Replacing the built-in portal dialogs: a shell claims `portal.ui`, and the compositor routes a
 //! consent request to it instead of drawing its own dialog.
 //!
-//! The built-in dialog is the default and the fallback; this is the path that replaces it
-//! (design/rust-compositor.md, D19). Nothing here is a mock: the compositor is a running session on
+//! The built-in dialog is the default and the fallback; this is the path that replaces it.
+//! Nothing here is a mock: the compositor is a running session on
 //! its own sockets, the relay and the input role are real privileged connections, and the shell is
 //! the real client library on the ordinary socket.
 //!

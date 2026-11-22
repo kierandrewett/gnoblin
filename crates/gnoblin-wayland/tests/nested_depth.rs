@@ -5,7 +5,7 @@
 //! repository's own compositor on the headless backend. The **first session** is a second compositor whose backend is a
 //! [`Nested`] connected to the host, and the **second session** is a third whose backend is a [`Nested`] connected to the
 //! first. Nothing in the host knows about either: there is no hosting protocol, no role and no registry entry for a hosted
-//! session (`design/rust-compositor.md`, "Nested sessions without special cases").
+//! session.
 //!
 //! A real `wayland-client` connection sits on each level. The tests read three things the design promises:
 //!

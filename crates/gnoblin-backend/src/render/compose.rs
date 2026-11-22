@@ -1,13 +1,12 @@
 //! The session's scene, and the drawing of one output's frame from it.
 //!
-//! This is the OutputFrame path of `design/rust-compositor.md` between the window
+//! This is the OutputFrame path between the window
 //! manager and a renderer: the window manager decides where a window is, the scene
 //! holds what each window looks like and which pixels need redrawing, and
 //! [`Composer::compose`] turns that into a [`OutputFrame`] a renderer can draw.
 //!
 //! It lives in this crate because it is the one place a protocol engine, a backend
-//! and the pure scene crate are allowed to meet
-//! (`design/rust-compositor.md`, "Dependency rules"): `gnoblin-wayland` may not
+//! and the pure scene crate are allowed to meet: `gnoblin-wayland` may not
 //! name `gnoblin-render`, so the scene has to sit on the backend side of the
 //! contract.
 //!
@@ -204,7 +203,7 @@ impl MotionPolicy {
 
 impl Default for MotionPolicy {
     /// Instant: a session with no std library to say how windows should move has windows that land at once, and a shell
-    /// that wants motion drives it itself (`design/modular-framework.md`, D11). The desktop's 200 ms look is the std
+    /// that wants motion drives it itself. The desktop's 200 ms look is the std
     /// library's to set, through [`Setting::Motion`] (`libgnoblin-std`, `providers.rs`).
     fn default() -> Self {
         Self::INSTANT

@@ -2,8 +2,7 @@
 //! read it.
 //!
 //! The build does not need this: `gnoblin-proto`'s build script renders the same
-//! text into `OUT_DIR` and compiles it there (design/rust-compositor.md, "One IPC"
-//! and D16). This command exists so a reviewer can read a wire change without
+//! text into `OUT_DIR` and compiles it there. This command exists so a reviewer can read a wire change without
 //! hunting through `target/`, and it writes to a gitignored directory under
 //! `target/` so nothing generated can be committed by accident.
 //!

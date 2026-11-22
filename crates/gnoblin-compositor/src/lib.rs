@@ -1,8 +1,7 @@
 //! Composition root: one runnable compositor process, and the only crate that
 //! knows every subsystem.
 //!
-//! This is the integration lane of `design/rust-compositor.md` ("Process model",
-//! "One IPC", "Main data paths" and the `gnoblin-compositor` card): a process that
+//! This is the integration crate: a process that
 //! starts a Wayland session on a backend, keeps the live object graph the IPC
 //! serves, and answers `gnoblinctl` and every other IPC client on
 //! `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`. Nothing here decides policy, renders or

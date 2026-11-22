@@ -2,8 +2,7 @@
 
 The parity harness runs one declarative scenario against several targets and
 reports, per scenario, whether the behaviour matched the reference, differed, or
-could not be run yet. `design/rust-compositor.md` ("The parity harness") is the
-design; this page is the working guide.
+could not be run yet. This page is the working guide.
 
 A scenario is a TOML file in `scenarios/`. A recording that a scenario replays is
 a JSON file in `fixtures/`. Both are checked in, so a change to an expectation is

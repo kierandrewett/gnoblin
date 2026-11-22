@@ -1,8 +1,7 @@
 # Pinned development toolchain.
 #
 # Gnoblin's MSRV comes from the highest floor of its pinned dependencies, not
-# from a Rust release number (design/rust-compositor.md, "Distribution and
-# toolchain"): Smithay master declares 1.87, and the exact revisions land here
+# from a Rust release number: Smithay master declares 1.87, and the exact revisions land here
 # later. Until then this pin exists so that every
 # developer, CI runner and build lane compiles with one `rustc` and one
 # `rustfmt`. A floating toolchain would let a formatting or lint change on a

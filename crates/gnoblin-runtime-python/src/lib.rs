@@ -1,7 +1,7 @@
 //! `libgnoblin-runtime-python`: the Python runtime of the shell host.
 //!
 //! The library exports one symbol, `gnoruntime_entry_v1`, which returns a static [`GnoblinRuntimeEntry`]
-//! (`design/modular-framework.md` sections 5.10 and 10.1). The core's loader opens it, once, when a `.py` shell is selected, and
+//! (the runtime entry of `gnoblin-core-abi`). The core's loader opens it, once, when a `.py` shell is selected, and
 //! calls `start` for each generation of the script. The interpreter is the system CPython, embedded through PyO3; the shell is an
 //! ordinary script that imports the package `gnoblin`, which this library serves from itself (nothing of it is read from disk) and
 //! which calls the built-in module `_gnoblin_core` of this library. That module is a thin layer over the core SDK (`gnoblin-core`):

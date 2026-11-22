@@ -1,5 +1,4 @@
-//! Native hot reload: the protocol that replaces a running `.so` shell with a freshly built one, and the handles around it
-//! (`design/modular-framework.md` sections 8.1 and 17).
+//! Native hot reload: the protocol that replaces a running `.so` shell with a freshly built one, and the handles around it.
 //!
 //! - [`NativeShell`] is the shell thread's side: it owns the running generation and runs a reload in the one order that is
 //!   correct. **Stage**: the library is copied to a private path and opened, and the new generation's `init` runs while the

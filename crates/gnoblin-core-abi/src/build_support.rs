@@ -7,8 +7,7 @@
 //! the real, installed core. The stub is never installed and never run.
 //!
 //! A machine that has the development package can set `GNOBLIN_CORE_LIB_DIR` to the directory holding the real
-//! `libgnoblin-core.so`, and the link uses that instead. `design/modular-framework.md` section 4.3 has the reasoning
-//! and the measured cost (one `cc` run).
+//! `libgnoblin-core.so`, and the link uses that instead. The stub costs one `cc` run.
 //!
 //! The same mechanism links `libgnoblin-std` for the std SDK crate: [`StubSpec`] names the library, its SONAME, its
 //! exports and the variable that points at a real one, and `gnoblin-std-abi` fills one in for the std library.

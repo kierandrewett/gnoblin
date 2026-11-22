@@ -25,7 +25,7 @@ const OWNER_PATHS: &[(&str, &str)] = &[
     ),
     (
         "crates/gnoblin-core-impl/build.rs",
-        "the core library is the owner side of the shell ABI (design/modular-framework.md, D3). The catalog is names and types \
+        "the core library is the owner side of the shell ABI. The catalog is names and types \
          only, no authority: the in-process shell host is the owner by construction (it holds the tree), and what a loaded \
          module may do is decided by the owner socket's peer check and the observer rules, not by what the catalog lists. \
          No other crate links the library, and every client-side crate, portal and service still loads the catalog \

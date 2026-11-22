@@ -1,4 +1,4 @@
-//! Std in the compositor's own process, for the stock session (`design/modular-framework.md`, 9.4 and 28.1).
+//! Std in the compositor's own process, for the stock session.
 //!
 //! A session whose shell is not a native module run in process (the script runtime is a child process of the guardian) has no
 //! shell that links std, so nothing would register the stock window manager, portal dialogs or configuration observer, and the
@@ -93,7 +93,7 @@ pub fn install() -> StdHostOutcome {
             continue;
         };
         // SAFETY: `name` is a valid NUL-terminated path for the call. `dlopen` runs the library's constructors, which std
-        // has none of (`design/modular-framework.md`, 9.4: no ELF constructor).
+        // has none of (a provider library has no ELF constructor).
         let handle = unsafe { dlopen(name.as_ptr(), RTLD_NOW) };
         if handle.is_null() {
             why.push(format!("{}: {}", path.display(), error_text()));

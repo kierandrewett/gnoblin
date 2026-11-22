@@ -1,5 +1,5 @@
 //! The harness of `common::native`: a shell over the real core and the real std library, in the test's own process, over the fake
-//! compositor (design/modular-framework.md, 25.3, B1).
+//! compositor.
 //!
 //! What it proves is the shape every std-touching scenario of this crate then runs in: the engine's mirror is a view of the core's tree
 //! (one holder of the compositor's link), a window the compositor makes is a window of `gnoblin.clients` and of the library's

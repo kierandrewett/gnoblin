@@ -1,4 +1,4 @@
-//! What a session does with `libgnoblin-std` and without it (`design/modular-framework.md`, 9.4 and 28): the providers std
+//! What a session does with `libgnoblin-std` and without it: the providers std
 //! registers through `provider_register`, and the minimal behaviour the core keeps when nothing does.
 //!
 //! The session is the shipped binary on a headless backend. Windows are mapped by a real `wayland-client` connection and what

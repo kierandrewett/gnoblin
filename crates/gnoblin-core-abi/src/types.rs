@@ -3,7 +3,7 @@
 //! Everything a shell and the core exchange is declared here and nowhere else. The prefix `Gnoblin` on a type and
 //! `GNOBLIN_` on a constant is the C header's namespace; the Rust SDK renames them to idiomatic types.
 //!
-//! The rules every declaration follows (`design/modular-framework.md`, section 5.2):
+//! The rules every declaration follows:
 //!
 //! - No Rust type crosses the boundary. Strings are `(pointer, length)` UTF-8, never NUL terminated.
 //! - Inputs are borrowed for the call; the core copies what it keeps.

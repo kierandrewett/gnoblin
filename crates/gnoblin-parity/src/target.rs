@@ -1,7 +1,7 @@
 //! Targets: the ways a scenario obtains its observations.
 //!
-//! A target is "a way to start a headless session with a fixed virtual output
-//! layout and to stop it" (design/rust-compositor.md). The Rust candidate
+//! A target is a way to start a headless session with a fixed virtual output
+//! layout and to stop it. The Rust candidate
 //! ([`crate::candidate::CandidateTarget`]), stock Mutter 51
 //! ([`crate::mutter::Mutter51Target`]) and Gnoblin on the patched Mutter
 //! ([`crate::mutter_gnoblin::MutterGnoblinTarget`]) are live. The two Mutter

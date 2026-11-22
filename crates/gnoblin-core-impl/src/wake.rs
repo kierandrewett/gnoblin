@@ -2,7 +2,7 @@
 //!
 //! A default shell never sees the loop: the host turns `dispatch` for it. A shell with a loop of its own (tokio, calloop, GLib, an
 //! interpreter's) needs the opposite: something it can poll beside its own sources, and a promise that `dispatch(ctx, 0)` will not
-//! block and will drain what made the descriptor readable (`design/modular-framework.md` section 5.4). The descriptor is an epoll
+//! block and will drain what made the descriptor readable. The descriptor is an epoll
 //! set, which is itself pollable and is readable while any member is:
 //!
 //! - an **eventfd**, written by [`signal`] from `post` and `publish` (any thread) and read by [`drain`] at the start of every

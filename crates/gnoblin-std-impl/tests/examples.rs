@@ -1,4 +1,4 @@
-//! Example 2 and example 17 of `design/modular-framework.md` section 12, as tests (M7.1 to M7.3).
+//! Example 2 and example 17 (`examples/README.md`), as tests.
 //!
 //! The examples are real shells: `cdylib` crates under `examples/` that depend on the SDK crates and nothing else. These tests build
 //! them with nested `cargo` runs, stage a prefix the way an install does (the core, the std library under its SONAME, the launcher

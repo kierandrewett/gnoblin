@@ -1,8 +1,8 @@
 //! The one call this launcher makes into `libgnoblin-core.so.1`: `gnoblin_main`.
 //!
 //! `build.rs` links the core through a generated stub that carries its SONAME, so the binary records `NEEDED
-//! libgnoblin-core.so.1` and the loader resolves it to the real library at run time (`design/modular-framework.md`
-//! section 4.3). This module is the whole `unsafe` surface of the launcher: a C call with a vector of NUL-terminated strings.
+//! libgnoblin-core.so.1` and the loader resolves it to the real library at run time. This module is the whole `unsafe`
+//! surface of the launcher: a C call with a vector of NUL-terminated strings.
 #![allow(unsafe_code)]
 
 use std::ffi::{CStr, CString, OsStr, OsString, c_char, c_int, c_void};

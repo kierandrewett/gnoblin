@@ -1,4 +1,4 @@
-//! A native shell in the compositor process, when it fails (`design/modular-framework.md`, M3.5 and M3.6).
+//! A native shell in the compositor process, when it fails.
 //!
 //! The shell runs on a thread of the compositor process, so it can fail in ways a separate process cannot take the compositor
 //! down with. What each test pins is what the session does while it has:

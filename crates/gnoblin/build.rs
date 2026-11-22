@@ -1,6 +1,6 @@
 //! Links `gnoblin` against `libgnoblin-core.so.1` without building it first, and tells the binary where to find it.
 //!
-//! `design/modular-framework.md` section 4.3: Cargo cannot make a binary wait for a `cdylib`, so the link goes through a
+//! Cargo cannot make a binary wait for a `cdylib`, so the link goes through a
 //! generated stub that carries the SONAME. The binary records `NEEDED libgnoblin-core.so.1` once; at run time the dynamic
 //! loader resolves that name to the real library. The binary calls the core (`gnoblin_main`, which serves the compositor
 //! role), so the plain link records the entry: no `--no-as-needed` is needed for a library the code references.

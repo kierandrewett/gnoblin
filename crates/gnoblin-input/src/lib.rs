@@ -1,7 +1,7 @@
 //! Pure input policy: the chord grammar, the binding table, the key and button delivery
 //! order, touchpad gesture recognition and routing, and idle activity.
 //!
-//! This crate is the "Input" card of `design/rust-compositor.md`. It owns everything in
+//! This crate is the input decisions. It owns everything in
 //! the input path that is a decision rather than a device:
 //!
 //! ```text

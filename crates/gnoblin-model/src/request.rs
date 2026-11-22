@@ -1,8 +1,7 @@
 //! The request broker: offered, claimed by one owner, finished once.
 //!
 //! A `Request` is how the compositor asks a provider to decide something: polkit
-//! authentication, a secret prompt, a portal consent dialog, a location request
-//! (design/rust-compositor.md, "Main data paths" and "Providers and slots"). The
+//! authentication, a secret prompt, a portal consent dialog, a location request. The
 //! broker is the only place that decides who owns one and when it ends.
 //!
 //! The state machine is small on purpose:

@@ -1,7 +1,7 @@
 //! The shell's slot connection: the requests the compositor offers to a slot the shell claimed.
 //!
 //! The tree socket carries the `tree` namespace only. A slot is claimed, and a request offered to it is claimed and answered, on the
-//! owner socket (`design/rust-compositor.md`, "Providers and slots"), so a shell that wants the compositor's own dialogs (consent, passphrase,
+//! owner socket, so a shell that wants the compositor's own dialogs (consent, passphrase,
 //! polkit) shown to it holds one more owner connection, a [`SlotLink`] of `gnoblin-tree-client`.
 //!
 //! The link is served by a thread of its own, as the verbs' connection is ([`crate::verbs`]): the calls on it wait for the compositor's reply,

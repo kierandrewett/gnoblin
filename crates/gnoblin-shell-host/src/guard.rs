@@ -2,7 +2,7 @@
 //!
 //! Rust aborts the process when a panic leaves an `extern "C"` function, so every function the core exports, and every
 //! call the host makes into shell code, runs inside [`guard`], [`contained`] or `catch_unwind`: a panic becomes an error
-//! code, a log line and a last-error text, and the process carries on (`design/modular-framework.md` section 5.7).
+//! code, a log line and a last-error text, and the process carries on.
 
 use std::any::Any;
 use std::cell::RefCell;

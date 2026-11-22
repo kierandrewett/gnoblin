@@ -1,7 +1,6 @@
 //! The IPC client half: one subscription, folded into the idle time and the lock state.
 //!
-//! The counter is the compositor's, published as the `idle` object's `idle_ms` property
-//! (design/rust-compositor.md, the redirect map's `IdleMonitor` row), so this module is a
+//! The counter is the compositor's, published as the `idle` object's `idle_ms` property, so this module is a
 //! [`gnoblin_client::Client`] and nothing else. The lock state rides along because the
 //! gate needs it: idle watches answer while the session is locked, which is exactly what a
 //! screensaver needs, but the service still has to be able to say which embargo it built

@@ -193,7 +193,7 @@ pub struct Offered {
 
 /// The privileged connection through which a slot request reaches the IPC.
 ///
-/// The services role is a client (design/rust-compositor.md, "Providers and slots"),
+/// The services role is a client,
 /// so offering a request to the connections that can claim it is the composition
 /// root's job: it holds the connection that is allowed to offer, and this crate holds
 /// the state machine that decides what is offered and what an answer means. The trait

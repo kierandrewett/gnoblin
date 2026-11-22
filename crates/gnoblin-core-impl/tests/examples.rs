@@ -1,4 +1,4 @@
-//! Examples 1 and 8 of `design/modular-framework.md` section 12, as tests (M3.4).
+//! Examples 1 and 8 (`examples/README.md`), as tests.
 //!
 //! The examples are real shells: cargo `cdylib` crates under `examples/` that depend on `gnoblin-core` and nothing else. These tests
 //! build them, load each `.so` through the shell host's loader into a process that links the installed core (the launcher fixture),

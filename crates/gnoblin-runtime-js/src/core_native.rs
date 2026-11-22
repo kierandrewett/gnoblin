@@ -1,4 +1,4 @@
-//! `__gnoblinCore`: the core's `call` and `subscribe`, by name, for a script (`design/modular-framework.md` section 5.9).
+//! `__gnoblinCore`: the core's `call` and `subscribe`, by name, for a script.
 //!
 //! The compositor's `gnoblin` namespace (`gnoblin.session`, `gnoblin.idle`, the outputs) is not part of the tree a script mirrors:
 //! its verbs are calls on the owner socket and its signals are observations of it, and the core serves both through two table

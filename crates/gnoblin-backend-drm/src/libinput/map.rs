@@ -2,7 +2,7 @@
 //!
 //! libinput reports what the *device* did: a relative delta, absolute device units, a wheel
 //! notch in 1/120 of a step, a key code offset by the eight the X protocol reserved. The
-//! contract states what the *seat* needs (design/rust-compositor.md, "Backends and outputs"):
+//! contract states what the *seat* needs:
 //! a position inside an output, whole logical pixels, and the evdev codes the keymap
 //! translates. [`Mapper`] is that translation, and it is pure — the device side reaches it as
 //! [`DeviceEvent`] values, so every rule below is tested on a machine with no input device.

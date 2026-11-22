@@ -1,5 +1,4 @@
-//! The example shells of `examples/`, loaded into the core and driven over the fake compositor (`design/modular-framework.md`
-//! section 12, examples 1 and 8).
+//! The example shells of `examples/`, loaded into the core and driven over the fake compositor (examples 1 and 8).
 //!
 //! Each scenario is one process, started by the launcher fixture: the core is the library the launcher links, the example is the
 //! `.so` it loads, and the compositor is the fake of `gnoblin-testkit` behind the tree link, so the process maps exactly what a

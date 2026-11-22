@@ -3,7 +3,7 @@
 //! Rust has no stable ABI, so the boundary is plain C: `#[repr(C)]` types, integer error codes, and one versioned table
 //! of function pointers (`GnoblinApi`) behind four exported symbols (`exports.txt`). Everything else is reached through
 //! the table, so a function added in a later minor is invisible to a shell built against an earlier one instead of
-//! changing whether it loads. `design/modular-framework.md` section 5 is the full contract; this crate is its code.
+//! changing whether it loads. This crate is the code of that contract.
 //!
 //! The crate holds declarations and no behaviour. It is the one place the ABI is written down:
 //!

@@ -1,7 +1,6 @@
 //! `org.gnome.Mutter.IdleMonitor` for screensavers, power management and idle policy.
 //!
-//! This is `gnoblin-compat-dbus-mutter-idlemonitor` of `design/rust-compositor.md`
-//! ("Compatibility crates" and the redirect map's `IdleMonitor` row): the adapter that
+//! This is `gnoblin-compat-dbus-mutter-idlemonitor`, the adapter that
 //! answers "how long has the user been away" and fires when a caller's threshold is
 //! reached. `gsd-power` and every GNOME screensaver talk to this interface, which is why
 //! it is one of the adapters that is on by default.

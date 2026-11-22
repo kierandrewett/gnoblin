@@ -1,7 +1,6 @@
 //! Output descriptors, a declarative layout engine, and transactional output configuration.
 //!
-//! This crate is the decision half of `gnoblin-output` (design/rust-compositor.md,
-//! "Backends and outputs"). It holds no DRM, KMS, Smithay, Wayland or udev type: an
+//! This crate is the decision half of `gnoblin-output`. It holds no DRM, KMS, Smithay, Wayland or udev type: an
 //! output arrives as an [`OutputDescriptor`], a configuration is a [`LayoutConfig`],
 //! and the result is a [`Layout`] of integer logical monitor rectangles. The backend
 //! performs the mode sets, gamma updates and power changes that the effects name.

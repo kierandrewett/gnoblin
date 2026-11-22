@@ -1,4 +1,4 @@
-//! Portal interface names, typed payloads and dialog models (design/rust-compositor.md, D19).
+//! Portal interface names, typed payloads and dialog models.
 //!
 //! This module owns the interface names the compositor serves, the typed payload and
 //! result of each interface a dialog renders and fills, and the dialog models

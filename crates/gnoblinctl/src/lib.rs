@@ -1,7 +1,6 @@
 //! Command line client for the Gnoblin IPC.
 //!
-//! `gnoblinctl` is the short-lived client of `design/rust-compositor.md` ("One
-//! IPC"): it connects to `$XDG_RUNTIME_DIR/gnoblin/ipc.sock` (or
+//! `gnoblinctl` is the short-lived IPC client: it connects to `$XDG_RUNTIME_DIR/gnoblin/ipc.sock` (or
 //! `$GNOBLIN_IPC_SOCKET`), exchanges the fixed-layout handshake, and speaks the
 //! object model through [`gnoblin_client`]. It has no compositor code in it and no
 //! opinion about policy: it subscribes, prints, calls and waits.

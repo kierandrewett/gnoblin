@@ -2,7 +2,7 @@
 //! the fixed-layout handshake, and the version rule that decides whether two
 //! sides may speak at all.
 //!
-//! Why this shape (design/rust-compositor.md, "One IPC" and D16): one socket serves
+//! Why this shape: one socket serves
 //! shells, `gnoblinctl`, the portal, the script runtime and the services role, so the wire
 //! is binary and generated from `gnoblin-schema`. Every frame is an [`Envelope`] that
 //! names its namespace and member, which lets the compositor drop the payload of a

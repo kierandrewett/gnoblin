@@ -76,13 +76,13 @@ hosted runner.
 
 - `cargo build --workspace`, `cargo test --workspace` and any build that includes `gnoblin-core-impl` do it themselves: its `build.rs` links `target/<profile>/libgnoblin-core.so.1` to the library Cargo writes.
 - `cargo xtask stage` (`just stage`; `--release` for the release tree) builds `gnoblin-core-impl`, refuses a library `dist-check` would refuse (a missing export, the test driver left in) and makes the SONAME link and the linker link `libgnoblin-core.so`. Run it before `cargo build -p gnoblin` and `cargo test -p gnoblin`, whose integration tests run `target/debug/gnoblin`. Without it the binary stops with the loader's own message, `libgnoblin-core.so.1: cannot open shared object file`; `cargo build -p gnoblin` says so while it builds (a build-script warning that names `cargo xtask stage`) until the tree is staged. A `cargo build --workspace` may print the same note once, when the launcher's build script runs before the core's.
-- The stock session also needs `libgnoblin-std.so.1`, beside the core: the compositor role with no shell opens it and std registers the window manager, the portal dialogs and the visual settings (`design/modular-framework.md`, 28). `cargo xtask stage` stages it with the core. A tree without it still runs: the session says so once and runs core-only, with `NullWm` placing windows at the origin and portal requests refused `no-ui`. `GNOBLIN_STD_DIR` names another directory to look in first.
+- The stock session also needs `libgnoblin-std.so.1`, beside the core: the compositor role with no shell opens it and std registers the window manager, the portal dialogs and the visual settings. `cargo xtask stage` stages it with the core. A tree without it still runs: the session says so once and runs core-only, with `NullWm` placing windows at the origin and portal requests refused `no-ui`. `GNOBLIN_STD_DIR` names another directory to look in first.
 
 ```sh
 cargo xtask stage && cargo build -p gnoblin && target/debug/gnoblin --version
 ```
 
-`GNOBLIN_CORE_LIB_DIR=target/debug` links the real library (its linker name is staged too) instead of the stub. `GNOBLIN_RPATH` replaces the run path when `gnoblin` is built, and an empty value leaves none: a distribution package installs under `/usr`, which the loader searches. `just dist-check` builds the workspace, stages, installs into three temporary trees and runs `cargo xtask dist-check` on the build tree and on each (SONAME and exports of the core, `NEEDED` once, no `gnoblin_*` in a shell, every gnoblin library resolving inside the tree, links, header, `.pc`, manifest, the glibc floor, and `gnoblin --version` run with `LD_LIBRARY_PATH` unset); CI runs it. `design/status/dist.md` has the install layout.
+`GNOBLIN_CORE_LIB_DIR=target/debug` links the real library (its linker name is staged too) instead of the stub. `GNOBLIN_RPATH` replaces the run path when `gnoblin` is built, and an empty value leaves none: a distribution package installs under `/usr`, which the loader searches. `just dist-check` builds the workspace, stages, installs into three temporary trees and runs `cargo xtask dist-check` on the build tree and on each (SONAME and exports of the core, `NEEDED` once, no `gnoblin_*` in a shell, every gnoblin library resolving inside the tree, links, header, `.pc`, manifest, the glibc floor, and `gnoblin --version` run with `LD_LIBRARY_PATH` unset); CI runs it. `xtask/src/dist.rs` has the install layout.
 
 ## Build features of the core library
 
@@ -129,7 +129,7 @@ showed the shell reading a stale `decoration` about once in sixty runs).
 
 ## Core and std: providers
 
-The compositor is split into core and std (`design/modular-framework.md`, sections 9 and 28). Core is mechanism and a
+The compositor is split into core and std. Core is mechanism and a
 minimal safe default; what the desktop does by convention is a provider, and providers are std's. `libgnoblin-std.so.1`
 registers them with the core through the C ABI (`provider_register`, with the vtables of `gnoblin-core-abi`), so the core
 carries no std code and no cargo feature chooses between the two:

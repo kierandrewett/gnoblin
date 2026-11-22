@@ -1,6 +1,6 @@
 //! Smithay protocol handlers, one module per protocol.
 //!
-//! This is the Wayland engine shown in `design/rust-compositor.md`: the first slice
+//! This is the Wayland engine: the first slice
 //! that runs. It serves a real client over a real socket and drives the real
 //! handlers, so what it proves is a round trip rather than a compile.
 //!

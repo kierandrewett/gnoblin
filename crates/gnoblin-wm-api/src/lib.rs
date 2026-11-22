@@ -1,4 +1,4 @@
-//! The window-manager provider contract (`design/modular-framework.md`, 9.4).
+//! The window-manager provider contract.
 //!
 //! Core holds mechanism and no policy about where windows go. What decides that, while no shell holds the tree, is a
 //! provider: something that implements [`WindowManager`]. The compositor keeps one provider per session and applies the

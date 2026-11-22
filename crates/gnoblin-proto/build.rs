@@ -3,7 +3,7 @@
 //! Nothing the IPC compiles is checked in: `cargo build` runs this script, which
 //! reads `crates/gnoblin-schema/schema/*.toml`, renders one `.proto` document per
 //! namespace and the Rust table of secret members, and compiles them where they
-//! were written (design/rust-compositor.md, "One IPC" and D16). A clean checkout
+//! were written. A clean checkout
 //! therefore needs no generator step first, and a schema edit is a build rather
 //! than a regeneration somebody has to remember.
 //!

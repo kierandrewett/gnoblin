@@ -1,7 +1,7 @@
 //! The Protocol Buffers text the IPC wire is compiled from.
 //!
 //! The schema is the source of truth and the `.proto` text is build input
-//! (design/rust-compositor.md, "One IPC" and D16). `gnoblin-proto`'s build script
+//! for `gnoblin-proto`. Its build script
 //! renders this text into `OUT_DIR` and compiles it there, so nothing generated is
 //! checked in and a clean checkout builds with a plain `cargo build`.
 //!

@@ -7,7 +7,7 @@
 //! - **The endpoint's own socket** (`eis.sock`) has one decision for every client that
 //!   connects to it, which [`EisGate::grant`] and [`EisGate::refuse`] make. Nothing in
 //!   a running session calls them: the socket stays default deny, and the test harness
-//!   is what grants it (`design/rust-compositor.md`, "one input injection path").
+//!   is what grants it (one input injection path).
 //! - **A remote desktop session** has a decision of its own. The portal asks the user,
 //!   and the IPC members `remote.grant` and `remote.refuse` ([`crate::ipc`]) bring the
 //!   answer here as [`EisGate::grant_session`] and [`EisGate::refuse_session`].

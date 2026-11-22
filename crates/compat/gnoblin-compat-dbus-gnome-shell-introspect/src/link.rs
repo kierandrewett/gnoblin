@@ -1,7 +1,6 @@
 //! The IPC client half: one subscription, folded into the window list and the screen size.
 //!
-//! The window list is the compositor's (`design/rust-compositor.md`, the redirect map's
-//! `org.gnome.Shell.Introspect` row), so this module is a [`gnoblin_client::Client`] and
+//! The window list is the compositor's, so this module is a [`gnoblin_client::Client`] and
 //! nothing else: it subscribes once and folds every observation into a mirror of the views,
 //! because a subscription delivers diffs and `GetWindows` answers with the whole list.
 //!

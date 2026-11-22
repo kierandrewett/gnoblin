@@ -1,4 +1,4 @@
-//! The portal dialog models (design/rust-compositor.md, D19).
+//! The portal dialog models.
 //!
 //! - [`model`]: interface names, typed payloads, and the dialog models. Plain data,
 //!   no drawing, no clock, no D-Bus. The compositor links this module for its

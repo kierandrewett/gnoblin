@@ -1,4 +1,4 @@
-//! The frame-cost watchdog of the user shader pass, as the composer holds it (`design/modular-framework.md` 37.2 and 37.10).
+//! The frame-cost watchdog of the user shader pass, as the composer holds it.
 //!
 //! The policy is `gnoblin_render_frame::shader::watchdog`; this is the glue. A renderer records what each shader source cost on the frame it
 //! drew (`OutputFrame::shader_timings`), the backend tells the host the draw is over ([`Composer::shader_drawn`]), and the composer

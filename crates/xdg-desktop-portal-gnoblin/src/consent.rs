@@ -103,8 +103,7 @@ pub const OFFERER: ClientId = ClientId::new(0);
 
 /// Which portal interface a session belongs to.
 ///
-/// The set is closed because the backend serves these and routes the rest
-/// (design/rust-compositor.md, "Portals"), and the names are the interface names with
+/// The set is closed because the backend serves these and routes the rest, and the names are the interface names with
 /// the `org.freedesktop.impl.portal.` prefix removed.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Interface {

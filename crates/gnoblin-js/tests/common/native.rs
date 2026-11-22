@@ -1,4 +1,4 @@
-//! The shell over the real core and the real std library, in the test's own process (design/modular-framework.md, 25.3, B1).
+//! The shell over the real core and the real std library, in the test's own process.
 //!
 //! The scenarios of this crate's tests drive a `JsShell` over the fake compositor. A shell that uses the desktop library
 //! (`gnoblin-std`) needs more than the fake: `__gnoblinStd` calls `libgnoblin-std`, which is a guest of the core and works on the

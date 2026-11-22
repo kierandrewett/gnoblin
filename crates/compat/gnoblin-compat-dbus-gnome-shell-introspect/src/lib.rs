@@ -1,7 +1,6 @@
 //! `org.gnome.Shell.Introspect` for the portal's window picker.
 //!
-//! This is `gnoblin-compat-dbus-gnome-shell-introspect` of `design/rust-compositor.md`
-//! ("Compatibility crates" and the redirect map's `org.gnome.Shell.Introspect` row): the
+//! This is `gnoblin-compat-dbus-gnome-shell-introspect`, the
 //! adapter that answers "which windows are there, what are they called and how big is the
 //! desktop". `xdg-desktop-portal-gnome`'s window picker is its consumer, and so is anything
 //! else that needs a window list without a Wayland protocol for it.

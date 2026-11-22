@@ -1,4 +1,4 @@
-//! Examples 2, 6 and 9 of `design/modular-framework.md` section 12, run for real: the shipped binary on a headless backend serving a native
+//! Examples 2, 6 and 9 (`examples/README.md`), run for real: the shipped binary on a headless backend serving a native
 //! shell that links `libgnoblin-std.so.1` (which links the core), with a real Wayland client that maps windows and a virtual keyboard that
 //! types the chords. Until these tests existed the three were proved only against the fake compositor of the std crate's driver, which is
 //! a proof of what the shell asks for and not of what a compositor does with it.

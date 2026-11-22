@@ -13,7 +13,7 @@ use crate::serving;
 use crate::support::native_shell::{Start, start_script, wait_for_window};
 use crate::support::{Mapper, scene};
 
-/// The built-in fade is 200 ms (`design/modular-framework.md`, D11); a window that faded is still in the tree this long after its close, and
+/// The built-in fade is 200 ms; a window that faded is still in the tree this long after its close, and
 /// a window that did not is gone sooner. The boundary has the slack of a loaded machine on both sides.
 const BOUNDARY: Duration = Duration::from_millis(120);
 

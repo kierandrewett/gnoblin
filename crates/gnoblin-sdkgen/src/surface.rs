@@ -279,7 +279,7 @@ fn header(title: &str, source: &str) -> String {
 # different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
 # no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
 #
-# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# `released none` means the surface is still unstable: the release commit sets it
 # to the version that ships, and from then on its entries are frozen.
 "
     )

@@ -2,7 +2,7 @@
 //!
 //! The loop that [`Server::run`](crate::Server::run) drives wakes for a client, a
 //! backend event, a control command or the loop's timeout. Every wake ends here, and
-//! here is where the Frame path of `design/rust-compositor.md` runs: the host takes
+//! here is where the frame path runs: the host takes
 //! the scene's damage once, each output asks for its frame, and an output with no
 //! damage draws nothing.
 //!

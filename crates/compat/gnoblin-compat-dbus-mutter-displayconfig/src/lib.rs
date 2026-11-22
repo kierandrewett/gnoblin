@@ -1,7 +1,6 @@
 //! `org.gnome.Mutter.DisplayConfig` for GNOME Settings and the stock portal.
 //!
-//! This is `gnoblin-compat-dbus-mutter-displayconfig` of `design/rust-compositor.md`
-//! ("Compatibility crates" and the redirect map's `DisplayConfig` row): the adapter
+//! This is `gnoblin-compat-dbus-mutter-displayconfig`, the adapter
 //! that answers a caller asking what the desktop's monitors are and, when a user
 //! allows state changes, applies a new arrangement.
 //!

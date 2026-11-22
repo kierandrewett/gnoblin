@@ -8,7 +8,7 @@
 //! This crate holds `extern` declarations of the installed `libgnoblin-std` and safe wrappers over its function table, and never a copy
 //! of the library: the link is to the library the user has installed, so a compatible update changes what a shell runs on without
 //! recompiling it. The process then maps the chain shell -> `libgnoblin-std.so.1` -> `libgnoblin-core.so.1`, once each.
-//! `design/modular-framework.md` section 9 is the contract.
+//! `gnoblin-std-abi` is the contract.
 //!
 //! ```ignore
 //! // Cargo.toml: [lib] crate-type = ["cdylib"]   [dependencies] gnoblin-core = "1"  gnoblin-std = "1"

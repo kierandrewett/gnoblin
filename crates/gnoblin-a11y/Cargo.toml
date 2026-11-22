@@ -10,7 +10,6 @@ publish.workspace = true
 [lints]
 workspace = true
 
-# The shared primitives (design/rust-compositor.md, "Dependency rules";
-# `gnoblin-types` is a foundation crate).
+# The shared primitives (`gnoblin-types` is a foundation crate).
 [dependencies]
 gnoblin-types.workspace = true

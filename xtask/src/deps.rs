@@ -1,4 +1,4 @@
-//! The dependency rules from design/rust-compositor.md, checked over the
+//! The workspace dependency rules, checked over the
 //! workspace graph.
 //!
 //! The rules are what make concurrent lanes safe: a lane may change a crate
@@ -123,7 +123,7 @@ const HUB_FRAME: &str = "gnoblin-render-frame";
 /// cycle.
 ///
 /// `gnoblin-shell-host` is the language-neutral host of the shell: generations, the loader, the
-/// strike policy, the watcher and the reload protocol (`design/modular-framework.md` section 4.1).
+/// strike policy, the watcher and the reload protocol.
 /// The core library (`gnoblin-core-impl`) and the JavaScript runtime both consume it, so it is
 /// below both: it may name the ABI types and the log facade and no compositor or engine crate.
 /// The edge from the compositor side to it is allowed, because clients are hosted by the
@@ -136,7 +136,7 @@ const CLIENT_SIDE: &[&str] = &[
     "xdg-desktop-portal-gnoblin",
 ];
 
-/// The SDK tier of design/modular-framework.md, section 4.4: the crates a shell author depends on
+/// The SDK tier: the crates a shell author depends on
 /// (`gnoblin-core = "1"`, `gnoblin-std = "1"`). They hold `extern` declarations and safe wrappers and
 /// are compiled into the shell, so they may never carry a workspace crate along (see [`sdk_isolation`]).
 const SDK: &[&str] = &[
@@ -755,8 +755,8 @@ fn types_roots(package: &Package, dep: &Dep) -> Option<String> {
     ))
 }
 
-/// The portal's built-in dialog screens and their dialog crates (design/rust-compositor.md,
-/// D19). `gnoblin-portal` draws the dialogs, and only the compositor may depend on it,
+/// The portal's built-in dialog screens and their dialog crates.
+/// `gnoblin-portal` draws the dialogs, and only the compositor may depend on it,
 /// where portal.ui requests land. The dialog crates are drawn by `gnoblin-portal` alone.
 /// The egui layer `gnoblin-portal-ui` is named only by the screens, the dialog crates and
 /// the compositor (for `paint::Frame`). The relay `xdg-desktop-portal-gnoblin` stays a
@@ -963,7 +963,7 @@ fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
 }
 
 /// The launcher reaches the compositor only through `libgnoblin-core.so.1`: the link stub of `build.rs` and the one call of
-/// `gnoblin_main` (design/modular-framework.md, 4.4). A Cargo edge from the launcher to the composition root, or to the
+/// `gnoblin_main`. A Cargo edge from the launcher to the composition root, or to the
 /// library that links it, would compile the compositor into the executable as well as into the library: two copies, and
 /// a launcher that is a second composition root again. A development dependency is exempt for the reason the other binary
 /// rules give: a test may build a session in its own process, and that edge cannot ship.
@@ -1387,7 +1387,7 @@ fn sdkgen_isolation(package: &Package, dep: &Dep) -> Option<String> {
 }
 
 /// Nothing depends on an implementation crate. The loader finds a cdylib by file name, and the launcher
-/// links the real library through a stub that carries its SONAME (design/modular-framework.md, 4.3), so
+/// links the real library through a stub that carries its SONAME, so
 /// a Cargo edge would only compile the whole implementation a second time. A development dependency is
 /// exempt: a test target may load the implementation, and that edge cannot ship.
 fn impl_sealed(package: &Package, dep: &Dep) -> Option<String> {
@@ -1409,7 +1409,7 @@ fn impl_sealed(package: &Package, dep: &Dep) -> Option<String> {
 /// stock provider in a session of their own.
 ///
 /// No crate outside the std tier names a std crate, `gnoblin-compositor` included: std reaches the core through the C ABI
-/// (`provider_register`, `design/modular-framework.md`, 9.4), so a build of the core compiles no std code.
+/// (`provider_register`), so a build of the core compiles no std code.
 fn std_below_core(package: &Package, dep: &Dep) -> Option<String> {
     if dep.kind == DepKind::Dev {
         return None;

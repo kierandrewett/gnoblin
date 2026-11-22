@@ -10,7 +10,7 @@
 //! ## What is not here, and why
 //!
 //! A full session needs a backend and a seat, and a compat crate may not link the
-//! engine (`design/rust-compositor.md`, "Dependency rules": a compat crate depends on
+//! engine (a compat crate depends on
 //! its own transport and not on the crates that make a session run). So the compositor
 //! side is the smallest display that can hold the global: a hand-written `wl_compositor`
 //! that creates surfaces, and a `Host` that answers the two host traits. Everything the

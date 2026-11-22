@@ -1,5 +1,4 @@
-//! Native hot reload (`design/modular-framework.md` sections 8.1 and 12): example 10, example 18, and the lifetime guarantees of the
-//! reload protocol (M5.1, M5.3, M5.4).
+//! Native hot reload: example 10, example 18, and the lifetime guarantees of the reload protocol.
 //!
 //! A real shell `.so` is loaded by `NativeShell` into a process that links the installed core (the launcher fixture), over the fake
 //! compositor, and replaced while it runs. Example 10 is built twice from one source in a temporary project, once as it is in
@@ -11,7 +10,7 @@
 //!
 //! What this does not prove, because the fake compositor has no Wayland behind it: that a real client's connection and surface
 //! survive. It proves the property that makes that true, that the compositor-owned nodes (the windows) are neither destroyed nor
-//! made again and keep their ids; `design/modular-framework.md` section 20 says what the real-compositor test still needs.
+//! made again and keep their ids. The real-compositor half is `crates/gnoblin/tests/reload_session.rs`.
 
 use std::collections::BTreeMap;
 use std::fs;

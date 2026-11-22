@@ -6,8 +6,7 @@
 //! - the library validates every option and argument against it and takes its defaults from it, so the list below is what
 //!   the library accepts and nothing else;
 //! - `cargo xtask gen-sdks` reads it, so the typed wrapper of every language (`DwindleLayout`, `new DwindleLayout({ ratio })`,
-//!   `DwindleLayout(ratio=0.6)`) is generated from it and never written by hand;
-//! - the design notes' tables (`design/modular-framework.md` section 22) are written from it.
+//!   `DwindleLayout(ratio=0.6)`) is generated from it and never written by hand.
 //!
 //! An option or an action is named by its text, in `snake_case`, and carried by a [`GnoblinStdOption`]: the name, the
 //! [`STD_VALUE_*`](crate::STD_VALUE_BOOL) kind and the value. An enumeration travels as the number of its member.

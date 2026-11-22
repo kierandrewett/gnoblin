@@ -2,7 +2,7 @@
 //!
 //! Parity is data in this workspace: one declarative scenario runs against
 //! several targets, and the report says whether the behaviour matched, differed,
-//! or could not be run yet (design/rust-compositor.md, "The parity harness").
+//! or could not be run yet.
 //! The pieces are separated so each can be tested on its own:
 //!
 //! - [`scenario`] reads the TOML files under `tests/parity/scenarios`.

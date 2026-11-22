@@ -1,4 +1,4 @@
-//! The running native shell and the reload protocol (`design/modular-framework.md` section 8.1).
+//! The running native shell and the reload protocol.
 
 use std::fmt;
 use std::path::{Path, PathBuf};

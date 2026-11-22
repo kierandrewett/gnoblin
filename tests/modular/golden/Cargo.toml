@@ -1,4 +1,4 @@
-# The golden shells of example 12 (design/modular-framework.md, 5.8 and 12): three small shells built against ABI 1.0 and
+# The golden shells of example 12: three small shells built against ABI 1.0 and
 # stored as binaries under `bin/`, so every later core and std library is run with shells that were NOT recompiled for it.
 #
 # This is a workspace of its own, outside the repository's, so a build of the repository never rebuilds them: the stored

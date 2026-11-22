@@ -1,8 +1,7 @@
 //! Pure scene graph, visual transforms, effects, damage and the tween player
 //! for the Gnoblin compositor.
 //!
-//! This crate is the scene-side half of the Renderer card in
-//! `design/rust-compositor.md` and contains no GPU code: no GL, no Smithay type,
+//! This crate is the scene-side half of the renderer and contains no GPU code: no GL, no Smithay type,
 //! no output, no clock. `gnoblin-compositor` performs the draw calls this crate
 //! describes, drives [`TweenPlayer::advance`] from its frame clock, and forwards
 //! [`Scene::take_damage`] to the renderer.

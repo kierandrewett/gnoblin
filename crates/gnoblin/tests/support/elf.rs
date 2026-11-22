@@ -1,4 +1,4 @@
-//! Reading a shared object the way `design/modular-framework.md` section 10 asks it to be validated: `readelf -d` for what it needs,
+//! Reading a shared object to validate it: `readelf -d` for what it needs,
 //! `nm -D` for what it defines and wants, `ldd` for where the loader finds it. The sessions that run a native shell and the
 //! upgrade suite share these, so the same facts are asserted of a golden binary, of an example and of a library in a prefix.
 //!
@@ -82,7 +82,7 @@ pub fn is_std(name: &str) -> bool {
     name == "libgnoblin-std.so.1"
 }
 
-/// The dependency facts of a shell, core-only or std (`design/modular-framework.md` 11): it links the installed core, and std when it
+/// The dependency facts of a shell, core-only or std: it links the installed core, and std when it
 /// uses std, and no other library of ours; it defines nothing but `gnoshell_entry_v1` (no copy of the compositor, the core or std);
 /// every `gnoblin_` symbol it needs is one the core (or std) exports.
 #[track_caller]

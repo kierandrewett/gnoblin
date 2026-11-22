@@ -33,7 +33,7 @@ gnoblin-testkit = { path = "../gnoblin-testkit" }
 # rather than `forbid`.
 #
 # The exception is `src/inherit.rs`, which adopts the inherited descriptor the guardian
-# hands a role child (design/rust-compositor.md, "Process model"). No safe Rust API turns
+# hands a role child. No safe Rust API turns
 # an integer into a descriptor — `OwnedFd` is only ever built from another owner — so the
 # conversion is one `unsafe` block with a `SAFETY` comment in a named module, which is
 # what the workspace `Cargo.toml` describes for a crate that must cross that line. Every

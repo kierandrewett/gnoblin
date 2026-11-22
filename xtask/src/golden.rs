@@ -1,4 +1,4 @@
-//! The golden shells of example 12, as `cargo xtask abi-check` sees them (`design/modular-framework.md` 5.8 and 12).
+//! The golden shells of example 12, as `cargo xtask abi-check` sees them.
 //!
 //! `tests/modular/golden/bin/` holds three shell binaries built against ABI 1.0 (two core-only, one of which writes an effect list with
 //! the `GnoblinEffect` of before the shader fields, and a std one), and

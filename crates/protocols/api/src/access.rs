@@ -3,7 +3,7 @@
 //! The plan's safety table states the rule this module performs: "Access is decided
 //! per client, not only per global. Sandboxed clients (`wp_security_context_v1`) do
 //! not see screencopy, data-control, layer-shell or foreign-toplevel management
-//! unless policy allows it" (`design/rust-compositor.md`, "Safety model").
+//! unless policy allows it".
 //!
 //! ## Why a roster rather than a flag
 //!

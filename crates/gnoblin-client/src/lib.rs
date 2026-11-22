@@ -1,8 +1,7 @@
 //! Rust client library for the IPC, used by gnoblinctl, the runtime, services, the
 //! portal, tests and shells.
 //!
-//! This is the client half of `design/rust-compositor.md` ("One IPC" and "Object
-//! model and IPC"): one vocabulary for shells, `gnoblinctl`, the portal, the
+//! This is the client half of the IPC: one vocabulary for shells, `gnoblinctl`, the portal, the
 //! services role and the script runtime, spoken over [`gnoblin_proto`]'s envelopes.
 //!
 //! A client does four things, and this crate does nothing else:

@@ -1,10 +1,8 @@
 # The Gnoblin Cargo workspace.
 #
-# Layout, crate ownership and the dependency rules enforced by `cargo xtask
-# deps` come from design/rust-compositor.md ("Project structure" and
-# "Dependency rules"). This manifest holds no code: it lists members, the shared
-# package fields, the shared lint levels and the pinned versions that members
-# inherit from `[workspace.dependencies]`.
+# The dependency rules are enforced by `cargo xtask deps` (`xtask/src/deps.rs`). This manifest holds no code: it
+# lists members, the shared package fields, the shared lint levels and the pinned versions that members inherit from
+# `[workspace.dependencies]`.
 
 [workspace]
 resolver = "3"
@@ -145,8 +143,7 @@ exclude = ["extensions"]
 
 [workspace.package]
 # The rewrite ships as 0.2.0 and the IPC version is exactly the Gnoblin version,
-# so candidate builds are `0.2.0-alpha.N` (design/rust-compositor.md,
-# "Versioning"). The release workflow, tracked in issue #379, sets the released
+# so candidate builds are `0.2.0-alpha.N`. The release workflow, tracked in issue #379, sets the released
 # version; do not edit this by hand.
 version = "0.2.0-alpha.0"
 edition = "2024"
@@ -185,7 +182,7 @@ all = { level = "deny", priority = -1 }
 # provider, a runtime module) and counts it as a strike instead of ending the session, and
 # `gnoblin-js`'s supervisor already relies on unwinding through host frames. `panic = "abort"` in
 # any profile would turn the first such panic into a process abort, so `cargo xtask deps` fails
-# a workspace that sets it (design/modular-framework.md, 5.7). `test` and `bench` inherit these.
+# a workspace that sets it. `test` and `bench` inherit these.
 [profile.dev]
 panic = "unwind"
 
@@ -199,7 +196,7 @@ panic = "unwind"
 # prost-types and prost-reflect (Apache-2.0), protox and protox-parse (MIT or
 # Apache-2.0), serde and serde_json (MIT or Apache-2.0), toml (MIT).
 [workspace.dependencies]
-# Protocol Buffers messages for the IPC (design/rust-compositor.md, D16).
+# Protocol Buffers messages for the IPC.
 prost = "0.14.4"
 # `build.rs` in gnoblin-proto generates the `.proto` text from the schema and
 # compiles it with the pure-Rust front end, so nothing generated is checked in and a
@@ -237,9 +234,8 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.140"
 # The schema file format (crates/gnoblin-schema/src/parse.rs says why TOML).
 toml = "1.2.0"
-# The Wayland compositor library the engine is built on (design/rust-compositor.md,
-# D7). A git revision, not a crates.io release: 0.7.0 is from 2025-06-24 and lacks
-# protocols the session needs (`ext-image-copy-capture-v1`), so the pin tracks
+# The Wayland compositor library the engine is built on. A git revision, not a crates.io release: 0.7.0 is from
+# 2025-06-24 and lacks protocols the session needs (`ext-image-copy-capture-v1`), so the pin tracks
 # master until a release carries them. Every member takes the same revision, and a
 # bump is its own change with a full parity run.
 #
@@ -369,8 +365,7 @@ gnoblin-portal-appchooser = { path = "crates/gnoblin-portal-appchooser" }
 # The egui layer of the dialogs: the DialogUi trait, the shell and the CPU painter (D19).
 gnoblin-portal-ui = { path = "crates/gnoblin-portal-ui" }
 # D-Bus, for the services role and the compat adapters that serve an upstream bus
-# name (design/rust-compositor.md, "Providers and slots" and "Compatibility
-# adapters", rule 4). Only client-side crates may name it: the dependency rules in
+# name. Only client-side crates may name it: the dependency rules in
 # `xtask/src/deps.rs` refuse `zbus` in a foundation crate, because the policy and
 # model layers must work with no bus at all.
 #

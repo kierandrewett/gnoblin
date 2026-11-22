@@ -3,7 +3,7 @@
 //! The modular framework makes dynamic linking part of the product, so "it builds" is not enough: the installed core must
 //! carry the right SONAME and export exactly the ABI, the launcher must record the core once and find it with no
 //! `LD_LIBRARY_PATH`, a shell must link the core and never carry a copy of it, and the development files must let a C program
-//! link and run. `design/modular-framework.md` section 11 lists the checks; this is that list as a command, over files read
+//! link and run. This command is those checks, over files read
 //! with `elf.rs` (cross-checked against `readelf` and `nm` by its tests). The run-time half (one core mapping in a live
 //! process) is a test of the sessions, not a static check.
 //!
@@ -353,7 +353,7 @@ pub fn check_resolution(file: &Path, elf: &Elf, system_dirs: &[PathBuf]) -> (Vec
     (resolved, problems)
 }
 
-/// The paths the layout of `design/modular-framework.md` section 11 puts in a tree that carries the core, which the manifest
+/// The paths the install layout puts in a tree that carries the core, which the manifest
 /// check cannot supply: it only proves that what is listed is there.
 pub fn check_layout(root: &Path, libdir: &str) -> Vec<String> {
     let mut problems = Vec::new();

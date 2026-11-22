@@ -1,9 +1,8 @@
 //! The services role's shared machinery: the slot registry, the request state machine and
 //! the connection every agent offers through.
 //!
-//! This crate is an **IPC client** of the compositor (`design/rust-compositor.md`, "Providers
-//! and slots"). It depends on `gnoblin-client` and the request vocabulary in `gnoblin-model`,
-//! never on an engine crate, so it runs in the services process beside the compositor.
+//! This crate is an **IPC client** of the compositor. It depends on `gnoblin-client` and the request vocabulary in
+//! `gnoblin-model`, never on an engine crate, so it runs in the services process beside the compositor.
 //!
 //! - [`slot`], the slot registry. Every optional capability is a slot with one provider
 //!   ([`CapabilitySlot`]). The state is published as the `session` object's `slot_*`

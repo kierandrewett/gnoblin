@@ -1,8 +1,8 @@
 //! The render path of the backend: the session scene's composition into a frame, and the
 //! choice of renderer that draws it.
 //!
-//! This is the Renderer card of `design/rust-compositor.md` at the mechanism layer
-//! (D12: GLES now, Pixman for software). The parts live in their own crates, so each
+//! This is the renderer at the mechanism layer (GLES, and Pixman for software). The parts live in their own crates, so
+//! each
 //! renderer's external libraries stay out of the others:
 //!
 //! | Crate                      | Owns                                                                |

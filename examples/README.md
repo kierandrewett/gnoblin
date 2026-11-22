@@ -1,7 +1,7 @@
 # Examples
 
-One directory per example of the modular framework, numbered as the specification numbers them (design/modular-framework.md,
-section 12). An example that exists in several languages keeps them side by side in its directory: the Rust shell is the Cargo
+One directory per example of the modular framework, numbered as the table below numbers them. An example that exists in
+several languages keeps them side by side in its directory: the Rust shell is the Cargo
 project (`Cargo.toml`, `src/lib.rs`), the Python shell is `shell.py` and the TypeScript shell is `shell.ts`. Each entry file starts
 with a comment that says what the shell shows and how to run it.
 
@@ -68,5 +68,3 @@ The numbers 11 to 18 are behaviours, not shells, and run on the examples above:
 | 16  | Clear failure when there is no shell       | `gnoblin` with no shell anywhere says where it looked and starts no compositor                                            |
 | 17  | Correct operation without `libgnoblin-std` | examples 1, 4 and 8 on an install with no std library; a shell that imports std is told which library is missing          |
 | 18  | Recovery from a failed reload              | build a broken `10-hot-reload` while it runs: the running shell keeps serving and the log gives the reason                |
-
-Which test runs each one in a real session, and its result, is the table in design/modular-framework.md, section 34.2.

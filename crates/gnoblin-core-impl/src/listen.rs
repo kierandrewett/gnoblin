@@ -112,7 +112,7 @@ pub(crate) fn on_node(
 
 // ---- input claims -----------------------------------------------------------------------------------------------------
 
-/// The seat call a claim kind makes: its method, its second integer and its text (see `design/modular-framework.md` 5.9).
+/// The seat call a claim kind makes: its method, its second integer and its text.
 fn claim_call(
     spec: &ClaimSpec<'_>,
     subject: &str,

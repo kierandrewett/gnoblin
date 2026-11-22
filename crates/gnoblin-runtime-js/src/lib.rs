@@ -1,7 +1,7 @@
 //! `libgnoblin-runtime-js`: the JavaScript and TypeScript runtime of the shell host.
 //!
 //! The library exports one symbol, `gnoruntime_entry_v1`, which returns a static [`GnoblinRuntimeEntry`]
-//! (`design/modular-framework.md` sections 5.10 and 10.2). The core's loader opens it, once, when a `.js`, `.mjs`, `.ts` or `.mts`
+//! (the runtime entry of `gnoblin-core-abi`). The core's loader opens it, once, when a `.js`, `.mjs`, `.ts` or `.mts`
 //! shell is selected, and calls `start` for each generation of the script. The engine is `gnoblin-js` (QuickJS-ng, the oxc type
 //! stripper, the module loader with its confinement, the generation with its budgets, the bytecode cache); the shell over the
 //! compositor's tree is its `JsRole`. Neither the engine nor the type stripper is linked into the `gnoblin` binary any more: a

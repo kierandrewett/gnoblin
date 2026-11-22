@@ -3,7 +3,7 @@
 //! A shell is an ordinary Rust crate built as a `cdylib`. It depends on this crate, which holds `extern` declarations of
 //! the installed `libgnoblin-core` and safe wrappers over them, and never a copy of the compositor: the link is to the
 //! library the user has installed, so a compatible update of that library changes what a shell runs on without
-//! recompiling it. `design/modular-framework.md` section 5 is the contract behind the wrappers.
+//! recompiling it. `gnoblin-core-abi` is the contract behind the wrappers.
 //!
 //! ```ignore
 //! // Cargo.toml: [lib] crate-type = ["cdylib"]   [dependencies] gnoblin-core = "1"

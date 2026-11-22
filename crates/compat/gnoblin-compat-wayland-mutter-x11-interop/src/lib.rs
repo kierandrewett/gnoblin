@@ -1,7 +1,7 @@
 //! `mutter_x11_interop`: a Wayland dialog's parent when the parent is an X11 window.
 //!
-//! This is `gnoblin-compat-wayland-mutter-x11-interop` of `design/rust-compositor.md` (the
-//! redirect map: "generic parent relation"). A portal-built dialog is a Wayland toplevel,
+//! This is `gnoblin-compat-wayland-mutter-x11-interop`: the generic parent relation. A portal-built dialog is a Wayland
+//! toplevel,
 //! but the window it belongs to can be an X11 one — an X11 application's file chooser, an
 //! X11 application's print dialog — and the protocol is how the portal says so: it names
 //! a `wl_surface` and an X11 window id, and the compositor is meant to make the Wayland

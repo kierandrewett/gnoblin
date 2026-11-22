@@ -1,6 +1,6 @@
 //! The portal dialog UI across the ABI: [`export_ui`] on std's side and [`ForeignUi`] on the core's.
 //!
-//! The wire form is a vtable, decided in `design/modular-framework.md` 28.3: the trait has seventeen methods and every one of
+//! The wire form is a vtable: the trait has seventeen methods and every one of
 //! them is a call with plain arguments, so each is one function of [`GnoblinUiVtable`]. What is not plain crosses as bytes the
 //! portal's own crate defines (`gnoblin_portal_core::wire` for a dialog, a verdict, an interface and a key;
 //! `DialogStyle::to_bytes` for the look), and what the provider hands back (a frame, the verdicts that settled) goes through a

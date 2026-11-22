@@ -2,7 +2,7 @@
 //!
 //! Every action is a subscription and, for a call, one method call: the IPC has no
 //! "read one object" member, because a snapshot plus diffs is the only way state
-//! leaves the graph (design/rust-compositor.md, "One IPC"). `list` and `get`
+//! leaves the graph. `list` and `get`
 //! therefore subscribe, print what the snapshot holds and close the connection;
 //! `watch` keeps reading; `call` sends the method and waits for the operation's one
 //! completion.

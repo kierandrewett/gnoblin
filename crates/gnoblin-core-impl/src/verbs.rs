@@ -1,5 +1,5 @@
 //! Verbs: the calls and signals of the compositor's `gnoblin` namespace (the session, idle, outputs), as the table's `call` and
-//! `subscribe` (`design/modular-framework.md` section 5.9).
+//! `subscribe`.
 //!
 //! The tree link carries nodes. The `gnoblin` namespace is the owner socket's object graph and it does not travel on the tree
 //! link: a verb such as `session.logout` is one `call` on the compositor's object, answered by an operation that finishes

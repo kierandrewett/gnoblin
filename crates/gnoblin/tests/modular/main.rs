@@ -1,4 +1,4 @@
-//! The examples of `design/modular-framework.md` section 12 that are scripts, run for real: `gnoblin ./shell.ts`, `./shell.js` and
+//! The examples of `examples/README.md` that are scripts, run for real: `gnoblin ./shell.ts`, `./shell.js` and
 //! `./shell.py` in a headless session, with a Wayland client that stays connected (one cargo test target, `modular`).
 //!
 //! Nothing here is linked into the test. The session is the shipped binary, which links `libgnoblin-core.so.1` and serves the

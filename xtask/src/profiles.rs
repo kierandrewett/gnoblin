@@ -1,6 +1,6 @@
 //! The `profile-unwind` check, run by `cargo xtask deps`: no Cargo profile may set `panic = "abort"`.
 //!
-//! The shell host contains a panic at every boundary it calls (design/modular-framework.md, 5.7): a
+//! The shell host contains a panic at every boundary it calls: a
 //! shell callback, a window-manager provider and a runtime module each run under `catch_unwind`, and
 //! `gnoblin-js`'s supervisor counts a panic as a strike. An aborting profile turns the first of them
 //! into the end of the session, silently, so the root manifest states `panic = "unwind"` and this

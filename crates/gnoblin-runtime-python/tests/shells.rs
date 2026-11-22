@@ -1,5 +1,5 @@
 //! The Python runtime library, loaded by the core's loader into a process that links the installed core, serving shells over the fake
-//! compositor (`design/modular-framework.md` sections 8.2, 10.1 and 12; M6.5).
+//! compositor.
 //!
 //! Nothing here is the runtime's own test harness: the process is the core's test launcher, the shell is a `.py` file the loader runs
 //! by its extension through `libgnoblin-runtime-python.so`, and what the tests read is the compositor's tree and the log. Examples 7

@@ -2,8 +2,7 @@
 # up, which version it speaks, and who provides each optional capability.
 #
 # Every member records `since`, the full Gnoblin version that added it. A client
-# compares `since` with the compositor's version before it uses a member
-# (design/rust-compositor.md, "Versioning").
+# compares `since` with the compositor's version before it uses a member.
 namespace = "gnoblin"
 version = "0.2.0"
 

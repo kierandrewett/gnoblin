@@ -1,8 +1,6 @@
 //! The redirect adapters' seam: how a protocol this crate does not own gets served.
 //!
-//! Two of the plan's compat crates speak the Wayland transport rather than D-Bus
-//! (`design/rust-compositor.md`, "Dependency rules": "the `gnoblin-wayland`
-//! extension trait for the Wayland redirects"). The adapter owns the protocol —
+//! Two compat crates speak the Wayland transport rather than D-Bus. The adapter owns the protocol —
 //! its XML, its generated bindings, its dispatch and its mapping — and this crate
 //! owns the compositor: the display, the globals, the activation authority and the
 //! window manager. The seam is the two traits below, and it points one way, so a

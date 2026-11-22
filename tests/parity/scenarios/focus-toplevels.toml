@@ -2,7 +2,7 @@
 # focus from the `activated` state of its xdg_toplevel configure, so the scenario needs no input device and reads the
 # same on any compositor: it runs on the Rust candidate and on stock Mutter 51 against one expectation.
 #
-# design/rust-compositor.md phase 2 lists "parity scenarios for single and multiple toplevels, popups, focus".
+# Parity for single and multiple toplevels, popups and focus.
 name = "focus-toplevels"
 description = "A new toplevel takes focus from the one before it, and closing it returns focus to that one."
 target = { candidate = {} }

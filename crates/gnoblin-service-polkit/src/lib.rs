@@ -158,7 +158,7 @@ impl Polkit {
     ///
     /// The reply to the waiting `BeginAuthentication` carries the decision and never
     /// the identity: an identity is what a provider says it authenticated, which is
-    /// not authority (design/rust-compositor.md, "Providers and slots").
+    /// not authority.
     pub fn answer(&self, request: RequestId, outcome: &RequestOutcome) -> Result<Decision, Refusal> {
         let (decision, sender) = {
             let mut shared = self.lock();

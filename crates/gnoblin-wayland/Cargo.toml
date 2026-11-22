@@ -52,7 +52,7 @@ thiserror.workspace = true
 # configures, focus changes and stacking.
 # The session lock policy: `ext-session-lock-v1` is a request
 # for `Lock::apply`, and the cover, the input gate and the embargo are what its
-# effects perform (design/rust-compositor.md, "Session lock: gnoblin-lock").
+# effects perform.
 gnoblin-lock = { path = "../gnoblin-lock" }
 gnoblin-lock-auth = { path = "../gnoblin-lock-auth" }
 # Output layout: the backend's connected outputs become a declarative layout here,
@@ -64,15 +64,13 @@ gnoblin-render = { path = "../gnoblin-render" }
 gnoblin-paint.workspace = true
 gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 # The backend trait and the headless backend this server drives. It is the only
-# engine crate this crate is allowed to name (design/rust-compositor.md,
-# "Dependency rules").
+# engine crate this crate is allowed to name.
 gnoblin-backend = { path = "../gnoblin-backend", default-features = false }
 # The cursor providers and theme lookup the seat draws the pointer from.
 gnoblin-cursor = { path = "../gnoblin-cursor" }
 # The input policy: the delivery order (grab, binding, client), the idle counter and
 # the key ownership that makes a release follow its press. Delivery order is a rule,
-# not a device, so the seat reads it here instead of restating it
-# (design/rust-compositor.md, "Input: gnoblin-input"). It is a hub crate, so naming it
+# not a device, so the seat reads it here instead of restating it. It is a hub crate, so naming it
 # is the one engine edge this crate is allowed besides the backend's.
 gnoblin-input = { path = "../gnoblin-input" }
 # The `protocols` configuration: which globals a session advertises is a document
@@ -81,8 +79,7 @@ gnoblin-input = { path = "../gnoblin-input" }
 # from the document's `input-sources`, so the layout list has one definition.
 gnoblin-config = { path = "../gnoblin-config" }
 # The capture rules and every capture session: a protocol handler asks for a claim and
-# this crate decides whether a frame may exist at all (design/rust-compositor.md,
-# Renderer card, "session owner").
+# this crate decides whether a frame may exist at all.
 gnoblin-capture = { path = "../gnoblin-capture" }
 # Activation authority: a token is minted once, redeemed once, refused when it
 # expired, reused or was never issued, and an app id alone never grants focus.
@@ -115,7 +112,7 @@ gnoblin-backend = { path = "../gnoblin-backend" }
 # The real-client harness the protocol crates' tests share: the session on a socket of its own and the client that binds.
 gnoblin-wayland-testkit = { path = "../protocols/testkit" }
 # The stock window manager the test sessions run. A development edge only: this crate holds and links no stock provider
-# (design/modular-framework.md, 9.4), and a session with none runs `NullWm`.
+# (a provider is registered by std), and a session with none runs `NullWm`.
 gnoblin-std-wm = { path = "../gnoblin-std-wm" }
 # The backend conformance test reads the committed status table and measures headless and nested against it.
 gnoblin-testkit = { path = "../gnoblin-testkit" }

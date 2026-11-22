@@ -1,7 +1,6 @@
 //! Xwayland startup and window management.
 //!
-//! This is the `gnoblin-xwayland` component of `design/rust-compositor.md` (D2: Smithay's
-//! XWM in-tree). It owns three things and nothing else:
+//! This is the `gnoblin-xwayland` component (Smithay's XWM in-tree). It owns three things and nothing else:
 //!
 //! - **The start parameters.** [`Settings`] is the `xwayland` configuration section
 //!   turned into what a start needs, and [`probe`] is the answer to "is there a server to

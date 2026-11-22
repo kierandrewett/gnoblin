@@ -1,4 +1,4 @@
-//! Golden shell of example 12, core only (`design/modular-framework.md` 5.8 and 12).
+//! Golden shell of example 12, core only.
 //!
 //! It is built once, against ABI 1.0, and stored as a binary. Every later core runs that file unchanged, so the one thing it
 //! says about itself matters: at start it logs the ABI it was built for and the ABI of the core it finds installed, which is

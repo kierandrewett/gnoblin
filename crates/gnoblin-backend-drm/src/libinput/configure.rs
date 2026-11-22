@@ -8,8 +8,8 @@
 //!
 //! # What this build does not ask a device for
 //!
-//! The libinput binding is built for libinput 1.19 and up (`design/rust-compositor.md`, "Distribution and
-//! toolchain"), and some settings need newer calls. They are refused with [`SettingRefusal::Unavailable`] and a
+//! The libinput binding is built for libinput 1.19 and up, and some settings need newer calls. They are refused
+//! with [`SettingRefusal::Unavailable`] and a
 //! reason, which is not the device's refusal: the same device would take them on a build with a newer floor.
 //!
 //! - A **custom acceleration curve** is libinput 1.23.

@@ -38,7 +38,7 @@ pipewire-test:
     cargo test --locked -p gnoblin-pipewire-export
     cargo test --locked -p gnoblin-wayland --test view_capture_e2e
 
-# Phase 1 acceptance of the modular framework (design/modular-framework.md, M1.8, M2.11): the core with no std code. The
+# The core with no std code. The
 # stock providers are std's and reach the core through `provider_register`, so the core's own build holds none of them.
 # This builds the compositor and the core library, fails if a std crate is in their dependency tree, and runs the suites whose
 # subject is a session with no provider: `NullWm` places windows at the origin, and a portal request is refused `no-ui`.
@@ -51,7 +51,7 @@ core-only:
 # Run the JavaScript conformance tests, including the ignored acceptance gates.
 spec-gate:
     cargo test -p gnoblin-js --test spec_conformance -- --include-ignored
-# Enforce the dependency rules in design/rust-compositor.md over `cargo metadata`.
+# Enforce the workspace dependency rules (xtask/src/deps.rs) over `cargo metadata`.
 deps:
     cargo xtask deps
 
@@ -92,7 +92,7 @@ abi-check:
 golden-check:
     tests/modular/golden/regenerate.sh --check
 
-# The modular framework's suites (design/modular-framework.md 12 and 34, M8.1 to M8.4). Stage the core and std libraries, then run the shipped
+# The modular framework's suites (examples/README.md). Stage the core and std libraries, then run the shipped
 # binary with shells of every language on a headless backend: the `modular` target (examples 2, 3, 4, 5, 6, 7, 9, 11 and 17 for scripts,
 # the duplicate-core check, the document the script role commits), `native_shell*` (examples 1 and 8, the failures, the verbs),
 # `reload_session` and `reload_scripts` (examples 10, 11 and 18 and the bound on retired libraries), `startup` (examples 13 to 16, and
@@ -156,8 +156,8 @@ stage *args:
 
 # Check how the session links and what it installs. The debug build tree first (the core staged, the binary recording
 # NEEDED libgnoblin-core.so.1 once and running with no LD_LIBRARY_PATH), then installs into three temporary trees (a private
-# prefix with lib, a /usr stage with lib64, a /usr stage with a multiarch library directory) and checks each against section
-# 11 of design/modular-framework.md: the core's SONAME and exports, no Rust runtime symbols, a shell fixture that needs the
+# prefix with lib, a /usr stage with lib64, a /usr stage with a multiarch library directory) and checks each with the rules
+# of `cargo xtask dist-check`: the core's SONAME and exports, no Rust runtime symbols, a shell fixture that needs the
 # core only and defines no gnoblin_*, every gnoblin NEEDED resolving inside the tree, links, header, pkg-config, the manifest
 # and the glibc floor. Needs a C compiler and pkg-config (a machine that links Rust has the first). See xtask/src/dist_check.rs.
 dist-check:

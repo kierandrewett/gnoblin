@@ -1,6 +1,6 @@
 //! Language dispatch: which module a path is, which runtime runs a script, and the runtime libraries the loader keeps open.
 //!
-//! `design/modular-framework.md` section 6 is the contract. A path is a native shell or a script, and a script is run by a
+//! A path is a native shell or a script, and a script is run by a
 //! runtime library that exports `gnoruntime_entry_v1`:
 //!
 //! | step | test                                                    | result                                                     |

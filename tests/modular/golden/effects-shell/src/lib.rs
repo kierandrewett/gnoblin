@@ -1,4 +1,4 @@
-//! Golden shell of example 12 that writes an effect list (`design/modular-framework.md` 5.8 and 12, `docs/abi-compatibility.md`).
+//! Golden shell of example 12 that writes an effect list (`docs/abi-compatibility.md`).
 //!
 //! `GnoblinEffect` is passed as an array, and it grew when the `shader` kind was added. This shell is built against the struct as it
 //! was before (152 bytes, no `source`, `params` or `n_params`) and stored as a binary, so running it on a core that has the larger

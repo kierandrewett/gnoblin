@@ -1,4 +1,4 @@
-//! Portal negotiation for `org.freedesktop.impl.portal.*` requests (design/rust-compositor.md, D19).
+//! Portal negotiation for `org.freedesktop.impl.portal.*` requests.
 //!
 //! Nothing here draws, reads a clock, touches D-Bus or spawns a process. The
 //! services role and the compositor feed events in with an explicit `now`
@@ -15,7 +15,7 @@
 //! What it does not hold is the dialog the user answers. That is a [`UiProvider`]: the built-in screens are std's
 //! (`gnoblin-std-impl`, registered through the C ABI and reached as a [`ForeignUi`](crate::providers::ForeignUi)), and a
 //! session with none runs [`NoUi`], which refuses every request `no-ui`, so a consent request that cannot be shown is
-//! never granted (design/modular-framework.md, 9.3).
+//! never granted.
 
 mod provider;
 mod style;

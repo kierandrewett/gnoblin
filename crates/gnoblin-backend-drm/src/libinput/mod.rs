@@ -1,6 +1,6 @@
 //! The seat's input devices: libinput over the session, mapped to the contract's events.
 //!
-//! This is the mechanism half of the Input card (design/rust-compositor.md, "Input"). The
+//! This is the mechanism half of input. The
 //! decisions are next door in [`map`] (what a device event means) and in
 //! `gnoblin_backend::input_settings` (what the configuration asks a device to be), both pure and
 //! unit-tested, and [`configure`] makes a device so. This module is what is left: a libinput context

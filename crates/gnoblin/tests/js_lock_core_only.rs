@@ -1,5 +1,5 @@
-//! A locked session whose shell has no lock screen: the proof of decision D7 of `design/modular-framework.md` (the lock
-//! card stays in core), against the real compositor.
+//! A locked session whose shell has no lock screen: the proof that the lock
+//! card stays in core, against the real compositor.
 //!
 //! A shell that imports only `gnoblin-core` gets no stock lock screen: that one is `gnoblin-std/lock`. The session must
 //! not be a black screen with no way back whatever the shell does, so the compositor's own card takes the password when

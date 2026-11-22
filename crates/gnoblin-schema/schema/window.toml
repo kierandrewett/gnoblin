@@ -14,7 +14,7 @@ type = "uint"
 since = "0.2.0"
 
 # The title the client set. Not trustworthy for attribution: any client can pick
-# one (design/rust-compositor.md, "Attribution is not authority").
+# one: attribution is not authority.
 [[object.property]]
 name = "title"
 type = "string"

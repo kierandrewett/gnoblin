@@ -1,6 +1,6 @@
 //! `cargo xtask watch-shell PROJECT`: rebuild a native shell when its source changes, so the compositor's `--watch` reloads it.
 //!
-//! The contract with a running compositor is the library file itself (`design/modular-framework.md` 8.4): the compositor watches the
+//! The contract with a running compositor is the library file itself: the compositor watches the
 //! module it loaded (`ModuleWatch`) and reloads when the file changes, so this tool needs no socket and no second trigger. A build
 //! that succeeds rewrites the library and the compositor reloads it; a build that fails leaves the library as it was, so the running
 //! shell stays, and the compiler's output is printed here and kept in the `ReloadController` status. The compositor never runs cargo.

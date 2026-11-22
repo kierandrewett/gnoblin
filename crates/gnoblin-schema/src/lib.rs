@@ -3,7 +3,7 @@
 //!
 //! This crate is the single source of truth the IPC, the client libraries, the
 //! script bindings, `gnoblinctl` and the API reference are generated from
-//! (design/rust-compositor.md, "One IPC" and "Contracts are data"). It holds the
+//! (contracts are data). It holds the
 //! model and its rules and nothing else: it knows no wire format, no socket and
 //! no compositor type, so generators and tests can depend on it freely.
 //!

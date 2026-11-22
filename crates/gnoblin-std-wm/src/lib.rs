@@ -1,4 +1,4 @@
-//! The stock window manager (`design/modular-framework.md`, 9.3 and 9.4).
+//! The stock window manager.
 //!
 //! [`Fallback`] is the provider a desktop runs while no shell holds the tree: it cascades new windows, focuses on map and
 //! on click, rotates focus when the focused window goes, and fits maximised and fullscreen windows to the output. It

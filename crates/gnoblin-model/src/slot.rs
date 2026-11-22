@@ -1,7 +1,6 @@
 //! The slot registry: which provider owns each optional capability.
 //!
-//! `design/rust-compositor.md` ("Providers and slots") makes every optional
-//! capability a named slot with one contract. The services role holds the default
+//! Every optional capability is a named slot with one contract. The services role holds the default
 //! provider for three of them and `prompt.secret` has none on purpose: no connection
 //! is the default, so a request for it is not offered to one and the compositor's
 //! own dialog serves it unless a shell claims the slot.

@@ -1,8 +1,7 @@
 //! The whole path, with real peers and no display: a session, a Wayland client and
 //! the real `gnoblinctl` library entry.
 //!
-//! This is the acceptance story of the compositor card in `design/rust-compositor.md`
-//! ("Process model", "One IPC", "Main data paths"): `gnoblin --role compositor`
+//! This is the acceptance story of the compositor: `gnoblin --role compositor`
 //! owns a Wayland socket and the IPC socket; a shell's applications map windows;
 //! `gnoblinctl` lists them, watches a focus change, and focuses a window through the
 //! `window.focus` method; a client that exits takes its window with it.

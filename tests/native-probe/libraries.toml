@@ -13,8 +13,7 @@
 #   run     a program or file the compositor starts or reads at run time
 #
 # `mutter-floor` is what the Mutter-based product needs for the same library, where the repository states one. It is a
-# comparison, not a requirement of the candidate: the rewrite removes these floors (design/rust-compositor.md, "What
-# the rewrite does and does not fix").
+# comparison, not a requirement of the candidate: the rewrite removes these floors.
 #
 # `packages` lists, for each package family, the packages that provide the pkg-config file or the shared object. The
 # families are the package managers: apt (Debian, Ubuntu), dnf (Fedora, Rocky), zypper (openSUSE), pacman (Arch) and
@@ -32,7 +31,7 @@ sonames = ["libinput.so.10"]
 floor = "1.19"
 floor-from = "input 0.10.0 feature libinput_1_19 is the highest enabled; input-sys 1.19.0 binds libinput 1.19"
 mutter-floor = "1.30"
-mutter-floor-from = "design/rust-compositor.md: patch 99/0059 (libinput 1.30)"
+mutter-floor-from = "the Mutter patch series: patch 99/0059 (libinput 1.30)"
 [library.packages]
 apt = ["libinput-dev"]
 dnf = ["libinput-devel"]
@@ -172,7 +171,7 @@ evidence = "wayland-sys 0.31.11 build.rs probes wayland-client and wayland-serve
 pkg-config = ["wayland-client", "wayland-server"]
 sonames = ["libwayland-client.so.0", "libwayland-server.so.0"]
 mutter-floor = "1.25"
-mutter-floor-from = "design/rust-compositor.md: patch 82-wayland-compat (wayland-server 1.25)"
+mutter-floor-from = "the Mutter patch series: patch 82-wayland-compat (wayland-server 1.25)"
 [library.packages]
 apt = ["libwayland-dev"]
 dnf = ["wayland-devel"]

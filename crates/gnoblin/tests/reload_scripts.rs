@@ -1,4 +1,4 @@
-//! Reloading a script shell in a real session (`design/modular-framework.md`, section 8.2; example 11).
+//! Reloading a script shell in a real session (example 11).
 //!
 //! A TypeScript shell and a Python shell, each of two files, run by the language runtimes in the compositor's process, with a real
 //! Wayland client connected throughout. Editing the **imported** module (not the entry) changes where the next window is placed:

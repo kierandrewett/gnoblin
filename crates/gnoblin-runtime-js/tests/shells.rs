@@ -1,5 +1,5 @@
 //! The JavaScript runtime library, loaded by the core's loader into a process that links the installed core, serving shells over the
-//! fake compositor (`design/modular-framework.md` sections 8.2, 10.2 and 12; M6.1, M6.2, M6.4).
+//! fake compositor.
 //!
 //! Nothing here is the engine's own test harness: the process is the core's test launcher, the shell is a file the loader runs
 //! by its extension through `libgnoblin-runtime-js.so`, and what the tests read is the compositor's tree and the log. Examples 4,

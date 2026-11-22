@@ -6,7 +6,7 @@
 //! a wall-clock instant. Comparing raw observations would therefore report a
 //! difference for every scenario, and a real difference would be invisible in the
 //! noise. The normaliser removes what the contract does not define and keeps
-//! everything it does (design/rust-compositor.md, "Normalisation").
+//! everything it does.
 //!
 //! Two rules, both keyed on the key rather than on the value, so a value that
 //! happens to look like an id is not touched:

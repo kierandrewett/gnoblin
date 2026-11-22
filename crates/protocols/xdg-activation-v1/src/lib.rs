@@ -2,9 +2,8 @@
 //!
 //! `xdg_activation_v1`: who may raise a window.
 //!
-//! The plan's rule is "Activation needs a valid token or a trusted context. A process
-//! ID or app ID alone never grants focus" (`design/rust-compositor.md`, "Safety
-//! model"). The token machine is `gnoblin-authority`'s: a token is minted once, earned
+//! The rule is: activation needs a valid token or a trusted context, and a process ID or app ID alone never grants
+//! focus. The token machine is `gnoblin-authority`'s: a token is minted once, earned
 //! by a trusted context, redeemed at most once, and refused when it was never issued,
 //! already used or has expired. What this module adds is the protocol half — what
 //! counts as asking for a token, and how a refusal becomes observable.

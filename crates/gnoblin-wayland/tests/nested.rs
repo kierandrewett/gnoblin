@@ -1,7 +1,7 @@
 //! The nested round trip: a session as a client of a session.
 //!
-//! These tests put the two halves of "Hosting sessions" (design/rust-compositor.md,
-//! D4) on one socket: a real `gnoblin-wayland` [`Server`] playing the host with a
+//! These tests put the two halves of hosting sessions on one socket: a real `gnoblin-wayland` [`Server`] playing the
+//! host with a
 //! headless output, and the real [`Nested`] backend connecting to it as a hosted
 //! session would. Nothing is simulated on either side of the wire — the host sends the
 //! configure, the nested backend draws, commits a `wl_shm` buffer and the host

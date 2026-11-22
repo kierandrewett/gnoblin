@@ -1,4 +1,4 @@
-//! A shell that runs inside the compositor process, on a thread of its own (design/modular-framework.md, D1 and M2.8).
+//! A shell that runs inside the compositor process, on a thread of its own.
 //!
 //! The compositor thread owns Smithay, the calloop loop and the scene, and it **never runs shell code**: a shell that is
 //! slow or hung cannot stall a frame. The shell runs on [`InProcShell`]'s thread and talks to the tree through an

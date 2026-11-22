@@ -8,8 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-# The services role is an IPC client (design/rust-compositor.md, "Providers and
-# slots"): it offers a request to the compositor and reads the one answer, so it
+# The services role is an IPC client: it offers a request to the compositor and reads the one answer, so it
 # names the client and never an engine crate.
 gnoblin-client = { path = "../gnoblin-client" }
 # The request vocabulary the answer travels in: `Answer`, `RequestOutcome`, the

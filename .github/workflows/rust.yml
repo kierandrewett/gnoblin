@@ -77,7 +77,7 @@ jobs:
         run: rustup show active-toolchain
       - name: Run the workspace gate
         run: just workspace-ci
-      # The binary links `libgnoblin-core.so.1` and the install tree has a layout (design/modular-framework.md section 11):
+      # The binary links `libgnoblin-core.so.1` and the install tree has a layout (`cargo xtask dist-check`):
       # NEEDED once, the core's SONAME and exports, the run path that finds the core with no LD_LIBRARY_PATH, a shell that
       # needs the core only, the links, header and pkg-config file. The workspace gate above built the debug tree this reuses.
       - name: Check the core link and the install layout
@@ -158,7 +158,7 @@ jobs:
       - name: Check the workspace with the minimum supported toolchain
         run: just msrv
 
-  # Phase 1 acceptance of the modular framework (design/modular-framework.md, M1.8, M2.11): the core builds with no std code and
+  # The core builds with no std code and
   # its no-provider behaviour holds. The stock providers are std's, registered through `provider_register`; this job builds the
   # compositor and the core library, fails if a std crate is in their dependency tree, and runs the suites of a session with no
   # provider (`NullWm`, and `no-ui` for a portal request).
@@ -183,7 +183,7 @@ jobs:
       - name: Build the core with no std crate and test a session with no provider
         run: just core-only
 
-  # The ABI contract (design/modular-framework.md 5.8, M8.3): `abi.lock` of the core and of std against their declarations, and the
+  # The ABI contract: `abi.lock` of the core and of std against their declarations, and the
   # golden shells of example 12 (`tests/modular/golden`) against their recorded hashes and dynamic facts. The workspace gate runs it
   # too; this job is the one that names it, and it starts after a few minutes of xtask compile instead of the whole workspace.
   abi:
@@ -206,8 +206,8 @@ jobs:
       - name: Check the ABI locks and the golden shells
         run: just abi-check
 
-  # The modular framework's sessions (M8.1 to M8.4): the shipped binary on a headless backend with shells of every language, the 18
-  # examples of design/modular-framework.md section 12 run for real (`just modular` lists the suites), the duplicate-core and
+  # The modular framework's sessions: the shipped binary on a headless backend with shells of every language, the 18
+  # examples of examples/README.md run for real (`just modular` lists the suites), the duplicate-core and
   # retired-library checks, the golden shells of example 12 run unchanged on libraries of the next ABI minor and refused by a core of
   # another major, and the lifetime tests of the core and std crates. It stages the core and std libraries first (the binary finds them
   # through its run path).

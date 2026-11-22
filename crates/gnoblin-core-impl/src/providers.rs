@@ -1,7 +1,7 @@
 //! `provider_register` and `setting_set`: the ABI face of the compositor's provider slots.
 //!
-//! A library that is not the core (std) registers the desktop policy the compositor asks it for as C vtables
-//! (`design/modular-framework.md`, 9.4 and 28). This module wraps each vtable as the Rust trait the compositor drives
+//! A library that is not the core (std) registers the desktop policy the compositor asks it for as C vtables. This module
+//! wraps each vtable as the Rust trait the compositor drives
 //! (`gnoblin-provider-wire`), puts it in the process's [`ProviderSlots`] and ties its life to the generation that registered
 //! it: the registration is a host registration like a timer, so retiring the generation, or `remove(reg)`, ends it, and the
 //! compositor falls back (`NullWm`, `no-ui`, no observer).

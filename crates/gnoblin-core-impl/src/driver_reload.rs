@@ -1,5 +1,5 @@
 //! The reload scenarios of the test driver: a native shell run by `NativeShell` over the fake compositor, driven by a script of steps
-//! on the command line (`design/modular-framework.md` section 8.1; examples 10 and 18 of section 12).
+//! on the command line (examples 10 and 18).
 //!
 //! `gnoblin-fixture-launcher reload MODULE STEP...` starts the shell at `MODULE`, then performs each step in order and prints what
 //! it saw as `key=value` lines the integration tests (`tests/reload.rs`) assert on. A step is a word, with an argument after a

@@ -1,5 +1,5 @@
 # The portal UI: the request the services role sends to the built-in portal UI, and
-# the outcome the UI answers with (design/rust-compositor.md, D19, "Schema additions").
+# the outcome the UI answers with.
 #
 # Two objects. `portal_ui` is the request, one method per interface kind, so each
 # interface's payload is typed by its own parameters rather than one loose bag. The

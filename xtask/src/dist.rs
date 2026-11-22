@@ -8,7 +8,7 @@
 //! portal's D-Bus service) carry an `@PREFIX@` placeholder, replaced with the prefix as the file is
 //! written.
 //!
-//! The layout is the one of `design/modular-framework.md` section 11, with `--libdir` (`lib`, `lib64` or a multiarch
+//! The layout is the one `cargo xtask dist-check` checks, with `--libdir` (`lib`, `lib64` or a multiarch
 //! directory) naming where libraries go: the core library `libgnoblin_core_impl.so` is installed as
 //! `<libdir>/libgnoblin-core.so.<major>.<minor>.<patch>` with the SONAME link and the linker link, the generated header
 //! `include/gnoblin/core.h` and `<libdir>/pkgconfig/gnoblin-core.pc` go with it, `share/gnoblin/js/` holds the stock JavaScript
@@ -288,7 +288,7 @@ const ITEMS: &[InstallItem] = &[
         requires_built: STD_BUILT_NAME,
     },
     // The stock JavaScript library as installed data (`share/gnoblin/js/<package>/`): the JavaScript runtime holds no copy and reads
-    // `gnoblin-core` and `gnoblin-std` from here (`design/modular-framework.md` sections 10.2 and 11), so a prefix without the std
+    // `gnoblin-core` and `gnoblin-std` from here, so a prefix without the std
     // directory is a prefix whose scripts get the error of example 17 when they import it.
     InstallItem::Tree {
         from: "data/js/gnoblin-core",

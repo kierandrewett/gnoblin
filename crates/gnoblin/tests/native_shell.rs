@@ -1,4 +1,4 @@
-//! `gnoblin ./libshell.so`: a native shell run by the compositor, in its process (`design/modular-framework.md`, M3.3 and M3.4).
+//! `gnoblin ./libshell.so`: a native shell run by the compositor, in its process.
 //!
 //! The session is the shipped binary on a headless backend, started with the path of a shell module. The compositor role is
 //! `libgnoblin-core.so.1`'s (`gnoblin_main`), which loads the module on the in-process shell thread. Windows are mapped by a real

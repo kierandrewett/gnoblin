@@ -42,8 +42,7 @@ impl Unsupported3dField {
 
 /// The named refusal for a value outside the accepted 2D subset.
 ///
-/// `unsupported-3d` is the code, matching design/rust-compositor.md (Renderer
-/// card, "3D-ready, 2D today"), so a caller on the other side of the IPC can
+/// `unsupported-3d` is the code (the renderer is 3D-ready and 2D today), so a caller on the other side of the IPC can
 /// branch on it instead of parsing prose.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Unsupported3d {

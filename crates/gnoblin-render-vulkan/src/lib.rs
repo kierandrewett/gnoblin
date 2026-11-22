@@ -27,7 +27,7 @@
 //!
 //! # The shader pass
 //!
-//! A shell's own shader (`design/modular-framework.md`, section 37) is a pipeline of its own for
+//! A shell's own shader is a pipeline of its own for
 //! each source, made when a frame first draws it from the WGSL
 //! [`user::validate`](gnoblin_render_frame::shader::user::validate) returns, and kept in the shared
 //! 64-entry [`ShaderCache`](gnoblin_render_frame::shader::ShaderCache). It replaces the layer's own

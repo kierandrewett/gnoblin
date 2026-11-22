@@ -1,4 +1,4 @@
-//! A shell that fails to start, in a real session (`design/modular-framework.md`, 30: a failing shell is a failed start).
+//! A shell that fails to start, in a real session: a failing shell is a failed start.
 //!
 //! A `shell.ts` or a `shell.py` with a syntax error leaves the session on the compositor's own window management. The
 //! failure is not silent and not final: the guardian's log carries the error text at its file and line, `gnoblinctl shell

@@ -3,7 +3,7 @@
 //! One [`GenerationHost`] holds every generation of a shell and every registration a generation made, plus the queues the
 //! compositor side publishes into. It knows nothing of a language or of the C ABI: a registration is a boxed function and
 //! a boxed release, so a native shell's `extern "C"` callbacks, a script's functions and a test's closures are all the
-//! same thing to it. The invariants this module keeps (`design/modular-framework.md` sections 5.4 and 5.5):
+//! same thing to it. The invariants this module keeps:
 //!
 //! - Each registration is owned by the generation that made it, and removed with it. Its release (a native shell's
 //!   `drop_user`, a script's handle) runs exactly once, on the shell thread, before the generation's code can go away.

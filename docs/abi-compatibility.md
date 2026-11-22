@@ -26,7 +26,7 @@ A shell built against a later minor than the core it finds still loads. The wrap
 
 ## Which changes are compatible
 
-The rules of `design/modular-framework.md` section 5.8, as a developer reads them:
+The rules, as a developer reads them:
 
 | Change                                          | Allowed in a minor? | How it is done                                                                                                           |
 | ----------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -43,10 +43,14 @@ shells built for each keep loading the library they were built for.
 
 ## The object protocol
 
-A class of the desktop or of the object model is not a function of a table. Both libraries serve their classes through one table, `GnoblinObjectApi`
-(`gnoblin-core-abi`), that `object_api(ctx, namespace, out)` returns: `gnoblin.model` from the core and `gnoblin.std` from std. The table is
-appended to `GnoblinApi` and `GnoblinStdApi` once, and what it serves comes from a catalog, so adding a class, a property, a method or a
-signal changes the catalog and never `abi.lock`:
+A class of the desktop or of the object model is not a function of a table. Both libraries serve their classes through
+one table, `GnoblinObjectApi` (`gnoblin-core-abi`), that `object_api(ctx, namespace, out)` returns:
+
+- the core serves `gnoblin.model`;
+- std serves `gnoblin.std`.
+
+The table is appended to `GnoblinApi` and `GnoblinStdApi` once. What it serves comes from a catalog, so adding a class,
+a property, a method or a signal changes the catalog and never `abi.lock`:
 
 | Change                                           | `abi.lock`    | What changes                                                                           |
 | ------------------------------------------------ | ------------- | -------------------------------------------------------------------------------------- |
@@ -123,11 +127,15 @@ field offset, with the ABI version that introduced it.
 
 ### Example 12: the golden shells
 
-`tests/modular/golden/bin/` holds three shells built against ABI 1.0 and stored as binaries: `libgolden_core_shell.so` (core only),
-`libgolden_std_shell.so` (core and std) and `libgolden_effects_shell.so` (core only; it writes four effects in one array, and was built before
-`GnoblinEffect` gained its shader fields, so its records are 152 bytes where the core's struct is 184). Each logs the ABI it was built for and the
-one it finds installed, and places windows or writes its effects. The
-test never rebuilds them. It starts the shipped `gnoblin` from a private prefix whose libraries are:
+`tests/modular/golden/bin/` holds three shells built against ABI 1.0 and stored as binaries:
+
+- `libgolden_core_shell.so`: core only.
+- `libgolden_std_shell.so`: core and std.
+- `libgolden_effects_shell.so`: core only. It writes four effects in one array, and was built before `GnoblinEffect`
+  gained its shader fields, so its records are 152 bytes where the core's struct is 184.
+
+Each logs the ABI it was built for and the one it finds installed, and places windows or writes its effects. The test
+never rebuilds them. It starts the shipped `gnoblin` from a private prefix whose libraries are:
 
 - the libraries of this tree (the baseline), and the shells report `installed core ABI 1.0.0`;
 - libraries built with the test knob `next-minor`: ABI 1.1, patch 1, one function appended to each table. The same binaries load, run,
