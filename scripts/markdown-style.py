@@ -15,7 +15,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent.parent
-PROFILE = ROOT / "design" / "markdown-style.md"
+PROFILE = ROOT / "scripts" / "markdown-style.md"
 SKIP_DIRS = {".git", "node_modules", ".vitepress", "dist", "build"}
 
 
@@ -55,7 +55,7 @@ def word_count(text: str) -> int:
     return len(re.findall(r"\b[\w'-]+\b", text))
 
 
-# Wording that documentation pages must not use. design/markdown-style.md explains each rule. Each entry is
+# Wording that documentation pages must not use. scripts/markdown-style.md explains each rule. Each entry is
 # (pattern, message, files the rule does not apply to). Text in code fences, inline code and link addresses is not
 # checked, and neither is a GNOME rule inside a "::: details" block.
 SUPPORT_PAGES = {"platform-support.md"}
@@ -348,7 +348,7 @@ def cmd_review(args: argparse.Namespace) -> int:
     style = PROFILE.read_text(encoding="utf-8")
     rules = style_sections(style)
     if not rules:
-        print("No level-two rule sections found in design/markdown-style.md.", file=sys.stderr)
+        print("No level-two rule sections found in scripts/markdown-style.md.", file=sys.stderr)
         return 2
     print(paint(f"Jev Markdown review  ·  {provider}  ·  {selected_model}", "1;36", color))
     print(

@@ -1,4 +1,4 @@
-//! The apply rules against the schema and against `design/config-reload.md`.
+//! The apply rules against the schema and against `crates/gnoblin-config/reload.md`.
 //!
 //! A setting added to the schema without a rule would be accepted by a reload and silently not
 //! applied, which is the failure the rules exist to name. These tests fail the build until the
@@ -10,7 +10,7 @@ use gnoblin_config::apply::{Applies, RULES, rule_of};
 use gnoblin_config::{CARRIED_SECTIONS, TOP_LEVEL_KEYS, generated::SETTINGS};
 use gnoblin_config::{Config, Fault, Value};
 
-const DESIGN: &str = include_str!("../../../design/config-reload.md");
+const DESIGN: &str = include_str!("../reload.md");
 
 /// Every setting the schema declares, as `section.key`, with the carried sections as `section.*`.
 fn declared() -> BTreeSet<String> {
@@ -114,13 +114,13 @@ fn design_row(setting: &str) -> Option<&'static str> {
 fn the_design_table_says_what_the_rules_say() {
     for rule in RULES {
         let setting = format!("{}.{}", rule.section, rule.key);
-        let row = design_row(&setting).unwrap_or_else(|| panic!("design/config-reload.md has no row for {setting}"));
+        let row = design_row(&setting).unwrap_or_else(|| panic!("reload.md has no row for {setting}"));
         let status = row.split('|').nth(2).map(str::trim).unwrap_or_default();
         let expected = match rule.applies {
             Applies::Live => "live",
             Applies::Restart(_) => "restart",
             Applies::Unused => "unused",
         };
-        assert_eq!(status, expected, "design/config-reload.md disagrees about {setting}");
+        assert_eq!(status, expected, "reload.md disagrees about {setting}");
     }
 }

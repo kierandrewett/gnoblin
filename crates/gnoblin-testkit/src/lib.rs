@@ -7,7 +7,7 @@
 //! This crate is a development dependency only; `cargo xtask deps` fails if a
 //! shipped crate declares it outside `[dev-dependencies]`.
 
-/// The per-backend status table in `design/backend-parity.md`, read so the conformance tests can hold it to the code.
+/// The per-backend status table in `crates/gnoblin-backend/parity.md`, read so the conformance tests can hold it to the code.
 pub mod backend_status;
 /// An in-memory compositor behind the tree link, which every shell runtime's tests share.
 pub mod compositor;

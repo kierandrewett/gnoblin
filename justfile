@@ -125,7 +125,7 @@ oracle-check:
     cargo xtask oracle check --repeat 3
 
 # Fail on a documented `gnoblin` name the implemented surface lacks, unless
-# `design/docs-parity/allow.toml` lists it.
+# `xtask/docs-parity-allow.toml` lists it.
 docs-parity:
     cargo xtask docs-parity
 

@@ -44,8 +44,8 @@ and Jev. Keep editorial rules here instead of duplicating them in code.
 
 ## Explain settings and accepted values
 
-This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer records under
-`design/` and the change log are not user pages and are exempt from it.
+This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer files
+(`ARCHITECTURE.md`, `CONTRIBUTING.md`, crate notes) and the change log are not user pages and are exempt from it.
 
 - For each documented option, state its type, accepted values, default, and
   effect when those details are known. Say when a change takes effect, such as
@@ -81,8 +81,8 @@ accepted values`, `Default`, and `Meaning or example`. Add an inline example
 
 ## Keep API reference current and complete
 
-This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer records under
-`design/` and the change log are not user pages and are exempt from it.
+This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer files
+(`ARCHITECTURE.md`, `CONTRIBUTING.md`, crate notes) and the change log are not user pages and are exempt from it.
 
 - Document the current public API with complete examples. Show where
   configuration belongs and when it takes effect.
@@ -100,8 +100,8 @@ This section applies to user documentation: `docs/`, the documentation site and 
 
 ## Make examples useful
 
-This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer records under
-`design/` and the change log are not user pages and are exempt from it.
+This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer files
+(`ARCHITECTURE.md`, `CONTRIBUTING.md`, crate notes) and the change log are not user pages and are exempt from it.
 
 - Include examples for Gnoblin features that help readers complete a task.
   Cover built-in session services as well as the compositor, configuration API,
@@ -118,8 +118,8 @@ This section applies to user documentation: `docs/`, the documentation site and 
 
 ## Use screenshots to show the real result
 
-This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer records under
-`design/` and the change log are not user pages and are exempt from it.
+This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer files
+(`ARCHITECTURE.md`, `CONTRIBUTING.md`, crate notes) and the change log are not user pages and are exempt from it.
 
 - When a configuration example has a useful visual result, show that example
   running in Gnoblin or the application it configures.
@@ -135,14 +135,14 @@ This section applies to user documentation: `docs/`, the documentation site and 
 
 ## Write for the person who uses Gnoblin
 
-This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer records under
-`design/` and the change log are not user pages and are exempt from it.
+This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer files
+(`ARCHITECTURE.md`, `CONTRIBUTING.md`, crate notes) and the change log are not user pages and are exempt from it.
 
 Documentation pages are for people who install, configure and use Gnoblin. Everything else stays out of them. The
 Markdown validator checks the rules in this section that a pattern can find, and the review checks the rest.
 
 - **Say only what the reader must do or know.** Remove build internals, CI and signing detail, maintainer notes, test
-  results and notes on how a page came to be. Put maintainer material in `design/` or in a source comment.
+  results and notes on how a page came to be. Put maintainer material in a source comment or `ARCHITECTURE.md`.
 - **Never mention GNOME Shell, GJS or GNOME extensions.** Gnoblin is not based on GNOME Shell. Do not say what Gnoblin
   does not ship, replace or require from it.
 - **Do not compare Gnoblin with GNOME or describe how they coexist.** Do not write that Gnoblin installs next to GNOME,

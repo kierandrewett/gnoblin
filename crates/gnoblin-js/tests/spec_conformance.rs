@@ -316,11 +316,9 @@ fn sha256(bytes: &[u8]) -> String {
 
 fn table_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("design")
-        .join("js")
-        .join("spec-conformance.md")
+        .join("tests")
+        .join("spec")
+        .join("conformance.md")
 }
 
 /// Boots a shell over a fake compositor with a screen and three windows, loads `init.js` of `files`, runs a few frames
@@ -1045,7 +1043,7 @@ fn the_shell_against_the_owners_own_examples() {
     assert_eq!(
         normalise(&current),
         normalise(&expected),
-        "design/js/spec-conformance.md is stale: run `UPDATE_SPEC=1 cargo test -p gnoblin-js --test spec_conformance`"
+        "tests/spec/conformance.md is stale: run `UPDATE_SPEC=1 cargo test -p gnoblin-js --test spec_conformance`"
     );
 }
 

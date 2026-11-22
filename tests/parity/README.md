@@ -203,7 +203,7 @@ edits of it. `dbus-monitor-mutter.txt` is the part of `busctl monitor` that Mutt
 is 440 KB of the tool's own traffic and is not kept.
 
 `scripts/reference-session-matrix.py` compares the recording with every adapter's `support-matrix.json` and writes
-`design/adapter-support-matrices.md`; `--check` fails when that page is stale, and `tests/reference-session-matrix.test.py`
+`tests/parity/adapter-support-matrices.md`; `--check` fails when that page is stale, and `tests/reference-session-matrix.test.py`
 runs it. The page also lists what the session could not show: the stock GNOME portal refused every call here because its
 sandbox check opens `/proc/PID/root`, so the redirect map's known consumers are still [INFERENCE].
 

@@ -4,7 +4,7 @@
 usage: scripts/reference-session-matrix.py [--check]
 
 Reads tests/parity/reference-session/ (recorded by scripts/reference-session-record.sh from stock Mutter 51 headless)
-and crates/compat/*/support-matrix.json, and writes design/adapter-support-matrices.md to standard output. With
+and crates/compat/*/support-matrix.json, and writes tests/parity/adapter-support-matrices.md to standard output. With
 `--check` it compares that text with the stored file and fails when they differ, so the document cannot drift from the
 recording or from the matrices.
 
@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RECORD = ROOT / "tests" / "parity" / "reference-session"
-STORED = ROOT / "design" / "adapter-support-matrices.md"
+STORED = ROOT / "tests" / "parity" / "adapter-support-matrices.md"
 
 # Interfaces every D-Bus object has; they say nothing about the service.
 STANDARD_PREFIX = "org.freedesktop.DBus."
@@ -31,8 +31,8 @@ STANDARD_PREFIX = "org.freedesktop.DBus."
 PUBLIC_PREFIXES = ("wl_", "wp_", "xdg_", "zxdg_", "zwp_", "ext_", "zwlr_")
 
 
-# What the plan says to do with an interface no adapter declares yet: the "Redirect map" row of design/rust-compositor.md,
-# in its words. They are the plan's, not findings; the recording supplies the members and signatures they apply to.
+# What to do with an interface no adapter declares yet, one row per interface. These are the plan's words, not findings;
+# the recording supplies the members and signatures they apply to.
 PROPOSAL = {
     "org.gnome.Mutter.InputMapping": "adapter, later (redirect: tablet output mapping config)",
     "org.gnome.Mutter.ServiceChannel": "adapter, later (redirect: privileged client connection from the services role)",
@@ -240,9 +240,8 @@ def render():
         "What stock Mutter 51 serves and uses in a headless session, taken from a recording, set beside what each "
         "compatibility adapter's `support-matrix.json` declares. The recording is in "
         "`tests/parity/reference-session/` and `scripts/reference-session-record.sh` makes it. The plan's rule is that an "
-        "adapter declares every upstream member as supported, partial or unsupported "
-        '([design/rust-compositor.md](rust-compositor.md), "Compatibility adapters", rule 2); this page checks the '
-        "declarations against a live Mutter."
+        "adapter declares every upstream member as supported, partial or unsupported (the rules in the documentation of "
+        "`gnoblin-compat-core`); this page checks the declarations against a live Mutter."
     )
     w("")
     w("## The session")
@@ -510,11 +509,13 @@ def main(argv):
     text = render()
     if "--check" in argv:
         if STORED.read_text(encoding="utf-8") == text:
-            print("reference-session-matrix: design/adapter-support-matrices.md matches the recording and the matrices")
+            print(
+                "reference-session-matrix: tests/parity/adapter-support-matrices.md matches the recording and the matrices"
+            )
             return 0
         print(
-            "reference-session-matrix: design/adapter-support-matrices.md is stale; run "
-            "`python3 scripts/reference-session-matrix.py > design/adapter-support-matrices.md`",
+            "reference-session-matrix: tests/parity/adapter-support-matrices.md is stale; run "
+            "`python3 scripts/reference-session-matrix.py > tests/parity/adapter-support-matrices.md`",
             file=sys.stderr,
         )
         return 1

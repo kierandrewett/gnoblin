@@ -79,7 +79,7 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
   into an image to explain what the image shows. Do not add decorative copy to
   repeat visible content or to stand in for clear instructions. Keep
   comparisons with other projects factual and respectful.
-- Docs are for people who use Gnoblin. `design/markdown-style.md` has the full rules under "Write for the person who
+- Docs are for people who use Gnoblin. `scripts/markdown-style.md` has the full rules under "Write for the person who
   uses Gnoblin", and `scripts/markdown-style.py lint` checks the ones a pattern can find. In short:
     - Never mention GNOME Shell or GJS, and never compare Gnoblin with GNOME or describe how they coexist. GNOME
       userspace notes go in a collapsed `::: details` block.
@@ -93,11 +93,11 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
 - An agent changing Markdown must run
   `python3 scripts/markdown-style.py review --fail-on-flags` on the changed
   files under `docs/` before finishing. The review uses the editorial rules in
-  `design/markdown-style.md` and deterministic checks for long paragraphs, long table
+  `scripts/markdown-style.md` and deterministic checks for long paragraphs, long table
   cells, and repeated table definitions. Missing credentials, request failures,
   or unresolved flags block completion. The script sends selected files and
-  `design/markdown-style.md` to the provider configured in the ignored repo-root
-  `.env`. Fix every flag; the report prints its exact rule. `design/markdown-style.md`
+  `scripts/markdown-style.md` to the provider configured in the ignored repo-root
+  `.env`. Fix every flag; the report prints its exact rule. `scripts/markdown-style.md`
   is the source of truth. The `split` command previews a single explicit
   paragraph break.
 

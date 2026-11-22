@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Guard the adapter support-matrix page against drift from its two inputs.
 
-design/adapter-support-matrices.md is generated from the recorded reference session (tests/parity/reference-session/)
+tests/parity/adapter-support-matrices.md is generated from the recorded reference session (tests/parity/reference-session/)
 and from every adapter's support-matrix.json. This test regenerates nothing: it asks the script whether the stored page
 is current, and spot-checks that the recording still holds the names the page's claims rest on.
 """

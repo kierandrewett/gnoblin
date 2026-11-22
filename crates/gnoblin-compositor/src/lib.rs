@@ -228,7 +228,7 @@ pub struct SessionConfig {
     ///
     /// [`configure_session_tables_from_store`] records it beside the tables it reads. A commit is
     /// compared with it to name the settings the running compositor cannot apply
-    /// (`design/config-reload.md`); a test that sets those tables by hand sets this too.
+    /// (`crates/gnoblin-config/reload.md`); a test that sets those tables by hand sets this too.
     pub started_with: Option<gnoblin_config::Config>,
     /// A tap a test feeds the input events a real device sends and the EIS protocol cannot carry (a touchpad's
     /// gestures), or [`None`] for the usual session. The session fills it when it starts serving.

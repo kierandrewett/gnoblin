@@ -7,7 +7,7 @@
 //! the same recorder the mode-change tests use; the device side is [`Mapper`], [`Devices`] and [`Presenter`], which
 //! are pure.
 //!
-//! Each row of `design/backend-parity.md`'s status table is either measured here or declared: a declared row is one
+//! Each row of `crates/gnoblin-backend/parity.md`'s status table is either measured here or declared: a declared row is one
 //! only hardware can prove, and its table cell must say so (`unproven on hardware`) or name the reason it is refused
 //! (`GLES only`, `scan-out only`). The same table is measured for headless and nested in
 //! `gnoblin-wayland/tests/backend_conformance.rs`, so one document is held to all three.
@@ -27,10 +27,10 @@ use crate::udev::{DeviceChange, DeviceOverrideSource, Devices, DrmNode, DrmNodeK
 use crate::{modeset_error, output_of};
 
 /// The design document, so the table the test holds the code to is the one that is committed.
-const DESIGN: &str = include_str!("../../../design/backend-parity.md");
+const DESIGN: &str = include_str!("../../gnoblin-backend/parity.md");
 
 fn table() -> StatusTable {
-    StatusTable::parse(DESIGN).expect("design/backend-parity.md carries a parseable status table")
+    StatusTable::parse(DESIGN).expect("crates/gnoblin-backend/parity.md carries a parseable status table")
 }
 
 /// The connector a fake kernel reports: connected, two modes, 256 gamma entries.

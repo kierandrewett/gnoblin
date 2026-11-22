@@ -3,7 +3,7 @@
 //! The compositor applies most settings when it commits a document, and a process that reads a
 //! setting only when it starts keeps the value it started with. A commit must say which accepted
 //! settings are in that second state, or a user who reloads believes they took effect
-//! (`design/config-reload.md`). This keeps the three documents the comparison needs.
+//! (`crates/gnoblin-config/reload.md`). This keeps the three documents the comparison needs.
 
 use gnoblin_client::wire::{ConfigNotice, NoticeKind};
 use gnoblin_config::Config;

@@ -7,7 +7,7 @@
 //! `gnoblin.<object>.<signal>` event is a signal of the schema. A `.method(` call is matched by name across every
 //! class and interface, because a page does not say which object the receiver is.
 //!
-//! A documented name that is not implemented must be listed in `design/docs-parity/allow.toml` with the
+//! A documented name that is not implemented must be listed in `xtask/docs-parity-allow.toml` with the
 //! slice that will implement it, or `docs wrong`. The gate fails on an unlisted name, and on a listed name
 //! that is now implemented or no longer documented, so the list cannot go stale.
 
@@ -21,7 +21,7 @@ use serde::Deserialize;
 
 /// The packages of the library the surface is read from.
 const LIBRARY: &[&str] = &["data/js/gnoblin-core", "data/js/gnoblin-std"];
-const ALLOW: &str = "design/docs-parity/allow.toml";
+const ALLOW: &str = "xtask/docs-parity-allow.toml";
 const DOC_DIRS: &[&str] = &["docs/shell-api", "docs/events"];
 const DOC_FILES: &[&str] = &["docs/user-shell.md", "docs/user-scripts.md"];
 /// The interface every dotted `gnoblin.` name starts from.

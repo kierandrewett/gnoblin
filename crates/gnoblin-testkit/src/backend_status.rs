@@ -1,7 +1,7 @@
 //! The per-backend status table, read from the committed markdown so a test can hold the document to what the code
 //! does.
 //!
-//! `design/backend-parity.md` carries one row per capability and one cell per backend. A cell is a status word, an
+//! `crates/gnoblin-backend/parity.md` carries one row per capability and one cell per backend. A cell is a status word, an
 //! optional colon and a note: `supported`, `refused: the host owns the window size`, `n/a: no window`. The
 //! conformance tests measure the same capability on each backend and compare the status word with the cell, so the
 //! table cannot say something the backend does not do, and a capability nobody measures cannot sit in it. The user

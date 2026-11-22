@@ -3,7 +3,7 @@
 
 # Adapter support matrices against a reference session
 
-What stock Mutter 51 serves and uses in a headless session, taken from a recording, set beside what each compatibility adapter's `support-matrix.json` declares. The recording is in `tests/parity/reference-session/` and `scripts/reference-session-record.sh` makes it. The plan's rule is that an adapter declares every upstream member as supported, partial or unsupported ([design/rust-compositor.md](rust-compositor.md), "Compatibility adapters", rule 2); this page checks the declarations against a live Mutter.
+What stock Mutter 51 serves and uses in a headless session, taken from a recording, set beside what each compatibility adapter's `support-matrix.json` declares. The recording is in `tests/parity/reference-session/` and `scripts/reference-session-record.sh` makes it. The plan's rule is that an adapter declares every upstream member as supported, partial or unsupported (the rules in the documentation of `gnoblin-compat-core`); this page checks the declarations against a live Mutter.
 
 ## The session
 

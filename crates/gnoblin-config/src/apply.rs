@@ -2,7 +2,7 @@
 //!
 //! Every setting the schema declares has one rule here: it is applied [`Applies::Live`] by the
 //! process that owns it, it is read only when a process starts ([`Applies::Restart`]), or
-//! nothing reads it at all ([`Applies::Unused`]). `design/config-reload.md` carries the same
+//! nothing reads it at all ([`Applies::Unused`]). `crates/gnoblin-config/reload.md` carries the same
 //! table with the evidence for each row, and `tests/apply.rs` fails when a setting has no rule,
 //! a rule names a setting the schema lacks, or the design table and the rules disagree.
 //!

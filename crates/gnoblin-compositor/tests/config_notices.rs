@@ -1,7 +1,7 @@
 //! A reload that accepts a setting without applying it says so.
 //!
 //! The compositor applies most settings when a document is committed, and some it reads only
-//! when it starts (`design/config-reload.md`). A reload that accepted such a setting and said
+//! when it starts (`crates/gnoblin-config/reload.md`). A reload that accepted such a setting and said
 //! nothing would pass for a change that did not happen, so the answer to a commit and to
 //! `gnoblinctl config reload` lists every one of them. These tests drive a real session with the
 //! runtime's privileged connection: the runtime commits, the owner's CLI reloads.

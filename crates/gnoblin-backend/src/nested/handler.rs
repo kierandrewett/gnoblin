@@ -46,7 +46,7 @@
 //!   and never reaches the session.
 //!
 //! Text input is not bridged: it needs a hook in the [`Backend`](crate::Backend) contract the session's own
-//! protocols can call, and `design/backend-parity.md` lists it as missing on this backend. A parent that offers it
+//! protocols can call, and `crates/gnoblin-backend/parity.md` lists it as missing on this backend. A parent that offers it
 //! sees it unbound.
 
 pub(super) mod dmabuf;

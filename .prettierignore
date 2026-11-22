@@ -9,7 +9,7 @@ crates/gnoblin-js/tests/spec/
 crates/gnoblin-js-types/tests/golden/
 
 # Generated pages: a formatter would change the text their generators compare against.
-design/adapter-support-matrices.md
+tests/parity/adapter-support-matrices.md
 tests/native-probe/MATRIX.md
 
 # Recorded by `cargo xtask oracle record`; a formatter would change what `check` compares byte for byte.

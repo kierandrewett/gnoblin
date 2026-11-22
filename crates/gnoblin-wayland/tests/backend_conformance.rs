@@ -1,6 +1,6 @@
 //! One contract, three backends: the same scenarios against headless and nested, and the status table held to both.
 //!
-//! `design/backend-parity.md` carries a table with one row per capability and one cell per backend, and
+//! `crates/gnoblin-backend/parity.md` carries a table with one row per capability and one cell per backend, and
 //! `docs/backends.md` repeats it for people. This file measures the headless and nested columns by running the
 //! *same* scenario against each backend through the `Backend` trait: the scenario observes what the backend did
 //! (accepted, refused with the shared typed answer, delivered an event) and the table is the oracle, so a backend
@@ -41,7 +41,7 @@ mod nested_host;
 use nested_host::*;
 
 /// The design document: the table the code is held to is the committed one.
-const DESIGN: &str = include_str!("../../../design/backend-parity.md");
+const DESIGN: &str = include_str!("../../gnoblin-backend/parity.md");
 
 /// The user page, which repeats the table in plain words.
 const USER_PAGE: &str = include_str!("../../../docs/backends.md");
@@ -59,7 +59,7 @@ const NESTED_DMABUF_TESTS: &str = include_str!("nested_dmabuf.rs");
 const GPU_TOLERANCE: i32 = 2;
 
 fn table() -> StatusTable {
-    StatusTable::parse(DESIGN).expect("design/backend-parity.md carries a parseable status table")
+    StatusTable::parse(DESIGN).expect("crates/gnoblin-backend/parity.md carries a parseable status table")
 }
 
 /// A refusal is [`CellStatus::Refused`] only when it is the shared typed answer.
