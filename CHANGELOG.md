@@ -325,7 +325,7 @@
 - Adds the `libgnoblin-std.so.1` desktop library and the `gnoblin-std` Rust SDK, providing live client, output and workspace collections, layouts, output and workspace policies, and move and resize pointer bindings; it is loaded only when a shell calls `g.std()`.
 - Adds the `libgnoblin-std.so.1` desktop library and the `gnoblin-std` Rust SDK, offering live client, output and workspace collections, layouts, move and resize bindings, and `g.std()` loading; the layouts for dwindle, strip and arc, snapping and split-resize are not yet available.
 - The `gnoblin` binary now loads `libgnoblin-core.so.1` from beside it, and `cargo xtask stage` and `cargo xtask dist install` build and install the library, shells and JavaScript data; `cargo xtask dist-check` verifies the layout.
-- Adds the `gnoblin-xr` extension scaffold, which finds the active OpenXR runtime, detects `monado-service` and `wivrn-server` on PATH, and supervises the runtime with up to 3 restarts; no rendering yet.
+- Adds the `gnoblin-xr` extension, an out-of-process program that shows the session's Views in an OpenXR headset.
 - Gnoblin now ships `.deb` packages for Debian testing, `.apk` packages for Alpine edge (release assets only), and arm64 builds of every package.
 - Signed package repositories are now published for Fedora, openSUSE Tumbleweed, Debian testing and Arch, each with a `stable` channel (from release tags) and a `nightly` channel (from daily main builds).
 

@@ -11,7 +11,6 @@ members = [
     "crates/xr-gpu",
     "crates/xr-input",
     "crates/xr-layers",
-    "crates/xr-runtime",
     "crates/xr-scene",
     "crates/xr-smoke",
     "crates/xr-session",
@@ -34,8 +33,7 @@ unsafe_code = "forbid"
 all = { level = "deny", priority = -1 }
 
 [workspace.dependencies]
-serde_json = "1.0.154"
-rustix = { version = "1.1.6", features = ["process"] }
+rustix = "1.1.6"
 ash = { version = "0.38", default-features = false, features = ["loaded"] }
 wayland-client = "0.31.15"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
