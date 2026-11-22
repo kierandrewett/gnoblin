@@ -191,6 +191,7 @@ type = "string"
 # `gnoblin.launches`: the launches the shell tracks, and the windows that answer them.
 [[object]]
 name = "launches"
+export = { js = "LaunchFeedback" }
 since = "0.2.0"
 kind = "service"
 

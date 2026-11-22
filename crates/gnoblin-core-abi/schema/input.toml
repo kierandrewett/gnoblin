@@ -932,6 +932,7 @@ since = "0.2.0"
 # An input device of a seat. A context holds the devices of its seat, or the devices it was given.
 [[object]]
 name = "device"
+export = { js = "InputDevice" }
 since = "0.2.0"
 kind = "handle"
 

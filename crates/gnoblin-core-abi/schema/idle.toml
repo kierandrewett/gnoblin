@@ -165,6 +165,7 @@ since = "0.2.0"
 # `gnoblin.idle`: the watches and holds of this generation, and the last reading of the compositor.
 [[object]]
 name = "idle"
+export = { js = "IdleMonitor" }
 since = "0.2.0"
 kind = "service"
 

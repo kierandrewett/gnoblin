@@ -478,6 +478,7 @@ since = "0.2.0"
 # and asking for a scope again gives it. Its functions work on windows by their node, which is what the window's `id` says as a number.
 [[object]]
 name = "style"
+export = { js = "ClientStyle" }
 since = "0.2.0"
 retained = true
 

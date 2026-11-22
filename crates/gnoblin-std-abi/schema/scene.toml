@@ -492,6 +492,7 @@ type = "string"
 # A camera that projects what is under it in three dimensions. A view draws through its camera.
 [[object]]
 name = "camera3d"
+export = { js = "Camera3D" }
 since = "0.2.0"
 base = "scene_node"
 retained = true
@@ -556,6 +557,7 @@ readonly = true
 # animate it: its `x` and `y` are where it looks, its `zoom` is the node's scale and its `roll` the rotation about the view axis.
 [[object]]
 name = "camera2d"
+export = { js = "Camera2D" }
 since = "0.2.0"
 base = "scene_node"
 retained = true

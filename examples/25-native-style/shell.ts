@@ -5,10 +5,10 @@
 // Gives every window rounded corners and two shadows, stages a transition that also changes the opacity of every window and a node of
 // its own, and aborts it: the library puts back the opacity, and the shell's rollback is told before `abort` answers. Every line starts
 // with `style:`, as the Rust shell of the same example spells it.
-import { SceneNode, Style, Transition } from "gnoblin-std/generated/objects";
+import { ClientStyle, SceneNode, Transition } from "gnoblin-std/generated/objects";
 import type {} from "gnoblin-std";
 
-const style = Style.ofClients();
+const style = ClientStyle.ofClients();
 style.cornerRadius = { all: 12 };
 style.shadows = [{ blur: 8 }, { y: 4, blur: 20 }];
 const radius = style.cornerRadius.all;

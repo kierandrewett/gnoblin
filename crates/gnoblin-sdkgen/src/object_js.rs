@@ -560,6 +560,22 @@ impl<'a> Js<'a> {
                     },
                     "}",
                 );
+                if object.name == "gnoblin" {
+                    // The root object also takes its signals as named subscriptions, as the TypeScript `gnoblin` did
+                    // (`gnoblin.onClientCreated(handler)`): the same as `on`, and it returns the same listener.
+                    for (event, lookup, _, _) in events.iter().filter(|(_, lookup, _, _)| lookup.kind == 's') {
+                        let method = format!("on{}", pascal(&lookup.name));
+                        c.line(format!(
+                            "/** Calls `handler` each time `{event}` happens: the same as `on({}, handler)`. */",
+                            quote(event)
+                        ));
+                        c.block(
+                            format!("{method}(handler) {{"),
+                            |c| c.line(format!("return this.on({}, handler);", quote(event))),
+                            "}",
+                        );
+                    }
+                }
             }
             c.line("/** Ends the object and its children, whoever else holds it. */");
             c.block("destroy() {", |c| c.line("N.destroy(this[B.HANDLE]);"), "}");
@@ -832,6 +848,16 @@ pub(super) fn render_js(view: &ScriptView<'_>) -> Result<String, String> {
             ObjectKind::Interface => js.interface_source(&mut c, object)?,
         }
     }
+    if let Some(object) = view
+        .objects
+        .values()
+        .find(|object| object.name == "gnoblin" && object.kind == ObjectKind::Service)
+    {
+        c.line(
+            "/** The service `gnoblin`, made once: the root of the object model, which a shell reads as `gnoblin`. */",
+        );
+        c.line(format!("export const gnoblin = {}.get();", class_name(object)));
+    }
     Ok(c.finish())
 }
 
@@ -1069,6 +1095,15 @@ impl Js<'_> {
                 c.line(format!(
                     "on<K extends keyof {name}Events>(event: K, handler: (...args: {name}Events[K]) => void): Listener;"
                 ));
+                if object.name == "gnoblin" {
+                    for (event, lookup, _, _) in events.iter().filter(|(_, lookup, _, _)| lookup.kind == 's') {
+                        c.line(format!(
+                            "on{}(handler: (...args: {name}Events[{}]) => void): Listener;",
+                            pascal(&lookup.name),
+                            quote(event)
+                        ));
+                    }
+                }
             }
             c.line("destroy(): void;");
         }
@@ -1169,6 +1204,16 @@ pub(super) fn render_dts(view: &ScriptView<'_>) -> Result<String, String> {
             ObjectKind::Handle | ObjectKind::Service => js.handle_dts(&mut c, object)?,
             ObjectKind::Interface => js.interface_dts(&mut c, object)?,
         }
+    }
+    if let Some(object) = view
+        .objects
+        .values()
+        .find(|object| object.name == "gnoblin" && object.kind == ObjectKind::Service)
+    {
+        c.line(
+            "/** The service `gnoblin`, made once: the root of the object model, which a shell reads as `gnoblin`. */",
+        );
+        c.line(format!("export declare const gnoblin: {};", class_name(object)));
     }
     Ok(c.finish())
 }
