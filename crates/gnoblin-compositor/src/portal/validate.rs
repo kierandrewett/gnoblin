@@ -1,5 +1,4 @@
-//! Reply validation (D19 "Replies are validated" and "A reply cannot grant more
-//! than the request asked"). A provider or a claim can never grant more than the
+//! Reply validation. A provider or a claim can never grant more than the
 //! request asked for; a reply that does is a provider error.
 //!
 //! Validation lives here rather than in `gnoblin-schema` because the rules need

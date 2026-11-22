@@ -10,7 +10,7 @@ publish.workspace = true
 [dependencies]
 # The selection scale and the shared primitives every crate passes around.
 gnoblin-types.workspace = true
-# Cursor providers (D20): Xcursor parsing, the SVG rasteriser (pure Rust; no
+# Cursor providers: Xcursor parsing, the SVG rasteriser (pure Rust; no
 # text, no raster-image decoders, which cursors do not use), the zip container
 # of compiled Hyprcursor themes, the `metadata.json` of `cursors_scalable`
 # themes, and the logging used for named provider failures.

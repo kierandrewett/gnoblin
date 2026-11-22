@@ -126,7 +126,7 @@ pub unsafe extern "C" fn init(_api: *const GnoblinApi, ctx: GnoblinCtx) -> i32 {
     };
     install_panic_hook(api, ctx);
     // The handle is leaked: sixteen bytes per generation, so the author's closures may capture `g` for as long as the shell runs
-    // (`g.bind("Super+Return", || g.spawn("foot"))`). The core never unmaps a generation's code (D16), so what the box costs is
+    // (`g.bind("Super+Return", || g.spawn("foot"))`). The core never unmaps a generation's code, so what the box costs is
     // what the library already costs, and a handle kept past its generation fails with `Retired` instead of acting.
     let g: &'static Gnoblin = Box::leak(Box::new(Gnoblin::new(api, ctx)));
     CURRENT.with(|current| current.set(Some(g)));

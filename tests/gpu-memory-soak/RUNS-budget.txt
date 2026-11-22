@@ -1,4 +1,4 @@
-# Series of lane GpuBudget (issue gnoblin-4z5 stays open): the compositor with the enforced budget.
+# The memory budget series (issue gnoblin-4z5 stays open): the compositor with the enforced budget.
 
 ## software.budget-384
 command: GNOBLIN_SOAK_RENDERER=software GNOBLIN_SOAK_SECONDS=1500 GNOBLIN_SOAK_SAMPLE_SECONDS=15 GNOBLIN_SOAK_LOCK_EVERY=25 GNOBLIN_SOAK_RSS_LIMIT_MIB=6144 GNOBLIN_SOAK_BUDGET_MIB=384 GNOBLIN_SOAK_OUT=software.budget-384.jsonl gpu_memory_soak-514cdcca3896e364 --ignored --nocapture

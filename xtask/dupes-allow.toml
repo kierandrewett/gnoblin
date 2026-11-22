@@ -826,7 +826,7 @@ right = "xdg-desktop-portal-gnoblin::Owners"
 kind = "same-shape"
 reason = "both wrap the bus's NameOwnerChanged stream to end a gone caller's grants or sessions; the portal may not link a compat adapter, and gnoblin-compat-core is a compat crate, so the portal keeps its own copy until the rule is moved to a non-compat shared crate"
 
-# gnoblin-compositor and gnoblin-portal (D19) reuse generic state-machine names; each keeps its own meaning.
+# gnoblin-compositor and gnoblin-portal reuse generic state-machine names; each keeps its own meaning.
 
 [[allow]]
 left = "gnoblin-a11y::Effect"

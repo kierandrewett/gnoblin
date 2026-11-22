@@ -1,7 +1,7 @@
 //! The software renderer: Smithay's Pixman renderer drawing into an offscreen
 //! buffer.
 //!
-//! D12 ships on GLES with Pixman for software rendering, and this crate is the Pixman
+//! Gnoblin renders on GLES, with Pixman for software rendering, and this crate is the Pixman
 //! half: it needs no GPU, no EGL and no session, so it runs in CI and it is what the
 //! integration tests and the parity harness read pixels from. The GLES and Vulkan
 //! renderers draw the same [`OutputFrame`] without changing it.
@@ -38,9 +38,8 @@
 //! - **Borders and shadows are drawn here, as spans.** A border is the band between two
 //!   rounded shapes and a shadow is a stack of nested shapes whose alphas step down to
 //!   the shader's falloff (`shape.rs`); both have hard edges, and the shadow's falloff is
-//!   stepped. A backdrop blur and a user shader are the GLES renderer's work (D12: GLES
-//!   now, Pixman for software); this path leaves a blur undrawn instead of faking it, and
-//!   the node's `skipped` list says so.
+//!   stepped. A backdrop blur and a user shader are the GLES renderer's work; this path leaves a blur undrawn instead of
+//!   faking it, and the node's `skipped` list says so.
 //!
 //! # Failure modes
 //!

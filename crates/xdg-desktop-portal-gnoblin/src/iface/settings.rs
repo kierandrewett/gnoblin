@@ -3,7 +3,7 @@
 //! The one interface in this backend that is fully real: its values come from the
 //! compositor's `settings` object (`crate::settings`), arrive as property diffs, and are
 //! published as they are. Nothing here writes back, because the interface has no writable
-//! member and the table has no outbound path (D15).
+//! member and the table has no outbound path.
 //!
 //! `ReadAll`'s namespaces argument is the frontend's filter, and the matching rule is the
 //! one the interface documents: an empty list or an empty string matches everything, and

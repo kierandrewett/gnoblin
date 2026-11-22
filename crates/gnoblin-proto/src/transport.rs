@@ -1,6 +1,6 @@
 //! Where descriptors travel beside a frame.
 //!
-//! Design/rust-compositor.md, D16: frames are Protocol Buffers on
+//! Frames are Protocol Buffers on
 //! `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`, and file descriptors ride alongside a
 //! frame through `SCM_RIGHTS`. This trait is the seam for that transport, not the
 //! transport itself.

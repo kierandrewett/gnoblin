@@ -272,7 +272,7 @@ impl Host for IpcHost {
 /// The host of a session with no compositor IPC: no shell can draw a prompt.
 ///
 /// Every offer is refused before it is made, naming `portal.ui` as the missing slot, which
-/// is the same answer [`IpcHost`] gives once its connection has gone (D14). The portal
+/// is the same answer [`IpcHost`] gives once its connection has gone. The portal
 /// still serves what needs no prompt, such as `Settings`, and refuses what does.
 #[derive(Debug, Default)]
 pub struct NoShell;

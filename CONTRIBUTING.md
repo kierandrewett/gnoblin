@@ -103,7 +103,7 @@ cargo test --workspace --no-fail-fast --locked
 ```
 
 Run it on Agent37 through `lanes/a37-gate.sh run ID TREE test --workspace --no-fail-fast --locked`, with the output
-sent to a log file. Measured on a 4-CPU instance (lane FinalGreen, 2026-11-14): a warm run takes 6 minutes (336 s and
+sent to a log file. Measured on a 4-CPU instance (2026-11-14): a warm run takes 6 minutes (336 s and
 352 s; 426 s after a rebuild, 709 s on a fresh instance's first run); `cargo test -p gnoblin --test js_shell` takes
 47 s alone and 85 to 300 s with busy loops of twice `nproc` running beside it. One call of the helper ends at about
 15 minutes whatever `--timeout` it is given (the exec endpoint's own limit), so a loop of `js_shell` runs is split into
@@ -142,7 +142,7 @@ carries no std code and no cargo feature chooses between the two:
 
 `crates/gnoblin-provider-wire` is the one place that knows both ends of each vtable: std exports a Rust provider as a
 vtable, and the core wraps a registered vtable as the trait the compositor drives. The lock card, the slot mechanism and
-the portal's request queue and reply validation stay in core (D7).
+the portal's request queue and reply validation stay in core.
 
 ```sh
 just core-only        # builds the core, fails if a std crate is in its tree, and runs the no-provider suites

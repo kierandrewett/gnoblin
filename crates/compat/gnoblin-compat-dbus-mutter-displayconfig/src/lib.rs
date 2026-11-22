@@ -20,7 +20,7 @@
 //!   objects; this adapter reads them and asks them to change. It keeps one thing of its
 //!   own, the serial a caller sends back, because Mutter's interface has one and a
 //!   caller uses it to detect a hotplug.
-//! - **Not the write path by default.** D13's default is "reads on; writes off", so
+//! - **Not the write path by default.** The default is "reads on; writes off", so
 //!   `ApplyMonitorsConfig` is refused with `write-not-enabled` until
 //!   `gnoblin.configure.compat.capture` is set to `unmediated`.
 //! - **Not a mirror of Mutter's whole surface.** `GetResources`, the CRTC and backlight

@@ -1,7 +1,7 @@
 //! The GLES renderer: Smithay's GLES context, `glow` for the drawing, one frame in and an
 //! [`Image`] out.
 //!
-//! This is D12's GPU half — "GLES now, Vulkan later" — drawn on Smithay's GLES renderer
+//! This is the GPU renderer, drawn on Smithay's GLES renderer
 //! ([`GlowRenderer`], the `renderer_gl` and `renderer_glow` features of the pinned
 //! revision) against a *surfaceless* EGL context, so it runs with no display and no
 //! session. It implements the same contract as the software path: it draws an
@@ -12,7 +12,7 @@
 //!
 //! Smithay's `GlesFrame` compiles the fragment source it is handed against its own
 //! `#version 100` vertex shader, so it can only run a shader written in GLSL ES 1.00 — and
-//! `naga`, the compiler D12 chose, has no GLSL ES 1.00 output. D12 also says every effect
+//! `naga`, the shader compiler, has no GLSL ES 1.00 output. Every effect
 //! is written *once* in one language and compiled per backend, so the
 //! language is WGSL and the passes are compiled here: `naga` validates a module and emits
 //! GLSL ES 3.10, and `glow` (the safe GL API Smithay's `renderer_glow` feature hands out)

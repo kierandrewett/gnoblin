@@ -68,7 +68,7 @@ pub struct PortalRefusal {
 /// How long after a request is offered to a `portal.ui` claimant an `allow` answer is not believed.
 ///
 /// The built-in dialog ignores input for the same 500 ms after it appears, so a click already in
-/// progress cannot accept it (D19, "One gesture to allow"). The compositor cannot see the
+/// progress cannot accept it (one gesture to allow). The compositor cannot see the
 /// claimant's dialog, so it applies the rule to the one thing it can see: an `allow` that arrives
 /// sooner than a person could have read the request settles as a refusal.
 const ARMING_MS: u64 = 500;

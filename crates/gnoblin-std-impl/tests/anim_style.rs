@@ -1,4 +1,4 @@
-//! Animation, styling and the scene of the native std against the TypeScript std (M7.6).
+//! Animation, styling and the scene of the native std against the TypeScript std.
 //!
 //! The same scripted scenario runs twice. Once the TypeScript std (`data/js/gnoblin-std`) runs it in this process, through `JsShell`, over
 //! the fake compositor; once the native shell of `fixtures/shell-anim` runs it in the launcher, over the same fake behind the tree link

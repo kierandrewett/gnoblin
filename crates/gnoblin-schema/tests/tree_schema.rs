@@ -324,7 +324,7 @@ fn the_motion_switch_and_the_frame_controls_default_to_the_compositors_own_behav
     }
 }
 
-/// A shell that holds the tree may place, restack and hide the surfaces the compositor made nodes of (lane CoreGapsG6): a
+/// A shell that holds the tree may place, restack and hide the surfaces the compositor made nodes of: a
 /// popup, a subsurface or a layer surface. Every member is additive with the default that keeps the protocol's own
 /// behaviour, so a shell that writes none of them sees the compositor as before, and what a layer surface asked for is
 /// read-only.

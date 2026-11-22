@@ -21,7 +21,7 @@
 //! - **Not an application model.** `GetRunningApplications` is refused with the matrix's
 //!   reason: the schema publishes no application object, and inventing one from window app ids
 //!   would answer a different question from the one Mutter answers.
-//! - **Not state-changing.** Every member is a read, so it answers in D13's default `portal`
+//! - **Not state-changing.** Every member is a read, so it answers in the default `portal`
 //!   mode and while the session is locked, which is what a lock screen's own UI needs.
 //!
 //! # Running it

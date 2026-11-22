@@ -204,7 +204,7 @@ prost = "0.14.4"
 prost-build = "0.14.4"
 prost-types = "0.14.4"
 protox = "0.10.0"
-# The shader compiler of D12: every effect and user shader is written once in
+# The shader compiler: every effect and user shader is written once in
 # WGSL and compiled per backend with `naga` (the validator and translator wgpu
 # uses). `wgsl-in` parses the source the shader guide documents and `glsl-out`
 # emits the GLSL ES 3.10 the GLES backend links; the Vulkan backend will take the
@@ -221,8 +221,8 @@ ash = { version = "0.38.0", default-features = false, features = ["loaded", "deb
 # 0.16 the pinned Smithay revision depends on, so the two cannot resolve to
 # different contexts.
 glow = "0.16"
-# The immediate-mode toolkit of the built-in portal dialogs and the recovery overlay
-# (D5, D19). Default features off: the core is pure math and tessellation, which the
+# The immediate-mode toolkit of the built-in portal dialogs and the recovery overlay.
+# Default features off: the core is pure math and tessellation, which the
 # headless renderer reads. `default_fonts` bundles the UI font so text renders
 # without a font lookup.
 egui = { version = "0.37.0", default-features = false, features = ["default_fonts"] }
@@ -246,12 +246,12 @@ toml = "1.2.0"
 # `default-features = false` keeps the DRM, libinput, X11, winit and Xwayland
 # backends out of the dependency graph until their crates ask for them: a member
 # adds the features it needs on top of this entry. `renderer_pixman` is here and
-# not in a member because D12's software path is the reference renderer: it links
+# not in a member because the software path is the reference renderer: it links
 # the system `pixman-1` and turns `#[cfg]`s on in Smithay's own modules, both of
 # which must look the same for the whole workspace.
 #
 # `renderer_gl` and `renderer_glow` are here for the same reason, one step later:
-# D12's GPU path is Smithay's GLES renderer (`renderer_gl`, which is the EGL and
+# the GPU path is Smithay's GLES renderer (`renderer_gl`, which is the EGL and
 # GLES bindings) with `glow` on top (`renderer_glow`, which hands the same
 # context to a safe `glow::Context`). `renderer_gl` pulls no display or DRM
 # backend in by itself, so a session that never asks for a GLES renderer pays for
@@ -357,12 +357,12 @@ gnoblin-paint = { path = "crates/gnoblin-paint" }
 # The JavaScript shell runtime: TypeScript stripping, the module loader, and one QuickJS generation with its budgets.
 gnoblin-js = { path = "crates/gnoblin-js" }
 gnoblin-schema = { path = "crates/gnoblin-schema" }
-# The portal dialog models, the payload and result types the compositor negotiates with (D19).
+# The portal dialog models, the payload and result types the compositor negotiates with.
 gnoblin-portal-core = { path = "crates/gnoblin-portal-core" }
 gnoblin-portal-consent = { path = "crates/gnoblin-portal-consent" }
 gnoblin-portal-filechooser = { path = "crates/gnoblin-portal-filechooser" }
 gnoblin-portal-appchooser = { path = "crates/gnoblin-portal-appchooser" }
-# The egui layer of the dialogs: the DialogUi trait, the shell and the CPU painter (D19).
+# The egui layer of the dialogs: the DialogUi trait, the shell and the CPU painter.
 gnoblin-portal-ui = { path = "crates/gnoblin-portal-ui" }
 # D-Bus, for the services role and the compat adapters that serve an upstream bus
 # name. Only client-side crates may name it: the dependency rules in

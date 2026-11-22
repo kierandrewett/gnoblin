@@ -9,7 +9,7 @@
 //!
 //! Real: the request handle and its cancellation, the session table, the source selection
 //! as the caller asked for it and as this backend narrows it, the consent question with
-//! D14's refusal, the response codes, the close and the stream bookkeeping.
+//! the fail-closed refusal, the response codes, the close and the stream bookkeeping.
 //!
 //! Real for a screenshot: the frames come from the compositor's `capture.screen` member,
 //! through [`crate::capture_relay`], which writes the PNG and answers with its URI. Only
@@ -297,7 +297,7 @@ impl ScreenCast {
     /// Create a screen cast session.
     ///
     /// No prompt is made here: a session is a handle, and the user is asked when there is
-    /// something to show them (at `Start`). That is also what makes D14's refusal land at
+    /// something to show them (at `Start`). That is also what makes the fail-closed refusal land at
     /// the call the user was waiting for rather than at a creation the frontend makes
     /// speculatively.
     async fn create_session(

@@ -509,7 +509,7 @@ pub type Reply = (u32, BTreeMap<String, zbus::OwnedVariant>);
 
 /// A refusal, as the error the frontend forwards.
 ///
-/// D14 is a `Failed` whose sentence names `portal.ui`: the frontend shows the app its own
+/// The fail-closed refusal is a `Failed` whose sentence names `portal.ui`: the frontend shows the app its own
 /// error, and the sentence is what a person reads in a log when a share does not appear.
 pub fn refused(refusal: Refusal) -> fdo::Error {
     match refusal {

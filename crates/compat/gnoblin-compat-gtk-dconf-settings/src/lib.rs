@@ -1,8 +1,8 @@
-//! The dconf layer GTK reads its own settings from (D15's `gtk` target).
+//! The dconf layer GTK reads its own settings from (the settings bridge's `gtk` target).
 //!
 //! GTK is not told its fonts, icon theme, cursor or button layout by any protocol: it
 //! reads GSettings keys under `org.gnome.desktop.interface` and
-//! `org.gnome.desktop.wm.preferences`, and those keys come from dconf. D15's answer is a
+//! `org.gnome.desktop.wm.preferences`, and those keys come from dconf. The answer is a
 //! dconf *layer* Gnoblin writes and GTK reads, so the desktop's configuration is the only
 //! source and nothing a toolkit writes is read back.
 //!
@@ -133,7 +133,7 @@ impl DconfValue {
 
 /// The keys Gnoblin writes into the layer.
 ///
-/// Every key is one GTK actually reads for one of the facts D15 names: fonts, icon
+/// Every key is one GTK actually reads for one of the facts the bridge publishes: fonts, icon
 /// theme, cursor theme and size, button layout, colour scheme and accent colour.
 #[must_use]
 pub fn publish(settings: &DesktopSettings) -> Vec<KeyWrite> {

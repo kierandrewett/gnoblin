@@ -426,7 +426,7 @@ impl DisplayConfigService {
 
     /// Whether Night Light is available through this interface.
     ///
-    /// `false`: Night Light is the services role's (D15) and the IPC publishes no
+    /// `false`: Night Light is the services role's and the IPC publishes no
     /// colour temperature for this adapter to report.
     #[zbus(property)]
     fn night_light_supported(&self) -> fdo::Result<bool> {

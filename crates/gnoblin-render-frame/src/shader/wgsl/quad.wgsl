@@ -1,6 +1,6 @@
 // The vertex stage every pass shares.
 //
-// It is written in WGSL because the shader language of D12 is WGSL: the fragment
+// It is written in WGSL because the shader language of every renderer is WGSL: the fragment
 // stages below are the effects, and this stage is the one quad
 // they all draw, so writing it in another language would mean two compilers for one
 // pass.
@@ -17,7 +17,7 @@
 // # The clip-space convention this stage is written in
 //
 // Pixel y grows downwards (the compositor's convention) and the clip space written here is
-// y-down too: `pixel.y = 0` is `clip.y = -1`. That is the convention Vulkan uses, and D12's
+// y-down too: `pixel.y = 0` is `clip.y = -1`. That is the convention Vulkan uses, and the
 // Vulkan backend will take this module to SPIR-V unchanged. `naga`'s GLSL backend compiles
 // the same module for GLES by writing `gl_Position.yz = vec2(-gl_Position.y, ...)` after the
 // shader (`WriterFlags::ADJUST_COORDINATE_SPACE`, on by default), which turns it into GL's

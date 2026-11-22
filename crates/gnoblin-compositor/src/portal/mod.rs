@@ -10,7 +10,7 @@
 //! built-in dialogs they hand off to are the models in [`gnoblin_portal`].
 //!
 //! This module is core logic, not part of the portal relay: the relay
-//! (`xdg-desktop-portal-gnoblin`) stays a removable thin relay (D19).
+//! (`xdg-desktop-portal-gnoblin`) stays a removable thin relay.
 //!
 //! What it does not hold is the dialog the user answers. That is a [`UiProvider`]: the built-in screens are std's
 //! (`gnoblin-std-impl`, registered through the C ABI and reached as a [`ForeignUi`](crate::providers::ForeignUi)), and a

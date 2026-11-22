@@ -29,8 +29,7 @@
 //!
 //! # Failure modes first
 //!
-//! The plan's component card, D13 and D14 give this list, and each entry names
-//! the test that covers it:
+//! Each entry names the test that covers it:
 //!
 //! 1. A token is redeemed twice: `a_token_is_accepted_once`.
 //! 2. A child process inherits authority it should not:

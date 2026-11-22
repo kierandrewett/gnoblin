@@ -1,5 +1,5 @@
 //! Admission for built-in UI requests: queue caps, a per-app rate limit and the
-//! lock embargo (D19 "Rate and queue caps" and "Lock embargo").
+//! lock embargo.
 //!
 //! The queue owns the requests waiting for a dialog and a sliding rate history per
 //! app id. It has no clock: callers pass the current [`Tick`] to `admit`, so tests can

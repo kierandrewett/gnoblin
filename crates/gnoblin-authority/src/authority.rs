@@ -316,7 +316,7 @@ impl Authority {
             };
         }
         let Some(provider) = self.portal_ui else {
-            // D14: without a shell that claims `portal.ui` nothing can be
+            // Without a shell that claims `portal.ui` nothing can be
             // asked, so the request fails closed.
             return answer(Decision::Denied(Denial::NoPortalUi));
         };

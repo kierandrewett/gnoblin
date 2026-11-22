@@ -1,6 +1,6 @@
 //! The look the compositor's own dialogs are drawn with, from a committed configuration.
 //!
-//! The lock card, the secret and polkit prompts and the portal's dialogs draw with one style. The lock card is core's (D7), so
+//! The lock card, the secret and polkit prompts and the portal's dialogs draw with one style. The lock card is core's, so
 //! the translation from the document's `dialogs.style` to a clamped style is core's too; the dialogs of std are given the
 //! result through `UiProvider::set_style`, so they read no document.
 

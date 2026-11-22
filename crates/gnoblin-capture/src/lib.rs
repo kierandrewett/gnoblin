@@ -37,7 +37,7 @@
 //! session is refused every frame while the lock is up. Only the portal path, which
 //! has the user's answer, opens [`CaptureStream::Granted`], and only that stream may
 //! continue through a lock — showing the lock scene, never the desktop underneath it.
-//! That is D13's split: compat capture goes through the portal after consent, and the
+//! That is the compat split: compat capture goes through the portal after consent, and the
 //! native protocols are governed by the per-client access policy in
 //! `gnoblin-wayland`.
 //!

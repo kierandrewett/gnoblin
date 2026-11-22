@@ -240,7 +240,7 @@ const SESSION_BINARY: &str = "gnoblin";
 /// that may link the compat host, because the compositor role it serves is what wires the adapters in.
 const CORE_LIBRARY: &str = "gnoblin-core-impl";
 
-/// The composition root. After the flip (M2.10) the launcher does not link it: it is a dependency of [`CORE_LIBRARY`].
+/// The composition root. The launcher does not link it: it is a dependency of [`CORE_LIBRARY`].
 const COMPOSITION_ROOT: &str = "gnoblin-compositor";
 
 /// The leaf ABI crate whose link stub `crates/gnoblin/build.rs` uses; the session binary may name it as a build dependency.
@@ -270,7 +270,7 @@ const COMPAT_HOSTS: &[&str] = &[COMPAT_HOST];
 ///
 /// What remains are role entry points, named because the binary is what runs a role:
 /// `gnoblin-session` for the guardian, `gnoblin-js` (until the script runtime moves into the core's
-/// shell host, M6.6) and `gnoblin-services` for the two roles the guardian starts, and
+/// shell host) and `gnoblin-services` for the two roles the guardian starts, and
 /// `gnoblin-shell-discovery`, the pure rule that names the shell a start runs. Each is the top of its
 /// own process, so an edge to it decides nothing the composition root decides — the compositor, the
 /// engine and the policy crates stay out of reach either way.
@@ -772,13 +772,13 @@ fn portal_layering(package: &Package, dep: &Dep) -> Option<String> {
 
     if dep.name == SCREENS && package.name != "gnoblin-compositor" && package.name != STD_PORTAL {
         return Some(format!(
-            "the portal dialog screens in `{SCREENS}` are used only by the compositor (the lock and prompt cards) and by std's portal dialogs `{STD_PORTAL}`, where portal.ui requests land (D19); `{}` may not depend on it",
+            "the portal dialog screens in `{SCREENS}` are used only by the compositor (the lock and prompt cards) and by std's portal dialogs `{STD_PORTAL}`, where portal.ui requests land; `{}` may not depend on it",
             package.name
         ));
     }
     if DIALOGS.iter().any(|name| dep.name == *name) && package.name != SCREENS {
         return Some(format!(
-            "the portal dialog crates are drawn only by `{SCREENS}` (D19); `{}` may not depend on `{}`",
+            "the portal dialog crates are drawn only by `{SCREENS}`; `{}` may not depend on `{}`",
             package.name, dep.name
         ));
     }
@@ -787,7 +787,7 @@ fn portal_layering(package: &Package, dep: &Dep) -> Option<String> {
         || DIALOGS.contains(&package.name.as_str());
     if dep.name == UI && !may_name_ui {
         return Some(format!(
-            "`{UI}` is the egui layer of the dialogs: only `{SCREENS}`, the dialog crates, `{STD_PORTAL}`, `gnoblin-provider-wire` and `gnoblin-compositor` (for `paint::Frame` and the `UiProvider` trait) may depend on it (D19); `{}` may not",
+            "`{UI}` is the egui layer of the dialogs: only `{SCREENS}`, the dialog crates, `{STD_PORTAL}`, `gnoblin-provider-wire` and `gnoblin-compositor` (for `paint::Frame` and the `UiProvider` trait) may depend on it; `{}` may not",
             package.name
         ));
     }

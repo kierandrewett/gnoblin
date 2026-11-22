@@ -2,7 +2,7 @@
 //!
 //! The library's identity is set here, as the core's is: the SONAME `libgnoblin-std.so.1` (Cargo derives the file name
 //! `libgnoblin_std_impl.so`; dist installs the file under the SONAME), `-z nodelete` (a retired shell generation's
-//! registrations may still point into the library, so it is never unmapped, decision D16), and `-z defs` (an unresolved symbol
+//! registrations may still point into the library, so it is never unmapped), and `-z defs` (an unresolved symbol
 //! fails the link, not the first call).
 //!
 //! The library needs the core, and says so the way every other consumer does: through the core SDK crate, whose build script links

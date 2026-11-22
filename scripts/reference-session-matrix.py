@@ -36,7 +36,7 @@ PUBLIC_PREFIXES = ("wl_", "wp_", "xdg_", "zxdg_", "zwp_", "ext_", "zwlr_")
 PROPOSAL = {
     "org.gnome.Mutter.InputMapping": "adapter, later (redirect: tablet output mapping config)",
     "org.gnome.Mutter.ServiceChannel": "adapter, later (redirect: privileged client connection from the services role)",
-    "org.gnome.Mutter.ColorManager": "dropped: Night Light moves to Gnoblin (D15)",
+    "org.gnome.Mutter.ColorManager": "dropped: Night Light moves to Gnoblin",
     "org.freedesktop.a11y.PointerLocator": "none in the plan's redirect map; it shares the a11y.Manager object with KeyboardMonitor",
 }
 
@@ -49,7 +49,7 @@ USED = {
         "Mutter calls `Setenv` on it (observed) and watches its properties; `Setenv` is not in the plan's row",
     ),
     "org.gnome.SettingsDaemon.Color": (
-        "Night Light moves to Gnoblin (D15)",
+        "Night Light moves to Gnoblin",
         "Mutter only watches the name for its properties and signals (observed)",
     ),
     "org.gnome.SettingsDaemon.Power.Screen": (

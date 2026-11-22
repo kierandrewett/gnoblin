@@ -1,4 +1,4 @@
-//! Failure-mode tests for the D19 negotiation, queue and reply-validation rules.
+//! Failure-mode tests for the portal negotiation, queue and reply-validation rules.
 
 use gnoblin_compositor::portal::{
     CancelReason, Deviation, Effect, Event, InterfaceContract, Negotiation, PortalError, PortalProvider, Queue,

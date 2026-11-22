@@ -107,7 +107,7 @@ crates = ["smithay"]
 evidence = "smithay feature renderer_gl opens libEGL.so.1 with libloading (scripts/ci-install-system-libraries.sh: panics without it); gnoblin-render-gles/src/egl.rs asks for a GLES 3 context"
 pkg-config = ["egl", "glesv2"]
 sonames = ["libEGL.so.1", "libGLESv2.so.2"]
-floor-note = "GLES 3.0 context (gnoblin-render-gles/src/egl.rs); GLES 3.1 for the proposed D18 depth pass. A driver capability, so the probe cannot judge it from a version"
+floor-note = "GLES 3.0 context (gnoblin-render-gles/src/egl.rs); GLES 3.1 for a proposed depth pass. A driver capability, so the probe cannot judge it from a version"
 [library.packages]
 apt = ["libegl1", "libgles2", "libegl-dev", "libgles-dev"]
 dnf = ["mesa-libEGL", "libglvnd-gles", "libglvnd-devel"]
@@ -152,7 +152,7 @@ nix = ["libxkbcommon"]
 id = "pixman"
 kind = "link"
 crates = ["pixman-sys"]
-evidence = "pixman-sys 0.1.0 build.rs: cargo:rustc-link-lib=pixman-1; Cargo.toml: smithay feature renderer_pixman (the D12 software path)"
+evidence = "pixman-sys 0.1.0 build.rs: cargo:rustc-link-lib=pixman-1; Cargo.toml: smithay feature renderer_pixman (the software path)"
 pkg-config = ["pixman-1"]
 sonames = ["libpixman-1.so.0"]
 [library.packages]

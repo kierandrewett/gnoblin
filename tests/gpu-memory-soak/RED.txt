@@ -1,4 +1,4 @@
-Red runs of the memory budget's tests (lane GpuBudget, issue gnoblin-4z5 stays open)
+Red runs of the memory budget's tests (issue gnoblin-4z5 stays open)
 
 What this shows: each test below FAILS on a copy of the tree in which one piece of the budget is switched off, and
 passes on the tree as committed. It is "red with the check off", not "red before the code existed": the tests were written

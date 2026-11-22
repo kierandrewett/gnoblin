@@ -1,6 +1,5 @@
 //! The built-in portal dialogs, the stock [`UiProvider`] (std's, registered through the C ABI by `gnoblin-std-impl`): one dialog on screen at a time, a FIFO of
-//! admitted requests behind it, and the outcome of each request once it settles
-//! (D19 "UI step", "Consent in the fallback").
+//! admitted requests behind it, and the outcome of each request once it settles.
 //!
 //! [`PortalUi`] is the only place that owns a [`PortalScreen`]. It is pure: the
 //! caller passes the time in ([`Tick`]), feeds keys and pointer presses in, and

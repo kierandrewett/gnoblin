@@ -26,12 +26,12 @@
 //! An offer's number is the authority's number with the same token, translated in exactly
 //! one place ([`Guard::ask`]) so the answer and the prompt can never be confused.
 //!
-//! # D14: no `portal.ui` provider means no capture
+//! # No `portal.ui` provider means no capture
 //!
 //! A prompt is offered to the `portal.ui` slot. When nobody claims the slot the offer
 //! is refused before it is made, with [`Refusal::NoProvider`] naming `portal.ui`, and
 //! nothing waits out a deadline: the caller learns what is missing rather than seeing a
-//! share that never appears. That is D14's fail-closed answer, and it is the same shape the
+//! share that never appears. That is the fail-closed answer, and it is the same shape the
 //! keyring's `prompt.secret` request takes when nothing claims it.
 //!
 //! # Expiry
@@ -354,7 +354,7 @@ pub trait Host: Send {
 /// Why something was refused before it could wait for an answer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Refusal {
-    /// No provider claims the slot, so nothing would draw the prompt (D14).
+    /// No provider claims the slot, so nothing would draw the prompt.
     NoProvider {
         /// The slot with no provider.
         slot: &'static str,
@@ -693,7 +693,7 @@ impl Guard {
 
     /// Ask for one capability on behalf of one session.
     ///
-    /// The order is the one that makes D14 true: the offer is refused before it is made
+    /// The order is the one that makes the fail-closed rule true: the offer is refused before it is made
     /// when no provider claims the slot, and only an offer that exists is recorded in the
     /// authority. A grant that still stands answers without a prompt, because the user
     /// already answered for this caller and this capability.
@@ -814,7 +814,7 @@ impl Guard {
     ///
     /// A shortcut binding and a clipboard transfer are choices a user makes and neither
     /// is a capability in the authority's model, so the answer is the D-Bus response and
-    /// nothing outlives the call. Everything else is the same as [`Guard::ask`]: D14's
+    /// nothing outlives the call. Everything else is the same as [`Guard::ask`]: the
     /// refusal when nobody claims `portal.ui`, one waiting entry, expiry closed, and the
     /// same `allow`/`deny` encoding.
     pub fn ask_once(

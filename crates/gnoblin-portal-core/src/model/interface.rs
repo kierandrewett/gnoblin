@@ -1,4 +1,4 @@
-//! The portal interfaces Gnoblin serves (D19 table) and the typed payloads the built-in dialogs render and fill.
+//! The portal interfaces Gnoblin serves and the typed payloads the built-in dialogs render and fill.
 
 use std::fmt;
 

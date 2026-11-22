@@ -3,7 +3,7 @@
 //! Every member of this adapter is a [`OperationClass::Read`]: it reports what the desktop
 //! holds and changes nothing. That is why the redirect map files it as "adapter, on" rather
 //! than under the capture setting — the portal's window picker must be able to ask which
-//! windows exist while the session is in D13's default `portal` mode, and the only member
+//! windows exist while the session is in the default `portal` mode, and the only member
 //! that would not be a read, `GetRunningApplications`, is declared `unsupported` because the
 //! schema publishes no application object.
 
@@ -111,8 +111,7 @@ impl Adapter for IntrospectAdmission {
 
 /// The gate the adapter uses when the composition root did not choose one.
 ///
-/// `Mode::Portal`, an unsandboxed same-user caller and an unlocked session: the defaults of
-/// D13 and of a session that is not locked.
+/// `Mode::Portal`, an unsandboxed same-user caller and an unlocked session: the defaults.
 pub fn default_gate() -> Gate {
     Gate::new(Mode::default(), Default::default(), Default::default())
 }

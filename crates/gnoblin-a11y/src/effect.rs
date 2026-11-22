@@ -89,7 +89,7 @@ pub enum BeepReason {
     Reject,
 }
 
-/// What apps are told about motion and contrast (D15).
+/// What apps are told about motion and contrast.
 ///
 /// The renderer honours these; this crate only publishes them, because a native
 /// animation that ignores the flag fails in `gnoblin-render`, not here.

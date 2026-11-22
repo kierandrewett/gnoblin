@@ -23,7 +23,7 @@
 //!
 //! An `OutputFrame` (in `gnoblin-render-frame`) is the seam between the compositor and a
 //! renderer, and it names no renderer API: a GLES path reads the same value a Pixman path
-//! does. That is what makes D12's "write every effect once, compile per backend" possible
+//! does. That is what makes "write every effect once, compile per backend" possible
 //! later, and it is why the scene-to-frame step ([`compose::Composer`]) can be unit-tested
 //! without a device.
 //!
@@ -67,7 +67,7 @@
 //! components from 0 to 1 where the stored values are display sRGB. A renderer clamps at
 //! draw time, so an overshooting animation cannot produce an invalid colour, and nothing
 //! here applies a transfer function: colour management is Gnoblin's own pipeline, which
-//! D12 leaves for later.
+//! is left for later.
 
 /// The scene and the drawing of one output's frame from it. See [`compose::Composer`].
 pub mod compose;

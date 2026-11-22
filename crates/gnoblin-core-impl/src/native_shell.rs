@@ -254,7 +254,7 @@ pub(crate) fn serve(
     let watching = Watching::start(module, host::reload_controller());
     let outcome = turn_until_done(&mut shell, stopped);
     drop(watching);
-    // The shutdown hooks run, the registrations are removed and the library is kept mapped (D16), whatever ended the loop.
+    // The shutdown hooks run, the registrations are removed and the library is kept mapped, whatever ended the loop.
     shell.stop();
     outcome
 }

@@ -1,6 +1,6 @@
 //! The values `org.freedesktop.impl.portal.Settings` publishes, and where they come from.
 //!
-//! D15 makes the settings bridge a one-way publish from Gnoblin configuration: the
+//! The settings bridge is a one-way publish from Gnoblin configuration: the
 //! compositor owns the values, it states them as properties of one `settings` object
 //! (`crates/gnoblin-schema/schema/settings.toml`), and this module translates them into
 //! the namespaces toolkits read. Nothing here writes anything. There is no method that

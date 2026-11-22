@@ -3,7 +3,7 @@
 //! Every member of this adapter is a [`OperationClass::Read`]: an idle watch observes the
 //! session, it does not change it. That is why the redirect map files this adapter as "on"
 //! rather than under the capture setting — gsd-power and every screensaver must be able to
-//! ask how long the user has been away while the session is in D13's default `portal`
+//! ask how long the user has been away while the session is in the default `portal`
 //! mode. `ResetIdletime` is the one member that would change the session's state, and it is
 //! declared `unsupported` rather than gated, because no caller may hold a session awake by
 //! resetting its counter.
@@ -109,8 +109,7 @@ impl Adapter for IdleMonitorAdmission {
 
 /// The gate the adapter uses when the composition root did not choose one.
 ///
-/// `Mode::Portal`, an unsandboxed same-user caller and an unlocked session: the defaults
-/// of D13 and of a session that is not locked.
+/// `Mode::Portal`, an unsandboxed same-user caller and an unlocked session: the defaults.
 pub fn default_gate() -> Gate {
     Gate::new(Mode::default(), Default::default(), Default::default())
 }

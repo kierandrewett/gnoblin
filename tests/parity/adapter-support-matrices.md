@@ -98,7 +98,7 @@ every row; a member it does not serve is declared `unsupported` with a reason, n
 | signal | `SelectionOwnerChanged` | `out:a{sv}` |
 | signal | `SelectionTransfer` | `out:s,out:u` |
 
-**`org.gnome.Mutter.ColorManager`**: dropped: Night Light moves to Gnoblin (D15).
+**`org.gnome.Mutter.ColorManager`**: dropped: Night Light moves to Gnoblin.
 
 | Kind | Member | Signature |
 | --- | --- | --- |
@@ -237,7 +237,7 @@ From the method calls its connection sent (`dbus-monitor-mutter.txt`):
 
 | Name Mutter looks up with `GetNameOwner` and watches | The plan says | The recording shows |
 | --- | --- | --- |
-| `org.gnome.SettingsDaemon.Color` | Night Light moves to Gnoblin (D15) | Mutter only watches the name for its properties and signals (observed) |
+| `org.gnome.SettingsDaemon.Color` | Night Light moves to Gnoblin | Mutter only watches the name for its properties and signals (observed) |
 | `org.gnome.SettingsDaemon.Power.Screen` | no row in the plan [INFERENCE: backlight and power-saver state] | watched, never called (observed) |
 | `org.gnome.SessionManager` | redirect-map row: session inhibit and logout, inhibit on, logout off | Mutter calls `Setenv` on it (observed) and watches its properties; `Setenv` is not in the plan's row |
 | `org.gnome.Orca.KeyboardMonitor` | the plan's a11y row names Orca as a consumer of `org.freedesktop.a11y.KeyboardMonitor` [INFERENCE] | Mutter watches Orca's own name, so Orca serves something Mutter reads; the plan does not say what |

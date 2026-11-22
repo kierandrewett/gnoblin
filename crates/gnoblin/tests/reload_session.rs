@@ -246,7 +246,7 @@ fn count_a_press(session: &mut Gnoblin, typist: &mut Typist, wanted: f64) {
     );
 }
 
-/// M5.4 in a real session: a shell reloaded twice by `gnoblinctl shell reload` keeps what it asked the core to keep, finds the nodes
+/// In a real session: a shell reloaded twice by `gnoblinctl shell reload` keeps what it asked the core to keep, finds the nodes
 /// it adopted with the identity they had, is not called by the generations it replaced (a thread of a retired generation is refused
 /// with `Retired` and what it posted never runs), and the Wayland client is connected throughout.
 #[test]
@@ -571,7 +571,7 @@ fn is_shell_copy(path: &str) -> bool {
 
 #[test]
 fn the_retired_libraries_are_bounded_at_32_and_the_reload_past_the_limit_is_refused_while_the_shell_serves_on() {
-    // D16: a retired native generation is never unloaded, so every reload keeps one library mapped for the life of the process. The
+    // A retired native generation is never unloaded, so every reload keeps one library mapped for the life of the process. The
     // bound is 32 libraries, the ones of failed replacements included (a library that was mapped and refused may have left a thread
     // or a destructor behind, as a retired one may). Past it a reload is refused with a text that says what to do, and nothing else
     // changes: the running generation serves, the client stays connected.

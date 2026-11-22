@@ -3,7 +3,7 @@
 //! Three inputs decide one call, and [`allow`] is a pure function of them, so a
 //! refusal is reproducible from the values in its log line:
 //!
-//! - [`Mode`] is `gnoblin.configure.compat.capture`: the default set from D13
+//! - [`Mode`] is `gnoblin.configure.compat.capture`: the default
 //!   is "reads on; writes off; capture via portal only";
 //! - [`CallerContext`] says whether the caller is sandboxed, which no mode
 //!   relaxes;
@@ -32,7 +32,7 @@ use crate::refusal::{Refusal, Rule};
 pub enum Mode {
     /// `off`: no adapter owns its upstream name, so every call is refused.
     Off,
-    /// `portal`, the default from D13: reads answer, state changes and capture
+    /// `portal`, the default: reads answer, state changes and capture
     /// do not, and capture and input happen through the Gnoblin portal only.
     #[default]
     Portal,
@@ -289,7 +289,7 @@ pub fn allow(
                 adapter,
                 operation,
                 Rule::WriteNotEnabled,
-                "state changes are off by default (D13); enable them in `gnoblin.configure.compat`",
+                "state changes are off by default; enable them in `gnoblin.configure.compat`",
             );
         }
         (Mode::Portal, OperationClass::Capture | OperationClass::InputInjection) => {

@@ -1,4 +1,4 @@
-//! The built-in dialog models: pure state and events, with no drawing (D19 "UI step").
+//! The built-in dialog models: pure state and events, with no drawing.
 //!
 //! Each model takes input and returns a decision or a confirmation. The
 //! compositor draws whatever the model holds and feeds the input back in.
@@ -9,7 +9,7 @@ use gnoblin_types::Tick;
 
 use super::interface::Grant;
 
-/// Consent dialogs arm this many milliseconds after they appear (D19, proposed).
+/// Consent dialogs arm this many milliseconds after they appear.
 pub const ARM_DELAY_MS: u64 = 500;
 
 /// Where a pointer event landed.

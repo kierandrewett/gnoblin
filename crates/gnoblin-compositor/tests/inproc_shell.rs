@@ -1,4 +1,4 @@
-//! A shell that runs in the compositor process, on a thread of its own (`inproc_shell`, design M2.8), against the real
+//! A shell that runs in the compositor process, on a thread of its own (`inproc_shell`), against the real
 //! compositor: the session is [`gnoblin_compositor::Compositor::run`] on a headless backend, the shell is a fake that holds the
 //! tree through the in-process link, and everything it is compared with is the socket's.
 //!

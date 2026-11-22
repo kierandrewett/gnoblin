@@ -3,8 +3,8 @@
 //! The same frame `gnoblin-compat-wayland-gtk-shell1` uses, with one difference worth stating:
 //! both members here are [`OperationClass::Write`], because a caller that is not the
 //! window's own client is changing how that window relates to another one. The portal is
-//! the caller D15 names ("a portal-built dialog"), so a session in `portal` mode refuses
-//! both members until writes are enabled — which is D13's rule applied honestly rather
+//! the caller ("a portal-built dialog"), so a session in `portal` mode refuses
+//! both members until writes are enabled — the compat rule applied honestly rather
 //! than a redirect that quietly does what it likes.
 //!
 //! That refusal is not an error the client can see: a Wayland request has no reply, so a
@@ -129,7 +129,7 @@ mod tests {
         assert!(admission.admit(Call::SetX11Parent).is_ok());
     }
 
-    /// In the default mode a write is refused, which is D13's rule: the portal's request
+    /// In the default mode a write is refused: the portal's request
     /// changes how two windows relate, and a session that has not enabled writes answers
     /// nothing.
     #[test]

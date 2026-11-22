@@ -1,4 +1,4 @@
-supersample::a_mode_change_a_hotplug_and_a_mirror_keep_the_factor and `UnknownNode` (lane GpuBudget)
+supersample::a_mode_change_a_hotplug_and_a_mirror_keep_the_factor and `UnknownNode` (memory budget series)
 
 The test failed once with `the apply call was refused: UnknownNode` in a whole-crate run of gnoblin-wayland. It was run on
 the base commit (f3e7ddbf3, a git worktree of origin/rust-compositor without the budget) and on the tree with the

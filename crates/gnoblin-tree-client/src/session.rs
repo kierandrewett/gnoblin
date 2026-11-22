@@ -1,7 +1,7 @@
 //! A shell's whole view of the tree, with no language in it: the link, the mirror, the per-tick transaction builder and the
 //! gate that keeps one transaction in flight.
 //!
-//! [`TreeSession`] is what `gnoblin-core-impl` holds for a native shell (design decision D4: the mirror and the builder
+//! [`TreeSession`] is what `gnoblin-core-impl` holds for a native shell (the mirror and the builder
 //! live in the core, once, so no language runtime carries a mirror of its own that could drift). It does three things:
 //!
 //! - **Attach** ([`boot_mirror`]): ask for the tree, wait for the whole snapshot, build the mirror from it. The JavaScript shell

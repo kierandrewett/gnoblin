@@ -79,7 +79,7 @@
           "kind": "property",
           "name": "NightLightSupported",
           "support": "partial",
-          "note": "false: Night Light belongs to the services role (D15) and the IPC publishes no colour temperature for this adapter to read"
+          "note": "false: Night Light belongs to the services role and the IPC publishes no colour temperature for this adapter to read"
         },
         {
           "kind": "property",

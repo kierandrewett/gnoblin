@@ -1,4 +1,4 @@
-//! Decision D11, in a real session: the compositor's built-in window motion (the 200 ms fade a window has when it closes) is the std
+//! In a real session: the compositor's built-in window motion (the 200 ms fade a window has when it closes) is the std
 //! library's policy, not core's. A shell that never loads std (core only) controls its own motion, so its windows land and leave at once;
 //! a shell that loads std gets the desktop's look, because std sets the motion as it opens.
 //!

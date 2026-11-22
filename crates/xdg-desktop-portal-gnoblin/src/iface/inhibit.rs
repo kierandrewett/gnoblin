@@ -9,7 +9,7 @@
 //!
 //! The plan's instruction for this interface is exact: forward it "to the compositor's
 //! inhibit state as IPC calls if the schema has them, else document and refuse". The object
-//! schema has no inhibit member — the `settings` object added for D15 is the only new
+//! schema has no inhibit member — the `settings` object of the settings bridge is the only new
 //! object this change adds — so there is nothing to call, and the default backend refuses
 //! with a sentence naming `inhibit`. A session-management dialogue that waits for an
 //! inhibition nobody holds would keep the session open, which is the failure that matters,

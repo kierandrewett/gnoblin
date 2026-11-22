@@ -95,7 +95,7 @@ allow = ["OFL-1.1", "Ubuntu-font-1.0"]
 
 [sources]
 unknown-registry = "deny"
-# Smithay is pinned to a git revision (D7); whichever revision lands gets an
+# Smithay is pinned to a git revision; whichever revision lands gets an
 # entry here, so a dependency cannot silently start tracking a mutable branch.
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]

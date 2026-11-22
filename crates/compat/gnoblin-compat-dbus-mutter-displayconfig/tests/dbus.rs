@@ -222,7 +222,7 @@ fn get_current_state_matches_the_output_objects_and_follows_a_change() {
 #[test]
 fn an_apply_is_refused_in_the_default_mode() {
     // The failure mode: a write is allowed because the adapter forgot which mode it
-    // serves in. D13's default is `portal`, so the apply is refused by name and the
+    // serves in. The default is `portal`, so the apply is refused by name and the
     // property a caller uses to decide whether to offer a configuration says so.
     let bus = Bus::start();
     let address = bus.address().to_owned();

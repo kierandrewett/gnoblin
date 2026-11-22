@@ -20,8 +20,7 @@ use crate::mode::OperationClass;
 pub enum Rule {
     /// The adapters are off, so nothing owns its upstream name.
     ModeOff,
-    /// A state change in `portal` mode, which is off until a user enables it
-    /// (D13).
+    /// A state change in `portal` mode, which is off until a user enables it.
     WriteNotEnabled,
     /// Capture or input injection in `portal` mode, where the Gnoblin portal is
     /// the only path after consent.

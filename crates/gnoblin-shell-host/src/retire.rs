@@ -1,6 +1,6 @@
 //! The retire list: native code that cannot be unmapped, kept bounded and visible.
 //!
-//! A native shell generation that has retired is still mapped, and stays mapped (design decision D16): a callback, a thread
+//! A native shell generation that has retired is still mapped, and stays mapped: a callback, a thread
 //! or a TLS destructor of the retired code may still run, and `dlclose` under any of them is the crash this design exists
 //! to avoid. The price is one idle library copy per reload for the life of the process. That is acceptable only if it is
 //! bounded and visible, so the list does three things:

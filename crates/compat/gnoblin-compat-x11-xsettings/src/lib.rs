@@ -1,4 +1,4 @@
-//! XSETTINGS for X11 applications (D15's `xsettings` target).
+//! XSETTINGS for X11 applications (the settings bridge's `xsettings` target).
 //!
 //! X11 applications do not read the configuration document, a dconf database or the
 //! portal: they read the `_XSETTINGS_S0` selection's property on the root window, which
@@ -16,7 +16,7 @@
 //!
 //! # One way only
 //!
-//! D15: "Writes from GNOME Settings are never read back." [`publish`] is a pure function
+//! Writes from GNOME Settings are never read back. [`publish`] is a pure function
 //! of one [`DesktopSettings`] value, so there is no path from an X11 client, a
 //! configuration file or a `gsettings` database into what is published. A test proves it
 //! by publishing twice from the same value with an unrelated file in between.

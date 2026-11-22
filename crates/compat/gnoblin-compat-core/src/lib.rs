@@ -12,7 +12,7 @@
 //!   use, which applies every refusal before an adapter sees a call.
 //! - [`Refusal`] and [`Rule`]: the one error type, naming the adapter, the
 //!   interface, the member, the operation and the rule that refused.
-//! - [`DesktopSettings`], [`ColourScheme`] and [`Switch`]: the values D15
+//! - [`DesktopSettings`], [`ColourScheme`] and [`Switch`]: the values the settings bridge
 //!   publishes to other toolkits and the per-target switch that decides whether
 //!   a target hears them. They live here because two compat crates publish the
 //!   same values and a compat crate never depends on another.

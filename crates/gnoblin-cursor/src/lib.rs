@@ -1,4 +1,4 @@
-//! Cursor images from an ordered chain of pure providers (D20).
+//! Cursor images from an ordered chain of pure providers.
 //!
 //! A [`CursorProvider`] answers one question: for this theme, shape and
 //! physical size, is there an image? It reads theme files only through a
@@ -121,7 +121,7 @@ pub enum ProviderKind {
 }
 
 impl ProviderKind {
-    /// Every provider this build has, in the default order of D20.
+    /// Every provider this build has, in the default order.
     pub const DEFAULT_ORDER: [Self; 3] = [Self::Hyprcursor, Self::KdeGnomeSvg, Self::Xcursor];
 
     /// The configuration name of this provider.

@@ -1,6 +1,6 @@
-//! The settings a publisher sends to other toolkits (D15).
+//! The settings a publisher sends to other toolkits.
 //!
-//! D15 publishes the desktop's settings **one way**: Gnoblin's configuration is the
+//! The settings bridge publishes the desktop's settings **one way**: Gnoblin's configuration is the
 //! source, a per-toolkit switch in `gnoblin.configure.compat` decides whether the
 //! target hears about it at all, and nothing a toolkit writes is read back. The
 //! publishers are three adapters — [`gnoblin-compat-gtk-dconf-settings`],
@@ -90,7 +90,7 @@ impl fmt::Display for ColourScheme {
 
 /// Whether one target in `gnoblin.configure.compat` is on.
 ///
-/// D15 gives every target its own switch, and the default is on: a session that
+/// Every target has its own switch, and the default is on: a session that
 /// configures nothing publishes, which is what makes GTK, Qt and X11 applications
 /// look like the desktop on a fresh install. Off is a complete statement rather
 /// than a partial one — a target that is off receives no action, so the
@@ -132,7 +132,7 @@ impl fmt::Display for Switch {
     }
 }
 
-/// The settings D15 publishes to other toolkits.
+/// The settings the bridge publishes to other toolkits.
 ///
 /// Every field is a value a toolkit reads: GTK's `gsettings` keys, XSETTINGS
 /// properties and the portal's own keys are three copies of the same handful of

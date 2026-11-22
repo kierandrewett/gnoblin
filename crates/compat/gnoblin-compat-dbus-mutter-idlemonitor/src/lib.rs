@@ -19,7 +19,7 @@
 //! - **Not an idle clock.** The compositor measures the idle time and publishes it. Two
 //!   clocks in one session disagree, and the one a policy reads has to be the one the
 //!   compositor's own screensaver behaviour uses.
-//! - **Not a state-changing adapter.** Every member is a read, so it answers in D13's
+//! - **Not a state-changing adapter.** Every member is a read, so it answers in the
 //!   default `portal` mode; the one member that would change the session, `ResetIdletime`,
 //!   is refused by the matrix because a caller that could reset the counter could hold the
 //!   session awake forever.

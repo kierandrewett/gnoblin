@@ -1,9 +1,9 @@
-//! Qt's settings, by pointing Qt at the portal (D15's `qt` target).
+//! Qt's settings, by pointing Qt at the portal (the settings bridge's `qt` target).
 //!
 //! Qt 6.5 and later can read the desktop's colour scheme, accent colour and contrast from
 //! the portal's `org.freedesktop.portal.Settings` interface, but only when the
 //! `xdgdesktopportal` platform theme is its style: without it, Qt reads its own config
-//! files and knows nothing about the session. D15's decision is therefore the whole of
+//! files and knows nothing about the session. Pointing Qt at the portal is therefore the whole of
 //! this adapter — set `QT_QPA_PLATFORMTHEME=xdgdesktopportal` in the session environment
 //! and write **no Qt config file at all**.
 //!
@@ -14,7 +14,7 @@
 //! activation environment, so an application activated over D-Bus sees the same value.
 //! [`publish`] answers an [`Export`], [`apply`] turns it into the guardian's own
 //! [`Effect::ExportEnv`], and this crate never writes a file: two writers of
-//! `qt5ct.conf` is exactly the second source of truth D15 rejected.
+//! `qt5ct.conf` would be a second source of truth.
 //!
 //! # Failure modes first
 //!
@@ -73,7 +73,7 @@ pub fn publish() -> Vec<Export> {
 /// The effects that make the session export what [`publish`] asks for.
 ///
 /// A switch that is off answers no effects: the variable is then whatever the session
-/// inherited, which is the "Qt reads its own settings" state D15 describes.
+/// inherited, and Qt reads its own settings.
 #[must_use]
 pub fn apply(switch: Switch) -> Vec<Effect> {
     if !switch.is_on() {

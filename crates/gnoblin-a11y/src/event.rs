@@ -58,7 +58,7 @@ pub enum Event {
     /// A configuration load or reload. Fields this crate does not own are
     /// absent because it never reads them.
     Configure(Config),
-    /// The settings bridge (D15) republished what apps read about motion and
+    /// The settings bridge republished what apps read about motion and
     /// contrast.
     AppearanceChanged {
         /// Whether animations must be suppressed.

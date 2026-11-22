@@ -6,7 +6,7 @@
 //! `cargo xtask compat-report` prints, compiled in so the file a reviewer approved is
 //! the file this build honours.
 //!
-//! One member is a write and the rest are reads, and that split is the whole of D13
+//! One member is a write and the rest are reads, and that split is the whole compat rule
 //! for this adapter: `GetCurrentState` and the properties answer in `portal` mode, and
 //! `ApplyMonitorsConfig` is refused with [`gnoblin_compat_core::Rule::WriteNotEnabled`]
 //! until a user enables state changes. The plan's redirect map states it as "reads on;
@@ -173,7 +173,7 @@ impl Adapter for DisplayConfigAdmission {
 /// The gate the adapter uses when the composition root did not choose one.
 ///
 /// `Mode::Portal`, an unsandboxed same-user caller and an unlocked session: the
-/// defaults of D13 and of a session that is not locked. A caller context is
+/// defaults. A caller context is
 /// `unsandboxed` because a D-Bus caller on the session bus is a same-user process and
 /// the frame's sandbox rule is about Flatpak and security contexts, which a bus name
 /// cannot prove either way.

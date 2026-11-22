@@ -1,6 +1,6 @@
 //! The renderer-neutral half of the shader pipeline.
 //!
-//! D12's rule is that every effect is written once, in WGSL, and compiled per backend. This
+//! The rule is that every effect is written once, in WGSL, and compiled per backend. This
 //! module is the "once": nothing here names a GPU API, and the GLES and Vulkan renderers
 //! both read it.
 //!

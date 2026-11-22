@@ -8,7 +8,7 @@
 //!
 //! # Why every request here is a [`OperationClass::Read`]
 //!
-//! D13's gate exists so a *remote* caller cannot change the session: a D-Bus name
+//! The compat gate exists so a *remote* caller cannot change the session: a D-Bus name
 //! lets any same-user process ask the compositor to do something on its behalf, and
 //! `portal` mode refuses those state changes until a user enables them. A Wayland
 //! request is the opposite case. The client already owns the surface it names — the

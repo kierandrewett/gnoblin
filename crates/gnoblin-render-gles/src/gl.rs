@@ -1,6 +1,6 @@
 //! The crate's one OpenGL ES shim.
 //!
-//! D12 puts the GPU path on Smithay's GLES renderer, whose safe half is the EGL
+//! The GPU path is Smithay's GLES renderer, whose safe half is the EGL
 //! context (see [`super::egl`]) and whose drawing half is `glow`, the safe-API wrapper
 //! Smithay's `renderer_glow` feature hands out. `glow`'s calls are still `unsafe` —
 //! each one takes the caller's word that the GL state it is about to change is not in

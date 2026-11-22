@@ -18,7 +18,7 @@
 //!   the values are not premultiplied is what makes a future translucent target
 //!   readable without a second type.
 //! - **sRGB, unmanaged.** Channels are the stored sRGB values with no transfer
-//!   function applied and no colour profile: D12 puts colour management on
+//!   function applied and no colour profile: colour management belongs to
 //!   Gnoblin's own pipeline, which does not exist yet. A probe is therefore
 //!   comparable with the 8-bit colour a client put in its buffer, which is
 //!   exactly what a parity check needs.

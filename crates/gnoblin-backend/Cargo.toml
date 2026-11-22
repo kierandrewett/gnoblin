@@ -27,7 +27,7 @@ gles = ["dep:gnoblin-render-gles"]
 
 [dependencies]
 # The event-loop handle the backend contract registers its sources with. Pinned
-# workspace-wide (D7) with the `renderer_pixman` feature, which is the software path of the
+# workspace-wide with the `renderer_pixman` feature, which is the software path of the
 # Frame card and the reference renderer the headless backend uses. The hardware features
 # (`backend_drm`, `backend_gbm`) come with the workspace pin too: the nested backend's dmabuf
 # presenter allocates through GBM. The seat, udev and libinput features belong to

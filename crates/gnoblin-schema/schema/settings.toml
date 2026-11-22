@@ -1,6 +1,6 @@
 # The `settings` object: the appearance values the compositor publishes for toolkits.
 #
-# Design/rust-compositor.md's D15 makes the settings bridge a one-way publish from
+# The settings bridge is a one-way publish from
 # Gnoblin configuration: the compositor owns the values, this object states them, and
 # `xdg-desktop-portal-gnoblin` reads them for `org.freedesktop.impl.portal.Settings`.
 # Nothing reads a write back, so there is no method here and no writable property: a

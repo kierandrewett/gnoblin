@@ -2828,7 +2828,7 @@ fn a_burst_of_pose_writes_is_refused_rate_limited_and_the_rest_still_applies() {
 
 #[test]
 fn a_connection_that_is_not_the_owner_cannot_write_the_head_pose() {
-    // D35: no capabilities, the owner gate is the connection predicate. A foreign uid is refused the attach, and a
+    // No capabilities: the owner gate is the connection predicate. A foreign uid is refused the attach, and a
     // transaction it sends without one is refused `not-privileged`, so no pose it writes reaches the tree.
     use std::os::unix::fs::MetadataExt as _;
     let own = std::fs::metadata("/proc/self").expect("the process directory").uid();

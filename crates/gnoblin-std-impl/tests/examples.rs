@@ -702,7 +702,7 @@ fn canonical_chords(list: &str) -> Vec<String> {
         .collect()
 }
 
-// ---- pointer bindings (M7.5) ------------------------------------------------------------------------------------------------
+// ---- pointer bindings -------------------------------------------------------------------------------------------------------
 
 #[test]
 fn pointer_drags_move_and_resize_windows_and_a_binding_of_the_shells_own_runs() {

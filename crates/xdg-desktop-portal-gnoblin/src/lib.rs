@@ -1,6 +1,6 @@
 //! The Gnoblin desktop portal backend: `org.freedesktop.impl.portal.desktop.gnoblin`.
 //!
-//! Design/rust-compositor.md's D19 has Gnoblin serve every interface a desktop needs. This
+//! Gnoblin serves every portal interface a desktop needs. This
 //! crate is the relay for them. Today it implements the set `gnoblin.portal` lists: ScreenCast,
 //! Screenshot, RemoteDesktop, InputCapture, GlobalShortcuts, Clipboard, Settings, Inhibit and
 //! Access (the accessibility consent dialog). FileChooser, AppChooser, Print, Account, Email,
@@ -12,7 +12,7 @@
 //! # The one rule this crate is built around
 //!
 //! No app gets a capture or an injection without a user's answer, and the answer comes from
-//! the shell (D13, D14, D15):
+//! the shell:
 //!
 //! - **The portal owns the request.** The session table, the request handle, the response
 //!   code, the cancellation and the lifetime are this crate's ([`consent`]).
@@ -20,7 +20,7 @@
 //!   `portal.ui` slot over the privileged IPC connection ([`host`]). A shell that claims
 //!   the slot draws the prompt; this crate never does.
 //! - **No shell, no capture.** Without a provider the offer is refused before it is made,
-//!   and the caller learns that `portal.ui` has no provider. That is D14's fail-closed
+//!   and the caller learns that `portal.ui` has no provider. That is the fail-closed
 //!   answer, and it is why the refusal names the slot.
 //! - **The compositor owns the pixels.** A granted request ends in one call the compositor
 //!   has to make ([`backends`]). Those calls are traits with one default implementation
@@ -40,7 +40,7 @@
 //! # What is real, and what is a seam
 //!
 //! Real and tested: the session lifecycle of every interface this crate serves, the consent
-//! flow with its D14 refusal, expiry, cancellation, requester-gone and lock rules, the
+//! flow with its fail-closed refusal, expiry, cancellation, requester-gone and lock rules, the
 //! `Settings` interface end to end (its values come from the graph and its changes are
 //! signals), and `Inhibit`'s request and monitoring lifetimes.
 //!

@@ -25,7 +25,7 @@ pub enum Denial {
     SessionLocked,
     /// The table for that kind of value is full.
     AtCapacity,
-    /// No client claims `portal.ui`, so consent cannot be asked (D14).
+    /// No client claims `portal.ui`, so consent cannot be asked.
     NoPortalUi,
     /// Only the current `portal.ui` provider may answer a consent prompt.
     NotProvider,

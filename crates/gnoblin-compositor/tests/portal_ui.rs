@@ -202,7 +202,7 @@ fn requester_disconnect_tears_the_dialog_down_and_late_keys_do_nothing() {
 
 #[test]
 fn the_owner_connection_may_request_a_portal_dialog() {
-    // The trust boundary is the session owner's connection (D35), and a test socket is the
+    // The trust boundary is the session owner's connection, and a test socket is the
     // owner's uid, so a plain socket is admitted. The request is held until it is settled;
     // cancelling it settles it for its requester, which proves the dialog was admitted.
     let session = Session::start();

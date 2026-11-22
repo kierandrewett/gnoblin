@@ -1,6 +1,6 @@
 //! The GLES shader compiler: WGSL in, GLSL ES 3.10 out, and a line number when it fails.
 //!
-//! D12's rule is that every effect is written once in one language and compiled per backend.
+//! The rule is that every effect is written once in one language and compiled per backend.
 //! The language is WGSL (`mod.rs` records why), `naga` is the compiler, and this module is the
 //! GLES half of it: the module is parsed and validated by `naga`, written as GLSL ES 3.10 by
 //! `naga`'s own backend, and only then handed to the driver.

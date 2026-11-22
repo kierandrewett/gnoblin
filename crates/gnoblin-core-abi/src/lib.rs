@@ -17,7 +17,7 @@
 //!
 //! [`ABI_MAJOR`] is the SONAME major and the SDK crates' semver major. Within a major the ABI only grows: fields are
 //! appended to `GnoblinApi`, new constants and exports are added, nothing is moved, retyped or removed. `abi.lock`
-//! enforces that in CI. The ABI is unstable until 0.2.0 ships (decision D18); the lock's `released` line records
+//! enforces that in CI. The ABI is unstable until 0.2.0 ships; the lock's `released` line records
 //! where the freeze starts.
 
 #[macro_use]

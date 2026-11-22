@@ -1,4 +1,4 @@
-//! Per-request negotiation (D19 "Negotiation per request", steps 3 to 5).
+//! Per-request negotiation.
 //!
 //! A [`Negotiation`] is pure: [`Negotiation::start`] and [`Negotiation::handle`]
 //! take the event and the current [`Tick`], and return the [`Effect`]s the
@@ -10,15 +10,15 @@ use gnoblin_types::{RequestId, Tick};
 
 use crate::outcome::{CancelReason, PortalError, Verdict};
 
-/// The D19 negotiation contract for an interface: which ones a timeout may fall
+/// The negotiation contract for an interface: which ones a timeout may fall
 /// back from, and which the built-in UI can serve.
 pub trait InterfaceContract: Copy {
     /// `true` when a repeated or abandoned request has no effect at the provider,
-    /// so a timeout may fall back to the built-in UI (D19 `idempotent` column).
+    /// so a timeout may fall back to the built-in UI.
     #[must_use]
     fn idempotent(self) -> bool;
 
-    /// `true` when the built-in UI has a step for this interface (D19 "UI step").
+    /// `true` when the built-in UI has a step for this interface.
     #[must_use]
     fn has_ui_step(self) -> bool;
 }

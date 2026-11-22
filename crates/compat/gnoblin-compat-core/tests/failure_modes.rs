@@ -271,7 +271,7 @@ fn a_matrix_for_another_interface_is_not_consulted() {
     assert_eq!(adapter.served.get(), 0);
 }
 
-/// The default mode is D13's `portal`, so a state change is refused out of the
+/// The default mode is `portal`, so a state change is refused out of the
 /// box and a user has to enable it.
 #[test]
 fn the_default_mode_refuses_writes() {

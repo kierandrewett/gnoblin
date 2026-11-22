@@ -1,4 +1,4 @@
-//! Failure-mode tests for the built-in dialog models (D19 "UI step").
+//! Failure-mode tests for the built-in dialog models.
 
 use gnoblin_portal_core::model::{
     ARM_DELAY_MS, AppChoice, AppChooser, Consent, ConsentDecision, ConsentInput, ConsentTarget,

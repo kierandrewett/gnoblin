@@ -18,7 +18,7 @@
 //! The same command also verifies the golden shells of example 12 (`tests/modular/golden`, see `golden`): the stored binaries
 //! built for ABI 1.0 match their recorded hash and still have the dynamic facts of a shell.
 //!
-//! `abi-header` renders `include/gnoblin/core.h` from the same declarations. Decision D18 keeps the ABI unstable until
+//! `abi-header` renders `include/gnoblin/core.h` from the same declarations. The ABI is unstable until
 //! 0.2.0 ships: the lock's `released none` means everything may still change, and the release commit sets it to `1.0`.
 
 use std::collections::{BTreeMap, BTreeSet};
