@@ -178,6 +178,13 @@ def ref(value: Any, implement: Callable[[Any], Any] | None = None) -> Any:
     return handle
 
 
+def ref_to(value: Any, cls: type, what: str) -> Any:
+    """An object of another namespace's class on its way in. The wire carries no namespace and the two libraries issue the same handle numbers, so a value that is not an instance of `cls` is refused here, before the library could mistake it for one of its own."""
+    if not isinstance(value, cls):
+        raise TypeError(f"expected {what}, got {type(value).__name__}")
+    return ref(value)
+
+
 def find(service: Any, label: str, finders: dict[str, tuple[str, type]], kind: Any, filter: Any = None) -> list[Any]:
     """`find(kind, filter)` of a service: the objects of one kind that match `filter`: a query, a dict of field values, or a function that keeps an object when it returns a true value."""
     entry = finders.get(kind) if isinstance(kind, str) else None
@@ -334,6 +341,7 @@ impl<'a> Py<'a> {
                 let class = pascal(&self.view.enum_decl(name)?.name);
                 if input { format!("{class} | str") } else { class }
             }
+            Type::ObjectRef(name) if input && name.contains('.') => self.view.foreign(name)?.alias_py(),
             Type::ObjectRef(name) => class_name(self.view.class(name)?),
             Type::List(inner) => format!("list[{}]", self.ty(inner, input)?),
             Type::Callback(name) => {
@@ -366,6 +374,14 @@ impl<'a> Py<'a> {
         Ok(match ty {
             Type::Bool | Type::Int | Type::Uint | Type::Double | Type::Text | Type::Bytes => e.to_owned(),
             Type::Enum(name) => format!("_enc_enum_{}({e})", snake(&self.view.enum_decl(name)?.name)),
+            Type::ObjectRef(name) if name.contains('.') => {
+                let foreign = self.view.foreign(name)?;
+                format!(
+                    "_B.ref_to({e}, {}, {})",
+                    foreign.alias_py(),
+                    quote(&format!("a {}", foreign.py))
+                )
+            }
             Type::ObjectRef(name) => {
                 let class = self.view.class(name)?;
                 match class.kind {
@@ -1363,6 +1379,14 @@ pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String
         c.line("from typing import Any, Callable, Literal, TypeVar, overload");
         c.blank();
         c.line("from gnoblin.objects import Listener as Listener, Timing as Timing");
+        for foreign in view.foreigns()? {
+            c.line(format!(
+                "from gnoblin.objects.{} import {} as {}",
+                foreign.module,
+                foreign.py,
+                foreign.alias_py()
+            ));
+        }
         c.blank();
         c.line("_F = TypeVar(\"_F\", bound=Callable[..., object])");
         c.blank();
@@ -1376,6 +1400,14 @@ pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String
         c.blank();
         c.line("from gnoblin.objects import _base as _B");
         c.line("from gnoblin.objects._base import Timing");
+        for foreign in view.foreigns()? {
+            c.line(format!(
+                "from gnoblin.objects.{} import {} as {}",
+                foreign.module,
+                foreign.py,
+                foreign.alias_py()
+            ));
+        }
         c.blank();
         c.line(format!("_NS_NAME = {}", quote(view.namespace.as_str())));
         c.line("_NS = _B.open(_NS_NAME)");

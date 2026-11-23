@@ -142,6 +142,18 @@ export function ref(value, implement) {
   return { $t: 3, $v: slot };
 }
 
+/**
+ * An object of another namespace's class on its way in. The wire carries no namespace and the two libraries issue the same handle
+ * numbers, so a value that is not an instance of `Class` is refused here, before the library could mistake it for one of its own.
+ */
+export function refTo(value, Class, what) {
+  if (!(value instanceof Class)) {
+    const got = value === null ? "null" : typeof value === "object" ? (value.constructor?.name ?? "an object") : typeof value;
+    throw new TypeError(`expected ${what}, got ${got}`);
+  }
+  return ref(value);
+}
+
 /** A function the library calls: `decoders` read its arguments and `encode` writes what it answers. */
 export function callback(fn, decoders, encode) {
   if (typeof fn !== "function") {
@@ -268,6 +280,14 @@ impl<'a> Js<'a> {
             Type::Bool | Type::Int | Type::Uint | Type::Double | Type::Text => e.to_owned(),
             Type::Bytes => format!("B.bytes({e})"),
             Type::Enum(name) => format!("enc_enum_{}({e})", snake(&self.view.enum_decl(name)?.name)),
+            Type::ObjectRef(name) if name.contains('.') => {
+                let foreign = self.view.foreign(name)?;
+                format!(
+                    "B.refTo({e}, {}, {})",
+                    foreign.alias,
+                    quote(&format!("a {}", foreign.js))
+                )
+            }
             Type::ObjectRef(name) => {
                 let class = self.view.class(name)?;
                 match class.kind {
@@ -1089,6 +1109,12 @@ pub(super) fn render_js(view: &ScriptView<'_>) -> Result<String, String> {
         view.namespace
     ));
     c.line("import * as B from \"gnoblin-core/generated/object_base\";");
+    for foreign in view.foreigns()? {
+        c.line(format!(
+            "import {{ {} as {} }} from \"{}/generated/objects\";",
+            foreign.js, foreign.alias, foreign.package
+        ));
+    }
     c.blank();
     c.line(format!("const NS = B.open({});", quote(view.namespace.as_str())));
     c.line("const N = B.native;");
@@ -1130,6 +1156,7 @@ impl Js<'_> {
             Type::Text => "string".to_owned(),
             Type::Bytes => "Uint8Array".to_owned(),
             Type::Enum(name) => pascal(&self.view.enum_decl(name)?.name),
+            Type::ObjectRef(name) if input && name.contains('.') => self.view.foreign(name)?.alias,
             Type::ObjectRef(name) => {
                 let class = self.view.class(name)?;
                 let base = class_name(class);
@@ -1491,6 +1518,12 @@ pub(super) fn render_dts(view: &ScriptView<'_>) -> Result<String, String> {
         view.namespace
     ));
     c.line("import type { Listener, Timing } from \"gnoblin-core/generated/object_base\";");
+    for foreign in view.foreigns()? {
+        c.line(format!(
+            "import type {{ {} as {} }} from \"{}/generated/objects\";",
+            foreign.js, foreign.alias, foreign.package
+        ));
+    }
     c.blank();
     for declared in view.enums.values() {
         let values: Vec<String> = declared.values.iter().map(|value| quote(value)).collect();

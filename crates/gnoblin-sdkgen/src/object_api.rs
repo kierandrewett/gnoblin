@@ -18,8 +18,10 @@
 //! `Objects` is the handle on one library for one generation. The ids of a class are looked up by name the first time a call needs
 //! them, so a shell built against an older catalog works against a newer library and fails only on a name that is missing.
 //!
-//! A member whose type names a class of another namespace is refused with a message that says so: a typed reference across two
-//! libraries needs both libraries' `Objects`, which no catalog needs yet.
+//! A parameter may name a handle of the other library's catalog (`object:gnoblin.model.client`): it is a reference to the typed class of
+//! that library's SDK crate (`&::gnoblin_core::objects::Client`), whose value is sent as it is. Any other member whose type names a
+//! class of another namespace is refused with a message that says so: a typed reference across two libraries needs both libraries'
+//! `Objects`, which no catalog needs yet.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -29,7 +31,7 @@ use gnoblin_schema::{
     Type,
 };
 
-use super::objects::{Member, check_foreign, finds_of, slots_of, stem_of};
+use super::objects::{Member, check_foreign, crate_path_of, finds_of, foreign_handle, slots_of, stem_of};
 use super::text::{pascal, rust_ident, snake};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family};
 use super::{Comment, File, SdkSpec, Target};
@@ -137,14 +139,20 @@ impl<'a> Renderer<'a> {
     fn class(&self, name: &str) -> Result<&'a ObjectType, String> {
         if name.contains('.') {
             return Err(format!(
-                "`{name}` is a class of another namespace: a typed reference across two libraries is not rendered, because it needs both \
-                 libraries' `Objects`"
+                "`{name}` is a class of another namespace: a typed reference across two libraries is rendered for a parameter only, because a \
+                 result, a property or a signal field of it needs both libraries' `Objects`"
             ));
         }
         self.objects
             .get(name)
             .copied()
             .ok_or_else(|| format!("`{name}` is not a class of `{}`", self.namespace))
+    }
+
+    /// The path of the typed class of a handle of another namespace, which a parameter may name (`::gnoblin_core::objects::Client`).
+    fn foreign_path(&self, name: &str) -> Result<String, String> {
+        let (home, class) = foreign_handle(self.catalog, name)?;
+        Ok(format!("{}::{}", crate_path_of(&home)?, class_name(class)))
     }
 
     fn enum_name(&self, name: &str) -> Result<String, String> {
@@ -179,6 +187,7 @@ impl<'a> Renderer<'a> {
         Ok(match ty {
             Type::Text => "&str".to_owned(),
             Type::Bytes => "&go::typed::Octets".to_owned(),
+            Type::ObjectRef(name) if name.contains('.') => format!("&{}", self.foreign_path(name)?),
             Type::ObjectRef(name) => format!("&{}", class_name(self.class(name)?)),
             Type::List(inner) => format!("&[{}]", self.owned(inner)?),
             Type::Callback(name) => self.closure_type(name)?,

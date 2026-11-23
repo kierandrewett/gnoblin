@@ -43,6 +43,76 @@ pub(super) fn stem_of(namespace: &Namespace) -> Result<&'static str, String> {
     }
 }
 
+/// The path of the crate module that holds the typed classes of a namespace, for a reference from another library's SDK.
+pub(super) fn crate_path_of(namespace: &Namespace) -> Result<&'static str, String> {
+    match namespace.as_str() {
+        "gnoblin.model" => Ok("::gnoblin_core::objects"),
+        other => Err(format!(
+            "no SDK crate is named for the namespace `{other}`: a library may name only the core's classes"
+        )),
+    }
+}
+
+/// The handle class of another namespace that a parameter names (`object:gnoblin.model.client`): its namespace and its declaration.
+///
+/// A parameter may name a handle of another library's catalog; the wire value carries no namespace, so the library that takes it checks it
+/// against its own table. A result, a property or a signal field of such a class is not rendered (it needs the other library's wrapper
+/// registry), and neither is a class that is not a handle (a record is a value, a service has no instance, an interface a script implements).
+pub(super) fn foreign_handle<'a>(catalog: &'a Catalog, reference: &str) -> Result<(Namespace, &'a ObjectType), String> {
+    let (home, bare) = reference
+        .rsplit_once('.')
+        .ok_or_else(|| format!("`{reference}` is not a class of another namespace"))?;
+    let home = Namespace::parse(home).map_err(|_| format!("`{reference}`: `{home}` is not a namespace"))?;
+    let class = catalog
+        .schemas()
+        .iter()
+        .filter(|schema| schema.namespace == home)
+        .flat_map(|schema| schema.objects.iter())
+        .find(|candidate| candidate.name == bare)
+        .ok_or_else(|| format!("`{reference}`: namespace `{home}` has no class `{bare}`"))?;
+    if class.kind != ObjectKind::Handle {
+        return Err(format!(
+            "`{reference}` is a {} of another namespace: only a handle of another library can be passed as a parameter",
+            class.kind.as_str()
+        ));
+    }
+    Ok((home, class))
+}
+
+/// The classes of other namespaces that `namespace` names anywhere in its types, once each and in name order: what the generated module
+/// must import before it can check a parameter against them.
+pub(super) fn foreign_handles<'a>(
+    catalog: &'a Catalog,
+    namespace: &'a Namespace,
+) -> Result<Vec<(Namespace, &'a ObjectType)>, String> {
+    let mut named: BTreeSet<&str> = BTreeSet::new();
+    let mut note = |ty: &'a Type| {
+        named.extend(ty.referenced_objects().into_iter().filter(|name| name.contains('.')));
+    };
+    for object in catalog.objects(namespace) {
+        for (_, ty) in object.typed_members() {
+            note(ty);
+        }
+        for method in &object.methods {
+            if let Some(returns) = &method.returns {
+                note(returns);
+            }
+        }
+    }
+    for callback in catalog.callbacks(namespace) {
+        for field in &callback.params {
+            note(&field.ty);
+        }
+        if let Some(returns) = &callback.returns {
+            note(returns);
+        }
+    }
+    named
+        .into_iter()
+        .map(|reference| foreign_handle(catalog, reference))
+        .collect()
+}
+
 /// The members of the base class of `object` when it belongs to another namespace, in the ids they have there, and that namespace.
 /// A class of one library may extend a class the other serves; the derived catalog lists these members first.
 pub(super) fn foreign_base<'a>(catalog: &'a Catalog, object: &ObjectType) -> Option<(Namespace, Vec<Member<'a>>)> {

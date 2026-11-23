@@ -159,6 +159,16 @@ The names follow the language: `camelCase` members and `PascalCase` classes in T
 | interface    | an abstract class a shell extends, optional methods optional   | a base class a shell subclasses                      |
 | callback     | a function                                                     | a callable                                           |
 
+A parameter may name a handle of the core's catalog, such as `object:gnoblin.model.client` in `gnoblin.std`. Each language takes the
+core's own class for it:
+
+- TypeScript: `Client`.
+- Python: `gnoblin.objects.model.Client`.
+- Rust: `&gnoblin_core::objects::Client`.
+
+TypeScript and Python refuse any other value with a `TypeError` that names the class (`expected a Client, got string`). A result, a
+property or a signal field of another catalog's class is not generated.
+
 ### Value classes
 
 A record is a value class in every language, from one model (`crates/gnoblin-sdkgen/src/values.rs`), so a name, a field, the order of

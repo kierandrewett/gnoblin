@@ -13,6 +13,10 @@
 //! | interface     | a base class the shell extends                   | a base class the shell subclasses                   |
 //! | callback      | a function                                       | a callable                                          |
 //!
+//! A parameter may name a handle of the other library's catalog (`object:gnoblin.model.client` in `gnoblin.std`): the module imports that
+//! class and refuses a value that is not an instance of it, because the wire carries no namespace and the two libraries issue the same
+//! handle numbers. A result, a property or a signal field of such a class is refused when the module is written.
+//!
 //! Nothing is written by hand per class: the constructor, a property's accessor, a method, a signal and the conversion of every value
 //! are rendered from the catalog. The small runtime the classes share (`object_base`) is a fixed text each generator carries.
 //!
@@ -25,8 +29,9 @@ use std::collections::BTreeMap;
 
 use gnoblin_schema::{CallbackDecl, Catalog, EnumDecl, Namespace, ObjectType};
 
-use super::objects::stem_of;
-use super::{Comment, File, SdkSpec, Target, object_js, object_py};
+use super::objects::{foreign_handle, foreign_handles, stem_of};
+use super::text::pascal;
+use super::{Comment, File, SdkSpec, Target, object_js, object_py, values};
 
 /// What a namespace is, for the script languages: the classes by name, and the enums and callbacks.
 pub(super) struct ScriptView<'a> {
@@ -61,8 +66,8 @@ impl<'a> ScriptView<'a> {
     pub(super) fn class(&self, name: &str) -> Result<&'a ObjectType, String> {
         if name.contains('.') {
             return Err(format!(
-                "`{name}` is a class of another namespace: a typed reference across two libraries is not rendered, because it needs both \
-                 libraries' handles"
+                "`{name}` is a class of another namespace: it can be a parameter, but a result, a property or a signal field of it is not \
+                 rendered, because it needs the other library's handles"
             ));
         }
         self.objects
@@ -88,6 +93,55 @@ impl<'a> ScriptView<'a> {
             .get(name)
             .copied()
             .ok_or_else(|| format!("`{name}` is not a callback of `{}`", self.namespace))
+    }
+}
+
+/// A handle class of another namespace that a parameter of this one names, and what the generated module calls it.
+pub(super) struct ForeignClass {
+    /// The class's name in JavaScript and TypeScript.
+    pub(super) js: String,
+    /// The class's name in Python.
+    pub(super) py: String,
+    /// The name this module imports it as: the other namespace's stem and the class (`ModelClient`), so two namespaces' classes of one
+    /// name never meet.
+    pub(super) alias: String,
+    /// The package the class's JavaScript module belongs to (`gnoblin-core`).
+    pub(super) package: &'static str,
+    /// The Python module of the class (`model`).
+    pub(super) module: &'static str,
+}
+
+impl ForeignClass {
+    /// The name the Python module imports the class as: a private name, so a shell's `from gnoblin.objects.std import *` does not bring
+    /// the other namespace's class along.
+    pub(super) fn alias_py(&self) -> String {
+        format!("_{}", self.alias)
+    }
+}
+
+impl<'a> ScriptView<'a> {
+    /// The handle class of another namespace that `reference` (`gnoblin.model.client`) names, for a parameter.
+    pub(super) fn foreign(&self, reference: &str) -> Result<ForeignClass, String> {
+        let (home, class) = foreign_handle(self.catalog, reference)?;
+        Ok(ForeignClass {
+            js: values::js_class(&class.name, &class.export),
+            py: values::py_class(&class.name, &class.export),
+            alias: format!(
+                "{}{}",
+                pascal(stem_of(&home)?),
+                values::js_class(&class.name, &class.export)
+            ),
+            package: package_of(&home)?,
+            module: module_of(&home)?,
+        })
+    }
+
+    /// The classes of other namespaces this namespace's types name, once each: what the module imports.
+    pub(super) fn foreigns(&self) -> Result<Vec<ForeignClass>, String> {
+        foreign_handles(self.catalog, self.namespace)?
+            .into_iter()
+            .map(|(home, class)| self.foreign(&format!("{home}.{}", class.name)))
+            .collect()
     }
 }
 
@@ -224,7 +278,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::process::Command;
 
-    use gnoblin_schema::Catalog;
+    use gnoblin_schema::{Catalog, Namespace};
 
     use super::{ObjectJsTarget, ObjectPyTarget, ObjectTypesTarget, ScriptView};
     use crate::{SdkSpec, Target, object_js, object_py, workspace_root};
@@ -358,12 +412,19 @@ mod tests {
                 .unwrap_or_else(|| panic!("{path} is not rendered"))
                 .1
                 .replace("gnoblin-core/generated/object_base", "./object_base.mjs")
+                .replace("gnoblin-core/generated/objects", "./model.mjs")
         };
         fs::write(
             dir.path().join("object_base.mjs"),
             text("js/native/gnoblin-core/generated/object_base.js"),
         )
         .expect("the base");
+        // The std classes take the core's `Client`, so the module they import is there too.
+        fs::write(
+            dir.path().join("model.mjs"),
+            text("js/native/gnoblin-core/generated/objects.js"),
+        )
+        .expect("the core's classes");
         fs::write(
             dir.path().join("std.mjs"),
             text("js/native/gnoblin-std/generated/objects.js"),
@@ -912,6 +973,338 @@ print("ok")
             "{}{}",
             String::from_utf8_lossy(&ran.stdout),
             String::from_utf8_lossy(&ran.stderr)
+        );
+    }
+    /// The catalog of the core with a `gnoblin.std` service `windows` of the schema text `members`, which names the core's classes.
+    fn catalog_with_std(dir: &Path, members: &str) -> Catalog {
+        fs::write(
+            dir.join("windows.toml"),
+            format!(
+                "namespace = \"gnoblin.std\"\nversion = \"0.2.0\"\nlocal = true\n\n\
+                 [[object]]\nname = \"windows\"\nsince = \"0.2.0\"\nkind = \"service\"\n\n{members}"
+            ),
+        )
+        .expect("a schema");
+        let core = workspace_root().join("crates/gnoblin-core-abi/schema");
+        Catalog::load_dirs(&[core.as_path(), dir], &[]).expect("the catalogs load together")
+    }
+
+    fn std_namespace(catalog: &Catalog) -> Namespace {
+        catalog
+            .namespaces()
+            .into_iter()
+            .find(|namespace| namespace.as_str() == "gnoblin.std")
+            .expect("the std namespace")
+    }
+
+    const INSET_OF: &str = "[[object.method]]\nname = \"inset_of\"\nsince = \"0.2.0\"\nreturns = \"double\"\n\n\
+         [[object.method.param]]\nname = \"client\"\ntype = \"object:gnoblin.model.client\"\n\n\
+         [[object.method]]\nname = \"mark\"\nsince = \"0.2.0\"\n\n\
+         [[object.method.param]]\nname = \"client\"\ntype = \"object:gnoblin.model.client\"\noptional = true\n";
+
+    /// A parameter that names the core's `client` is the core's class in every language: the module imports it, refuses a value that is not
+    /// an instance of it, and sends the handle as it is. Rust takes a reference to the core SDK's class.
+    #[test]
+    fn a_parameter_may_name_the_cores_client_in_every_language() {
+        let dir = tempfile::tempdir().expect("a directory");
+        let catalog = catalog_with_std(dir.path(), INSET_OF);
+        let std = std_namespace(&catalog);
+        let view = ScriptView::new(&catalog, &std);
+
+        let js = object_js::render_js(&view).expect("the JavaScript renders");
+        assert!(
+            js.contains(r#"import { Client as ModelClient } from "gnoblin-core/generated/objects";"#),
+            "{js}"
+        );
+        assert!(
+            js.contains(r#"B.refTo(client, ModelClient, "a Client")"#),
+            "the handle is checked against the core's class before it goes in: {js}"
+        );
+        assert!(
+            js.contains(r#"B.opt(client, (value) => B.refTo(value, ModelClient, "a Client"))"#),
+            "an optional one passes none through: {js}"
+        );
+        let dts = object_js::render_dts(&view).expect("declarations render");
+        assert!(
+            dts.contains(r#"import type { Client as ModelClient } from "gnoblin-core/generated/objects";"#),
+            "{dts}"
+        );
+        assert!(dts.contains("insetOf(client: ModelClient): number;"), "{dts}");
+        assert!(dts.contains("mark(client?: ModelClient): void;"), "{dts}");
+
+        let py = object_py::render(&view, false).expect("the Python renders");
+        assert!(
+            py.contains("from gnoblin.objects.model import Client as _ModelClient"),
+            "{py}"
+        );
+        assert!(py.contains(r#"_B.ref_to(client, _ModelClient, "a Client")"#), "{py}");
+        let stub = object_py::render(&view, true).expect("the stub renders");
+        assert!(
+            stub.contains("from gnoblin.objects.model import Client as _ModelClient"),
+            "{stub}"
+        );
+        assert!(
+            stub.contains("def inset_of(self, client: _ModelClient) -> float"),
+            "{stub}"
+        );
+        assert!(stub.contains("client: _ModelClient | None = None"), "{stub}");
+
+        let rust = crate::object_api::render(&catalog, &std).expect("the typed API renders");
+        assert!(
+            rust.contains("pub fn inset_of(&self, client: &::gnoblin_core::objects::Client) -> go::Res<f64>"),
+            "{rust}"
+        );
+        assert!(
+            rust.contains("client: Option<&::gnoblin_core::objects::Client>"),
+            "{rust}"
+        );
+        // The catalog table says the parameter is an object of the core's class, so the library that serves the method does not read it as
+        // one of its own.
+        let tables = crate::objects::render(&catalog, &std).expect("the tables render");
+        assert!(tables.contains(r#"class: "gnoblin.model.client""#), "{tables}");
+    }
+
+    /// Only a parameter may name a class of the other library: a result, a property or a signal field would need the other library's
+    /// registry of wrappers, so each is refused when the module is written, with a message that says so, in every language.
+    #[test]
+    fn a_result_a_property_or_a_signal_of_the_cores_class_is_refused() {
+        for (what, members) in [
+            (
+                "result",
+                "[[object.method]]\nname = \"current\"\nsince = \"0.2.0\"\nreturns = \"object:gnoblin.model.client\"\n",
+            ),
+            (
+                "property",
+                "[[object.property]]\nname = \"current\"\ntype = \"object:gnoblin.model.client\"\nsince = \"0.2.0\"\n",
+            ),
+            (
+                "signal",
+                "[[object.signal]]\nname = \"changed\"\nsince = \"0.2.0\"\n\n[[object.signal.field]]\nname = \"client\"\ntype = \"object:gnoblin.model.client\"\n",
+            ),
+        ] {
+            let dir = tempfile::tempdir().expect("a directory");
+            let catalog = catalog_with_std(dir.path(), members);
+            let std = std_namespace(&catalog);
+            let view = ScriptView::new(&catalog, &std);
+            for (language, rendered) in [
+                ("JavaScript", object_js::render_js(&view)),
+                ("declarations", object_js::render_dts(&view)),
+                ("Python", object_py::render(&view, false)),
+                ("stub", object_py::render(&view, true)),
+            ] {
+                let refused = rendered.expect_err(&format!("a {what} of the core's class is refused in {language}"));
+                assert!(
+                    refused.contains("another namespace") && refused.contains("parameter"),
+                    "{what} in {language}: {refused}"
+                );
+            }
+            let refused = crate::object_api::render(&catalog, &std).expect_err(&format!("a {what} is refused in Rust"));
+            assert!(refused.contains("another namespace"), "{what} in Rust: {refused}");
+        }
+    }
+
+    /// A class of the other library that is not a handle cannot be a parameter: a record is a value the library would have to read field by
+    /// field, and a service has no instance.
+    #[test]
+    fn a_record_or_a_service_of_the_core_is_not_a_parameter() {
+        for (kind, class) in [("record", "gnoblin.model.rect"), ("service", "gnoblin.model.gnoblin")] {
+            let dir = tempfile::tempdir().expect("a directory");
+            let members = format!(
+                "[[object.method]]\nname = \"measure\"\nsince = \"0.2.0\"\n\n[[object.method.param]]\nname = \"what\"\ntype = \"object:{class}\"\n"
+            );
+            let catalog = catalog_with_std(dir.path(), &members);
+            let std = std_namespace(&catalog);
+            let view = ScriptView::new(&catalog, &std);
+            let refused = object_js::render_js(&view).expect_err(&format!("a {kind} is not a parameter"));
+            assert!(
+                refused.contains(kind) && refused.contains("only a handle"),
+                "{kind}: {refused}"
+            );
+        }
+    }
+
+    /// `B.refTo` of the JavaScript runtime: an instance of the class goes in as its handle, and anything else is refused by name, so a
+    /// handle of the std library (which numbers its objects as the core does) is never taken for a window. Skipped where there is no `node`.
+    #[test]
+    fn the_javascript_ref_to_takes_the_class_and_refuses_everything_else() {
+        let Some(node) = tool("node", "GNOBLIN_NODE") else {
+            eprintln!("node is not installed: the check is skipped");
+            return;
+        };
+        let dir = tempfile::tempdir().expect("a directory");
+        let files = rendered_files();
+        let base = files
+            .iter()
+            .find(|(file, _)| file == "js/native/gnoblin-core/generated/object_base.js")
+            .expect("the base is rendered");
+        fs::write(dir.path().join("object_base.mjs"), &base.1).expect("the base");
+        fs::write(
+            dir.path().join("check.mjs"),
+            r##"
+globalThis.__gnoblinObjects = {};
+const B = await import("./object_base.mjs");
+class Client {}
+class Other {}
+const made = B.adopt(Object.create(Client.prototype), 7);
+const refuses = (what, run, words) => {
+  try { run(); } catch (error) {
+    if (!(error instanceof TypeError) || !words.every((word) => error.message.includes(word))) throw new Error(`${what}: the error was ${error}`);
+    return;
+  }
+  throw new Error(`${what}: nothing was refused`);
+};
+const sent = B.refTo(made, Client, "a Client");
+if (sent.$t !== 3 || sent.$v !== 7) throw new Error(`the handle did not go in as it is: ${JSON.stringify(sent)}`);
+refuses("another class", () => B.refTo(B.adopt(Object.create(Other.prototype), 7), Client, "a Client"), ["expected a Client", "Other"]);
+refuses("a string id", () => B.refTo("12", Client, "a Client"), ["expected a Client", "string"]);
+refuses("none", () => B.refTo(null, Client, "a Client"), ["expected a Client", "null"]);
+refuses("a plain object", () => B.refTo({}, Client, "a Client"), ["expected a Client", "Object"]);
+console.log("ok");
+"##,
+        )
+        .expect("the check");
+        let ran = Command::new(&node)
+            .arg(dir.path().join("check.mjs"))
+            .output()
+            .expect("node runs");
+        assert!(
+            ran.status.success() && String::from_utf8_lossy(&ran.stdout).trim() == "ok",
+            "{}{}",
+            String::from_utf8_lossy(&ran.stdout),
+            String::from_utf8_lossy(&ran.stderr)
+        );
+    }
+
+    /// `_B.ref_to` of the Python runtime, as `B.refTo` is. Skipped where there is no `python3`.
+    #[test]
+    fn the_python_ref_to_takes_the_class_and_refuses_everything_else() {
+        let Some(python) = tool("python3", "GNOBLIN_PYTHON") else {
+            eprintln!("python3 is not installed: the check is skipped");
+            return;
+        };
+        let dir = tempfile::tempdir().expect("a directory");
+        let files = rendered_files();
+        let base = files
+            .iter()
+            .find(|(file, _)| file == "python/gnoblin/objects/_base.py")
+            .expect("the base is rendered");
+        let package = dir.path().join("gnoblin/objects");
+        fs::create_dir_all(&package).expect("a package");
+        fs::write(dir.path().join("gnoblin/__init__.py"), "").expect("the package");
+        fs::write(package.join("__init__.py"), "").expect("the package");
+        fs::write(package.join("_base.py"), &base.1).expect("the base");
+        fs::write(dir.path().join("_gnoblin_objects.py"), "").expect("the native stand-in");
+        fs::write(
+            dir.path().join("check.py"),
+            r#"
+from gnoblin.objects import _base as B
+
+
+class Client:
+    def __init__(self, handle):
+        self._h = handle
+
+
+class Other:
+    def __init__(self, handle):
+        self._h = handle
+
+
+def refuses(what, run, *words):
+    try:
+        run()
+    except TypeError as error:
+        assert all(word in str(error) for word in words), f"{what}: the error was {error}"
+        return
+    raise AssertionError(f"{what}: nothing was refused")
+
+
+assert B.ref_to(Client(7), Client, "a Client") == 7, "the handle goes in as it is"
+refuses("another class", lambda: B.ref_to(Other(7), Client, "a Client"), "expected a Client", "Other")
+refuses("a string id", lambda: B.ref_to("12", Client, "a Client"), "expected a Client", "str")
+refuses("none", lambda: B.ref_to(None, Client, "a Client"), "expected a Client", "NoneType")
+print("ok")
+"#,
+        )
+        .expect("the check");
+        let ran = Command::new(&python)
+            .arg(dir.path().join("check.py"))
+            .env("PYTHONPATH", dir.path())
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .output()
+            .expect("python3 runs");
+        assert!(
+            ran.status.success() && String::from_utf8_lossy(&ran.stdout).trim() == "ok",
+            "{}{}",
+            String::from_utf8_lossy(&ran.stdout),
+            String::from_utf8_lossy(&ran.stderr)
+        );
+    }
+
+    /// The classes of the catalog `gnoblin.std` serves take the core's `Client` where the TypeScript library took a window: the members
+    /// that take a client from the shell say so in every language, and none of them takes the node number as text any more.
+    #[test]
+    fn the_std_members_that_take_a_window_take_the_cores_client() {
+        let spec = SdkSpec::load(&workspace_root()).expect("the specification loads");
+        let std = spec
+            .objects
+            .namespaces()
+            .into_iter()
+            .find(|namespace| namespace.as_str() == "gnoblin.std")
+            .expect("the std namespace");
+        let view = ScriptView::new(&spec.objects, &std);
+        let dts = object_js::render_dts(&view).expect("declarations render");
+        let mut missing = Vec::new();
+        for member in [
+            "insetOf(client: ModelClient): FrameInset;",
+            "reservedOf(client: ModelClient): FrameInset;",
+            "frameOf(client: ModelClient)",
+            "reframe(client: ModelClient): void;",
+            "show(client: ModelClient, x?: number, y?: number)",
+            "isAbove(client: ModelClient): boolean;",
+            "setAbove(client: ModelClient, on: boolean): void;",
+            "maximise(client: ModelClient): boolean;",
+            "beginMove(client: ModelClient): boolean;",
+            "contains(client: ModelClient): boolean;",
+            "add(client: ModelClient): void;",
+            "remove(client: ModelClient): boolean;",
+            "ofClient(client: ModelClient)",
+            "restoreClient(workspace: Workspace, client: ModelClient, arrived: boolean)",
+            "showClient(client: ModelClient)",
+            "isOpen(client: ModelClient): boolean;",
+        ] {
+            if !dts.contains(member) {
+                missing.push(format!("declarations: {member}"));
+            }
+        }
+        let py = object_py::render(&view, true).expect("the stub renders");
+        for member in [
+            "def inset_of(self, client: _ModelClient)",
+            "def show(self, client: _ModelClient, x: float | None = None, y: float | None = None)",
+            "def add(self, client: _ModelClient) -> None",
+            "def of_client(self, client: _ModelClient)",
+        ] {
+            if !py.contains(member) {
+                missing.push(format!("stub: {member}"));
+            }
+        }
+        let rust = crate::object_api::render(&spec.objects, &std).expect("the typed API renders");
+        for member in [
+            "pub fn inset_of(&self, client: &::gnoblin_core::objects::Client)",
+            "pub fn add(&self, client: &::gnoblin_core::objects::Client)",
+            "pub fn of_client(&self, client: &::gnoblin_core::objects::Client)",
+        ] {
+            if !rust.contains(member) {
+                missing.push(format!("typed API: {member}"));
+            }
+        }
+        assert!(missing.is_empty(), "members missing:\n{}", missing.join("\n"));
+        // The members a library calls on the shell (an interface method, a callback, a signal) still hand the client over as text: a value
+        // the library makes for a class of the core's needs the core's registry of wrappers.
+        assert!(
+            dts.lines()
+                .any(|line| line.contains("clientAdded(") && line.contains("client: string")),
+            "the layout interface still hears the client as text"
         );
     }
 }
