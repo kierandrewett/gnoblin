@@ -27,6 +27,7 @@ use std::time::Duration;
 
 use gnoblin_client::Client;
 use gnoblin_client::unix::UnixTransport;
+use gnoblin_config::patch::{KeyPath, empty, leaves, overlay, remove};
 use gnoblin_config::{Config, Value};
 use gnoblin_proto::Version;
 use rquickjs::{Ctx, Function, Object};
@@ -37,9 +38,6 @@ use crate::bindings::SharedState;
 /// How long a config call waits for the compositor's reply. It answers a commit at once, so a later reply is a
 /// compositor that is stuck.
 const REPLY_WAIT: Duration = Duration::from_secs(5);
-
-/// A key of the document, from the section down: `["dialogs", "style", "radius"]`.
-pub(crate) type KeyPath = Vec<String>;
 
 /// A config call that failed. The compositor's refusal text, or why the connection is gone.
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
@@ -177,11 +175,6 @@ pub(crate) struct ConfigState {
     /// that changed nothing is still the answer the compositor is waiting for, and a role that restarts must not
     /// inherit keys the previous run committed.
     owns_document: bool,
-}
-
-/// A document with no keys.
-pub(crate) fn empty() -> Value {
-    Value::Map(std::collections::BTreeMap::new())
 }
 
 impl ConfigState {
@@ -334,69 +327,6 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
     host.set("config", config)
 }
 
-/// Every key path `patch` sets: each scalar and each list (a list is one value), and no empty table.
-pub(crate) fn leaves(patch: &Value) -> Vec<KeyPath> {
-    fn walk(value: &Value, path: &mut KeyPath, out: &mut Vec<KeyPath>) {
-        match value {
-            Value::Map(entries) => {
-                for (key, value) in entries {
-                    path.push(key.clone());
-                    walk(value, path, out);
-                    path.pop();
-                }
-            }
-            _ if path.is_empty() => {}
-            _ => out.push(path.clone()),
-        }
-    }
-    let mut out = Vec::new();
-    walk(patch, &mut Vec::new(), &mut out);
-    out
-}
-
-/// Sets every leaf of `patch` in `document`; the tables between are made when they are not there.
-pub(crate) fn overlay(document: &mut Value, patch: &Value) {
-    let (Value::Map(target), Value::Map(entries)) = (document, patch) else {
-        return;
-    };
-    for (key, value) in entries {
-        match value {
-            Value::Map(inner) if inner.is_empty() => {}
-            Value::Map(_) => {
-                let slot = target.entry(key.clone()).or_insert_with(empty);
-                if !matches!(slot, Value::Map(_)) {
-                    *slot = empty();
-                }
-                overlay(slot, value);
-            }
-            _ => {
-                target.insert(key.clone(), value.clone());
-            }
-        }
-    }
-}
-
-/// Takes `path` out of `document`, and any table that is left empty above it.
-pub(crate) fn remove(document: &mut Value, path: &[String]) {
-    let (Some((first, rest)), Value::Map(entries)) = (path.split_first(), document) else {
-        return;
-    };
-    if rest.is_empty() {
-        entries.remove(first);
-        return;
-    }
-    let emptied = match entries.get_mut(first) {
-        Some(inner @ Value::Map(_)) => {
-            remove(inner, rest);
-            matches!(inner, Value::Map(entries) if entries.is_empty())
-        }
-        _ => false,
-    };
-    if emptied {
-        entries.remove(first);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -404,59 +334,6 @@ mod tests {
     fn json(text: &str) -> Value {
         let parsed: serde_json::Value = serde_json::from_str(text).expect("test json");
         Value::from_json(&parsed).expect("a configuration tree")
-    }
-
-    #[test]
-    fn leaves_are_scalars_and_lists_and_never_empty_tables() {
-        let patch = json(r#"{"dialogs":{"style":{"radius":12,"font":{"size":14}}},"input":{"keyboard":{}},"x":[1,2]}"#);
-        let mut found = leaves(&patch);
-        found.sort();
-        assert_eq!(
-            found,
-            vec![
-                vec![
-                    "dialogs".to_owned(),
-                    "style".to_owned(),
-                    "font".to_owned(),
-                    "size".to_owned()
-                ],
-                vec!["dialogs".to_owned(), "style".to_owned(), "radius".to_owned()],
-                vec!["x".to_owned()],
-            ]
-        );
-    }
-
-    #[test]
-    fn overlay_keeps_what_the_patch_does_not_name() {
-        let mut document = json(r#"{"dialogs":{"style":{"radius":3,"scale":2}},"cursor":{"size":24}}"#);
-        overlay(&mut document, &json(r#"{"dialogs":{"style":{"radius":12}}}"#));
-        assert_eq!(
-            document,
-            json(r#"{"dialogs":{"style":{"radius":12,"scale":2}},"cursor":{"size":24}}"#)
-        );
-    }
-
-    #[test]
-    fn removing_a_path_prunes_the_tables_it_leaves_empty_and_no_others() {
-        let mut document = json(r#"{"dialogs":{"style":{"radius":12}},"cursor":{"size":24}}"#);
-        remove(
-            &mut document,
-            &["dialogs".to_owned(), "style".to_owned(), "radius".to_owned()],
-        );
-        assert_eq!(document, json(r#"{"cursor":{"size":24}}"#));
-        // A path that is not there changes nothing.
-        remove(&mut document, &["dialogs".to_owned(), "style".to_owned()]);
-        assert_eq!(document, json(r#"{"cursor":{"size":24}}"#));
-    }
-
-    #[test]
-    fn a_table_the_removal_does_not_empty_stays() {
-        let mut document = json(r#"{"dialogs":{"style":{"radius":12,"scale":2}}}"#);
-        remove(
-            &mut document,
-            &["dialogs".to_owned(), "style".to_owned(), "radius".to_owned()],
-        );
-        assert_eq!(document, json(r#"{"dialogs":{"style":{"scale":2}}}"#));
     }
 
     use std::collections::VecDeque;

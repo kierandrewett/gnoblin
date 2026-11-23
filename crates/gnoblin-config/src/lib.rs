@@ -77,6 +77,8 @@ mod logging;
 pub mod merge;
 /// Shared shapes that the generated and hand-written code both name.
 pub mod model;
+/// A shell that owns some keys of the document: laying them over the document in force and taking back what an earlier commit set.
+pub mod patch;
 /// Dotted paths that name a setting in diagnostics.
 pub mod path;
 /// Validation problems and the report that carries all of them.
