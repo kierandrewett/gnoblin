@@ -627,6 +627,7 @@ new Probe(3, { count: 4 });
         fs::write(package.join("__init__.py"), "").expect("the package");
         fs::write(package.join("objects/probe.py"), module).expect("the probe module");
         let tests = workspace_root().join("crates/gnoblin-sdkgen/tests/python");
+        fs::copy(tests.join("fake_gnoblin_errors.py"), package.join("errors.py")).expect("the errors stand-in");
         fs::copy(
             tests.join("fake_gnoblin_objects.py"),
             dir.path().join("python/_gnoblin_objects.py"),
@@ -1011,6 +1012,11 @@ console.log("ok");
         let package = dir.path().join("gnoblin/objects");
         fs::create_dir_all(&package).expect("a package");
         fs::write(dir.path().join("gnoblin/__init__.py"), "").expect("the package");
+        fs::copy(
+            workspace_root().join("crates/gnoblin-sdkgen/tests/python/fake_gnoblin_errors.py"),
+            dir.path().join("gnoblin/errors.py"),
+        )
+        .expect("the errors stand-in");
         fs::write(package.join("__init__.py"), "").expect("the package");
         fs::write(package.join("_base.py"), &base.1).expect("the base");
         fs::write(dir.path().join("_gnoblin_objects.py"), "").expect("the native stand-in");
@@ -1302,6 +1308,11 @@ console.log("ok");
         let package = dir.path().join("gnoblin/objects");
         fs::create_dir_all(&package).expect("a package");
         fs::write(dir.path().join("gnoblin/__init__.py"), "").expect("the package");
+        fs::copy(
+            workspace_root().join("crates/gnoblin-sdkgen/tests/python/fake_gnoblin_errors.py"),
+            dir.path().join("gnoblin/errors.py"),
+        )
+        .expect("the errors stand-in");
         fs::write(package.join("__init__.py"), "").expect("the package");
         fs::write(package.join("_base.py"), &base.1).expect("the base");
         fs::write(dir.path().join("_gnoblin_objects.py"), "").expect("the native stand-in");

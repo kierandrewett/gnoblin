@@ -108,8 +108,8 @@ fn an_enum_a_record_and_a_list_cross_as_a_scripts_own_values() {
     assert_eq!(rig.eval("probe.Probe.clamp(15, 0, 10)"), "10");
     let refused = thrown(&mut rig, "probe.Probe.clamp(1, 5, 2)");
     assert!(
-        refused.starts_with("TypeError:") && refused.contains("`low`"),
-        "{refused}"
+        refused.starts_with("TypeError:") && refused.contains("`low`") && refused.ends_with("(undefined)"),
+        "a bad argument is a TypeError with no code, and no ABI symbol before its words: {refused}"
     );
 }
 
@@ -204,8 +204,27 @@ fn an_object_ends_with_destroy_and_is_released_when_the_script_lets_go() {
     run(&mut rig, "p.destroy()");
     let gone = thrown(&mut rig, "p.count");
     assert!(
-        gone.starts_with("Error:") && gone.contains("(-6)"),
-        "a destroyed object is stale: {gone}"
+        gone.starts_with("GnoblinError: Probe.count") && gone.ends_with("(not_found)"),
+        "a destroyed object is gone, which is `not_found` and names the call: {gone}"
+    );
+    // Every kind of member names itself, and the error is the one class with a code and a target to read.
+    for (source, target) in [
+        ("p.count = 1", "Probe.count"),
+        ("p.add(1, 2)", "Probe.add"),
+        ("p.on('ticked', () => {})", "Probe.ticked"),
+    ] {
+        let said = thrown(&mut rig, source);
+        assert!(
+            said.starts_with(&format!("GnoblinError: {target}: ")) && said.ends_with("(not_found)"),
+            "{source}: {said}"
+        );
+    }
+    assert_eq!(
+        rig.eval(
+            "(() => { try { p.count; } catch (e) { return [e instanceof probe.GnoblinError, e instanceof Error, e.code, e.target].join('|'); } })()"
+        ),
+        "true|true|not_found|Probe.count",
+        "a GnoblinError holds the code and the target"
     );
 }
 
@@ -251,6 +270,10 @@ fn the_options_of_a_constructor_are_set_in_the_call_that_makes_the_object() {
     let before = live_objects_for(ctx);
     let empty = thrown(&mut rig, "new probe.Probe(1, { shade: 'dark', names: [''] })");
     assert!(empty.contains("must not hold an empty name"), "{empty}");
+    assert!(
+        empty.starts_with("TypeError:") && empty.ends_with("(undefined)"),
+        "a refused option is a bad argument: a TypeError with no code, passed through the guard of the constructor: {empty}"
+    );
     let sideways = thrown(&mut rig, "new probe.Probe(1, { shade: 'sideways' })");
     assert!(sideways.contains("\"sideways\""), "{sideways}");
     assert_eq!(

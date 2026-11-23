@@ -165,10 +165,13 @@ fn a_value_the_catalog_does_not_take_is_an_exception_that_names_it() {
     // An unknown event names the ones there are.
     let event = thrown(&mut rig, "entry.on('nothing', () => {})");
     assert!(event.contains("\"nothing\"") && event.contains("changed"), "{event}");
-    // An object that has ended answers an exception with the library's code and not a crash.
+    // An object that has ended answers a GnoblinError with the library's code (a word, `not_found`) and not a crash.
     run(&mut rig, "entry.destroy()");
     let gone = thrown(&mut rig, "entry.text");
-    assert!(gone.starts_with("Error:") && !gone.ends_with("(undefined)"), "{gone}");
+    assert!(
+        gone.starts_with("GnoblinError:") && gone.ends_with("(not_found)"),
+        "{gone}"
+    );
     assert_eq!(rig.comp.refused(), 0);
 }
 

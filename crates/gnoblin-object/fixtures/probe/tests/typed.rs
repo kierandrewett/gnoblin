@@ -9,7 +9,7 @@ use gnoblin_fixture_object_probe::api::{
 };
 use gnoblin_fixture_object_probe::{live_objects, objects, problems, turn};
 use gnoblin_object::typed::FromVal;
-use gnoblin_object::{Fail, Val};
+use gnoblin_object::{ErrorCode, Fail, Val};
 
 #[test]
 fn the_catalog_is_implemented() {
@@ -152,6 +152,10 @@ fn calls_take_optional_arguments_and_static_functions_need_no_object() {
     let refused: Fail = Probe::clamp(&objects, 1, 5, 2).unwrap_err();
     assert_eq!(refused.code, gnoblin_core_abi::E_TYPE);
     assert!(refused.message.contains("`low`"), "{}", refused.message);
+    // A bad argument has no script code, and the typed call names itself: a function has no object, so no `#id`.
+    assert_eq!(refused.reason(), None);
+    assert_eq!(refused.code(), ErrorCode::InvalidArgument);
+    assert_eq!(refused.target(), Some("Probe.clamp"));
 }
 
 #[test]
@@ -263,10 +267,23 @@ fn a_handle_releases_itself_and_destroy_ends_it() {
 
     let probe = Probe::new(&objects, 0).unwrap();
     probe.destroy().unwrap();
+    let gone = probe.count().unwrap_err();
     assert_eq!(
-        probe.count().unwrap_err().code,
+        gone.code,
         gnoblin_core_abi::E_STALE,
         "a destroyed object is stale, not a new one"
+    );
+    assert_eq!(
+        gone.code(),
+        ErrorCode::NotFound,
+        "and the script API's word for it is not_found"
+    );
+    assert_eq!(gone.reason(), Some(ErrorCode::NotFound));
+    let target = gone.target().expect("the generated getter names the call that failed");
+    assert!(target.starts_with("Probe") && target.ends_with(".count"), "{target}");
+    assert!(
+        gone.to_string().starts_with(target),
+        "the words begin with the target: {gone}"
     );
 }
 
@@ -361,5 +378,15 @@ fn the_options_of_a_constructor_are_set_in_the_call_that_makes_the_object() {
     .unwrap_err();
     assert_eq!(refused.code, gnoblin_core_abi::E_TYPE);
     assert!(refused.message.contains("empty name"), "{}", refused.message);
+    assert_eq!(
+        refused.reason(),
+        None,
+        "a refused option is a bad argument, which has no code"
+    );
+    assert_eq!(
+        refused.target(),
+        Some("Probe.new"),
+        "the making of an object is named by its class"
+    );
     assert_eq!(live_objects(), before, "a refused create leaves no half-made object");
 }

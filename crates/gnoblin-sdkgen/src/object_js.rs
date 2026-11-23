@@ -38,6 +38,60 @@ const finalizer =
 
 const classes = new Map();
 
+/**
+ * What a failed call on a library object throws: `code` says why (`not_found`, `read_only`, ...) and `target` names the object and
+ * member, as in `Client#7.x`. The message begins with the target. A bad argument is not one of these: it is a `TypeError` or a
+ * `RangeError`, because it is the script's own mistake and no state is involved.
+ */
+export class GnoblinError extends Error {
+  constructor(code, target, message) {
+    super(`${target}: ${message}`);
+    this.name = "GnoblinError";
+    this.code = code;
+    this.target = target;
+  }
+}
+
+let naming = false;
+
+/** The `id` of `self` as text, when it has one that can be read: a failed read of it names nothing and is not another failure. */
+function identity(self) {
+  if (naming || self === undefined || self === null) {
+    return undefined;
+  }
+  naming = true;
+  try {
+    const id = self.id;
+    return typeof id === "string" || typeof id === "number" ? String(id) : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    naming = false;
+  }
+}
+
+/**
+ * The error to throw for what a call of `member` of `className` threw. The native layer throws an `Error` with the library's words, its
+ * `code` as text and the `abi` integer for a failure that has a code; the call site, which knows the class, the object and the member,
+ * makes it a `GnoblinError` with the target `Class#id.member` (`Class.member` when there is no object or it has no id). Anything else
+ * is returned as it is: a `TypeError` for a bad argument, or an error the script's own code threw.
+ */
+export function raise(error, self, className, member) {
+  if (!(error instanceof Error) || typeof error.code !== "string" || typeof error.abi !== "number") {
+    return error;
+  }
+  const id = identity(self);
+  const target = id === undefined ? `${className}.${member}` : `${className}#${id}.${member}`;
+  let message = error.message;
+  for (const lead of [`${target}: `, `${target}(): `]) {
+    if (message.startsWith(lead)) {
+      message = message.slice(lead.length);
+      break;
+    }
+  }
+  return new GnoblinError(error.code, target, message);
+}
+
 /** Opens the namespace the library serves, once for this generation. Throws when the library is not installed. */
 export function open(namespace) {
   return native.open(namespace);
@@ -184,8 +238,8 @@ export class Listener {
   }
 }
 
-/** Listens to `event` of `self`: `events` maps an event to its member's place in `ids()` and the decoders of its arguments. */
-export function listen(self, namespace, ids, events, event, handler) {
+/** Listens to `event` of `self`, an object of `className`: `events` maps an event to its member's place in `ids()` and the decoders of its arguments. */
+export function listen(self, namespace, ids, events, event, handler, className) {
   const spec = events[event];
   if (spec === undefined) {
     throw new TypeError(`no event ${JSON.stringify(event)}; the events are ${Object.keys(events).join(", ")}`);
@@ -194,20 +248,29 @@ export function listen(self, namespace, ids, events, event, handler) {
     throw new TypeError(`expected a function, got ${typeof handler}`);
   }
   const [at, decoders] = spec;
-  const registration = native.listen(self[HANDLE], ids()[at], (member, args) => {
-    handler(...args.map((arg, k) => decoders[k](arg)));
-  });
+  let registration;
+  try {
+    registration = native.listen(self[HANDLE], ids()[at], (member, args) => {
+      handler(...args.map((arg, k) => decoders[k](arg)));
+    });
+  } catch (error) {
+    throw raise(error, self, className, event);
+  }
   return new Listener(namespace, registration);
 }
 
-/** Writes a property over a time. */
-export function setTimed(self, member, value, timing) {
-  native.setTimed(self[HANDLE], member, value, {
-    seconds: need(timing?.seconds, "timing.seconds"),
-    delay: timing.delay ?? 0,
-    tween: timing.tween ?? 0,
-    samples: timing.samples ?? [],
-  });
+/** Writes the property `name` of `self`, an object of `className`, over a time. */
+export function setTimed(self, member, value, timing, className, name) {
+  try {
+    native.setTimed(self[HANDLE], member, value, {
+      seconds: need(timing?.seconds, "timing.seconds"),
+      delay: timing.delay ?? 0,
+      tween: timing.tween ?? 0,
+      samples: timing.samples ?? [],
+    });
+  } catch (error) {
+    throw raise(error, self, className, name);
+  }
 }
 
 /** The members already added to a class, so that loading a library again replaces its own and refuses another's. */
@@ -252,6 +315,34 @@ export declare class Listener {
   stop(): void;
 }
 
+/** Why a call failed. */
+export type ErrorCode =
+  | "invalid_argument"
+  | "not_found"
+  | "already_exists"
+  | "invalid_state"
+  | "read_only"
+  | "unsupported"
+  | "denied"
+  | "busy"
+  | "cancelled"
+  | "timed_out"
+  | "unavailable"
+  | "internal"
+  | "config_rejected";
+
+/**
+ * What a failed call on a library object throws. `code` says why and `target` names the object and member, as in `Client#7.x`; the
+ * message begins with the target. A bad argument throws a `TypeError` or a `RangeError` instead.
+ */
+export declare class GnoblinError extends Error {
+  /** Stable reason code for this failure. */
+  readonly code: ErrorCode;
+  /** The object and member the failed call named. */
+  readonly target: string;
+  constructor(code: ErrorCode, target: string, message: string);
+}
+
 /** How a property is written over a time. */
 export interface Timing {
   /** The duration in seconds. */
@@ -275,6 +366,25 @@ fn member_name(name: &str, export: &Option<String>) -> String {
 
 fn param_name(field: &Field) -> String {
     ts_ident(&camel(&field.name))
+}
+
+/// The statements `body` writes, inside a `try` whose `catch` throws what `B.raise` makes of the failure: a `GnoblinError` naming the
+/// member of `class` and the object `object` (`this`, or `undefined` for a call that has none), or the error itself when it is not a
+/// failure of the library (a `TypeError` for a bad argument).
+fn guarded(c: &mut CodeWriter, class: &str, member: &str, object: &str, body: impl FnOnce(&mut CodeWriter)) {
+    c.line("try {");
+    c.indent();
+    body(c);
+    c.dedent();
+    c.line("} catch (error) {");
+    c.indent();
+    c.line(format!(
+        "throw B.raise(error, {object}, {}, {});",
+        quote(class),
+        quote(member)
+    ));
+    c.dedent();
+    c.line("}");
 }
 
 /// The renderer of one namespace.
@@ -832,8 +942,10 @@ impl<'a> Js<'a> {
         }
         for slot in &slots {
             match &slot.member {
-                Member::Property(property) => self.property_source(c, &snake_name, &lookups, property, &mut claim)?,
-                Member::Method(method) => self.method_source(c, &snake_name, &lookups, method, &mut claim)?,
+                Member::Property(property) => {
+                    self.property_source(c, &name, &snake_name, &lookups, property, &mut claim)?
+                }
+                Member::Method(method) => self.method_source(c, &name, &snake_name, &lookups, method, &mut claim)?,
                 Member::Signal(_) => {}
             }
         }
@@ -844,7 +956,8 @@ impl<'a> Js<'a> {
                     "on(event, handler) {",
                     |c| {
                         c.line(format!(
-                            "return B.listen(this, NS, ids_{snake_name}, events_{snake_name}, event, handler);"
+                            "return B.listen(this, NS, ids_{snake_name}, events_{snake_name}, event, handler, {});",
+                            quote(&name)
                         ))
                     },
                     "}",
@@ -890,7 +1003,11 @@ impl<'a> Js<'a> {
                 );
             }
             c.line("/** Ends the object and its children, whoever else holds it. */");
-            c.block("destroy() {", |c| c.line("N.destroy(this[B.HANDLE]);"), "}");
+            c.block(
+                "destroy() {",
+                |c| guarded(c, &name, "destroy", "this", |c| c.line("N.destroy(this[B.HANDLE]);")),
+                "}",
+            );
         }
         c.dedent();
         c.line("}");
@@ -913,10 +1030,12 @@ impl<'a> Js<'a> {
                 "static get() {",
                 |c| {
                     c.line(format!("const i = ids_{snake_name}();"));
-                    c.line(format!(
-                        "return B.adopt(Object.create({}.prototype), N.create(NS, i[0], []));",
-                        class_name(object)
-                    ));
+                    guarded(c, &class_name(object), "get", "undefined", |c| {
+                        c.line(format!(
+                            "return B.adopt(Object.create({}.prototype), N.create(NS, i[0], []));",
+                            class_name(object)
+                        ));
+                    });
                 },
                 "}",
             );
@@ -967,9 +1086,12 @@ impl<'a> Js<'a> {
         c.block(
             format!("constructor({}) {{", params.join(", ")),
             |c| {
-                for line in &lines {
-                    c.line(line);
-                }
+                c.line(&lines[0]);
+                guarded(c, &class_name(object), "new", "undefined", |c| {
+                    for line in &lines[1..] {
+                        c.line(line);
+                    }
+                });
             },
             "}",
         );
@@ -979,6 +1101,7 @@ impl<'a> Js<'a> {
     fn property_source(
         &self,
         c: &mut CodeWriter,
+        class: &str,
         snake_name: &str,
         lookups: &[MemberLookup],
         property: &Property,
@@ -991,7 +1114,11 @@ impl<'a> Js<'a> {
             claim(&ident, false)?;
             let read = self.dec(&property.ty, &format!("N.get(this[B.HANDLE], {ids})"), true)?;
             c.line(format!("/** The property `{}`. */", property.name));
-            c.block(format!("get {ident}() {{"), |c| c.line(format!("return {read};")), "}");
+            c.block(
+                format!("get {ident}() {{"),
+                |c| guarded(c, class, &ident, "this", |c| c.line(format!("return {read};"))),
+                "}",
+            );
         } else {
             claim(&ident, false)?;
         }
@@ -999,7 +1126,11 @@ impl<'a> Js<'a> {
             let write = self.enc(&property.ty, "value")?;
             c.block(
                 format!("set {ident}(value) {{"),
-                |c| c.line(format!("N.set(this[B.HANDLE], {ids}, {write});")),
+                |c| {
+                    guarded(c, class, &ident, "this", |c| {
+                        c.line(format!("N.set(this[B.HANDLE], {ids}, {write});"))
+                    })
+                },
                 "}",
             );
             if property.animated {
@@ -1008,7 +1139,13 @@ impl<'a> Js<'a> {
                 c.line(format!("/** Sets the property `{}` over a time. */", property.name));
                 c.block(
                     format!("{timed}(value, timing) {{"),
-                    |c| c.line(format!("B.setTimed(this, {ids}, {write}, timing);")),
+                    |c| {
+                        c.line(format!(
+                            "B.setTimed(this, {ids}, {write}, timing, {}, {});",
+                            quote(class),
+                            quote(&timed)
+                        ))
+                    },
                     "}",
                 );
             }
@@ -1019,6 +1156,7 @@ impl<'a> Js<'a> {
     fn method_source(
         &self,
         c: &mut CodeWriter,
+        class: &str,
         snake_name: &str,
         lookups: &[MemberLookup],
         method: &Method,
@@ -1046,7 +1184,13 @@ impl<'a> Js<'a> {
             format!("{}{ident}({params}) {{", if method.function { "static " } else { "" }),
             |c| {
                 c.line(format!("const i = ids_{snake_name}();"));
-                c.line(body);
+                guarded(
+                    c,
+                    class,
+                    &ident,
+                    if method.function { "undefined" } else { "this" },
+                    |c| c.line(body),
+                );
             },
             "}",
         );
@@ -1124,6 +1268,7 @@ pub(super) fn render_js(view: &ScriptView<'_>) -> Result<String, String> {
         view.namespace
     ));
     c.line("import * as B from \"gnoblin-core/generated/object_base\";");
+    c.line("export { GnoblinError } from \"gnoblin-core/generated/object_base\";");
     for foreign in view.foreigns()? {
         c.line(format!(
             "import {{ {} as {} }} from \"{}/generated/objects\";",
@@ -1623,6 +1768,8 @@ pub(super) fn render_dts(view: &ScriptView<'_>) -> Result<String, String> {
         view.namespace
     ));
     c.line("import type { Listener, Timing } from \"gnoblin-core/generated/object_base\";");
+    c.line("export { GnoblinError } from \"gnoblin-core/generated/object_base\";");
+    c.line("export type { ErrorCode } from \"gnoblin-core/generated/object_base\";");
     for foreign in view.foreigns()? {
         c.line(format!(
             "import type {{ {} as {} }} from \"{}/generated/objects\";",

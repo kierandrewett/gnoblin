@@ -377,14 +377,25 @@ fn from_val<'js>(
     })
 }
 
-/// The error a failed call throws: an `Error` with the library's text and its ABI code in `code`, a `TypeError` when the arguments were
-/// of the wrong type.
+/// The error a failed call throws. A bad argument, which carries no code, is a `TypeError` (a `RangeError` when it names a range). Any
+/// other failure is an `Error` with the library's words and two own properties: `code`, the script API's code as its snake_case text,
+/// and `abi`, the ABI's integer. The generated wrapper that made the call turns it into a `GnoblinError` that names the object and
+/// member, because only the call site knows them (`B.raise` of `object_base.js`).
 fn throw<'js>(ctx: &Ctx<'js>, fail: &Fail) -> rquickjs::Error {
-    if fail.code == abi::E_TYPE {
-        return Exception::throw_type(ctx, &fail.message);
-    }
-    let thrown = Exception::from_message(ctx.clone(), &fail.message).and_then(|exception| {
-        exception.as_object().set("code", f64::from(fail.code))?;
+    let Some(code) = fail.reason() else {
+        // The ABI has no code for a value out of range, so the words decide, as they do on the std table path
+        // (`data/js/gnoblin-std/native_error.ts`): the library's bound checks say `must be above N` (the cameras' zoom, size and
+        // fov), which the TypeScript reference refused with a `RangeError`. A code for it would replace both (bead gnoblin-ds81).
+        return if fail.text().contains(" must be above ") {
+            Exception::throw_range(ctx, fail.text())
+        } else {
+            Exception::throw_type(ctx, fail.text())
+        };
+    };
+    let thrown = Exception::from_message(ctx.clone(), fail.text()).and_then(|exception| {
+        let object = exception.as_object();
+        object.set("code", code.as_str())?;
+        object.set("abi", f64::from(fail.code))?;
         Ok(exception)
     });
     match thrown {

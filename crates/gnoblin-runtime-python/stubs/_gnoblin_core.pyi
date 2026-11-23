@@ -6,15 +6,33 @@ Generic by name: classes, properties, methods and signals are named as the schem
 
 from typing import Any, Callable, Sequence
 
-class GnoblinError(Exception): ...
-class RetiredError(GnoblinError): ...
-class NodeGoneError(GnoblinError): ...
-class MemberError(GnoblinError): ...
-class RefusedError(GnoblinError): ...
-class StaleError(GnoblinError): ...
-class UnsupportedError(GnoblinError): ...
-class BusyError(GnoblinError): ...
-class ThreadError(GnoblinError): ...
+class GnoblinError(Exception):
+    code: str | None
+    target: str | None
+class RetiredError(GnoblinError):
+    code: str | None
+    target: str | None
+class NodeGoneError(GnoblinError):
+    code: str | None
+    target: str | None
+class MemberError(GnoblinError):
+    code: str | None
+    target: str | None
+class RefusedError(GnoblinError):
+    code: str | None
+    target: str | None
+class StaleError(GnoblinError):
+    code: str | None
+    target: str | None
+class UnsupportedError(GnoblinError):
+    code: str | None
+    target: str | None
+class BusyError(GnoblinError):
+    code: str | None
+    target: str | None
+class ThreadError(GnoblinError):
+    code: str | None
+    target: str | None
 
 def log(level: str, message: str) -> None: ...
 def info() -> dict[str, Any]: ...

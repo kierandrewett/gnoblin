@@ -3,6 +3,7 @@ sends (a record as a dict of its fields, an enum member, a handle, a closure) an
 
 import sys
 
+from gnoblin.errors import GnoblinError
 from gnoblin.objects import probe as p
 from gnoblin.objects._base import Listener, Timing
 
@@ -171,6 +172,38 @@ except TypeError as error:
 check("a static function", p.Probe.clamp(15, 0, 10), 15)
 check("an optional argument that is left out is none", probe.greet("ada"), "ada")
 check("an optional argument that is given", probe.greet("ada", True), "ada")
+
+
+# A failure of the library is a GnoblinError that names the call and keeps the library's code. Each member kind names itself; a function and
+# a constructor have no object, so no `#id`. A bad argument is a TypeError and carries no code.
+def refused(what, call, target, code="not_found"):
+    ns.refuse = code
+    try:
+        call()
+        failures.append(f"{what}: the refused call returned")
+    except GnoblinError as error:
+        check(f"{what}: code", error.code, code)
+        check(f"{what}: target", error.target, target)
+        check(f"{what}: the words begin with the target", str(error).startswith(f"{target}: "), True)
+    except Exception as error:
+        failures.append(f"{what}: raised {type(error).__name__}, not a GnoblinError")
+    ns.refuse = None
+
+
+def write_count():
+    probe.count = 1
+
+
+refused("a getter", lambda: probe.count, "Probe.count")
+refused("a setter", write_count, "Probe.count", "read_only")
+refused("a method", lambda: probe.add(1, 2), "Probe.add", "invalid_state")
+refused("a function", lambda: p.Probe.clamp(1, 0, 2), "Probe.clamp", "unavailable")
+refused("a constructor", lambda: p.Probe(1), "Probe.new", "already_exists")
+refused("a listener", lambda: probe.on("ticked", print), "Probe.ticked", "not_found")
+try:
+    probe.on("nothing", print)
+except TypeError as error:
+    check("a bad argument has no code", getattr(error, "code", None), None)
 
 # A reference is ended by destroy.
 probe.destroy()

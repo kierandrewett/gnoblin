@@ -4,6 +4,8 @@ inspected, with no library."""
 
 import enum
 
+from gnoblin.errors import GnoblinError
+
 _next = [1]
 
 
@@ -15,6 +17,15 @@ class Namespace:
         self.listeners = {}
         self.implemented = {}
         self.classes = {}
+        # The code of the failure the next call of the library raises, once: what a real failure of the library carries in `code`.
+        self.refuse = None
+
+    def fail(self):
+        if self.refuse is not None:
+            code, self.refuse = self.refuse, None
+            error = GnoblinError(f"the library refused the call ({code})")
+            error.code = code
+            raise error
 
     def ids(self, class_name, names):
         class_id = self.classes.setdefault(class_name, 100 + len(self.classes))
@@ -25,12 +36,14 @@ class Namespace:
         return Handle(self, class_id, _next[0])
 
     def create(self, class_id, inits):
+        self.fail()
         handle = self._handle(class_id)
         for member, value in inits:
             self.store[(handle.obj, member)] = convert(value)
         return handle
 
     def call_static(self, class_id, member, args):
+        self.fail()
         self.calls.append(("static", member, [convert(arg) for arg in args]))
         return self.answer(member, args)
 
@@ -58,19 +71,24 @@ class Handle:
         return next(name for name, class_id in self.namespace.classes.items() if class_id == self.class_id)
 
     def get(self, member):
+        self.namespace.fail()
         return self.namespace.store.get((self.obj, member))
 
     def set(self, member, value):
+        self.namespace.fail()
         self.namespace.store[(self.obj, member)] = convert(value)
 
     def set_timed(self, member, value, timing):
+        self.namespace.fail()
         self.namespace.calls.append(("timed", member, convert(value), timing))
 
     def call(self, member, args):
+        self.namespace.fail()
         self.namespace.calls.append(("call", member, [convert(arg) for arg in args]))
         return self.namespace.answer(member, args)
 
     def listen(self, member, function):
+        self.namespace.fail()
         registration = len(self.namespace.listeners) + 1
         self.namespace.listeners[registration] = (member, function)
         return registration

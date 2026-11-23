@@ -87,10 +87,21 @@ pub(crate) fn core_error(error: &CoreError) -> PyErr {
     to_py(Some(error.kind()), &error.to_string())
 }
 
-/// Registers the exception classes in the module.
+/// `error` with the script API's code in its `code` attribute (`not_found`, `read_only`, ...). A generated member adds the `target`.
+pub(crate) fn with_code(error: PyErr, code: &str) -> PyErr {
+    Python::attach(|py| {
+        let _ = error.value(py).setattr("code", code);
+    });
+    error
+}
+
+/// Registers the exception classes in the module. `GnoblinError` has `code` and `target`, none until a failure of an object call sets them.
 pub(crate) fn add_to(module: &Bound<'_, PyModule>) -> PyResult<()> {
     let py = module.py();
-    module.add("GnoblinError", py.get_type::<GnoblinError>())?;
+    let base = py.get_type::<GnoblinError>();
+    base.setattr("code", py.None())?;
+    base.setattr("target", py.None())?;
+    module.add("GnoblinError", base)?;
     module.add("RetiredError", py.get_type::<RetiredError>())?;
     module.add("NodeGoneError", py.get_type::<NodeGoneError>())?;
     module.add("MemberError", py.get_type::<MemberError>())?;

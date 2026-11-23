@@ -791,7 +791,7 @@ impl @Ids@ {
     /// The library refuses the arguments.
     pub fn @New@(objects: &Objects@Params@) -> go::Res<@Name@> {
         let ids = @Ids@::of(objects)?;
-        let object = go::client::Object::create(objects.api, ids.class, &[@Inits@])?;
+        let object = go::client::Object::create(objects.api, ids.class, &[@Inits@]).map_err(|fail| go::typed::at_class(fail, @NameLit@, "new"))?;
         Ok(@Name@ { object, objects: objects.clone() })
     }
 
@@ -806,7 +806,7 @@ impl @Ids@ {
     ///
     /// The object is already gone.
     pub fn destroy(&self) -> go::Res<()> {
-        self.object.destroy()
+        self.object.destroy().map_err(|fail| self.object.at(fail, @NameLit@, "destroy"))
     }
 
 "#,
@@ -816,6 +816,7 @@ impl @Ids@ {
                     ("Name", &name),
                     ("Ids", &ids_name),
                     ("Inits", &inits.join(", ")),
+                    ("NameLit", &format!("{name:?}")),
                 ],
             ));
             if object.kind != ObjectKind::Service && !ctor.options.is_empty() {
@@ -830,8 +831,8 @@ impl @Ids@ {
                 Member::Property(property) => {
                     self.property_source(&mut methods, &name, &ids_name, property, &mut claim)?;
                 }
-                Member::Method(method) => self.method_source(&mut methods, &ids_name, method, &mut claim)?,
-                Member::Signal(signal) => self.signal_source(&mut methods, &ids_name, signal, &mut claim)?,
+                Member::Method(method) => self.method_source(&mut methods, &name, &ids_name, method, &mut claim)?,
+                Member::Signal(signal) => self.signal_source(&mut methods, &name, &ids_name, signal, &mut claim)?,
             }
         }
 
@@ -1002,7 +1003,7 @@ pub struct @Options@ {
         let ids = @Ids@::of(objects)?;
         let mut inits = vec![@Inits@];
 @Writes@
-        let object = go::client::Object::create(objects.api, ids.class, &inits)?;
+        let object = go::client::Object::create(objects.api, ids.class, &inits).map_err(|fail| go::typed::at_class(fail, @NameLit@, "new"))?;
         Ok(@Name@ { object, objects: objects.clone() })
     }
 
@@ -1015,6 +1016,7 @@ pub struct @Options@ {
                 ("Ids", ids_name),
                 ("Inits", &inits.join(", ")),
                 ("Writes", &writes.join("\n")),
+                ("NameLit", &format!("{name:?}")),
             ],
         );
         Ok((declared, new_with))
@@ -1023,7 +1025,7 @@ pub struct @Options@ {
     fn property_source(
         &self,
         out: &mut String,
-        _class: &str,
+        class: &str,
         ids: &str,
         property: &Property,
         claim: &mut impl FnMut(&str) -> Result<(), String>,
@@ -1038,7 +1040,7 @@ pub struct @Options@ {
             let value = self.arg_expr("run", &property.ty, false)?;
             let _ = write!(
                 out,
-                "    /// Sets the closure `{schema}`.\n    ///\n    /// # Errors\n    ///\n    /// The library refuses it.\n    pub fn {setter}(&self, run: {param}) -> go::Res<()> {{\n        let objects = &self.objects;\n        let ids = {ids}::of(objects)?;\n        let value = {value};\n        objects.api.set(self.object.handle(), {id}, &value)\n    }}\n\n"
+                "    /// Sets the closure `{schema}`.\n    ///\n    /// # Errors\n    ///\n    /// The library refuses it.\n    pub fn {setter}(&self, run: {param}) -> go::Res<()> {{\n        let objects = &self.objects;\n        let ids = {ids}::of(objects)?;\n        let value = {value};\n        objects.api.set(self.object.handle(), {id}, &value).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
             );
             return Ok(());
         }
@@ -1046,7 +1048,7 @@ pub struct @Options@ {
         let getter = self.getter_type(&property.ty)?;
         let _ = write!(
             out,
-            "    /// The property `{schema}`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library cannot read it.\n    pub fn {ident}(&self) -> go::Res<{getter}> {{\n        let ids = {ids}::of(&self.objects)?;\n        let value = self.objects.api.get(self.object.handle(), {id})?;\n        go::typed::FromVal::from_val(&self.objects, &value)\n    }}\n\n"
+            "    /// The property `{schema}`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library cannot read it.\n    pub fn {ident}(&self) -> go::Res<{getter}> {{\n        let ids = {ids}::of(&self.objects)?;\n        let value = self.objects.api.get(self.object.handle(), {id}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(&self.objects, &value)\n    }}\n\n"
         );
         if !property.readonly {
             let setter = format!("set_{}", property_stem(property));
@@ -1054,14 +1056,14 @@ pub struct @Options@ {
             let param = self.param(&property.ty)?;
             let _ = write!(
                 out,
-                "    /// Sets the property `{schema}`.\n    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    pub fn {setter}(&self, value: {param}) -> go::Res<()> {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value))\n    }}\n\n"
+                "    /// Sets the property `{schema}`.\n    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    pub fn {setter}(&self, value: {param}) -> go::Res<()> {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value)).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
             );
             if property.animated {
                 let timed = format!("set_{}_timed", property_stem(property));
                 claim(&timed)?;
                 let _ = write!(
                     out,
-                    "    /// Sets the property `{schema}` over a time.\n    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    pub fn {timed}(&self, value: {param}, timing: &go::Timing) -> go::Res<()> {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set_timed(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value), timing)\n    }}\n\n"
+                    "    /// Sets the property `{schema}` over a time.\n    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    pub fn {timed}(&self, value: {param}, timing: &go::Timing) -> go::Res<()> {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set_timed(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value), timing).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
                 );
             }
         }
@@ -1070,7 +1072,7 @@ pub struct @Options@ {
         let owned = self.owned(&property.ty)?;
         let _ = write!(
             out,
-            "    /// Calls `run` from the library's turn after the property `{schema}` changes, until the guard is dropped.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn {watch}(&self, mut run: impl FnMut({owned}) + 'static) -> go::Res<go::typed::Listener> {{\n        let ids = {ids}::of(&self.objects)?;\n        let objects = self.objects.clone();\n        let reg = self.objects.api.listen(self.object.handle(), {id}, move |_, args| {{\n            run(go::typed::arg(&objects, args, 0)?);\n            Ok(go::Val::None)\n        }})?;\n        Ok(go::typed::Listener::new(self.objects.api, reg))\n    }}\n\n"
+            "    /// Calls `run` from the library's turn after the property `{schema}` changes, until the guard is dropped.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn {watch}(&self, mut run: impl FnMut({owned}) + 'static) -> go::Res<go::typed::Listener> {{\n        let ids = {ids}::of(&self.objects)?;\n        let objects = self.objects.clone();\n        let reg = self.objects.api.listen(self.object.handle(), {id}, move |_, args| {{\n            run(go::typed::arg(&objects, args, 0)?);\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(go::typed::Listener::new(self.objects.api, reg))\n    }}\n\n"
         );
         Ok(())
     }
@@ -1097,6 +1099,7 @@ pub struct @Options@ {
     fn method_source(
         &self,
         out: &mut String,
+        class: &str,
         ids: &str,
         method: &Method,
         claim: &mut impl FnMut(&str) -> Result<(), String>,
@@ -1114,13 +1117,13 @@ pub struct @Options@ {
         if method.function {
             let _ = write!(
                 out,
-                "    /// The function `{schema}`.\n    ///\n    /// # Errors\n    ///\n    /// The library refuses the arguments.\n    pub fn {ident}(objects: &Objects{params}) -> go::Res<{returns}> {{\n        let ids = {ids}::of(objects)?;\n        let value = objects.api.call_static(ids.class, ids.m_{name}, &[{args}])?;\n        go::typed::FromVal::from_val(objects, &value)\n    }}\n\n",
+                "    /// The function `{schema}`.\n    ///\n    /// # Errors\n    ///\n    /// The library refuses the arguments.\n    pub fn {ident}(objects: &Objects{params}) -> go::Res<{returns}> {{\n        let ids = {ids}::of(objects)?;\n        let value = objects.api.call_static(ids.class, ids.m_{name}, &[{args}]).map_err(|fail| go::typed::at_class(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(objects, &value)\n    }}\n\n",
                 name = snake(schema),
             );
         } else {
             let _ = write!(
                 out,
-                "    /// The method `{schema}`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library refuses the arguments.\n    pub fn {ident}(&self{params}) -> go::Res<{returns}> {{\n        let objects = &self.objects;\n        let ids = {ids}::of(objects)?;\n        let value = objects.api.call(self.object.handle(), ids.m_{name}, &[{args}])?;\n        go::typed::FromVal::from_val(objects, &value)\n    }}\n\n",
+                "    /// The method `{schema}`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library refuses the arguments.\n    pub fn {ident}(&self{params}) -> go::Res<{returns}> {{\n        let objects = &self.objects;\n        let ids = {ids}::of(objects)?;\n        let value = objects.api.call(self.object.handle(), ids.m_{name}, &[{args}]).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(objects, &value)\n    }}\n\n",
                 name = snake(schema),
             );
         }
@@ -1192,6 +1195,7 @@ pub struct @Options@ {
     fn signal_source(
         &self,
         out: &mut String,
+        class: &str,
         ids: &str,
         signal: &Signal,
         claim: &mut impl FnMut(&str) -> Result<(), String>,
@@ -1215,7 +1219,7 @@ pub struct @Options@ {
         };
         let _ = write!(
             out,
-            "    /// Calls `run` from the library's turn each time the signal `{schema}` is told, until the guard is dropped.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn {ident}(&self, mut run: impl FnMut({types}) + 'static) -> go::Res<go::typed::Listener> {{\n        let ids = {ids}::of(&self.objects)?;\n{keep}        let reg = self.objects.api.listen(self.object.handle(), ids.s_{name}, move |_, {args}| {{\n            run({reads});\n            Ok(go::Val::None)\n        }})?;\n        Ok(go::typed::Listener::new(self.objects.api, reg))\n    }}\n\n",
+            "    /// Calls `run` from the library's turn each time the signal `{schema}` is told, until the guard is dropped.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn {ident}(&self, mut run: impl FnMut({types}) + 'static) -> go::Res<go::typed::Listener> {{\n        let ids = {ids}::of(&self.objects)?;\n{keep}        let reg = self.objects.api.listen(self.object.handle(), ids.s_{name}, move |_, {args}| {{\n            run({reads});\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(go::typed::Listener::new(self.objects.api, reg))\n    }}\n\n",
             types = types.join(", "),
             reads = reads.join(", "),
             name = snake(schema),

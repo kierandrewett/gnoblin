@@ -55,11 +55,63 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import functools
 from typing import Any, Callable
 
 import _gnoblin_objects as native
+from gnoblin.errors import GnoblinError
 
 _classes: dict[tuple[str, str], type] = {}
+_naming = False
+
+
+def _identity(obj: Any) -> str | None:
+    """The `id` of `obj` as text, when it has one that can be read: a failed read of it names nothing and is not another failure."""
+    global _naming
+    if _naming or obj is None:
+        return None
+    _naming = True
+    try:
+        ident = getattr(obj, "id", None)
+        return str(ident) if isinstance(ident, (str, int)) and not isinstance(ident, bool) else None
+    except Exception:
+        return None
+    finally:
+        _naming = False
+
+
+def _named(error: GnoblinError, obj: Any, class_name: str, member: str) -> GnoblinError:
+    """`error` with the target `Class#id.member` (`Class.member` when there is no object or it has no id), and the message that begins with it."""
+    if getattr(error, "target", None) is not None:
+        return error
+    ident = _identity(obj)
+    target = f"{class_name}.{member}" if ident is None else f"{class_name}#{ident}.{member}"
+    words = str(error)
+    for lead in (f"{target}: ", f"{target}(): "):
+        if words.startswith(lead):
+            words = words[len(lead) :]
+            break
+    error.target = target
+    error.args = (f"{target}: {words}",)
+    return error
+
+
+def named(class_name: str | None, member: str, static: bool = False) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Makes a failure of the library in the decorated member a `GnoblinError` that names `class_name` (the class of the object when it is
+    none), the object and `member`. A bad argument is a `TypeError`, and is left as it is."""
+
+    def wrap(fn: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(fn)
+        def run(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return fn(*args, **kwargs)
+            except GnoblinError as error:
+                obj = None if static or not args else args[0]
+                raise _named(error, obj, class_name or type(obj).__name__, member) from None
+
+        return run
+
+    return wrap
 
 
 def open(namespace: str) -> Any:
@@ -227,6 +279,7 @@ class Object(_Held):
     def __init__(self, handle: Any) -> None:
         self._h = handle
 
+    @named(None, "destroy")
     def destroy(self) -> None:
         """Ends the object and its children, whoever else holds it."""
         self._h.destroy()
@@ -245,7 +298,10 @@ class Object(_Held):
             def run(member: int, args: list[Any]) -> None:
                 fn(*[decode(arg) for decode, arg in zip(decoders, args)])
 
-            return Listener(self._NS, self._h.listen(self._IDS()[at], run))
+            try:
+                return Listener(self._NS, self._h.listen(self._IDS()[at], run))
+            except GnoblinError as error:
+                raise _named(error, self, type(self).__name__, event) from None
 
         if handler is not None:
             return attach(handler)
@@ -476,6 +532,15 @@ impl<'a> Py<'a> {
         } else {
             format!("lambda value: {body}")
         })
+    }
+
+    /// The decorator that makes a failure of the library in the member that follows a `GnoblinError` naming `class` and `member`. A stub
+    /// has none. `bare` is for a member that has no object (a function, a constructor).
+    fn named(&self, c: &mut CodeWriter, class: &str, member: &str, bare: bool) {
+        if !self.stub {
+            let tail = if bare { ", True" } else { "" };
+            c.line(format!("@_B.named({class:?}, {member:?}{tail})"));
+        }
     }
 
     /// `header` and its body: one `...` line in a stub, the body indented in a module.
@@ -1004,8 +1069,12 @@ impl<'a> Py<'a> {
         }
         for slot in &slots {
             match &slot.member {
-                Member::Property(property) => self.property_source(c, &snake_name, &lookups, property, &mut claim)?,
-                Member::Method(method) => self.method_source(c, &snake_name, &lookups, method, &mut claim)?,
+                Member::Property(property) => {
+                    self.property_source(c, &class_name(object), &snake_name, &lookups, property, &mut claim)?;
+                }
+                Member::Method(method) => {
+                    self.method_source(c, &class_name(object), &snake_name, &lookups, method, &mut claim)?;
+                }
                 Member::Signal(_) => {}
             }
         }
@@ -1107,6 +1176,7 @@ impl<'a> Py<'a> {
         let snake_name = snake(&object.name);
         if object.kind == ObjectKind::Service {
             c.line("@classmethod");
+            self.named(c, &class_name(object), "get", true);
             self.def(
                 c,
                 &format!("def get(cls) -> {}", class_name(object)),
@@ -1151,6 +1221,7 @@ impl<'a> Py<'a> {
             }
             lines.push("_B.Object.__init__(self, _NS.create(i[0], inits))".to_owned());
         }
+        self.named(c, &class_name(object), "new", true);
         self.def(
             c,
             &format!("def __init__({}) -> None", params.join(", ")),
@@ -1167,6 +1238,7 @@ impl<'a> Py<'a> {
     fn property_source(
         &self,
         c: &mut CodeWriter,
+        class: &str,
         snake_name: &str,
         lookups: &[MemberLookup],
         property: &Property,
@@ -1183,6 +1255,7 @@ impl<'a> Py<'a> {
             if self.stub {
                 c.line(format!("{ident}: {write_ty}"));
             } else {
+                self.named(c, class, &ident, false);
                 c.line(format!("def _set_{ident}(self, value):"));
                 c.line(format!("    self._h.set({ids}, {})", self.enc(&property.ty, "value")?));
                 c.line(format!("{ident} = builtins.property(fset=_set_{ident})"));
@@ -1191,6 +1264,7 @@ impl<'a> Py<'a> {
         }
         let read = self.ty_read(&property.ty, property.optional)?;
         c.line("@builtins.property");
+        self.named(c, class, &ident, false);
         self.def(
             c,
             &format!("def {ident}(self) -> {read}"),
@@ -1202,6 +1276,7 @@ impl<'a> Py<'a> {
         );
         if !property.readonly {
             c.line(format!("@{ident}.setter"));
+            self.named(c, class, &ident, false);
             self.def(
                 c,
                 &format!("def {ident}(self, value: {write_ty}) -> None"),
@@ -1211,6 +1286,7 @@ impl<'a> Py<'a> {
             if property.animated {
                 let timed = format!("set_{ident}_timed");
                 claim(&timed)?;
+                self.named(c, class, &timed, false);
                 self.def(
                     c,
                     &format!("def {timed}(self, value: {write_ty}, timing: Timing) -> None"),
@@ -1228,6 +1304,7 @@ impl<'a> Py<'a> {
     fn method_source(
         &self,
         c: &mut CodeWriter,
+        class: &str,
         snake_name: &str,
         lookups: &[MemberLookup],
         method: &Method,
@@ -1259,6 +1336,7 @@ impl<'a> Py<'a> {
         let body = [format!("i = _ids_{snake_name}()"), result];
         if method.function {
             c.line("@staticmethod");
+            self.named(c, class, &ident, true);
             self.def(c, &format!("def {ident}({params}) -> {returns}"), &doc, &body);
         } else {
             let params = if params.is_empty() {
@@ -1266,6 +1344,7 @@ impl<'a> Py<'a> {
             } else {
                 format!("self, {params}")
             };
+            self.named(c, class, &ident, false);
             self.def(c, &format!("def {ident}({params}) -> {returns}"), &doc, &body);
         }
         Ok(())

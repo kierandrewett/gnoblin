@@ -51,7 +51,13 @@ fn drain() {
 
 /// The exception for a failed call: the kinds of the core's, with the library's own text.
 fn failure(fail: &Fail) -> PyErr {
-    to_py(Some(ErrorKind::from_code(fail.code)), &fail.message)
+    // A bad argument carries no code: it is a `TypeError`. Any other failure is a `GnoblinError` of the kind its ABI code says, with the
+    // script API's code in `code`; a write to a read-only property carries `E_TYPE` and is one of these, not a `TypeError`.
+    let Some(code) = fail.reason() else {
+        return to_py(Some(ErrorKind::Type), fail.text());
+    };
+    let kind = Some(ErrorKind::from_code(fail.code)).filter(|kind| *kind != ErrorKind::Type);
+    crate::errors::with_code(to_py(kind, fail.text()), code.as_str())
 }
 
 /// The shell thread's generation, after the references the script dropped were released. Any other thread is refused.
