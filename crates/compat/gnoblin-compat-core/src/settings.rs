@@ -254,7 +254,7 @@ pub fn settings_from_environment() -> DesktopSettings {
     match gnoblin_config::locate(&gnoblin_config::Environment::from_env()) {
         Ok(path) => match store.load(path.path()) {
             Ok(stored) => settings_from_config(&stored.config),
-            Err(error) if error.is_absent() => {
+            Err(error) if error.is_absent() || error.is_other_source() => {
                 log::debug!(area = "settings", %error, "no configuration file; publishing the defaults");
                 DesktopSettings::default()
             }

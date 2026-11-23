@@ -98,7 +98,7 @@ fn an_existing_file_is_reported_as_present() {
     let found = locate(&home_with(&root, &["shell.ts"])).expect("a path");
     assert_eq!(found.path(), config_dir(&root).join("shell.ts"));
     assert!(found.exists());
-    assert_eq!(found.language(), Language::TypeScript);
+    assert_eq!(found.language(), Some(Language::TypeScript));
     assert_eq!(found.tier(), Tier::UserConfig);
 }
 
@@ -108,7 +108,7 @@ fn a_missing_file_is_first_login() {
     let found = locate(&home_under(&root)).expect("a path");
     assert_eq!(found.path(), config_dir(&root).join("shell.ts"));
     assert!(!found.exists(), "nothing is installed yet, and that is not an error");
-    assert_eq!(found.language(), Language::TypeScript);
+    assert_eq!(found.language(), Some(Language::TypeScript));
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn shell_js_is_found_when_there_is_no_shell_ts() {
     let found = locate(&home_with(&root, &["shell.js"])).expect("a path");
     assert_eq!(found.path(), config_dir(&root).join("shell.js"));
     assert!(found.exists());
-    assert_eq!(found.language(), Language::JavaScript);
+    assert_eq!(found.language(), Some(Language::JavaScript));
 }
 
 #[test]
@@ -160,7 +160,7 @@ fn an_old_init_file_is_not_read() {
 }
 
 #[test]
-fn a_shell_in_another_language_is_not_a_configuration_source() {
+fn a_shell_in_another_language_names_the_file_the_accepted_document_is_kept_for() {
     let root = RuntimeDir::new("locate-python").expect("temp dir");
     let python = root.join("mine.py");
     fs::write(&python, "# a shell\n").expect("write the shell");
@@ -168,14 +168,26 @@ fn a_shell_in_another_language_is_not_a_configuration_source() {
         gnoblin_shell: Some(python.clone().into_os_string()),
         ..home_under(&root)
     };
-    let error = locate(&environment).expect_err("this runtime reads TypeScript and JavaScript");
+    let found = locate(&environment).expect("a Python shell is a file the document is kept for");
+    assert_eq!(found.path(), python.as_path());
+    assert_eq!(found.tier(), Tier::Environment);
+    assert!(found.exists());
     assert_eq!(
-        error,
-        LocateError::UnsupportedLanguage {
-            path: python,
-            language: "python".to_owned()
-        }
+        found.language(),
+        None,
+        "this runtime evaluates no script of it, so it has no configuration language"
     );
+}
+
+/// A Python shell that is the configuration file (`shell.py` of the config directory) is a file the last accepted document can be kept for.
+/// Its writes to the settings of the devices and of the compositor are committed by the core, and the next login has to find them.
+#[test]
+fn a_python_shell_in_the_config_directory_is_the_file_the_accepted_document_is_kept_for() {
+    let root = RuntimeDir::new("locate-python-config").expect("temp dir");
+    let found = locate(&home_with(&root, &["shell.py"])).expect("a path for the document of a Python shell");
+    assert_eq!(found.path(), config_dir(&root).join("shell.py"));
+    assert!(found.exists());
+    assert_eq!(found.tier(), Tier::UserConfig);
 }
 
 #[test]
@@ -190,7 +202,7 @@ fn a_typescript_shell_named_by_the_variable_is_accepted_and_names_one_file() {
     let found = locate(&environment).expect("a path");
     assert_eq!(found.path(), chosen.as_path());
     assert!(found.exists());
-    assert_eq!(found.language(), Language::TypeScript);
+    assert_eq!(found.language(), Some(Language::TypeScript));
 }
 
 #[test]
@@ -204,7 +216,7 @@ fn the_config_toml_default_is_how_a_user_picks_an_installed_shell() {
     let found = locate(&environment).expect("a path");
     assert_eq!(found.path(), shells.join("tiler.js"));
     assert_eq!(found.tier(), Tier::Config);
-    assert_eq!(found.language(), Language::JavaScript);
+    assert_eq!(found.language(), Some(Language::JavaScript));
 }
 
 #[test]

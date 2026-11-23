@@ -250,6 +250,13 @@ impl StoreError {
     pub fn is_absent(&self) -> bool {
         matches!(self, StoreError::Io { error, .. } if error.kind() == io::ErrorKind::NotFound)
     }
+
+    /// True when the stored document was accepted from another configuration file: the session now runs another shell than the one that
+    /// stored it, so nothing is stored for this one. That is a normal state when the shell changes, not a fault.
+    #[must_use]
+    pub fn is_other_source(&self) -> bool {
+        matches!(self, StoreError::OtherSource { .. })
+    }
 }
 
 impl fmt::Display for StoreError {

@@ -28,7 +28,7 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
     let path = std::env::var_os("PATH");
     match store.load(source) {
         Ok(stored) => apply(config, stored.config.xwayland.as_ref(), path.as_deref()),
-        Err(error) if error.is_absent() => {
+        Err(error) if error.is_absent() || error.is_other_source() => {
             log::debug!(area = "xwayland", %error, "no configuration file; the defaults are used");
             apply(config, None, path.as_deref());
         }

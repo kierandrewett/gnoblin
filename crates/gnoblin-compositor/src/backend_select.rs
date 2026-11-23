@@ -310,7 +310,7 @@ pub fn configure_from_store(
             .as_ref()
             .map(BackendSettings::from_section)
             .unwrap_or_default(),
-        Err(error) if error.is_absent() => {
+        Err(error) if error.is_absent() || error.is_other_source() => {
             log::debug!(area = "backend", %error, "no configuration file; the defaults are used");
             BackendSettings::default()
         }

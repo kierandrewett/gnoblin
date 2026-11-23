@@ -43,7 +43,7 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             config.wayland.touchpad_gestures = stored.config.touchpad_gestures;
             log::debug!("[session tables] loaded from the last accepted configuration");
         }
-        Err(error) if error.is_absent() => {
+        Err(error) if error.is_absent() || error.is_other_source() => {
             log::debug!(%error, "[session tables] no configuration file; the defaults are used");
         }
         Err(error) => {

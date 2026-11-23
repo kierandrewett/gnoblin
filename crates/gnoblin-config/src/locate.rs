@@ -1,16 +1,18 @@
 //! The one place that decides which file is the configuration.
 //!
-//! The configuration document is what the TypeScript or JavaScript shell commits, so the file that holds it is the
+//! The configuration document is what the shell commits: the runtime of a TypeScript or JavaScript shell commits the document its script
+//! builds, and the core commits what a Python or a native shell wrote to the settings. The file that holds it is the
 //! shell that discovery selects (`gnoblin-shell-discovery`, which owns the tiers and the error text):
 //!
 //! 1. `GNOBLIN_SHELL`, a path (when it contains `/`) or the name of an installed shell. A test and a nested session
 //!    use it to point at a shell without touching the user's own.
 //! 2. `[shell] default` or `[shell] path` in `$XDG_CONFIG_HOME/gnoblin/config.toml`.
-//! 3. `$XDG_CONFIG_HOME/gnoblin/shell.ts`, `shell.js`, `shell.mts`, `shell.mjs` (and the native and Python
-//!    names, which this runtime does not read), then the installed shells and the packaged default.
+//! 3. `$XDG_CONFIG_HOME/gnoblin/shell.ts`, `shell.js`, `shell.mts`, `shell.mjs` and the native and Python
+//!    names, then the installed shells and the packaged default.
 //!
-//! This module adds the two things that are about the configuration and not about shells. A selected shell that is
-//! not TypeScript or JavaScript is not a configuration source here. When discovery finds no shell at all (a first login before the packaged default is
+//! This module adds the two things that are about the configuration and not about shells. A selected shell in another language (Python, a
+//! native module) is the file the last accepted document is kept for as well, and has no script this runtime evaluates, so its
+//! [`ConfigPath::language`] is none. When discovery finds no shell at all (a first login before the packaged default is
 //! installed), the answer is the file a new user is told to create, `$XDG_CONFIG_HOME/gnoblin/shell.ts`, and
 //! [`ConfigPath::exists`] is false: the session starts from the built-in configuration and `gnoblinctl config init`
 //! can write a copy there.
@@ -55,7 +57,7 @@ pub struct ConfigPath {
     path: PathBuf,
     tier: Tier,
     exists: bool,
-    language: Language,
+    language: Option<Language>,
     warnings: Vec<String>,
 }
 
@@ -79,9 +81,10 @@ impl ConfigPath {
         self.exists
     }
 
-    /// The language of the file, from its extension. For a file that is not there it is the language of the
+    /// The language of the file, from its extension: none for a shell this runtime does not evaluate (a Python shell, a native module),
+    /// which is the file the last accepted document is kept for and nothing more. For a file that is not there it is the language of the
     /// name that would be created.
-    pub fn language(&self) -> Language {
+    pub fn language(&self) -> Option<Language> {
         self.language
     }
 
@@ -106,8 +109,6 @@ pub enum LocateError {
     /// Discovery refused: an explicit request that cannot be met, several equally preferred shells, a bad
     /// `config.toml`.
     Discovery(DiscoveryError),
-    /// The selected shell is in a language this runtime does not read.
-    UnsupportedLanguage { path: PathBuf, language: String },
 }
 
 impl std::fmt::Display for LocateError {
@@ -117,11 +118,6 @@ impl std::fmt::Display for LocateError {
                 formatter.write_str("neither XDG_CONFIG_HOME nor HOME is set, so there is no config path")
             }
             LocateError::Discovery(error) => write!(formatter, "{error}"),
-            LocateError::UnsupportedLanguage { path, language } => write!(
-                formatter,
-                "{}: this is a {language} shell, and the configuration runtime reads only TypeScript and JavaScript shells",
-                path.display()
-            ),
         }
     }
 }
@@ -135,20 +131,14 @@ impl std::error::Error for LocateError {}
 ///
 /// # Errors
 ///
-/// [`LocateError`] when discovery refuses, when there is no home to build the first-login path from, or when the
-/// selected shell is not TypeScript or JavaScript.
+/// [`LocateError`] when discovery refuses, or when there is no home to build the first-login path from.
 pub fn locate(environment: &Environment) -> Result<ConfigPath, LocateError> {
     match discover(environment, &Request::Discover) {
         Ok(selection) => {
             let language = match &selection.language {
-                ShellLanguage::TypeScript => Language::TypeScript,
-                ShellLanguage::JavaScript => Language::JavaScript,
-                other => {
-                    return Err(LocateError::UnsupportedLanguage {
-                        path: selection.path,
-                        language: other.to_string(),
-                    });
-                }
+                ShellLanguage::TypeScript => Some(Language::TypeScript),
+                ShellLanguage::JavaScript => Some(Language::JavaScript),
+                _ => None,
             };
             Ok(ConfigPath {
                 tier: selection.chosen_by,
@@ -166,7 +156,7 @@ pub fn locate(environment: &Environment) -> Result<ConfigPath, LocateError> {
                 path,
                 tier: Tier::UserConfig,
                 exists: false,
-                language: Language::TypeScript,
+                language: Some(Language::TypeScript),
                 warnings: Vec::new(),
             })
         }
