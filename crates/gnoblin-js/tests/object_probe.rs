@@ -10,7 +10,7 @@
 mod common;
 use common::Rig;
 
-use gnoblin_fixture_object_probe::{OBJECTS_JS, last_error, table, turn_for};
+use gnoblin_fixture_object_probe::{OBJECTS_JS, last_error, live_objects_for, table, turn_for};
 
 const IMPORTS: &str = r#"
 import * as probe from "probe";
@@ -206,5 +206,56 @@ fn an_object_ends_with_destroy_and_is_released_when_the_script_lets_go() {
     assert!(
         gone.starts_with("Error:") && gone.contains("(-6)"),
         "a destroyed object is stale: {gone}"
+    );
+}
+
+/// The options of a constructor: a field is a property that starts set, in the call that makes the object. A field that is `undefined` or
+/// left out is not sent, so the property keeps the library's default; a value the library refuses throws from the constructor, with the
+/// library's words, and leaves no object behind; the constructor without options is the one that was there before.
+#[test]
+fn the_options_of_a_constructor_are_set_in_the_call_that_makes_the_object() {
+    let mut rig = served_rig(
+        r#"
+(globalThis as any).seen = [] as number[];
+(globalThis as any).p = new probe.Probe(2, {
+    shade: "half-tone",
+    origin: { x: 3, y: 4 },
+    names: ["a", "b"],
+    onTick: (x: number) => { (globalThis as any).seen.push(x); return x * 10; },
+});
+(globalThis as any).bare = new probe.Probe(1, {});
+(globalThis as any).named = new probe.Probe(1, { names: ["z"], shade: undefined });
+(globalThis as any).plain = new probe.Probe(5);
+"#,
+    );
+    assert!(rig.load_diagnostics.is_empty(), "{:?}", rig.load_diagnostics);
+    assert_eq!(rig.eval("p.count"), "2", "the positional property is unchanged");
+    assert_eq!(rig.eval("p.shade"), "half-tone");
+    assert_eq!(rig.eval("p.origin.x + ',' + p.origin.y"), "3,4");
+    assert_eq!(rig.eval("p.names.join('+')"), "a+b");
+    run(&mut rig, "p.fire(4)");
+    turn(&mut rig);
+    assert_eq!(rig.eval("seen.join(',')"), "4", "the closure the options gave runs");
+    assert_eq!(rig.eval("p.last"), "40");
+
+    // A field left out, or undefined, keeps the library's default.
+    assert_eq!(
+        rig.eval("bare.count + ',' + bare.shade + ',' + String(bare.origin) + ',' + bare.names.length"),
+        "1,light,undefined,0"
+    );
+    assert_eq!(rig.eval("named.shade + ',' + named.names.join('+')"), "light,z");
+    assert_eq!(rig.eval("plain.count"), "5");
+
+    // A value the library refuses throws, and no object is left.
+    let ctx = rig.core.as_ref().expect("a rig over a core").ctx();
+    let before = live_objects_for(ctx);
+    let empty = thrown(&mut rig, "new probe.Probe(1, { shade: 'dark', names: [''] })");
+    assert!(empty.contains("must not hold an empty name"), "{empty}");
+    let sideways = thrown(&mut rig, "new probe.Probe(1, { shade: 'sideways' })");
+    assert!(sideways.contains("\"sideways\""), "{sideways}");
+    assert_eq!(
+        live_objects_for(ctx),
+        before,
+        "a refused create leaves no half-made object"
     );
 }

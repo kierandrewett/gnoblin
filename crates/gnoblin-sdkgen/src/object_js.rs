@@ -10,7 +10,9 @@ use std::collections::BTreeSet;
 use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type};
 
 use super::object_script::{ScriptView, quote};
-use super::objects::{ClassMember, Member, augments_of, check_foreign, finds_of, slots_of};
+use super::objects::{
+    ClassMember, Member, augments_of, check_foreign, ctor_properties, finds_of, options_type_name, slots_of,
+};
 use super::text::{CodeWriter, camel, pascal, snake, ts_ident};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family, js_field};
 
@@ -920,76 +922,57 @@ impl<'a> Js<'a> {
             );
             return Ok(());
         }
-        let property_named = |wanted: &str| -> Result<&Property, String> {
-            slots
-                .iter()
-                .find_map(|slot| match &slot.member {
-                    Member::Property(property) if property.name == wanted => Some(*property),
-                    _ => None,
-                })
-                .ok_or_else(|| {
-                    format!(
-                        "`{}`: the constructor names `{wanted}`, which is not a property",
-                        object.name
-                    )
-                })
-        };
-        c.line("/** Makes the object. */");
-        match &object.ctor {
-            Some(names) => {
-                let mut params = Vec::new();
-                let mut inits = Vec::new();
-                for wanted in names {
-                    let property = property_named(wanted)?;
-                    let param = ts_ident(&camel(&property.name));
-                    inits.push(format!(
-                        "[i[{}], {}]",
-                        Self::at(lookups, 'p', &property.name),
-                        self.enc(&property.ty, &param)?
-                    ));
-                    params.push(param);
-                }
-                c.block(
-                    format!("constructor({}) {{", params.join(", ")),
-                    |c| {
-                        c.line(format!("const i = ids_{snake_name}();"));
-                        c.line(format!("B.adopt(this, N.create(NS, i[0], [{}]));", inits.join(", ")));
-                    },
-                    "}",
-                );
-            }
-            None => {
-                let writable: Vec<&Property> = slots
-                    .iter()
-                    .filter(|slot| !slot.foreign)
-                    .filter_map(|slot| match &slot.member {
-                        Member::Property(property) if !property.readonly => Some(*property),
-                        _ => None,
-                    })
-                    .collect();
-                let mut lines = Vec::new();
-                for property in writable {
-                    let field = member_name(&property.name, &property.extras.export.js);
-                    lines.push(format!(
-                        "if (options.{field} !== undefined) inits.push([i[{}], {}]);",
-                        Self::at(lookups, 'p', &property.name),
-                        self.enc(&property.ty, &format!("options.{field}"))?
-                    ));
-                }
-                c.block(
-                    "constructor(options = {}) {",
-                    |c| {
-                        c.line(format!("const i = ids_{snake_name}();"));
-                        c.line("const inits = [];");
-                        for line in &lines {
-                            c.line(line);
-                        }
-                        c.line("B.adopt(this, N.create(NS, i[0], inits));");
-                    },
-                    "}",
-                );
-            }
+        let ctor = ctor_properties(object, slots)?;
+        let mut params = Vec::new();
+        let mut inits = Vec::new();
+        for property in &ctor.positional {
+            let param = ts_ident(&camel(&property.name));
+            inits.push(format!(
+                "[i[{}], {}]",
+                Self::at(lookups, 'p', &property.name),
+                self.enc(&property.ty, &param)?
+            ));
+            params.push(param);
         }
+        // A class with no positional property takes the options record alone, and any other takes it after them when it has options.
+        if object.ctor.is_none() || !ctor.options.is_empty() {
+            if params.iter().any(|param| param == "options") {
+                return Err(format!(
+                    "`{}`: a constructor parameter is called `options`, which is the name of the options record",
+                    object.name
+                ));
+            }
+            params.push("options = {}".to_owned());
+        }
+        let mut lines = vec![format!("const i = ids_{snake_name}();")];
+        if ctor.options.is_empty() {
+            lines.push(format!("B.adopt(this, N.create(NS, i[0], [{}]));", inits.join(", ")));
+        } else {
+            lines.push(format!("const inits = [{}];", inits.join(", ")));
+            for property in &ctor.options {
+                let field = member_name(&property.name, &property.extras.export.js);
+                lines.push(format!(
+                    "if (options.{field} !== undefined) inits.push([i[{}], {}]);",
+                    Self::at(lookups, 'p', &property.name),
+                    self.enc(&property.ty, &format!("options.{field}"))?
+                ));
+            }
+            lines.push("B.adopt(this, N.create(NS, i[0], inits));".to_owned());
+        }
+        c.line(if ctor.options.is_empty() {
+            "/** Makes the object. */"
+        } else {
+            "/** Makes the object; each field of `options` sets the property of its name in the same call. */"
+        });
+        c.block(
+            format!("constructor({}) {{", params.join(", ")),
+            |c| {
+                for line in &lines {
+                    c.line(line);
+                }
+            },
+            "}",
+        );
         Ok(())
     }
 
@@ -1376,6 +1359,45 @@ impl Js<'_> {
         Ok(())
     }
 
+    /// The name of the interface that holds the options of the constructor of `object`.
+    fn options_type(&self, object: &ObjectType) -> Result<String, String> {
+        options_type_name(&class_name(object), |name| {
+            self.view.objects.values().any(|other| {
+                class_name(other) == name
+                    || other
+                        .variants
+                        .iter()
+                        .any(|variant| values::js_class(&variant.name, &variant.export) == name)
+            }) || self.view.enums.values().any(|declared| pascal(&declared.name) == name)
+        })
+    }
+
+    /// The interface of the options of the constructor of `object`, when it has any: a field for each property the record carries, each
+    /// optional.
+    fn options_dts(&self, c: &mut CodeWriter, object: &ObjectType, slots: &[ClassMember<'_>]) -> Result<(), String> {
+        let ctor = ctor_properties(object, slots)?;
+        if ctor.options.is_empty() {
+            return Ok(());
+        }
+        c.line(format!(
+            "/** The options of `new {}(...)`: each field sets the property of its name in the call that makes the object. */",
+            class_name(object)
+        ));
+        c.line(format!("export interface {} {{", self.options_type(object)?));
+        c.indent();
+        for property in &ctor.options {
+            c.line(format!("/** The property `{}`. */", property.name));
+            c.line(format!(
+                "{}?: {};",
+                member_name(&property.name, &property.extras.export.js),
+                self.ts(&property.ty, true)?
+            ));
+        }
+        c.dedent();
+        c.line("}");
+        Ok(())
+    }
+
     fn params_dts(&self, fields: &[Field]) -> Result<String, String> {
         let params: Vec<String> = fields
             .iter()
@@ -1434,6 +1456,9 @@ impl Js<'_> {
             c.dedent();
             c.line("}");
         }
+        if has_instance_members && object.kind != ObjectKind::Service {
+            self.options_dts(c, object, &slots)?;
+        }
         c.line(format!(
             "/** The class `{}` of `{}`. */",
             object.name, self.view.namespace
@@ -1441,46 +1466,26 @@ impl Js<'_> {
         c.line(format!("export declare class {name} {{"));
         c.indent();
         if has_instance_members {
-            match (&object.kind, &object.ctor) {
-                (ObjectKind::Service, _) => c.line(format!("static get(): {name};")),
-                (_, Some(names)) => {
-                    let mut params = Vec::new();
-                    for wanted in names {
-                        let property = slots
-                            .iter()
-                            .find_map(|slot| match &slot.member {
-                                Member::Property(property) if &property.name == wanted => Some(*property),
-                                _ => None,
-                            })
-                            .ok_or_else(|| {
-                                format!(
-                                    "`{}`: the constructor names `{wanted}`, which is not a property",
-                                    object.name
-                                )
-                            })?;
-                        params.push(format!(
-                            "{}: {}",
-                            ts_ident(&camel(&property.name)),
-                            self.ts(&property.ty, true)?
-                        ));
-                    }
-                    c.line(format!("constructor({});", params.join(", ")));
+            if object.kind == ObjectKind::Service {
+                c.line(format!("static get(): {name};"));
+            } else {
+                let ctor = ctor_properties(object, &slots)?;
+                let mut params = Vec::new();
+                for property in &ctor.positional {
+                    params.push(format!(
+                        "{}: {}",
+                        ts_ident(&camel(&property.name)),
+                        self.ts(&property.ty, true)?
+                    ));
                 }
-                (_, None) => {
-                    let mut fields = Vec::new();
-                    for slot in slots.iter().filter(|slot| !slot.foreign) {
-                        if let Member::Property(property) = &slot.member
-                            && !property.readonly
-                        {
-                            fields.push(format!(
-                                "{}?: {}",
-                                member_name(&property.name, &property.extras.export.js),
-                                self.ts(&property.ty, true)?
-                            ));
-                        }
+                if ctor.options.is_empty() {
+                    if object.ctor.is_none() {
+                        params.push("options?: {}".to_owned());
                     }
-                    c.line(format!("constructor(options?: {{ {} }});", fields.join("; ")));
+                } else {
+                    params.push(format!("options?: {}", self.options_type(object)?));
                 }
+                c.line(format!("constructor({});", params.join(", ")));
             }
         } else {
             c.line("private constructor();");

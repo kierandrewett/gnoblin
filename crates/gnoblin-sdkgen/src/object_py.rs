@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type};
 
 use super::object_script::{ScriptView, quote};
-use super::objects::{ClassMember, Member, augments_of, check_foreign, finds_of, slots_of};
+use super::objects::{ClassMember, Member, augments_of, check_foreign, ctor_properties, finds_of, slots_of};
 use super::text::{CodeWriter, pascal, python_ident, snake};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family, py_field};
 
@@ -1118,73 +1118,49 @@ impl<'a> Py<'a> {
             );
             return Ok(());
         }
-        let property_named = |wanted: &str| -> Result<&Property, String> {
-            slots
-                .iter()
-                .find_map(|slot| match &slot.member {
-                    Member::Property(property) if property.name == wanted => Some(*property),
-                    _ => None,
-                })
-                .ok_or_else(|| {
-                    format!(
-                        "`{}`: the constructor names `{wanted}`, which is not a property",
-                        object.name
-                    )
-                })
-        };
-        match &object.ctor {
-            Some(names) => {
-                let mut params = vec!["self".to_owned()];
-                let mut inits = Vec::new();
-                for wanted in names {
-                    let property = property_named(wanted)?;
-                    let param = member_name(&property.name, &None);
-                    params.push(format!("{param}: {}", self.ty(&property.ty, true)?));
-                    inits.push(format!(
-                        "(i[{}], {})",
-                        Self::at(lookups, 'p', &property.name),
-                        self.enc(&property.ty, &param)?
-                    ));
-                }
-                self.def(
-                    c,
-                    &format!("def __init__({}) -> None", params.join(", ")),
-                    "Makes the object.",
-                    &[
-                        format!("i = _ids_{snake_name}()"),
-                        format!("_B.Object.__init__(self, _NS.create(i[0], [{}]))", inits.join(", ")),
-                    ],
-                );
-            }
-            None => {
-                let mut params = vec!["self".to_owned(), "*".to_owned()];
-                let mut lines = vec![format!("i = _ids_{snake_name}()"), "inits = []".to_owned()];
-                for slot in slots.iter().filter(|slot| !slot.foreign) {
-                    if let Member::Property(property) = &slot.member
-                        && !property.readonly
-                    {
-                        let param = member_name(&property.name, &None);
-                        params.push(format!("{param}: {} | None = None", self.ty(&property.ty, true)?));
-                        lines.push(format!(
-                            "if {param} is not None: inits.append((i[{}], {}))",
-                            Self::at(lookups, 'p', &property.name),
-                            self.enc(&property.ty, &param)?
-                        ));
-                    }
-                }
-                if params.len() == 2 {
-                    // Nothing to set: a bare `*` with no keyword after it is not Python.
-                    params.pop();
-                }
-                lines.push("_B.Object.__init__(self, _NS.create(i[0], inits))".to_owned());
-                self.def(
-                    c,
-                    &format!("def __init__({}) -> None", params.join(", ")),
-                    "Makes the object; each keyword sets the property of its name.",
-                    &lines,
-                );
-            }
+        let ctor = ctor_properties(object, slots)?;
+        let mut params = vec!["self".to_owned()];
+        let mut inits = Vec::new();
+        for property in &ctor.positional {
+            let param = member_name(&property.name, &None);
+            params.push(format!("{param}: {}", self.ty(&property.ty, true)?));
+            inits.push(format!(
+                "(i[{}], {})",
+                Self::at(lookups, 'p', &property.name),
+                self.enc(&property.ty, &param)?
+            ));
         }
+        let mut lines = vec![format!("i = _ids_{snake_name}()")];
+        if ctor.options.is_empty() {
+            lines.push(format!(
+                "_B.Object.__init__(self, _NS.create(i[0], [{}]))",
+                inits.join(", ")
+            ));
+        } else {
+            // The options are keyword-only, and each that is given is one more property the object is made with.
+            params.push("*".to_owned());
+            lines.push(format!("inits = [{}]", inits.join(", ")));
+            for property in &ctor.options {
+                let param = member_name(&property.name, &None);
+                params.push(format!("{param}: {} | None = None", self.ty(&property.ty, true)?));
+                lines.push(format!(
+                    "if {param} is not None: inits.append((i[{}], {}))",
+                    Self::at(lookups, 'p', &property.name),
+                    self.enc(&property.ty, &param)?
+                ));
+            }
+            lines.push("_B.Object.__init__(self, _NS.create(i[0], inits))".to_owned());
+        }
+        self.def(
+            c,
+            &format!("def __init__({}) -> None", params.join(", ")),
+            if ctor.options.is_empty() {
+                "Makes the object."
+            } else {
+                "Makes the object; each keyword sets the property of its name in the same call."
+            },
+            &lines,
+        );
         Ok(())
     }
 

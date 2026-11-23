@@ -438,7 +438,7 @@ const lib = (v) => (v && v.$t === 1 ? v.$v.map(lib) : v && v.$t === 2 ? v.$v : A
 globalThis.__gnoblinObjects = {
   open: () => 1,
   ids: (ns, name, names) => [0, ...names.map((_, i) => i + 1)],
-  create: () => 7,
+  create: (ns, cls, inits) => { (globalThis.__created ??= []).push(inits); return 7; },
   release: () => {},
   classOf: () => "",
   call: (slot, id, args) => (globalThis.__answer ?? lib(args[0])),
@@ -479,6 +479,14 @@ eq("the shapes come back", back, shapes);
 eq("each is its variant", back.map((s) => s.constructor.name), ["CircleShape", "CircleShape", "PolygonShape", "PolygonShape"]);
 refuses("a plain object is not a shape", () => p.echoShapes([{ form: "circle" }]), "expected a Shape (one of CircleShape, PolygonShape)");
 refuses("a record that is not a variant", () => p.echoShapes([new std.Border()]), "got Border");
+// The options of a constructor: a field that is given is sent, in the order of the catalog, in the call that makes the object; one that is
+// left out or undefined is not.
+const sent = (make) => { globalThis.__created = []; make(); return globalThis.__created[0].map(([member]) => member); };
+eq("the positional property alone", sent(() => new Probe(1)), [1]);
+eq("no option", sent(() => new Probe(1, {})), [1]);
+eq("an option", sent(() => new Probe(1, { shade: "dark" })), [1, 2]);
+eq("options in the catalog's order", sent(() => new Probe(1, { names: ["a"], shade: "dark" })), [1, 2, 4]);
+eq("an undefined option is not sent", sent(() => new Probe(1, { shade: undefined })), [1]);
 // F8: a tag no variant has.
 globalThis.__answer = [[9, null, null]];
 refuses("an unknown kind", () => p.echoShapes([]), "which this SDK has no class for");
@@ -542,6 +550,7 @@ const raised: boolean = action.raise;
 const probe = new Probe(3);
 const total: number = probe.total([{ x: 1 }, { x: 2, label: "b", shade: "dark" }]);
 const span: number = probe.lengthOf({ start: 1, end: 4 });
+const configured = new Probe(3, { shade: "dark", names: ["a"], onTick: (x: number) => x, origin: { x: 1 } });
 probe.onTick = (x: number) => x * 2;
 class Red extends Paint {
     colour(): string { return "red"; }
@@ -549,7 +558,7 @@ class Red extends Paint {
 probe.painter = new Red();
 const greeting: string = probe.greet("ada");
 const clamped: number = Probe.clamp(15, 0, 10);
-void [text, range, listener, raised, total, span, greeting, clamped, client];
+void [text, range, listener, raised, total, span, greeting, clamped, client, configured];
 "#;
         fs::write(dir.path().join("use.ts"), uses).expect("a script");
         let checked = Command::new(&tsc)
@@ -571,6 +580,8 @@ entry.on("nothing", () => {});
 FocusPolicy.focusDecision({ mode: "sideways" }, { kind: "enter" });
 entry.length = 4;
 const number: number = entry.text;
+import { Probe } from "probe";
+new Probe(3, { count: 4 });
 "#;
         fs::write(dir.path().join("use.ts"), wrong).expect("a script");
         let refused = Command::new(&tsc)
@@ -585,6 +596,7 @@ const number: number = entry.text;
             "\"sideways\"",
             "read-only",
             "'string' is not assignable to type 'number'",
+            "ProbeOptions",
         ] {
             assert!(report.contains(wanted), "tsc does not complain of {wanted}:\n{report}");
         }
@@ -717,6 +729,105 @@ const number: number = entry.text;
             "only the marked method: {tables}"
         );
     }
+    /// A catalog with a handle `thing` whose constructor names `id`, and `rest` more properties and types.
+    fn thing_catalog(dir: &Path, rest: &str) -> Catalog {
+        fs::write(
+            dir.join("thing.toml"),
+            format!(
+                "namespace = \"lib.a\"\nversion = \"0.1.0\"\nlocal = true\n\n[[object]]\nname = \"thing\"\nsince = \"0.1.0\"\nkind = \"handle\"\nctor = [\"id\"]\n\n\
+                 [[object.property]]\nname = \"id\"\ntype = \"string\"\nsince = \"0.1.0\"\nreadonly = true\n\n\
+                 [[object.property]]\nname = \"size\"\ntype = \"int\"\nsince = \"0.1.0\"\n\n\
+                 [[object.property]]\nname = \"age\"\ntype = \"int\"\nsince = \"0.1.0\"\nreadonly = true\n\n{rest}"
+            ),
+        )
+        .expect("a schema");
+        Catalog::load_dirs(&[dir], &[]).expect("a catalog")
+    }
+
+    /// The options of a constructor are every writable property the positional ones leave, in each language: the positional property stays
+    /// first and is not an option, and a read-only property is not either. A catalog that already has a type named `ThingOptions` makes the
+    /// options type `ThingCreateOptions`, so the two never meet; a service has no options.
+    #[test]
+    fn the_options_of_a_constructor_are_the_writable_properties_the_positional_ones_leave() {
+        let root = tempfile::tempdir().expect("a directory");
+        let catalog = thing_catalog(root.path(), "");
+        let namespaces = catalog.namespaces();
+        let view = ScriptView::new(&catalog, &namespaces[0]);
+
+        let dts = object_js::render_dts(&view).expect("declarations render");
+        assert!(dts.contains("export interface ThingOptions {"), "{dts}");
+        assert!(
+            dts.contains("constructor(id: string, options?: ThingOptions);"),
+            "{dts}"
+        );
+        assert!(
+            dts.contains("size?: number;") && !dts.contains("age?:") && !dts.contains("  id?:"),
+            "{dts}"
+        );
+        let js = object_js::render_js(&view).expect("the JavaScript renders");
+        assert!(js.contains("constructor(id, options = {}) {"), "{js}");
+        assert!(
+            js.contains("if (options.size !== undefined) inits.push("),
+            "an option is sent only when it is given: {js}"
+        );
+        let stub = object_py::render(&view, true).expect("the stub renders");
+        assert!(
+            stub.contains("def __init__(self, id: str, *, size: int | None = None) -> None"),
+            "{stub}"
+        );
+        let rust = crate::object_api::render(&catalog, &namespaces[0]).expect("the typed API renders");
+        assert!(rust.contains("pub struct ThingOptions {"), "{rust}");
+        assert!(
+            rust.contains("pub fn new_with(objects: &Objects, id: &str, options: ThingOptions)"),
+            "{rust}"
+        );
+        assert!(
+            rust.contains("pub fn new(objects: &Objects, id: &str) -> go::Res<Thing>"),
+            "the constructor without options is unchanged: {rust}"
+        );
+
+        // A record that already has the name: the options type takes the other.
+        let root = tempfile::tempdir().expect("a directory");
+        let rest = "[[object]]\nname = \"thing_options\"\nsince = \"0.1.0\"\nkind = \"record\"\n\n\
+                    [[object.property]]\nname = \"size\"\ntype = \"int\"\nsince = \"0.1.0\"\ndefault = 0\n";
+        let catalog = thing_catalog(root.path(), rest);
+        let namespaces = catalog.namespaces();
+        let view = ScriptView::new(&catalog, &namespaces[0]);
+        let dts = object_js::render_dts(&view).expect("declarations render");
+        assert!(dts.contains("export interface ThingCreateOptions {"), "{dts}");
+        assert!(dts.contains("options?: ThingCreateOptions"), "{dts}");
+        assert!(
+            dts.contains("export class ThingOptions {"),
+            "the record keeps its name: {dts}"
+        );
+        let rust = crate::object_api::render(&catalog, &namespaces[0]).expect("the typed API renders");
+        assert!(rust.contains("pub struct ThingCreateOptions {"), "{rust}");
+        assert!(
+            rust.contains("pub struct ThingOptions {"),
+            "the record keeps its name: {rust}"
+        );
+    }
+
+    /// A constructor parameter called `options` would be the options record's name, so it is refused rather than shadowed.
+    #[test]
+    fn a_constructor_parameter_called_options_is_refused() {
+        let root = tempfile::tempdir().expect("a directory");
+        fs::write(
+            root.path().join("thing.toml"),
+            "namespace = \"lib.a\"\nversion = \"0.1.0\"\nlocal = true\n\n[[object]]\nname = \"thing\"\nsince = \"0.1.0\"\nkind = \"handle\"\nctor = [\"options\"]\n\n\
+             [[object.property]]\nname = \"options\"\ntype = \"string\"\nsince = \"0.1.0\"\n\n\
+             [[object.property]]\nname = \"size\"\ntype = \"int\"\nsince = \"0.1.0\"\n",
+        )
+        .expect("a schema");
+        let catalog = Catalog::load_dirs(&[root.path()], &[]).expect("a catalog");
+        let namespaces = catalog.namespaces();
+        let view = ScriptView::new(&catalog, &namespaces[0]);
+        let refused = object_js::render_js(&view).expect_err("the JavaScript constructor is refused");
+        assert!(refused.contains("called `options`"), "{refused}");
+        let refused = crate::object_api::render(&catalog, &namespaces[0]).expect_err("the Rust constructor is refused");
+        assert!(refused.contains("called `options`"), "{refused}");
+    }
+
     /// A catalog with a service `root` whose `find` knows two kinds, `Thing` and `Other`.
     fn finder_catalog(dir: &Path) -> Catalog {
         fs::write(

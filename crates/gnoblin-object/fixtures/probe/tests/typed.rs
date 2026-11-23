@@ -5,7 +5,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gnoblin_fixture_object_probe::api::{
-    CircleShape, Form, Paint, PaintHandlers, Point, PolygonShape, Probe, Shade, Shape, Span,
+    CircleShape, Form, Paint, PaintHandlers, Point, PolygonShape, Probe, ProbeOptions, Shade, Shape, Span,
 };
 use gnoblin_fixture_object_probe::{live_objects, objects, problems, turn};
 use gnoblin_object::typed::FromVal;
@@ -268,4 +268,98 @@ fn a_handle_releases_itself_and_destroy_ends_it() {
         gnoblin_core_abi::E_STALE,
         "a destroyed object is stale, not a new one"
     );
+}
+
+/// The options of a constructor: each `Some` field is a property that starts set, in the call that makes the object. A field left `None`
+/// is not sent, so the property keeps the library's default; a value the library refuses fails the call and leaves no object behind; the
+/// constructor without options is the one that was there before.
+#[test]
+fn the_options_of_a_constructor_are_set_in_the_call_that_makes_the_object() {
+    let objects = objects();
+    let seen = Rc::new(Cell::new(0));
+    let log = Rc::clone(&seen);
+    let painter: Paint = PaintHandlers {
+        colour: Box::new(|| Ok("teal".to_owned())),
+        size: None,
+        scaled: None,
+    }
+    .implement(&objects)
+    .unwrap();
+    let probe = Probe::new_with(
+        &objects,
+        2,
+        ProbeOptions {
+            shade: Some(Shade::HalfTone),
+            origin: Some(Point {
+                x: 3.0,
+                y: 4.0,
+                ..Point::default()
+            }),
+            names: Some(vec!["a".to_owned(), "b".to_owned()]),
+            on_tick: Some(Box::new(move |x| {
+                log.set(log.get() + x);
+                Ok(x * 10)
+            })),
+            painter: Some(painter),
+        },
+    )
+    .unwrap();
+    assert_eq!(probe.count().unwrap(), 2, "the positional property is unchanged");
+    assert_eq!(probe.shade().unwrap(), Shade::HalfTone);
+    assert_eq!(
+        probe.origin().unwrap().map(|origin| (origin.x, origin.y)),
+        Some((3.0, 4.0))
+    );
+    assert_eq!(probe.names().unwrap(), ["a", "b"]);
+    probe.fire(4).unwrap();
+    turn();
+    assert_eq!(seen.get(), 4, "the closure the options gave runs");
+    assert_eq!(probe.last().unwrap(), 40);
+    probe.paint().unwrap();
+    turn();
+    assert_eq!(
+        probe.last_colour().unwrap(),
+        "teal",
+        "the interface the options gave is the painter"
+    );
+
+    // A field left out keeps the default, whether the options hold none or only another field.
+    let bare = Probe::new_with(&objects, 1, ProbeOptions::default()).unwrap();
+    assert_eq!((bare.count().unwrap(), bare.shade().unwrap()), (1, Shade::Light));
+    assert_eq!(bare.origin().unwrap(), None);
+    assert!(bare.names().unwrap().is_empty());
+    let named = Probe::new_with(
+        &objects,
+        1,
+        ProbeOptions {
+            names: Some(vec!["z".to_owned()]),
+            ..ProbeOptions::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        named.shade().unwrap(),
+        Shade::Light,
+        "an omitted option does not overwrite the default"
+    );
+    assert_eq!(named.names().unwrap(), ["z"]);
+
+    // The constructor without options is the one that was there before.
+    assert_eq!(Probe::new(&objects, 5).unwrap().count().unwrap(), 5);
+
+    // A value the library refuses fails the call, with the library's words, and no object is left.
+    let before = live_objects();
+    let refused: Fail = Probe::new_with(
+        &objects,
+        1,
+        ProbeOptions {
+            shade: Some(Shade::Dark),
+            names: Some(vec![String::new()]),
+            ..ProbeOptions::default()
+        },
+    )
+    .unwrap_err();
+    assert_eq!(refused.code, gnoblin_core_abi::E_TYPE);
+    assert!(refused.message.contains("empty name"), "{}", refused.message);
+    assert_eq!(live_objects(), before, "a refused create leaves no half-made object");
 }

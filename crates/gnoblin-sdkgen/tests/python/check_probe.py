@@ -37,6 +37,27 @@ check(
     "a list of records goes in", probe.total([p.Point(x=1.5), p.Point(x=2)]), [(1.5, 0.0, None, 2), (2, 0.0, None, 2)]
 )
 
+# The options of a constructor are keyword-only: each sets the property of its name in the call that makes the object, and one that is
+# left out (or None) is not sent, so the library keeps its default.
+count_id, shade_id, origin_id, names_id = ns.ids("probe", ["p:count", "p:shade", "p:origin", "p:names"])[1:]
+made = p.Probe(2, shade="dark", names=["a", "b"])
+check("a positional property is unchanged", made._h.get(count_id), 2)
+check("an option is a property that starts set", made._h.get(shade_id), 2)
+check("an option that is a list", made._h.get(names_id), ["a", "b"])
+check("an option that is left out is not sent", (made._h.obj, origin_id) in ns.store, False)
+check("an option that is None is not sent", (p.Probe(1, shade=None)._h.obj, shade_id) in ns.store, False)
+check("the constructor without options is unchanged", p.Probe(5)._h.get(count_id), 5)
+try:
+    p.Probe(1, "dark")
+    failures.append("an option was accepted as a positional argument")
+except TypeError:
+    pass
+try:
+    p.Probe(1, count=3)
+    failures.append("a property of the constructor was accepted as an option")
+except TypeError:
+    pass
+
 # A required field must be given.
 try:
     p._enc_rec_span(p.Span(start=1, end=None))

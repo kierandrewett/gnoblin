@@ -203,6 +203,31 @@ core's own class for it:
 TypeScript and Python refuse any other value with a `TypeError` that names the class (`expected a Client, got string`). A result, a
 property or a signal field of another catalog's class is not generated.
 
+### Constructor options
+
+The constructor of a handle takes the properties the class's `ctor` names, in that order, and then the options: every other writable
+property of the class, in catalog order, each optional. A property of a base class that another library serves is not an option, and
+neither is a read-only one. A service has none: `get` takes nothing.
+
+| Language   | The constructor of `workspace` (`ctor = ["id"]`, options `name`, `gaps`, `layout`)                              |
+| ---------- | --------------------------------------------------------------------------------------------------------------- |
+| TypeScript | `new Workspace(id, options?: WorkspaceOptions)`, an interface with `name?`, `gaps?` and `layout?`               |
+| Python     | `Workspace(id, *, name=None, gaps=None, layout=None)`, and the stub lists the same keywords                     |
+| Rust       | `Workspace::new(objects, id)`, and `Workspace::new_with(objects, id, WorkspaceOptions)` with a `Default` struct |
+
+A class with no `ctor` takes the options alone: `new Box({ gap: 4 })`, `Box(gap=4)` and `Box::new_with(objects, BoxOptions { .. })`.
+`Box::new(objects)` makes it with none.
+
+A field that is left out (`undefined`, `None`) is not sent, so the property keeps the library's default.
+
+The sent options go in the same create call as the positional ones. The object server hands the constructor what it takes and sets the
+rest through the setters before it answers. A value that is refused ends the object and fails the call, so a shell never holds a
+half-made object.
+
+The name of the options type is the class's name and `Options`. Where a catalog already has a type of that name (the record
+`binding_options` beside the class `binding`), it is the class's name and `CreateOptions`. The generator refuses a catalog where both
+are taken, and one whose constructor has a parameter called `options`.
+
 ### Value classes
 
 A record is a value class in every language, from one model (`crates/gnoblin-sdkgen/src/values.rs`), so a name, a field, the order of

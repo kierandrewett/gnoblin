@@ -84,7 +84,12 @@ pub fn problems() -> Vec<String> {
 
 /// Objects the library holds for the generation.
 pub fn live_objects() -> usize {
-    LIB.with(|lib| lib.live_objects(CTX))
+    live_objects_for(CTX)
+}
+
+/// [`live_objects`] for the generation `ctx`, for a host whose generation is not [`CTX`].
+pub fn live_objects_for(ctx: abi::GnoblinCtx) -> usize {
+    LIB.with(|lib| lib.live_objects(ctx))
 }
 
 const SHADE_DARK: u32 = 2;
@@ -147,7 +152,14 @@ fn build() -> Library {
         })
         .get("names", |s, _| Ok(Val::List(s.names.clone())))
         .set("names", |s, _, value| {
-            s.names = value.list()?.to_vec();
+            let names = value.list()?;
+            if names
+                .iter()
+                .any(|name| matches!(name, Val::Text(text) if text.is_empty()))
+            {
+                return Err(Fail::type_error("`names` must not hold an empty name"));
+            }
+            s.names = names.to_vec();
             Ok(())
         })
         .get("on_tick", |s, _| Ok(s.on_tick.clone().map_or(Val::None, Val::Closure)))

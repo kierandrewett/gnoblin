@@ -31,7 +31,10 @@ use gnoblin_schema::{
     Type,
 };
 
-use super::objects::{Member, augments_of, check_foreign, crate_path_of, finds_of, foreign_handle, slots_of, stem_of};
+use super::objects::{
+    Member, augments_of, check_foreign, crate_path_of, ctor_properties, finds_of, foreign_handle, options_type_name,
+    slots_of, stem_of,
+};
 use super::text::{pascal, rust_ident, snake};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family};
 use super::{Comment, File, SdkSpec, Target};
@@ -195,8 +198,13 @@ impl<'a> Renderer<'a> {
         })
     }
 
-    /// The closure type of a callback declaration.
+    /// The closure type of a callback declaration, as a parameter takes it.
     fn closure_type(&self, name: &str) -> Result<String, String> {
+        Ok(format!("impl {}", self.closure_bound(name)?))
+    }
+
+    /// The bound a closure of a callback declaration meets.
+    fn closure_bound(&self, name: &str) -> Result<String, String> {
         let declared = self
             .callbacks
             .get(name)
@@ -210,10 +218,7 @@ impl<'a> Renderer<'a> {
             Some(ty) => self.owned(ty)?,
             None => "()".to_owned(),
         };
-        Ok(format!(
-            "impl FnMut({}) -> go::Res<{returns}> + 'static",
-            params.join(", ")
-        ))
+        Ok(format!("FnMut({}) -> go::Res<{returns}> + 'static", params.join(", ")))
     }
 
     /// A field or an argument as the value a closure or a signal listener receives.
@@ -737,7 +742,7 @@ impl @Ids@ {
             ],
         );
 
-        let mut taken: BTreeSet<String> = ["new", "get", "handle", "destroy", "objects"]
+        let mut taken: BTreeSet<String> = ["new", "new_with", "get", "handle", "destroy", "objects"]
             .iter()
             .map(|s| (*s).to_owned())
             .collect();
@@ -753,6 +758,7 @@ impl @Ids@ {
         };
 
         let mut methods = String::new();
+        let mut options_text = String::new();
         // The constructor.
         if has_instance_members {
             let new_name = if object.kind == ObjectKind::Service {
@@ -760,22 +766,10 @@ impl @Ids@ {
             } else {
                 "new"
             };
-            let ctor_names: Vec<String> = object.ctor.clone().unwrap_or_default();
+            let ctor = ctor_properties(object, &slots)?;
             let mut params = Vec::new();
             let mut inits = Vec::new();
-            for ctor in &ctor_names {
-                let property = slots
-                    .iter()
-                    .find_map(|slot| match &slot.member {
-                        Member::Property(property) if &property.name == ctor => Some(*property),
-                        _ => None,
-                    })
-                    .ok_or_else(|| {
-                        format!(
-                            "`{}`: the constructor names `{ctor}`, which is not a property",
-                            object.name
-                        )
-                    })?;
+            for property in &ctor.positional {
                 let ident = property_ident(property);
                 params.push(format!("{ident}: {}", self.param(&property.ty)?));
                 inits.push(format!(
@@ -824,6 +818,11 @@ impl @Ids@ {
                     ("Inits", &inits.join(", ")),
                 ],
             ));
+            if object.kind != ObjectKind::Service && !ctor.options.is_empty() {
+                let (declared, new_with) = self.options_source(object, &ids_name, &params, &inits, &ctor.options)?;
+                options_text = declared;
+                methods.push_str(&new_with);
+            }
         }
 
         for slot in &slots {
@@ -867,7 +866,7 @@ impl @Ids@ {
             }
         }
 
-        let mut text = String::new();
+        let mut text = options_text;
         let _ = writeln!(text, "/// The class `{}`.", object.name);
         if has_instance_members {
             // A call that takes a base class takes what derives from it through these: the same object, held as the base.
@@ -917,6 +916,108 @@ impl go::typed::FromVal<Objects> for @Name@ {
             ));
         }
         Ok((ids, text))
+    }
+
+    /// The name of the struct that holds the options of the constructor of `object`.
+    fn options_type(&self, object: &ObjectType) -> Result<String, String> {
+        options_type_name(&class_name(object), |name| {
+            self.objects.values().any(|other| {
+                class_name(other) == name
+                    || other
+                        .variants
+                        .iter()
+                        .any(|variant| values::rust_class(&variant.name, &variant.export) == name)
+            }) || self.enums.keys().any(|declared| pascal(declared) == name)
+        })
+    }
+
+    /// The struct that carries the options of the constructor of `object`, and `new_with`, the constructor that takes it after the
+    /// positional properties (`params` and `inits` are the ones `new` takes).
+    fn options_source(
+        &self,
+        object: &ObjectType,
+        ids_name: &str,
+        params: &str,
+        inits: &[String],
+        options: &[&Property],
+    ) -> Result<(String, String), String> {
+        let name = class_name(object);
+        let options_name = self.options_type(object)?;
+        if params.contains(" options:") {
+            return Err(format!(
+                "`{}`: a constructor parameter is called `options`, which is the name of the options struct's parameter",
+                object.name
+            ));
+        }
+        let mut fields = Vec::new();
+        let mut writes = Vec::new();
+        let mut moves = false;
+        for property in options {
+            let ident = property_ident(property);
+            let (ty, source) = match &property.ty {
+                // A closure is moved into the value the library holds; any other value is borrowed, so an object it names is still held
+                // when the library reads the create call.
+                Type::Callback(callback) => {
+                    moves = true;
+                    (
+                        format!("Box<dyn {}>", self.closure_bound(callback)?),
+                        format!("options.{ident}.take()"),
+                    )
+                }
+                other => (self.owned(other)?, format!("&options.{ident}")),
+            };
+            fields.push(format!(
+                "    /// The property `{}`.\n    pub {ident}: Option<{ty}>,",
+                property.name
+            ));
+            writes.push(format!(
+                "        if let Some(value) = {source} {{\n            inits.push((ids.p_{}, {}));\n        }}",
+                snake(&property.name),
+                self.arg_expr("value", &property.ty, false)?
+            ));
+        }
+        let declared = fill(
+            r#"/// The properties `@Name@::new_with` sets in the call that makes the object, besides its positional ones. Each `Some` field is sent
+/// with the create call, so a value the library refuses fails the call and leaves no object, and a `None` field is not sent, so
+/// that property keeps the library's default: `@Options@ { field: Some(value), ..Default::default() }`.
+#[derive(Default)]
+pub struct @Options@ {
+@Fields@
+}
+
+"#,
+            &[
+                ("Name", &name),
+                ("Options", &options_name),
+                ("Fields", &fields.join("\n")),
+            ],
+        );
+        let new_with = fill(
+            r#"    /// Makes the object with `options` set in the same call.
+    ///
+    /// # Errors
+    ///
+    /// The library refuses an argument or an option, and no object is made.
+    pub fn new_with(objects: &Objects@Params@, @Mut@options: @Options@) -> go::Res<@Name@> {
+        let ids = @Ids@::of(objects)?;
+        let mut inits = vec![@Inits@];
+@Writes@
+        let object = go::client::Object::create(objects.api, ids.class, &inits)?;
+        Ok(@Name@ { object, objects: objects.clone() })
+    }
+
+"#,
+            &[
+                ("Params", params),
+                ("Mut", if moves { "mut " } else { "" }),
+                ("Options", &options_name),
+                ("Name", &name),
+                ("Ids", ids_name),
+                ("Inits", &inits.join(", ")),
+                ("Writes", &writes.join("\n")),
+            ],
+        );
+        Ok((declared, new_with))
     }
 
     fn property_source(

@@ -270,6 +270,59 @@ pub(super) fn check_foreign(class: &str, slot: &ClassMember<'_>) -> Result<(), S
     Ok(())
 }
 
+/// The properties a constructor takes: the positional ones, and the ones the optional record after them carries.
+pub(super) struct CtorProperties<'a> {
+    /// The properties the catalog's `ctor` names, in its order.
+    pub(super) positional: Vec<&'a Property>,
+    /// Every other writable property of the class's own members, in catalog order. One of a base class that another library serves is
+    /// left out: that library makes the base object, and the record is the properties this class's library takes.
+    pub(super) options: Vec<&'a Property>,
+}
+
+/// The properties the constructor of `object` takes, split into the positional ones and the options record's.
+pub(super) fn ctor_properties<'a>(
+    object: &ObjectType,
+    slots: &[ClassMember<'a>],
+) -> Result<CtorProperties<'a>, String> {
+    let properties = || {
+        slots.iter().filter_map(|slot| match &slot.member {
+            Member::Property(property) => Some((*property, slot.foreign)),
+            _ => None,
+        })
+    };
+    let mut positional = Vec::new();
+    for wanted in object.ctor.iter().flatten() {
+        let (property, _) = properties()
+            .find(|(property, _)| &property.name == wanted)
+            .ok_or_else(|| {
+                format!(
+                    "`{}`: the constructor names `{wanted}`, which is not a property",
+                    object.name
+                )
+            })?;
+        positional.push(property);
+    }
+    let options = properties()
+        .filter(|(property, foreign)| {
+            !foreign && !property.readonly && !positional.iter().any(|taken| taken.name == property.name)
+        })
+        .map(|(property, _)| property)
+        .collect();
+    Ok(CtorProperties { positional, options })
+}
+
+/// The name of the type that carries the options of a constructor: the class's name and `Options` (`WorkspaceOptions`), or the class's name
+/// and `CreateOptions` where `taken` says a type of the catalog already has the first (the record `binding_options` beside the class
+/// `binding`).
+pub(super) fn options_type_name(class: &str, taken: impl Fn(&str) -> bool) -> Result<String, String> {
+    [format!("{class}Options"), format!("{class}CreateOptions")]
+        .into_iter()
+        .find(|name| !taken(name))
+        .ok_or_else(|| {
+            format!("`{class}`: both `{class}Options` and `{class}CreateOptions` name another type of the catalog")
+        })
+}
+
 /// The `TypeDef` statics of a catalog, one per distinct type.
 struct Types<'a> {
     catalog: &'a Catalog,
