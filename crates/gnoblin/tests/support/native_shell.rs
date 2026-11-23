@@ -255,6 +255,8 @@ pub struct StdShells {
     pub policy: PathBuf,
     /// Example 33: output profiles, displays and viewports: the displays listed, a profile applied, a display added and removed.
     pub displays: PathBuf,
+    /// Example 36: a window passed as the core's `Client` to the frame, the window menu and a workspace of std.
+    pub clients: PathBuf,
 }
 
 /// Builds the std examples into the shells' target directory. Built once per test binary.
@@ -305,6 +307,8 @@ fn build_std_shells() -> Result<StdShells, String> {
             "gnoblin-example-native-policy",
             "-p",
             "gnoblin-example-native-displays",
+            "-p",
+            "gnoblin-example-native-clients",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -332,6 +336,7 @@ fn build_std_shells() -> Result<StdShells, String> {
         workspaces: debug.join("libnative_workspaces.so"),
         policy: debug.join("libnative_policy.so"),
         displays: debug.join("libnative_displays.so"),
+        clients: debug.join("libnative_clients.so"),
     })
 }
 

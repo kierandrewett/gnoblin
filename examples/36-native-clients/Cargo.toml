@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-example-native-clients"
+description = "Example 36: a native shell that passes a window, as the core's Client, to the classes of libgnoblin-std that take one."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "native_clients"
+crate-type = ["cdylib"]
+
+# The shell depends on the std SDK and the core SDK and nothing else. The typed classes it uses (`gnoblin_core::objects`,
+# `gnoblin_std::objects`) are written at build time from the libraries' catalogs and call the libraries through their object tables.
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+gnoblin-std = { path = "../../crates/gnoblin-std" }
+
+[lints]
+workspace = true

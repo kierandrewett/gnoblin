@@ -136,6 +136,7 @@ members = [
     "examples/33-native-displays",
     "examples/34-native-workspaces",
     "examples/35-native-root",
+    "examples/36-native-clients",
     "examples/32-native-policy",
     "xtask",
 ]
