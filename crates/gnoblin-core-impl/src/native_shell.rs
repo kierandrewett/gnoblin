@@ -11,8 +11,10 @@
 //! 4. the thread turns the dispatch loop, serving reload requests between turns, until the compositor asks it to stop, the shell
 //!    asks to exit, or the tree link ends. Its end is the shell's end and nothing more: the compositor keeps serving with its fallback window manager.
 //!
-//! A shell has no configuration document, so the revision it reports is `0`: the guardian records an accepted revision, which
-//! is what lets it note that the shell came up, and no autostart entry, which is what a shell that reads no document has.
+//! A shell has no configuration document of its own to report, so the revision it reports is `0`: the guardian records an accepted
+//! revision, which is what lets it note that the shell came up, and no autostart entry, which is what a shell that reads no document has.
+//! The settings it writes to the devices and to the compositor are another matter: the host commits them (`document`), after the start
+//! and after each turn, and the compositor applies them from the next login.
 
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -114,6 +116,7 @@ fn run(module: &ShellModule, link: Box<dyn TreeLink>, context: &InProcContext) -
     host::reset_session();
     host::set_tree_link_provider(Box::new(OneLink(RefCell::new(Some(link)))));
     host::set_verb_link_provider(Box::new(crate::verbs::OwnerSocket::from_environment()));
+    host::set_document_link_provider(Box::new(crate::verbs::OwnerSocket::from_environment()));
     host::set_slot_link_provider(std::sync::Arc::new(crate::slots::OwnerSlots::from_environment()));
     let outcome = serve(
         module,
@@ -217,6 +220,8 @@ pub(crate) fn serve(
 ) -> Result<(), ShellError> {
     // `report_config` and `report_config_rejected` of a shell with a document of its own reach the guardian through these.
     host::set_reports(Arc::clone(&reports));
+    // The settings the shell writes are committed only when it is the shell the stored configuration belongs to (`document`).
+    crate::document::set_shell(&module.path);
     let mut shell = host::native_shell(&module.path);
     if let Some(language) = &module.language {
         shell = shell.with_language(language);
@@ -241,6 +246,9 @@ pub(crate) fn serve(
         "the shell {} serves {placed} (generation {generation})",
         module.path.display()
     );
+    // What the shell wrote to its settings while it started is committed before it is reported ready, as the document of a runtime
+    // that has one is.
+    commit_settings(&shell);
     // A shell with a configuration document of its own told the guardian each revision it committed while it started
     // (`report_config`); the guardian then has the revision in force, and only the readiness is left. A shell with none is
     // revision zero.
@@ -358,6 +366,13 @@ fn await_fix(
     }
 }
 
+/// Commits the settings the generation that serves wrote to the devices and to the compositor, if it wrote any since the last look.
+fn commit_settings(shell: &host::NativeShell) {
+    if let Some(module) = shell.current() {
+        host::commit_document_changes(module.ctx());
+    }
+}
+
 /// Turns the dispatch loop. `Ok` is a clean end (the compositor stopped, or the shell asked to exit with code zero).
 fn turn_until_done(shell: &mut host::NativeShell, stopped: &dyn Fn() -> bool) -> Result<(), ShellError> {
     loop {
@@ -365,6 +380,9 @@ fn turn_until_done(shell: &mut host::NativeShell, stopped: &dyn Fn() -> bool) ->
             return Ok(());
         }
         let turn = shell.dispatch(TURN_MS);
+        // Before the exit request is looked at: a shell that writes a setting and asks to exit in one turn has the write committed. A write a
+        // shutdown hook makes after `shell.stop()` is not: the generation is retired by then.
+        commit_settings(shell);
         if let Some(code) = host::take_exit_request() {
             return if code == 0 {
                 Ok(())
@@ -381,6 +399,8 @@ fn turn_until_done(shell: &mut host::NativeShell, stopped: &dyn Fn() -> bool) ->
                 Err(failure) => log::warn!("the shell did not reload and keeps running: {failure}"),
             }
         }
+        // What the generation that serves wrote this turn, or what a reload took back: one commit for the turn.
+        commit_settings(shell);
         if turn.is_none_or(|turn| turn < 0) {
             if stopped() {
                 return Ok(());

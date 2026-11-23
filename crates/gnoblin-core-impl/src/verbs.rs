@@ -291,6 +291,11 @@ impl OwnerSocket {
     pub fn at(path: PathBuf) -> Self {
         Self { path: Ok(path) }
     }
+
+    /// Where the socket is, or why it cannot be found.
+    pub(crate) fn path(&self) -> Result<&std::path::Path, String> {
+        self.path.as_deref().map_err(Clone::clone)
+    }
 }
 
 impl VerbLinkProvider for OwnerSocket {
@@ -308,7 +313,7 @@ impl VerbLinkProvider for OwnerSocket {
 }
 
 /// The version of the owner protocol this core speaks.
-fn ipc_version() -> Version {
+pub(crate) fn ipc_version() -> Version {
     let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
     Version::new(major, minor, patch)
 }

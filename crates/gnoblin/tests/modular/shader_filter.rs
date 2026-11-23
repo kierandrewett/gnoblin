@@ -6,8 +6,9 @@
 //! setting of the accepted configuration document, read when the compositor starts. A user switches it off the way a shell supplies any document
 //! setting: a TypeScript `shell.ts` sets `gnoblin.compositor.userShaders = false`, the shell commits it with its document, the compositor keeps it
 //! as the last accepted document, and the next login reads it. The TypeScript tests below do exactly that (a first login that commits, a second
-//! login over the same home). A Rust or a Python shell commits no document of its own, so the test of a Rust shell with shaders switched off starts
-//! over a last-accepted document that a TypeScript configuration committed earlier, written to the place the binary reads it (`XDG_STATE_HOME`).
+//! login over the same home). A Rust or a Python shell that writes no setting commits nothing, so the test of a Rust shell with shaders switched
+//! off starts over a last-accepted document that an earlier login committed, written to the place the binary reads it (`XDG_STATE_HOME`);
+//! `native_settings.rs` shows a Rust and a Python shell writing the setting themselves.
 //!
 //! What this cannot prove is a pixel: a headless session draws with the software renderer, which has no shader compiler and lists the pass as
 //! skipped. The renderer lanes prove the drawing; the tests here assert the tree, the listing and the refusals. If the headless renderer comes to
@@ -82,7 +83,7 @@ fn start_script(home: Home, shell: &Path) -> Gnoblin {
 }
 
 /// A session that runs the native shell at `shell`, in `home`.
-fn start_native(home: Home, shell: &Path) -> Gnoblin {
+pub(crate) fn start_native(home: Home, shell: &Path) -> Gnoblin {
     let launch = Launch::compositor(&[])
         .with_arg(shell)
         .with_env("LD_LIBRARY_PATH", &staged_library_path());

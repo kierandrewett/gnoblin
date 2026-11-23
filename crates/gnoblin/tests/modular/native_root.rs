@@ -226,7 +226,7 @@ fn example_35_a_typescript_shell_sees_reduced_motion_after_a_document_that_asks_
 }
 
 /// Whether the main seat in the compositor's tree says the user asked for reduced motion.
-fn seat_asks_for_reduced_motion(ipc: &Path) -> bool {
+pub(crate) fn seat_asks_for_reduced_motion(ipc: &Path) -> bool {
     snapshot(ipc)
         .iter()
         .find(|node| node.class == "seat")

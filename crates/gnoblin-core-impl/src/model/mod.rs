@@ -146,6 +146,18 @@ pub(crate) fn end_inflight(ctx: GnoblinCtx) {
     input::end_inflight(ctx);
 }
 
+/// The revision of what the shell of the generation `ctx` wrote to its settings, zero while it wrote nothing: the cheap question, asked
+/// every turn, before the text is built ([`written_settings`]).
+pub(crate) fn written_revision(ctx: GnoblinCtx) -> u64 {
+    input::written_revision(ctx)
+}
+
+/// What the shell of the generation `ctx` wrote to the settings of the devices and of the compositor: the revision of what it wrote and the
+/// sections of the configuration document they make. None while it wrote nothing. The shell host commits it ([`crate::document`]).
+pub(crate) fn written_settings(ctx: GnoblinCtx) -> Option<(u64, String)> {
+    input::written(ctx)
+}
+
 /// The generation ended: its model is dropped.
 pub(crate) fn forget(ctx: GnoblinCtx) {
     WORLDS.with(|worlds| worlds.borrow_mut().remove(&ctx));

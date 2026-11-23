@@ -356,9 +356,16 @@ gnoblin.compositor.reset("user_shaders")           # back to the default
 windows = gnoblin.find("Window", {"app_id": "foot"})   # a dict of fields, a ClientQuery, or a function
 ```
 
-A Python shell commits no configuration document of its own, so nothing commits the write: it stays in `gnoblin.input.document`, which only
-the JavaScript runtime commits. To change the setting for the next login, set it in a `shell.ts` as [custom shaders](/custom-shaders) says.
-A value that is not a boolean raises a `TypeError`.
+The shell commits nothing itself. After the turn that wrote it, Gnoblin lays the settings the shell wrote over the configuration the
+compositor holds and commits the result, so the next login has `compositor.user-shaders` (the setting of a device applies at once). The
+rest of the configuration is not touched, and a shell that writes no setting changes nothing.
+
+A setting stays in the configuration until a login writes another value. To go back to the default, write it
+(`gnoblin.compositor.user_shaders = True`), or call `reset("user_shaders")` in the run that wrote it. A reload whose script does not
+write a setting takes it back. A value that is not a boolean raises a `TypeError`.
+
+Gnoblin keeps the settings only for the shell the stored configuration belongs to: a shell run by another path (`gnoblin --shell ./dev.py`)
+while another shell is installed in the configuration directory commits nothing, and the log says so.
 
 `find("Window", ...)` and `find("Output", ...)` raise a `TypeError` for a kind the core does not list (`"Workspace"` in a shell that loads
 no std), naming the kinds that work, and for a field the filter lacks. `examples/35-native-root/shell.py` is this.

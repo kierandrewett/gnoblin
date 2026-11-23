@@ -79,6 +79,11 @@ pub(crate) fn state_of(ctx: GnoblinCtx) -> Option<GenerationState> {
     HOST.state_of(decode(KIND_CTX, ctx)?)
 }
 
+/// The language a context's module is written in (`abi::LANG_*`), `None` for a handle the core did not issue.
+pub(crate) fn language_of(ctx: GnoblinCtx) -> Option<u32> {
+    HOST.info(decode(KIND_CTX, ctx)?).map(|info| info.language)
+}
+
 /// The path of the module a generation index was loaded from, for a registration that asks whether two generations are the
 /// same shell.
 pub(crate) fn module_path_of(index: u64) -> Option<String> {

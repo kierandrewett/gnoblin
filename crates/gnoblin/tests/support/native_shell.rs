@@ -62,6 +62,8 @@ pub struct Shells {
     pub services: PathBuf,
     /// Example 35: the members of the core's root object: timers, the build identity, `find`, `motion` and the compositor's settings.
     pub root: PathBuf,
+    /// Writes `compositor.user_shaders` through the core's settings object and says what it read before and after.
+    pub settings: PathBuf,
     /// Example 28: key chords on the seat's input context of the core, in generation 1.
     pub input: PathBuf,
     /// Example 30: a pointer drag, a click and a swipe on the seat's input context of the core, in generation 1.
@@ -112,6 +114,8 @@ fn build_shells() -> Result<Shells, String> {
             "gnoblin-example-native-pointer",
             "-p",
             "gnoblin-example-native-root",
+            "-p",
+            "gnoblin-fixture-shell-settings",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -135,6 +139,7 @@ fn build_shells() -> Result<Shells, String> {
         input: debug.join("libnative_input.so"),
         pointer: debug.join("libnative_pointer.so"),
         root: debug.join("libnative_root.so"),
+        settings: debug.join("libshell_settings.so"),
     })
 }
 

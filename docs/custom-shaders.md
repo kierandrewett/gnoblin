@@ -31,9 +31,9 @@ document it accepted. The running compositor does not change: it started with sh
 - `gnoblinctl config get` prints the document the compositor holds.
 - `gnoblinctl check shell.ts` runs the file without a session to show that the setting is accepted.
 
-A shell written in Rust or Python commits no configuration document of its own. The compositor reads the document of the
-`shell.ts` in your configuration directory, so run that file as your shell once with the line above; the setting stays in
-the last accepted document until another login commits a document without it.
+A shell written in Rust or Python needs no `shell.ts` for this. It writes the same setting (`compositor.set_user_shaders(false)?` in
+Rust, `gnoblin.compositor.user_shaders = False` in Python), and Gnoblin commits it over the configuration the last login accepted. See
+the [Rust shell](/rust-shell) and [Python shell](/python-shell).
 
 Whether shaders are accepted is also a fact a shell can read. The seat has a read-only `user_shaders` property that is `true`
 unless the setting is switched off, and `effect_kinds`, which lists the effect kinds the active renderer draws. A shader is

@@ -10,8 +10,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
+use gnoblin_client::Committed;
+use gnoblin_config::Config;
 use gnoblin_core_abi::{self as abi, GnoblinStr};
+use gnoblin_core_impl::document::{DocumentLink, DocumentLinkProvider};
 use gnoblin_core_impl::host::{self, AttachMode, TreeLinkProvider};
 use gnoblin_object::client::{Api, closure};
 use gnoblin_object::{Fail, MemberId, Obj, Res, Val};
@@ -151,13 +155,18 @@ impl Rig {
 
     /// A shell over the world `setup` makes in the fake compositor.
     fn over(setup: impl FnOnce(&FakeCompositor)) -> Rig {
+        Rig::in_language(abi::LANG_NATIVE, setup)
+    }
+
+    /// A shell written in `language` over the world `setup` makes in the fake compositor.
+    fn in_language(language: u32, setup: impl FnOnce(&FakeCompositor)) -> Rig {
         let lock = process_lock();
         host::reset_session();
         let comp = FakeCompositor::new();
         setup(&comp);
         host::set_tree_link_provider(Box::new(Provider(comp.clone())));
         host::set_clock(Arc::new(ManualClock::default()));
-        let ctx = host::open_generation("input", abi::LANG_NATIVE).expect("a generation opens");
+        let ctx = host::open_generation("input", language).expect("a generation opens");
         // SAFETY: `tree_attach` is a function of the core's table.
         assert_eq!(unsafe { (host::api().tree_attach)(ctx, abi::ATTACH_HOLDER) }, abi::E_OK);
         let api = api_of(ctx);
@@ -2375,4 +2384,310 @@ fn a_bad_device_setting_is_refused_where_it_is_written_and_leaves_the_setting() 
     assert!(rig.prop(keyboard, "repeat_rate").is_none());
     assert_eq!(rig.prop(rig.input, "document").text().expect("text"), "{}");
     assert_eq!(rig.prop(rig.input, "document_revision").uint().expect("a number"), 0);
+}
+
+// ---- the document a shell without a runtime of its own commits ------------------------------------------------------------------------
+
+#[derive(Default)]
+struct DocumentState {
+    /// What `config.current` answers: the document in force.
+    current: Option<String>,
+    /// Each document the compositor was asked to commit and took.
+    commits: Vec<String>,
+    /// How many times the shell host opened its connection to the compositor.
+    opens: usize,
+    /// Whether the compositor refuses the commits it is sent.
+    refuse: bool,
+}
+
+/// The compositor's configuration document as the shell host's connection sees it: `current` answers the last document it was given, and
+/// what it is sent is kept and counted.
+#[derive(Clone, Default)]
+struct Document(Arc<Mutex<DocumentState>>);
+
+impl Document {
+    fn holding(current: &str) -> Document {
+        let document = Document::default();
+        document.state().current = Some(current.to_owned());
+        document
+    }
+
+    fn state(&self) -> MutexGuard<'_, DocumentState> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn commits(&self) -> usize {
+        self.state().commits.len()
+    }
+
+    fn opens(&self) -> usize {
+        self.state().opens
+    }
+
+    /// The document in force says `expected`, whatever the order of its keys.
+    #[track_caller]
+    fn assert_holds(&self, expected: &str) {
+        let current = self.state().current.clone().expect("a document is in force");
+        assert_eq!(
+            document_of(&current),
+            document_of(expected),
+            "the document in force: {current}"
+        );
+    }
+}
+
+fn document_of(text: &str) -> gnoblin_config::Value {
+    Config::from_json_bytes(text.as_bytes())
+        .expect("a valid configuration")
+        .document()
+        .clone()
+}
+
+impl DocumentLinkProvider for Document {
+    fn open(&self) -> Result<Box<dyn DocumentLink>, String> {
+        self.state().opens += 1;
+        Ok(Box::new(self.clone()))
+    }
+}
+
+impl DocumentLink for Document {
+    fn current(&mut self) -> Result<Option<Vec<u8>>, String> {
+        Ok(self.state().current.clone().map(String::into_bytes))
+    }
+
+    fn commit(&mut self, document: &[u8]) -> Result<Committed, String> {
+        let mut state = self.state();
+        if state.refuse {
+            return Err("config-rejected: the compositor refused it".to_owned());
+        }
+        let text = String::from_utf8(document.to_vec()).expect("a document is text");
+        state.commits.push(text.clone());
+        state.current = Some(text);
+        Ok(Committed {
+            revision: state.commits.len() as u64,
+            notices: Vec::new(),
+        })
+    }
+}
+
+/// A shell written in `language` over the devices of the seat, whose host commits to `document`.
+fn rig_with_document(language: u32, document: &Document) -> Rig {
+    let rig = Rig::in_language(language, |comp| world_with(comp, false, &DEVICES));
+    host::set_document_link_provider(Box::new(document.clone()));
+    rig
+}
+
+/// `gnoblin.compositor`, the settings of the compositor itself, in the rig's generation.
+fn compositor_of(rig: &Rig) -> Obj {
+    let gnoblin = rig.api.create(rig.class("gnoblin"), &[]).expect("the service");
+    rig.object(gnoblin, "compositor")
+}
+
+/// A setting of a keyboard, one of a mouse and one of the compositor, which are one of each section the ledger writes.
+fn write_settings(rig: &Rig) {
+    rig.set(device(rig, "1"), "repeat_delay", &Val::Uint(250))
+        .expect("written");
+    rig.set(device(rig, "2"), "sensitivity", &Val::Double(0.5))
+        .expect("written");
+    rig.set(compositor_of(rig), "user_shaders", &Val::Bool(false))
+        .expect("written");
+}
+
+#[test]
+fn the_settings_a_shell_wrote_are_committed_over_the_document_in_force_with_no_call_of_its_own() {
+    for language in [abi::LANG_NATIVE, abi::LANG_PYTHON] {
+        let document =
+            Document::holding(r#"{"appearance":{"reduced-motion":true},"input":{"mouse":{"accel-profile":"flat"}}}"#);
+        let rig = rig_with_document(language, &document);
+        write_settings(&rig);
+        assert_eq!(
+            document.commits(),
+            0,
+            "a write sends nothing: the host commits after the turn that made it"
+        );
+
+        host::commit_document_changes(rig.ctx);
+        assert_eq!(document.commits(), 1, "language {language}");
+        document.assert_holds(
+            r#"{"appearance":{"reduced-motion":true},"input":{"mouse":{"accel-profile":"flat","speed":0.5},"keyboard":{"delay":250}},"compositor":{"user-shaders":false}}"#,
+        );
+
+        // A turn that wrote nothing commits nothing.
+        host::commit_document_changes(rig.ctx);
+        assert_eq!(document.commits(), 1);
+    }
+}
+
+#[test]
+fn the_writes_of_one_turn_are_one_commit_and_a_later_write_is_the_next() {
+    let document = Document::holding("{}");
+    let rig = rig_with_document(abi::LANG_NATIVE, &document);
+    write_settings(&rig);
+    host::commit_document_changes(rig.ctx);
+    assert_eq!(document.commits(), 1, "three writes, one commit");
+
+    rig.set(device(&rig, "2"), "sensitivity", &Val::Double(0.25))
+        .expect("written");
+    host::commit_document_changes(rig.ctx);
+    assert_eq!(document.commits(), 2);
+    document.assert_holds(
+        r#"{"input":{"mouse":{"speed":0.25},"keyboard":{"delay":250}},"compositor":{"user-shaders":false}}"#,
+    );
+
+    // The same value is no write: the ledger did not change.
+    rig.set(device(&rig, "2"), "sensitivity", &Val::Double(0.25))
+        .expect("written");
+    host::commit_document_changes(rig.ctx);
+    assert_eq!(document.commits(), 2);
+
+    // A setting the shell gives back leaves the document as the shell found it.
+    rig.ok(device(&rig, "2"), "reset", &[Val::Text("sensitivity".to_owned())]);
+    host::commit_document_changes(rig.ctx);
+    assert_eq!(document.commits(), 3);
+    document.assert_holds(r#"{"input":{"keyboard":{"delay":250}},"compositor":{"user-shaders":false}}"#);
+}
+
+#[test]
+fn a_shell_that_wrote_nothing_commits_nothing_and_does_not_reach_the_compositor() {
+    let document = Document::holding(r#"{"cursor":{"size":24}}"#);
+    let rig = rig_with_document(abi::LANG_NATIVE, &document);
+    host::commit_document_changes(rig.ctx);
+    // Reading a setting is not writing one.
+    assert!(rig.prop(device(&rig, "2"), "sensitivity").is_none());
+    assert!(rig.prop(compositor_of(&rig), "user_shaders").bool().expect("a flag"));
+    rig.settle();
+    host::commit_document_changes(rig.ctx);
+    assert_eq!((document.commits(), document.opens()), (0, 0));
+    document.assert_holds(r#"{"cursor":{"size":24}}"#);
+}
+
+#[test]
+fn a_write_of_what_the_document_already_says_is_not_committed() {
+    let document = Document::holding(r#"{"compositor":{"user-shaders":false},"cursor":{"size":24}}"#);
+    let rig = rig_with_document(abi::LANG_NATIVE, &document);
+    rig.set(compositor_of(&rig), "user_shaders", &Val::Bool(false))
+        .expect("written");
+    host::commit_document_changes(rig.ctx);
+    assert_eq!(document.commits(), 0, "the compositor holds it already");
+    assert_eq!(document.opens(), 1, "the shell host had to look");
+}
+
+#[test]
+fn a_reload_takes_back_what_its_new_generation_does_not_write_and_a_staged_generation_commits_nothing() {
+    let document = Document::holding(r#"{"cursor":{"size":24}}"#);
+    let mut first = rig_with_document(abi::LANG_NATIVE, &document);
+    write_settings(&first);
+    host::commit_document_changes(first.ctx);
+    assert_eq!(document.commits(), 1);
+
+    // The next generation writes while it is staged: nothing is committed for it until it serves.
+    let second = first.staged();
+    second
+        .set(compositor_of(&second), "user_shaders", &Val::Bool(true))
+        .expect("written");
+    host::commit_document_changes(second.ctx);
+    assert_eq!(
+        document.commits(),
+        1,
+        "a generation that is only staged commits nothing"
+    );
+    host::take_over(second.ctx).expect("the staged generation takes over");
+    first.end();
+    host::commit_document_changes(second.ctx);
+    assert_eq!(document.commits(), 2);
+    document.assert_holds(r#"{"cursor":{"size":24},"compositor":{"user-shaders":true}}"#);
+
+    // A generation that writes nothing takes back everything the one before it set, and nothing that was not the shell's.
+    let third = second.staged();
+    host::take_over(third.ctx).expect("the staged generation takes over");
+    second.settle();
+    host::commit_document_changes(third.ctx);
+    assert_eq!(document.commits(), 3);
+    document.assert_holds(r#"{"cursor":{"size":24}}"#);
+}
+
+#[test]
+fn the_javascript_runtime_commits_its_own_document_so_the_core_leaves_its_generation_alone() {
+    for language in [abi::LANG_JS, abi::LANG_TS] {
+        let document = Document::holding(r#"{"cursor":{"size":24}}"#);
+        let rig = rig_with_document(language, &document);
+        write_settings(&rig);
+        host::commit_document_changes(rig.ctx);
+        assert_eq!(
+            (document.commits(), document.opens()),
+            (0, 0),
+            "a second commit would be a second revision, and the ledger alone would take the script's sections out"
+        );
+        // The runtime reads the ledger it commits from the input manager.
+        let ledger = rig.prop(rig.input, "document").text().expect("text").to_owned();
+        assert!(ledger.contains(r#""user-shaders":false"#), "{ledger}");
+    }
+}
+
+#[test]
+fn a_commit_the_compositor_refuses_leaves_the_shell_running_and_the_next_write_commits_again() {
+    let document = Document::holding(r#"{"cursor":{"size":24}}"#);
+    let rig = rig_with_document(abi::LANG_NATIVE, &document);
+    document.state().refuse = true;
+    write_settings(&rig);
+    host::commit_document_changes(rig.ctx);
+    assert_eq!(document.commits(), 0);
+    document.assert_holds(r#"{"cursor":{"size":24}}"#);
+    // The refusal is not retried every turn: the shell host looks again when the shell writes again.
+    host::commit_document_changes(rig.ctx);
+    host::commit_document_changes(rig.ctx);
+    assert_eq!(document.opens(), 1);
+
+    document.state().refuse = false;
+    rig.set(device(&rig, "2"), "sensitivity", &Val::Double(0.25))
+        .expect("written");
+    host::commit_document_changes(rig.ctx);
+    assert_eq!(document.commits(), 1);
+    document.assert_holds(
+        r#"{"cursor":{"size":24},"input":{"mouse":{"speed":0.25},"keyboard":{"delay":250}},"compositor":{"user-shaders":false}}"#,
+    );
+}
+
+#[test]
+fn a_core_with_no_connection_for_the_document_keeps_what_the_shell_wrote_readable() {
+    let rig = devices_rig();
+    write_settings(&rig);
+    host::commit_document_changes(rig.ctx);
+    assert!(!rig.prop(compositor_of(&rig), "user_shaders").bool().expect("a flag"));
+    assert_eq!(
+        rig.prop(rig.input, "document").text().expect("text"),
+        r#"{"input":{"keyboard":{"delay":250},"mouse":{"speed":0.5}},"compositor":{"user-shaders":false}}"#
+    );
+}
+
+#[test]
+fn a_commit_that_fails_is_tried_again_after_a_wait_and_not_on_every_turn() {
+    let document = Document::holding(r#"{"cursor":{"size":24}}"#);
+    let rig = rig_with_document(abi::LANG_NATIVE, &document);
+    let clock = ManualClock::default();
+    host::set_clock(Arc::new(clock.clone()));
+    document.state().refuse = true;
+    write_settings(&rig);
+    host::commit_document_changes(rig.ctx);
+    assert_eq!((document.commits(), document.opens()), (0, 1));
+
+    // The turns inside the wait ask nothing of the compositor.
+    for _ in 0..5 {
+        host::commit_document_changes(rig.ctx);
+    }
+    assert_eq!(document.opens(), 1, "no retry storm");
+
+    // The compositor takes it now, and the wait is over: the same write is committed, without a new write from the shell.
+    document.state().refuse = false;
+    clock.advance(Duration::from_millis(1_100));
+    host::commit_document_changes(rig.ctx);
+    assert_eq!(document.commits(), 1);
+    document.assert_holds(
+        r#"{"cursor":{"size":24},"input":{"mouse":{"speed":0.5},"keyboard":{"delay":250}},"compositor":{"user-shaders":false}}"#,
+    );
+
+    // Confirmed: nothing more is sent, however long the shell runs.
+    clock.advance(Duration::from_secs(120));
+    host::commit_document_changes(rig.ctx);
+    assert_eq!(document.commits(), 1);
 }

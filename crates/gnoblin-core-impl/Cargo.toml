@@ -48,6 +48,9 @@ gnoblin-compat-host = { path = "../compat/gnoblin-compat-host", default-features
 # descriptor the guardian hands it and the readiness reports.
 gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-proto = { path = "../gnoblin-proto" }
+# The configuration document a shell without a runtime of its own commits (`document`): the document tree, its validation and the
+# helpers that lay a shell's keys over the document in force, as the JavaScript runtime does.
+gnoblin-config = { path = "../gnoblin-config" }
 # The compositor's object model: the values of a verb's arguments, its answers and the signals it raises, as the owner socket carries
 # them.
 gnoblin-model = { path = "../gnoblin-model" }

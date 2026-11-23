@@ -32,6 +32,7 @@ mod native_policy;
 mod native_root;
 mod native_scene;
 mod native_services;
+mod native_settings;
 mod native_shell_ui;
 mod native_std;
 mod native_std_root;

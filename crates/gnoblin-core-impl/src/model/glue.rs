@@ -144,6 +144,12 @@ impl<T: Default + 'static> PerGeneration<T> {
         work(self.table.borrow_mut().entry(ctx).or_default())
     }
 
+    /// Runs `work` on the generation's state if it has any, without making it: a generation the service was never used in has none.
+    /// `work` must not call into the shell or reach the same table again.
+    pub(super) fn peek<R>(&self, ctx: GnoblinCtx, work: impl FnOnce(&T) -> R) -> Option<R> {
+        self.table.borrow().get(&ctx).map(work)
+    }
+
     /// Takes the generation's state away: the generation ended.
     pub(super) fn take(&self, ctx: GnoblinCtx) -> Option<T> {
         self.table.borrow_mut().remove(&ctx)

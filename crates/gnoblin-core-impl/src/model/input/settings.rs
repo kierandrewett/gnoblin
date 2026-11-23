@@ -5,8 +5,9 @@
 //! each device, so a write on one mouse is the setting of every mouse, and another mouse reads it too. Its own settings are the `compositor`
 //! section, which it reads when it starts, so a write to them applies at the next login. The ledger is the generation's: it holds what was
 //! written, in the order each setting was first written, and a number that grows with each change. `document` is its text in the document's
-//! own spelling (`{"input":{"mouse":{"speed":0.5}},"compositor":{"user-shaders":false}}`); the host commits it, and commits it again when
-//! `document_revision` has grown. Writing none takes a setting back to the system's. This module reaches no compositor: a write is checked
+//! own spelling (`{"input":{"mouse":{"speed":0.5}},"compositor":{"user-shaders":false}}`); a host commits it, and commits it again when
+//! `document_revision` has grown: the JavaScript runtime for a TypeScript shell, and for every other shell the core's shell host
+//! (`crate::document`). Writing none takes a setting back to the system's. This module reaches no compositor: a write is checked
 //! against the ranges the configuration schema accepts, and nothing more.
 
 use gnoblin_object::server::Cx;

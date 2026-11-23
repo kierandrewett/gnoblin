@@ -299,9 +299,16 @@ let outputs = model.find::<Output>(None)?;
 `compositor.set_user_shaders(false)?` writes `compositor.user-shaders` to the shell's settings document, `user_shaders()` reads what was
 written (else what the running compositor holds), and `reset("user_shaders")` takes it back.
 
-A Rust shell commits no configuration document of its own, so nothing commits the write: it stays in the `document` of `gnoblin.input`,
-which only the JavaScript runtime commits. To change the setting for the next login, set it in a `shell.ts` as
-[custom shaders](/custom-shaders) says.
+The shell commits nothing itself. After the turn that wrote it, Gnoblin lays the settings the shell wrote over the configuration the
+compositor holds and commits the result, so the next login has `compositor.user-shaders` (the setting of a device applies at once). The
+rest of the configuration is not touched, and a shell that writes no setting changes nothing.
+
+A setting stays in the configuration until a login writes another value. To go back to the default, write it
+(`compositor.set_user_shaders(true)?`), or call `reset("user_shaders")` in the run that wrote it. A reload whose shell does not write a
+setting takes it back.
+
+Gnoblin keeps the settings only for the shell the stored configuration belongs to: a shell run by another path (`gnoblin --shell ./dev.so`)
+while another shell is installed in the configuration directory commits nothing, and the log says so.
 
 `find` takes the kind as a type. A kind the core does not list has no `Finds<ModelRoot>` impl, so asking for it is an error when the
 shell is built and not when it runs. `find` takes no function: filter the list in Rust. `examples/35-native-root` is this.

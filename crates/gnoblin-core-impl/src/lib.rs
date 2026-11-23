@@ -16,6 +16,8 @@
 //! - `session`: what belongs to the shell instance on its shell thread and outlives a generation: the tree session (link, mirror,
 //!   per-tick transaction builder and gate, `gnoblin-tree-client`), the programs the shell started, the input claims it holds, its
 //!   timers and the state it keeps across reloads. `tree`, `listen` and `procs` are the ABI functions over it.
+//! - `document`: the shell host's commit of the settings a shell without a runtime of its own wrote to the devices and to the
+//!   compositor (`gnoblin.input.document`), over the document the compositor holds.
 //! - `values`: values across the boundary and their conversion to and from the tree's.
 //! - `host`: the Rust interface the compositor edge and the tests use.
 //!
@@ -34,6 +36,7 @@ use gnoblin_shell_host::guard;
 pub mod budget;
 mod catalog;
 mod check_role;
+pub mod document;
 mod events;
 mod exports;
 pub mod host;

@@ -1363,6 +1363,7 @@ dependencies = [
  "gnoblin-client",
  "gnoblin-compat-host",
  "gnoblin-compositor",
+ "gnoblin-config",
  "gnoblin-core-abi",
  "gnoblin-log",
  "gnoblin-model",
@@ -1681,6 +1682,13 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core",
  "gnoblin-std",
+]
+
+[[package]]
+name = "gnoblin-fixture-shell-settings"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
 ]
 
 [[package]]

@@ -280,6 +280,21 @@ fn with<R>(ctx: GnoblinCtx, work: impl FnOnce(&mut InputTable) -> R) -> R {
     INPUT.with(|input| input.with(ctx, work))
 }
 
+/// What a shell wrote to the settings in the generation `ctx`: the ledger's revision and its document, none while the generation has written
+/// nothing. The shell host commits it ([`crate::document`]); this makes no table for a generation that never touched a setting.
+pub(crate) fn written(ctx: GnoblinCtx) -> Option<(u64, String)> {
+    INPUT
+        .with(|input| input.peek(ctx, |table| (table.settings.revision(), table.settings.document())))
+        .filter(|(revision, _)| *revision > 0)
+}
+
+/// The revision of the ledger of the generation `ctx`, zero while it wrote nothing. A comparison and no more, for a host that asks every turn.
+pub(crate) fn written_revision(ctx: GnoblinCtx) -> u64 {
+    INPUT
+        .with(|input| input.peek(ctx, |table| table.settings.revision()))
+        .unwrap_or(0)
+}
+
 /// Runs `work` on the matchers of the generation `ctx`. `work` must not call the shell.
 fn with_matchers<R>(ctx: GnoblinCtx, work: impl FnOnce(&mut Matchers) -> R) -> R {
     MATCHERS.with(|matchers| matchers.with(ctx, work))

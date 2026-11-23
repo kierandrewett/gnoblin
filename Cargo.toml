@@ -38,6 +38,7 @@ members = [
     "crates/gnoblin-core-impl/fixtures/shell-hot",
     "crates/gnoblin-core-impl/fixtures/shell-min",
     "crates/gnoblin-core-impl/fixtures/shell-plus",
+    "crates/gnoblin-core-impl/fixtures/shell-settings",
     "crates/gnoblin-core-impl/fixtures/shell-verbs",
     "crates/gnoblin-core-impl/fixtures/shell-wake",
     "crates/gnoblin-std-impl/fixtures/shell-anim",

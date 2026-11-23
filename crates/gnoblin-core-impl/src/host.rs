@@ -59,6 +59,20 @@ pub fn set_verb_link_provider(provider: Box<dyn crate::verbs::VerbLinkProvider>)
     crate::session::with(|session| session.set_verb_provider(provider));
 }
 
+/// Gives the shell thread a way to reach the compositor's configuration document: what a shell without a runtime of its own commits the
+/// settings it wrote through ([`commit_document_changes`]). Call it on the shell thread, as [`set_tree_link_provider`]. The in-process
+/// compositor edge provides the owner socket ([`crate::verbs::OwnerSocket`]); a test provides a link that records the commits.
+pub fn set_document_link_provider(provider: Box<dyn crate::document::DocumentLinkProvider>) {
+    crate::document::set_provider(provider);
+}
+
+/// Commits to the compositor what the shell of the generation `ctx` wrote to the settings of the devices and of the compositor since the
+/// last call, if it wrote something and no runtime of its own commits for it (see [`crate::document`]). `ctx` is the generation that serves.
+/// The shell host calls it after the start of the shell and after each turn of its dispatch loop; a shell calls nothing.
+pub fn commit_document_changes(ctx: GnoblinCtx) {
+    crate::document::commit_changes(ctx);
+}
+
 /// Gives the shell thread a way to reach the compositor's dialog slot: what opens the first time a shell wants to observe the
 /// compositor's own dialogs (`gnoblin.dialogs`). The in-process compositor edge provides the owner socket
 /// ([`crate::slots::OwnerSlots`]); a test provides a link that offers requests from a script. The provider makes the link on the
@@ -83,6 +97,7 @@ pub fn set_clock(clock: std::sync::Arc<dyn gnoblin_shell_host::supervisor::Clock
 pub fn reset_session() {
     crate::session::with(crate::session::Session::reset);
     crate::budget::reset();
+    crate::document::reset();
 }
 
 /// What the callback budget has seen: the limits, the strikes, whether the shell is degraded, and what ran past its limit last.
