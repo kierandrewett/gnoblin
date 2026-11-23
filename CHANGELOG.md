@@ -8,6 +8,7 @@
 
 - The three standard capture protocols, `ext_image_capture_source_v1`, `ext_image_copy_capture_v1` and `zwlr_screencopy_v1`, are crates of their own under `crates/protocols/` (lane CaptureMove; design/protocol-crates.md). They advertise the same globals at the same versions and in the same order, and the capture engine and the View source stay in `gnoblin-wayland`.
 - Window opacity from `wp_alpha_modifier_v1` and window rules now combines into the window's scene node, and a closing window keeps the opacity it had when its close fade began.
+- The compositor now applies `appearance.reduced-motion` from the accepted document it starts with, as it does when a document is committed. Before, a session whose stored document asked for reduced motion animated until something committed a document, which a Rust or a Python shell never does (lane CompShaders, bead gnoblin-6qzc; `crates/gnoblin-compositor/src/lib.rs`, `crates/gnoblin-compositor/tests/tree_ipc.rs`, `crates/gnoblin/tests/modular/native_root.rs`).
 
 #### Windows, workspaces and shell
 

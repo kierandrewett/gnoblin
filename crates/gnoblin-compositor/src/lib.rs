@@ -422,6 +422,14 @@ impl Compositor {
             .and_then(|path| path.file_name())
             .map(|name| name.to_string_lossy().into_owned());
         let started_document = config.started_with.as_ref().map(gnoblin_config::Config::document_json);
+        // The accepted document the session starts with asks for reduced motion the way a commit does: a shell that commits no document of
+        // its own (a Rust or a Python one) would otherwise never see its setting take effect.
+        let started_reduced_motion = config
+            .started_with
+            .as_ref()
+            .and_then(|started| started.appearance.as_ref())
+            .and_then(|appearance| appearance.reduced_motion)
+            .unwrap_or(false);
         let backend_name = config.backend.name();
         // The tree says where the session runs, before anything is ready to read it.
         store.set_backend(backend_name);
@@ -456,6 +464,9 @@ impl Compositor {
         }
         .map_err(Error::Wayland)?;
         let control = server.control();
+        if started_reduced_motion {
+            control.set_reduced_motion(true);
+        }
         // The providers registered before the session served (std, which the core library registers while it starts) take
         // effect now, with the accepted document the session started with, which an observer is told first.
         if let Some(started) = &started_document {

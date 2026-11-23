@@ -496,6 +496,43 @@ fn the_seat_says_whether_the_tree_accepts_user_shaders() {
     off.stop().expect("the session stops cleanly");
 }
 
+/// Whether the main seat of `session` says the user asked for reduced motion, which a snapshot leaves out while it is the default (false).
+fn seat_asks_for_reduced_motion(session: &Session) -> bool {
+    let (_wire, _, nodes) = attach_once_released(session, 1);
+    nodes
+        .iter()
+        .find(|node| node.class == "seat")
+        .expect("the main seat node")
+        .props
+        .iter()
+        .any(|prop| prop.key == "reduced_motion" && prop.value_bool)
+}
+
+#[test]
+fn a_session_that_started_with_reduced_motion_in_its_accepted_document_asks_for_it_before_any_commit() {
+    let document = gnoblin_config::Config::from_json_bytes(br#"{"appearance":{"reduced-motion":true}}"#)
+        .expect("a valid document");
+    let session = Session::start_configured(None, |config| config.started_with = Some(document));
+    // The command that applies it runs on the loop, so the seat says so a moment after the socket listens.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !seat_asks_for_reduced_motion(&session) {
+        assert!(
+            Instant::now() < deadline,
+            "the accepted document says appearance.reduced-motion = true and nothing committed since, yet the seat does not ask for it"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    session.stop().expect("the session stops cleanly");
+
+    let plain = Session::start();
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        !seat_asks_for_reduced_motion(&plain),
+        "a session that started with no such setting animates"
+    );
+    plain.stop().expect("the session stops cleanly");
+}
+
 /// With the setting on, a valid shader is accepted, travels back as it was written, and the software renderer, which
 /// has no compiler, leaves it undrawn and says so in the node's `skipped`.
 #[test]
