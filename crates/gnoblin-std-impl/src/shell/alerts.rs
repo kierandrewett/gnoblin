@@ -210,11 +210,11 @@ fn windows(ui: &Ui) -> Vec<u64> {
     ids
 }
 
-/// The node number a client value names.
-pub(crate) fn client_of(value: &Val) -> Res<u64> {
+/// The node number a window named as text is, for the lists a shell gives that name windows by their node numbers.
+pub(crate) fn text_node(value: &Val) -> Res<u64> {
     let text = value.text()?;
     text.parse::<u64>()
-        .map_err(|_| Fail::type_error(format!("a client is the number of its node as text, got `{text}`")))
+        .map_err(|_| Fail::type_error(format!("a window is the number of its node as text, got `{text}`")))
 }
 
 impl AlertTracker {

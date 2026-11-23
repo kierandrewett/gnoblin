@@ -8,6 +8,7 @@ implements (equal columns); when the fourth joins it goes back to the library's 
 """
 
 from gnoblin import gnoblin
+from gnoblin.objects.model import Gnoblin
 from gnoblin.objects.std import (
     Desks,
     Gaps,
@@ -62,14 +63,16 @@ def on_added(node):
     elif count >= 5 and phase[0] == 2:
         # The library has laid the four windows out by now, so the divider is there to be found.
         phase[0] = 3
-        area = desks.areas("0").area
+        # The divider is asked of a window: the `Client` of the first member, which the core looks up by its id.
+        area = desks.areas().area
         members = clients.members
-        if area is None or not members:
+        first = Gnoblin.get().clients.get(members[0]) if members else None
+        if area is None or first is None:
             gnoblin.log("objects: cannot find the divider")
             return
         x = area.x
         while x < area.x + area.width:
-            split = main.find_split(members[0], x, area.y + area.height / 2)
+            split = main.find_split(first, x, area.y + area.height / 2)
             if split is not None:
                 to = min(max(0.7, split.min), split.max)
                 main.set_split(split.token, to)

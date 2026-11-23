@@ -123,6 +123,7 @@ impl DragBindings {
 
 struct ObjectsShell {
     objects: Objects,
+    core: gnoblin_core::objects::Objects,
     main: Workspace,
     current: RefCell<Current>,
     held: RefCell<DragBindings>,
@@ -301,7 +302,14 @@ impl ObjectsShell {
             }
             "Super+m" => {
                 // The first window may not be resized below 150 by 120 or above 500 by 400.
-                let state = ClientState::of(&self.objects, FIRST)?;
+                // The window is the core's `Client`, which the core looks up by its id.
+                let first = gnoblin_core::objects::ModelRoot::get(&self.core)?
+                    .clients()?
+                    .and_then(|clients| clients.get_by_id(FIRST).ok().flatten());
+                let Some(first) = first else {
+                    return Ok(());
+                };
+                let state = ClientState::of(&self.objects, &first)?;
                 state.set_min_size(&SizeLimit {
                     width: 150.0,
                     height: 120.0,
@@ -347,6 +355,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     main.set_layout(&layout.as_layout()?)?;
     Workspaces::get(&objects)?.add(&main)?;
     let shell = Rc::new(ObjectsShell {
+        core: g.objects()?,
         objects,
         main,
         current: RefCell::new(Current {

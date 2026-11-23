@@ -5,6 +5,7 @@
 //! is added by a catalog file and an implementation here, and needs no function in `GnoblinStdApi`.
 #![allow(unsafe_code)]
 
+pub(crate) mod client;
 pub(crate) mod entry_model;
 pub(crate) mod record;
 

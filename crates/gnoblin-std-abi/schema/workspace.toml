@@ -2,8 +2,9 @@
 # policies that decide it, the membership of clients, the `layout` interface a shell implements to place windows, and the floating layout.
 #
 # A workspace is a place windows are laid out in. The compositor does not know it: the library makes it, keeps its clients as a collection
-# the shell may change, and asks its layout where they go. Removing a workspace, or a window from one, never closes the window. A client is
-# named by its node number (the `id` of the core's client), as in the style classes.
+# the shell may change, and asks its layout where they go. Removing a workspace, or a window from one, never closes the window. A shell
+# passes a client to a member as the core's `Client`; a client the library tells the shell of is its node number as text (the `id` of the
+# core's client), and `gnoblin.clients.get(id)` is the `Client` of it.
 #
 # The built-in layouts (master and stack, grid, monocle, dwindle, strip, arc, carousel) are classes of this module that `gnoblin-sdkgen`
 # writes from `gnoblin_std_abi::layouts::LAYOUT_KINDS`, the one table of their options and actions (`crates/gnoblin-sdkgen/src/layouts.rs`),
@@ -819,7 +820,8 @@ type = "object:floating_query"
 # ---- clients -------------------------------------------------------------------------------------------------------------------------
 
 # A live list of clients, in order. A workspace's clients are one the shell changes (`add`, `remove`, `swap`, `clear`); the list of every
-# client and a selection of one (`where`) follow what the library tracks and refuse a change. A member is a client's node number.
+# client and a selection of one (`where`) follow what the library tracks and refuse a change. `add`, `remove`, `contains` and `swap` take the
+# core's `Client`; a member listed in `members` is a client's node number as text.
 [[object]]
 name = "client_collection"
 since = "0.2.0"
@@ -846,7 +848,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # The selection of this collection whose clients match `query`: a live list that follows the parent as clients come, go and change.
 [[object.method]]
@@ -866,7 +868,7 @@ since = "0.2.0"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Takes `client` out of the workspace: it has no workspace until it is given one, and no window is closed. Answers whether it was there.
 [[object.method]]
@@ -876,7 +878,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Takes every client out of the workspace.
 [[object.method]]
@@ -890,11 +892,11 @@ since = "0.2.0"
 
 [[object.method.param]]
 name = "a"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "b"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Every client of the compositor, in the order they appeared.
 [[object.method]]
@@ -1027,7 +1029,7 @@ name = "forget_snap"
 since = "0.2.0"
 returns = "bool"
 
-# The state of the client with this node number.
+# The state of `client`.
 [[object.method]]
 name = "of"
 since = "0.2.0"
@@ -1035,8 +1037,8 @@ function = true
 returns = "object:client_state"
 
 [[object.method.param]]
-name = "node"
-type = "string"
+name = "client"
+type = "object:gnoblin.model.client"
 
 # ---- workspaces ----------------------------------------------------------------------------------------------------------------------
 
@@ -1146,7 +1148,7 @@ optional = true
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "x"
@@ -1280,7 +1282,7 @@ optional = true
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # The workspace an output shows, or none.
 [[object.method]]
@@ -1370,7 +1372,7 @@ type = "uint"
 name = "members"
 type = "list<uint>"
 
-# The output a client is on and the room it may be laid out in; for client 0, the primary output's.
+# The output a client is on and the room it may be laid out in; for no client, the primary output's.
 [[object.method]]
 name = "areas"
 since = "0.2.0"
@@ -1378,7 +1380,8 @@ returns = "object:client_areas"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
+optional = true
 
 # A reload gives `client` back to `workspace`: it moves, with its dialogs, but is not refitted. `arrived` says a layout may place it.
 # Answers whether it moved.
@@ -1393,7 +1396,7 @@ type = "object:workspace"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "arrived"
@@ -1406,7 +1409,7 @@ since = "0.2.0"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "zone"

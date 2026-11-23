@@ -17,16 +17,16 @@ enum | workspace_policy_mode | values manual per_output | 0.2.0
 
 member | client_areas.area | property object:layout_rect rw,optional | 0.2.0
 member | client_areas.output | property object:layout_rect rw,optional | 0.2.0
-member | client_collection.add | method (client:string) | 0.2.0
+member | client_collection.add | method (client:object:gnoblin.model.client) | 0.2.0
 member | client_collection.added | signal (client:string) | 0.2.0
 member | client_collection.all | function () -> object:client_collection | 0.2.0
 member | client_collection.clear | method () | 0.2.0
-member | client_collection.contains | method (client:string) -> bool | 0.2.0
+member | client_collection.contains | method (client:object:gnoblin.model.client) -> bool | 0.2.0
 member | client_collection.length | property uint ro | 0.2.0
 member | client_collection.members | property list<string> ro | 0.2.0
-member | client_collection.remove | method (client:string) -> bool | 0.2.0
+member | client_collection.remove | method (client:object:gnoblin.model.client) -> bool | 0.2.0
 member | client_collection.removed | signal (client:string) | 0.2.0
-member | client_collection.swap | method (a:string, b:string) | 0.2.0
+member | client_collection.swap | method (a:object:gnoblin.model.client, b:object:gnoblin.model.client) | 0.2.0
 member | client_collection.where | method (query:object:client_query) -> object:client_collection | 0.2.0
 member | client_query.app_id | property string rw,optional | 0.2.0
 member | client_query.focused | property bool rw,optional | 0.2.0
@@ -45,16 +45,16 @@ member | client_state.max_size | property object:size_limit rw,optional | 0.2.0
 member | client_state.min_size | property object:size_limit rw,optional | 0.2.0
 member | client_state.move_to_workspace | method (workspace:object:workspace) -> bool | 0.2.0
 member | client_state.node | property string ro | 0.2.0
-member | client_state.of | function (node:string) -> object:client_state | 0.2.0
+member | client_state.of | function (client:object:gnoblin.model.client) -> object:client_state | 0.2.0
 member | client_state.snap | property object:client_snap ro,optional | 0.2.0
 member | client_state.snap_to | method (zone:enum:snap_zone, area:object:layout_rect, edge_tiling?:bool) -> bool | 0.2.0
 member | client_state.unsnap | method () -> bool | 0.2.0
 member | client_state.workspace | property object:workspace ro,optional | 0.2.0
-member | desks.areas | method (client:string) -> object:client_areas | 0.2.0
+member | desks.areas | method (client?:object:gnoblin.model.client) -> object:client_areas | 0.2.0
 member | desks.output | method (output:uint) -> object:output_desk | 0.2.0
 member | desks.outputs | property object:output_policy rw | 0.2.0
-member | desks.restore_client | method (workspace:object:workspace, client:string, arrived:bool) -> bool | 0.2.0
-member | desks.restore_snap | method (client:string, zone:enum:snap_zone, floating:object:layout_rect) | 0.2.0
+member | desks.restore_client | method (workspace:object:workspace, client:object:gnoblin.model.client, arrived:bool) -> bool | 0.2.0
+member | desks.restore_snap | method (client:object:gnoblin.model.client, zone:enum:snap_zone, floating:object:layout_rect) | 0.2.0
 member | desks.set_insets | method (output:uint, top:double, bottom:double) | 0.2.0
 member | desks.span | method (lead:uint, members:list<uint>) | 0.2.0
 member | desks.workspaces | property object:workspace_policy rw | 0.2.0
@@ -141,7 +141,7 @@ member | workspace.attached | property bool ro | 0.2.0
 member | workspace.client_added | signal (client:string) | 0.2.0
 member | workspace.client_removed | signal (client:string) | 0.2.0
 member | workspace.clients | property object:client_collection ro | 0.2.0
-member | workspace.find_split | method (client:string, x:double, y:double) -> object:layout_split? | 0.2.0
+member | workspace.find_split | method (client:object:gnoblin.model.client, x:double, y:double) -> object:layout_split? | 0.2.0
 member | workspace.gaps | property object:gaps rw | 0.2.0
 member | workspace.hidden | signal () | 0.2.0
 member | workspace.id | property string ro | 0.2.0
@@ -166,7 +166,7 @@ member | workspaces.by_id | method (id:string) -> object:workspace? | 0.2.0
 member | workspaces.clear | method () | 0.2.0
 member | workspaces.length | property uint ro | 0.2.0
 member | workspaces.list | property list<object:workspace> ro | 0.2.0
-member | workspaces.of_client | method (client:string) -> object:workspace? | 0.2.0
+member | workspaces.of_client | method (client:object:gnoblin.model.client) -> object:workspace? | 0.2.0
 member | workspaces.of_output | method (output:uint) -> object:workspace? | 0.2.0
 member | workspaces.remove | method (workspace:object:workspace) -> bool | 0.2.0
 member | workspaces.removed | signal (workspace:object:workspace) | 0.2.0

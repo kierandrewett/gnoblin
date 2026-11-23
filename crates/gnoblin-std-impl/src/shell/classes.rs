@@ -6,8 +6,9 @@ use std::rc::Rc;
 use gnoblin_object::server::Builder;
 use gnoblin_object::{Closure, Fail, Res, Val};
 
-use super::alerts::{self, AlertTracker, clean_text, client_of};
+use super::alerts::{self, AlertTracker, clean_text, text_node};
 use super::{dialog, launcher, overview};
+use crate::object::client::client_node;
 use crate::object::record::record;
 use crate::ui::classes::{Class, box_members, canvas_members, class_with, entry_members};
 use crate::ui::tree::ui_of;
@@ -47,20 +48,22 @@ fn tracker_class(builder: &mut Builder) {
                 state: Rc::new(RefCell::new(AlertTracker::default())),
             })
         })
-        .method("is_open", |h, _, args| {
-            Ok(Val::Bool(h.state.borrow().is_open(client_of(&args[0])?)))
+        .method("is_open", |h, cx, args| {
+            let client = client_node(cx.ctx(), "is_open", &args[0])?;
+            Ok(Val::Bool(h.state.borrow().is_open(client)))
         })
-        .method("is_waiting", |h, _, args| {
-            Ok(Val::Bool(h.state.borrow().is_waiting(client_of(&args[0])?)))
+        .method("is_waiting", |h, cx, args| {
+            let client = client_node(cx.ctx(), "is_waiting", &args[0])?;
+            Ok(Val::Bool(h.state.borrow().is_waiting(client)))
         })
         .method("check", |h, _, args| {
-            let clients = args[0].list()?.iter().map(client_of).collect::<Res<Vec<u64>>>()?;
+            let clients = args[0].list()?.iter().map(text_node).collect::<Res<Vec<u64>>>()?;
             let locked = args[1].bool()?;
             let changes = h.state.borrow_mut().look(&h.ui, &clients, locked);
             Ok(record(vec![clients_val(&changes.open), clients_val(&changes.close)]))
         })
-        .method("answered", |h, _, args| {
-            let client = client_of(&args[0])?;
+        .method("answered", |h, cx, args| {
+            let client = client_node(cx.ctx(), "answered", &args[0])?;
             Ok(Val::Bool(h.state.borrow_mut().answered(client, args[1].enum_value()?)))
         })
         .function("clean_text", |_cx, args| {
@@ -227,7 +230,7 @@ fn alerts_class(builder: &mut Builder) {
             Ok(Val::None)
         })
         .method("card_of", |h, cx, args| {
-            alerts::card_of(&h.ui, cx, client_of(&args[0])?)
+            alerts::card_of(&h.ui, cx, client_node(cx.ctx(), "card_of", &args[0])?)
         });
 }
 

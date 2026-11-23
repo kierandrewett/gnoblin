@@ -35,7 +35,7 @@ use gnoblin_object::client::Api;
 use gnoblin_object::{Fail, Val};
 use gnoblin_testkit::oracle::{Value, json};
 use gnoblin_tree_client::tree_mirror::MirrorValue;
-use rig::{LEFT, MIDDLE, RIGHT, Rig, W, b, callback, d, en, js, t};
+use rig::{LEFT, MIDDLE, RIGHT, Rig, W, b, callback, client_of, d, en, js, t};
 
 type Comp = gnoblin_testkit::compositor::FakeCompositor;
 
@@ -139,16 +139,17 @@ fn rect_of(comp: &Comp, node: u64) -> [f64; 4] {
 struct Policy {
     comp: Comp,
     deco: W,
+    core: Api,
 }
 
 impl Policy {
     /// `windowState.maximise`: keeps the rectangle the window floated at and fills the work area less the frame.
     fn maximise(&self, node: u64) {
         let before = rect_of(&self.comp, node);
-        let state = function(self.deco.api, "client_state", "of", &[t(&node.to_string())]);
+        let state = function(self.deco.api, "client_state", "of", &[client_of(self.core, node)]);
         wrap(self.deco.api, &state).set("floating_bounds", rect_val(before[0], before[1], before[2], before[3]));
         self.comp.external_set(node, "maximised", MirrorValue::Bool(true));
-        let [top, right, bottom, left] = inset_of(&self.deco.call("inset_of", &[t(&node.to_string())]));
+        let [top, right, bottom, left] = inset_of(&self.deco.call("inset_of", &[client_of(self.core, node)]));
         for (key, value) in [
             ("x", left),
             ("y", top),
@@ -165,7 +166,7 @@ impl Policy {
         self.comp.external_set(node, "maximised", MirrorValue::Bool(false));
         let state = wrap(
             self.deco.api,
-            &function(self.deco.api, "client_state", "of", &[t(&node.to_string())]),
+            &function(self.deco.api, "client_state", "of", &[client_of(self.core, node)]),
         );
         let kept = state.get("floating_bounds");
         if let Val::Record { fields, .. } = kept {
@@ -181,6 +182,7 @@ impl Policy {
 struct Shell {
     deco: W,
     clock: Rc<Cell<f64>>,
+    core: Api,
 }
 
 impl Shell {
@@ -192,7 +194,11 @@ impl Shell {
         setup(&deco);
         deco.call("start", &[]);
         rig.settle();
-        Shell { deco, clock }
+        Shell {
+            deco,
+            clock,
+            core: rig.core,
+        }
     }
 
     /// The window policy the TypeScript host handed the frames: `press`, `maximise`, `minimise`, `lower` and `menu`, and the requests
@@ -201,6 +207,7 @@ impl Shell {
         let policy = Rc::new(Policy {
             comp: rig.comp.clone(),
             deco: *deco,
+            core: rig.core,
         });
         let comp = rig.comp.clone();
         deco.set(
@@ -261,7 +268,7 @@ impl Shell {
 
     /// `client.frameInset` of a window.
     fn inset(&self, node: u64) -> Val {
-        self.deco.call("inset_of", &[t(&node.to_string())])
+        self.deco.call("inset_of", &[client_of(self.core, node)])
     }
 
     /// The log entry `inset` of the scenarios: the frame inset of window 3.
@@ -754,7 +761,7 @@ fn move_to(rig: &mut Rig, node: u64, [x, y, width, height]: [f64; 4]) {
     for (key, value) in [("x", x), ("y", y), ("width", width), ("height", height)] {
         rig.external(node, key, MirrorValue::Double(value));
     }
-    let state = function(rig.api, "client_state", "of", &[t(&node.to_string())]);
+    let state = function(rig.api, "client_state", "of", &[rig.client(node)]);
     let state = wrap(rig.api, &state);
     state.set("floating_bounds", rect_val(x, y, width, height));
     rig.settle();
@@ -826,7 +833,7 @@ fn snapped_frames() {
     let _shell = Shell::start(&mut rig, |deco| four_sides(deco, api));
     rig.step("boot");
     open_decorated(&mut rig, 3, "term", "foot", "client");
-    let state = wrap(api, &function(api, "client_state", "of", &[t("3")]));
+    let state = wrap(api, &function(api, "client_state", "of", &[rig.client(3)]));
     state.call("snap_to", &[en(1), rect_arg(0.0, 0.0, 1000.0, 800.0), b(true)]);
     rig.settle();
     // The TypeScript script read the window before its snap reached the compositor: the log of this step is the window's old place, and

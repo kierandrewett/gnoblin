@@ -130,7 +130,7 @@ impl Alert {
 
     /// The alert open for window 3 (`gnoblin.clients.at(0)`), if any.
     fn card(&self, rig: &Rig) -> Option<W> {
-        match self.alerts.call("card_of", &[t("3")]) {
+        match self.alerts.call("card_of", &[rig.client(3)]) {
             Val::None => None,
             card => Some(wrap(rig, &card)),
         }
@@ -319,10 +319,11 @@ fn the_tracker_and_the_text_it_shows() {
         ));
         let _ = rig;
     };
+    let client = rig.client(3);
     let answered = |answer: u32| {
         out.borrow_mut().push(
             tracker
-                .call("answered", &[t("3"), rig::en(answer)])
+                .call("answered", &[client.clone(), rig::en(answer)])
                 .bool()
                 .expect("a flag")
                 .to_string(),
@@ -470,7 +471,7 @@ fn the_overview_dims_the_windows_of_workspaces_that_are_not_shown() {
         )
     };
     rig.step("boot");
-    spaces[1].obj("clients").call("add", &[t("4")]);
+    spaces[1].obj("clients").call("add", &[rig.client(4)]);
     rig.settle();
     rig.step("second_window_moves_to_the_last_workspace");
     rig.rec("on", json!(overview.call("toggle", &[]).bool().expect("a flag")));

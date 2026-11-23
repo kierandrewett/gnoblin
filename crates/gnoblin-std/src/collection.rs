@@ -298,7 +298,11 @@ impl<T: Member> Collection<T> {
     /// The generation retired.
     pub fn contains(&self, member: &T) -> Result<bool> {
         match &self.source {
-            Source::Clients(object, _) => Ok(object.contains(&member.key())?),
+            Source::Clients(object, _) => {
+                let key = member.key();
+                let node = key.parse::<u64>().map_err(|_| kind_error("a window's node number"))?;
+                Ok(object.contains(&Std::current()?.core_client(gnoblin_core::NodeId(node))?)?)
+            }
             Source::Workspaces(list) => {
                 let key = member.key();
                 Ok(list
@@ -776,7 +780,7 @@ impl Collection<Client> {
     ///
     /// The collection is not one a shell may change, or the client is gone.
     pub fn add(&self, client: impl AsClient) -> Result<()> {
-        Ok(self.clients()?.add(&client.client_id().0.to_string())?)
+        Ok(self.clients()?.add(&Std::current()?.core_client(client.client_id())?)?)
     }
 
     /// Takes a client off the collection: `true` when it was there.
@@ -785,7 +789,9 @@ impl Collection<Client> {
     ///
     /// The collection is not one a shell may change.
     pub fn remove(&self, client: impl AsClient) -> Result<bool> {
-        Ok(self.clients()?.remove(&client.client_id().0.to_string())?)
+        Ok(self
+            .clients()?
+            .remove(&Std::current()?.core_client(client.client_id())?)?)
     }
 
     /// Trades the places of two clients in the collection's order.
@@ -794,9 +800,10 @@ impl Collection<Client> {
     ///
     /// A client is not in the collection.
     pub fn swap(&self, a: impl AsClient, b: impl AsClient) -> Result<()> {
+        let std = Std::current()?;
         Ok(self
             .clients()?
-            .swap(&a.client_id().0.to_string(), &b.client_id().0.to_string())?)
+            .swap(&std.core_client(a.client_id())?, &std.core_client(b.client_id())?)?)
     }
 
     /// The window that has the keyboard, among the members.

@@ -20,6 +20,7 @@ use super::{
     AppIconPart, BorderPart, ButtonPart, ButtonsPart, FrameId, FramePart, FrameRule, FrameSlot, GlowPart, HandlePart,
     HandlesPart, OutletPart, PartRole, Shape, actions, en, parts,
 };
+use crate::object::client::client_node;
 use crate::object::record::record;
 use crate::ui::classes::{Class, canvas_of, class_with, enumeration, icon_members, text_members};
 use crate::ui::tree::ui_of;
@@ -1047,7 +1048,7 @@ fn decorations_class(builder: &mut Builder) {
             Ok(Val::None)
         })
         .method("frame_of", |h, cx, args| {
-            let node = node_arg(&args[0])?;
+            let node = client_node(cx.ctx(), "frame_of", &args[0])?;
             let obj = {
                 let world = h.ui.frames.borrow();
                 world
@@ -1061,24 +1062,20 @@ fn decorations_class(builder: &mut Builder) {
                 None => Ok(Val::None),
             }
         })
-        .method("inset_of", |h, _, args| inset_of(h, &args[0], false))
-        .method("reserved_of", |h, _, args| inset_of(h, &args[0], true))
-        .method("reframe", |h, _, args| {
-            decorations::reframe(&h.ui, node_arg(&args[0])?);
+        .method("inset_of", |h, cx, args| {
+            inset_of(h, client_node(cx.ctx(), "inset_of", &args[0])?, false)
+        })
+        .method("reserved_of", |h, cx, args| {
+            inset_of(h, client_node(cx.ctx(), "reserved_of", &args[0])?, true)
+        })
+        .method("reframe", |h, cx, args| {
+            decorations::reframe(&h.ui, client_node(cx.ctx(), "reframe", &args[0])?);
             Ok(Val::None)
         });
 }
 
-/// The window a client value names: its node number as text.
-fn node_arg(value: &Val) -> Res<u64> {
-    let text = value.text()?;
-    text.parse::<u64>()
-        .map_err(|_| Fail::type_error(format!("a client is the number of its node as text, got `{text}`")))
-}
-
-/// The room the frame of a window takes round its content: none for a window with no frame.
-fn inset_of(h: &DecoHandle, client: &Val, reserved: bool) -> Res<Val> {
-    let node = node_arg(client)?;
+/// The room the frame of the window `node` takes round its content: none for a window with no frame.
+fn inset_of(h: &DecoHandle, node: u64, reserved: bool) -> Res<Val> {
     let frame = h.ui.frames.borrow().by_node.get(&node).copied();
     let inset = match frame {
         Some(frame) => h.ui.frame_inset(frame, reserved).map_err(Fail::err)?,

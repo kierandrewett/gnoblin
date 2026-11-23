@@ -4,8 +4,8 @@
 #
 # Each piece that watches the desktop is a service with a `start`, and does nothing before it: a shell that has its own policy never starts the
 # library's, so two policies never answer one request. The focus decisions are pure functions of the settings and one event, so they are static
-# functions of `focus_policy` that need no desktop; `focus_decision` is what the TypeScript library's `focusDecision` answers. A window is named
-# by its node number as text, as it is everywhere in this namespace. A binding is made, then installed on an input context of `gnoblin.model` (the
+# functions of `focus_policy` that need no desktop; `focus_decision` is what the TypeScript library's `focusDecision` answers. A shell passes a
+# window to a member as the core's `Client`; the window a request or a grab tells the shell of is its node number as text. A binding is made, then installed on an input context of `gnoblin.model` (the
 # first seat's, when none is named), and it stays installed until it is uninstalled.
 namespace = "gnoblin.std"
 version = "0.2.0"
@@ -437,7 +437,7 @@ type = "object:request_listener"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 optional = true
 
 # Removes a listener, from every list it was added to.
@@ -456,7 +456,7 @@ since = "0.2.0"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "kind"
@@ -471,7 +471,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Leaves maximised and returns the floating rectangle. Refused (false) when the window is not maximised.
 [[object.method]]
@@ -481,7 +481,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Covers the whole output, bars included, and goes last among its siblings. The rectangle it had is kept for `leave_fullscreen`. Refused
 # (false) when the window is fullscreen already.
@@ -492,7 +492,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Returns the rectangle the window had before it went fullscreen. Refused (false) when it is not fullscreen.
 [[object.method]]
@@ -502,7 +502,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Hides the window and hands the keyboard to the topmost sibling still showing, or to nobody. A window that did not hold the keyboard leaves it
 # where it is. Refused (false) when the window is minimised already.
@@ -513,7 +513,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Shows the window again. The keyboard goes to it only when nothing holds it. Refused (false) when it is not minimised.
 [[object.method]]
@@ -523,7 +523,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # An activation: brings a minimised window back, focuses and raises it. A window on a workspace that is not showing is left alone. Answers
 # whether it ran.
@@ -534,7 +534,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Puts the window last among the windows of its workspace, below a fullscreen window.
 [[object.method]]
@@ -543,7 +543,7 @@ since = "0.2.0"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Puts the window first among the windows of its workspace.
 [[object.method]]
@@ -552,7 +552,7 @@ since = "0.2.0"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Starts the stock move drag of `client`, following the seat's pointer. False when none starts: the window is tiled, fullscreen, maximised or
 # gone, or the tree has no seat.
@@ -563,7 +563,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Starts the stock resize drag of `client`. The corner or the side is chosen from where the pointer is.
 [[object.method]]
@@ -573,7 +573,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # The rectangles `client` returns to when it leaves maximised or fullscreen. They live here, so a shell that reloads reads them before it goes
 # and keeps them in the next generation.
@@ -584,7 +584,7 @@ returns = "object:kept_rects"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Gives `client` back the rectangles `kept` took.
 [[object.method]]
@@ -593,7 +593,7 @@ since = "0.2.0"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "rects"
@@ -722,7 +722,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "mode"

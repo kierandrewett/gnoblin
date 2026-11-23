@@ -8,6 +8,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use gnoblin_core::objects::ModelRoot;
 use gnoblin_std::objects::{
     Desks, Gaps, Layout, LayoutHandlers, LayoutPlacement, LayoutRect, MasterStackLayout, Workspace, Workspaces,
 };
@@ -71,6 +72,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         return Ok(());
     };
     let desks = Desks::get(&objects)?;
+    let model = ModelRoot::get(&g.objects()?)?;
     let held: Rc<RefCell<Option<Layout>>> = Rc::new(RefCell::new(None));
     let (workspace, shell) = (main, g.clone());
     clients
@@ -103,18 +105,21 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             } else if count >= 5 && phase.get() == 2 {
                 // The library has laid the four windows out by now, so the divider is there to be found.
                 phase.set(3);
-                let area = desks.areas("0").ok().and_then(|areas| areas.area);
-                let first = counted.members().ok().and_then(|members| members.first().cloned());
-                let (Some(area), Some(first), Ok(())) = (area.clone(), first.clone(), Ok::<(), ()>(())) else {
-                    shell.log(&format!(
-                        "objects: cannot find the divider: area {area:?}, first {first:?}"
-                    ));
+                // The divider is asked of a window: the `Client` of the first member, which the core looks up by its id.
+                let area = desks.areas(None).ok().and_then(|areas| areas.area);
+                let first = counted
+                    .members()
+                    .ok()
+                    .and_then(|members| members.first().cloned())
+                    .and_then(|id| model.clients().ok().flatten()?.get_by_id(&id).ok().flatten());
+                let (Some(area), Some(first)) = (area.clone(), first.as_ref()) else {
+                    shell.log(&format!("objects: cannot find the divider: area {area:?}"));
                     return;
                 };
                 // The divider lies where the master ends: look along the middle of the area for the press that finds it.
                 let mut x = area.x;
                 while x < area.x + area.width {
-                    if let Ok(Some(split)) = workspace.find_split(&first, x, area.y + area.height / 2.0) {
+                    if let Ok(Some(split)) = workspace.find_split(first, x, area.y + area.height / 2.0) {
                         let to = 0.7_f64.clamp(split.min, split.max);
                         let moved = workspace.set_split(split.token, to, None).is_ok();
                         shell.log(&format!(

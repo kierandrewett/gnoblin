@@ -344,6 +344,18 @@ node of the compositor's tree that paints a list of drawing operations. The clas
 - `Canvas`, `UiBox`, `Grid`, `Text` and `Icon` for layout and drawing;
 - `Entry`, `Clock`, `Bar` and `Toast` for the widgets the library keeps up to date.
 
+A member of `gnoblin_std::objects` that takes a window takes `&gnoblin_core::objects::Client`, the core's own class. Text where a window
+is expected is a build error. `examples/36-native-clients` makes these calls:
+
+```rust
+decorations.inset_of(&client)?;
+menus.show(&client, Some(10.0), Some(10.0))?;
+workspace.clients()?.add(&client)?;
+```
+
+A window that has closed is still a `Client`, and the member fails with `the client is gone`. A window the library tells the shell of is
+still its id as text. `ModelRoot::clients()` and `get_by_id` give its `Client`.
+
 The library lays out, measures text, encodes the paint list and delivers pointer events and keys. You set properties and hear
 signals:
 

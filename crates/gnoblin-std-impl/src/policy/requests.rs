@@ -26,12 +26,13 @@ use gnoblin_object::{Closure, Fail, Obj, Res, Val};
 use gnoblin_std_abi::{STD_CONSTRAINT_MINIMUM_STRIP, STD_CONSTRAINT_WORK_AREA};
 
 use super::drags::work_area;
-use super::stack::{self, alive, client_of, rect_in, rect_val};
+use super::stack::{self, alive, rect_in, rect_val};
 use crate::bindings::steps::{DragRule, GripChoice};
 use crate::bindings::{DragCtx, DragHandler, RuleDrag};
 use crate::builtin::Pt;
 use crate::floating::shrink;
 use crate::nodes;
+use crate::object::client::{client_node, optional_client_node};
 use crate::object::record::{edit, enumeration, look, record};
 use crate::object::with_lib;
 use crate::state::lookup_quiet;
@@ -608,11 +609,7 @@ pub(super) fn register(builder: &mut Builder) {
         .method("add_listener", |_, cx, args| {
             let ui = ui_of(cx)?;
             let listener = listener_of(cx, &args[0])?;
-            let client = args
-                .get(1)
-                .filter(|value| !value.is_none())
-                .map(client_of)
-                .transpose()?;
+            let client = optional_client_node(cx.ctx(), "add_listener", args.get(1))?;
             cx.hold(listener.obj)?;
             let mut policy = ui.policy.borrow_mut();
             match client {
@@ -639,52 +636,80 @@ pub(super) fn register(builder: &mut Builder) {
         })
         .method("answer", |_, cx, args| {
             let ui = ui_of(cx)?;
-            answer(&ui, client_of(&args[0])?, args[1].enum_value()?);
+            answer(&ui, client_node(cx.ctx(), "answer", &args[0])?, args[1].enum_value()?);
             Ok(Val::None)
         })
         .method("maximise", |_, cx, args| {
-            Ok(Val::Bool(maximise(&ui_of(cx)?, client_of(&args[0])?)))
+            Ok(Val::Bool(maximise(
+                &ui_of(cx)?,
+                client_node(cx.ctx(), "maximise", &args[0])?,
+            )))
         })
         .method("unmaximise", |_, cx, args| {
-            Ok(Val::Bool(unmaximise(&ui_of(cx)?, client_of(&args[0])?)))
+            Ok(Val::Bool(unmaximise(
+                &ui_of(cx)?,
+                client_node(cx.ctx(), "unmaximise", &args[0])?,
+            )))
         })
         .method("enter_fullscreen", |_, cx, args| {
-            Ok(Val::Bool(enter_fullscreen(&ui_of(cx)?, client_of(&args[0])?)))
+            Ok(Val::Bool(enter_fullscreen(
+                &ui_of(cx)?,
+                client_node(cx.ctx(), "enter_fullscreen", &args[0])?,
+            )))
         })
         .method("leave_fullscreen", |_, cx, args| {
-            Ok(Val::Bool(leave_fullscreen(&ui_of(cx)?, client_of(&args[0])?)))
+            Ok(Val::Bool(leave_fullscreen(
+                &ui_of(cx)?,
+                client_node(cx.ctx(), "leave_fullscreen", &args[0])?,
+            )))
         })
         .method("minimise", |_, cx, args| {
-            Ok(Val::Bool(minimise(&ui_of(cx)?, client_of(&args[0])?)))
+            Ok(Val::Bool(minimise(
+                &ui_of(cx)?,
+                client_node(cx.ctx(), "minimise", &args[0])?,
+            )))
         })
         .method("unminimise", |_, cx, args| {
-            Ok(Val::Bool(unminimise(&ui_of(cx)?, client_of(&args[0])?)))
+            Ok(Val::Bool(unminimise(
+                &ui_of(cx)?,
+                client_node(cx.ctx(), "unminimise", &args[0])?,
+            )))
         })
         .method("present", |_, cx, args| {
-            Ok(Val::Bool(present(&ui_of(cx)?, client_of(&args[0])?)))
+            Ok(Val::Bool(present(
+                &ui_of(cx)?,
+                client_node(cx.ctx(), "present", &args[0])?,
+            )))
         })
         .method("raise", |_, cx, args| {
-            stack::raise(&*ui_of(cx)?, client_of(&args[0])?);
+            stack::raise(&*ui_of(cx)?, client_node(cx.ctx(), "raise", &args[0])?);
             Ok(Val::None)
         })
         .method("lower", |_, cx, args| {
-            stack::lower(&*ui_of(cx)?, client_of(&args[0])?);
+            stack::lower(&*ui_of(cx)?, client_node(cx.ctx(), "lower", &args[0])?);
             Ok(Val::None)
         })
         .method("begin_move", |_, cx, args| {
-            Ok(Val::Bool(begin_move(&ui_of(cx)?, client_of(&args[0])?)))
+            Ok(Val::Bool(begin_move(
+                &ui_of(cx)?,
+                client_node(cx.ctx(), "begin_move", &args[0])?,
+            )))
         })
         .method("begin_resize", |_, cx, args| {
-            Ok(Val::Bool(begin_resize(&ui_of(cx)?, client_of(&args[0])?)))
+            Ok(Val::Bool(begin_resize(
+                &ui_of(cx)?,
+                client_node(cx.ctx(), "begin_resize", &args[0])?,
+            )))
         })
         .method("kept", |_, cx, args| {
             let ui = ui_of(cx)?;
+            let client = client_node(cx.ctx(), "kept", &args[0])?;
             let kept = ui
                 .policy
                 .borrow()
                 .requests
                 .kept
-                .get(&client_of(&args[0])?)
+                .get(&client)
                 .copied()
                 .unwrap_or_default();
             Ok(rects_val(kept))
@@ -692,7 +717,7 @@ pub(super) fn register(builder: &mut Builder) {
         .method("keep", |_, cx, args| {
             let ui = ui_of(cx)?;
             let fields = args[1].record()?;
-            let client = client_of(&args[0])?;
+            let client = client_node(cx.ctx(), "keep", &args[0])?;
             let take = |at: usize| -> Res<Option<Rect>> {
                 fields.get(at).filter(|value| !value.is_none()).map(rect_in).transpose()
             };

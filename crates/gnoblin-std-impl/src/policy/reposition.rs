@@ -14,11 +14,12 @@ use gnoblin_object::{Fail, Obj, Res, Val};
 use gnoblin_std_abi::{STD_CONSTRAINT_MINIMUM_STRIP, STD_CONSTRAINT_WORK_AREA};
 
 use super::drags::work_area;
-use super::stack::{self, alive, client_of, rect_val};
+use super::stack::{self, alive, rect_val};
 use crate::bindings::steps::clamp_axis;
 use crate::client_state::Snap;
 use crate::floating::{grow, shrink};
 use crate::nodes;
+use crate::object::client::client_node;
 use crate::object::record::{edit, enumeration, look, record};
 use crate::ui::{CanvasEvent, CanvasHandle, Cid, Special, Ui, WidgetKind, box_members, canvas_members, en, ui_of};
 
@@ -338,7 +339,8 @@ pub(super) fn register(builder: &mut Builder) {
         .method("begin", |_, cx, args| {
             let ui = ui_of(cx)?;
             let mode = args[1].enum_value()?;
-            Ok(Val::Bool(begin(&ui, cx, client_of(&args[0])?, mode)?))
+            let client = client_node(cx.ctx(), "begin", &args[0])?;
+            Ok(Val::Bool(begin(&ui, cx, client, mode)?))
         })
         .method("finish", |_, cx, args| {
             Ok(Val::Bool(finish(&ui_of(cx)?, args[0].bool()?)))

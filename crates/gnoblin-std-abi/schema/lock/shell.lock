@@ -61,11 +61,11 @@ member | alert_button.x | property double rw | 0.2.0
 member | alert_button.y | property double rw | 0.2.0
 member | alert_changes.close | property list<string> rw | 0.2.0
 member | alert_changes.open | property list<string> rw | 0.2.0
-member | alert_tracker.answered | method (client:string, answer:enum:alert_answer) -> bool | 0.2.0
+member | alert_tracker.answered | method (client:object:gnoblin.model.client, answer:enum:alert_answer) -> bool | 0.2.0
 member | alert_tracker.check | method (clients:list<string>, locked:bool) -> object:alert_changes | 0.2.0
 member | alert_tracker.clean_text | function (text:string, max:uint) -> string | 0.2.0
-member | alert_tracker.is_open | method (client:string) -> bool | 0.2.0
-member | alert_tracker.is_waiting | method (client:string) -> bool | 0.2.0
+member | alert_tracker.is_open | method (client:object:gnoblin.model.client) -> bool | 0.2.0
+member | alert_tracker.is_waiting | method (client:object:gnoblin.model.client) -> bool | 0.2.0
 member | launcher.add | method (child:object:canvas) | 0.2.0
 member | launcher.alive | property bool ro | 0.2.0
 member | launcher.arrange_default | method () | 0.2.0
@@ -123,7 +123,7 @@ member | launcher.x | property double rw | 0.2.0
 member | launcher.y | property double rw | 0.2.0
 member | not_responding_alerts.answered | signal (client:string, answer:enum:alert_answer) | 0.2.0
 member | not_responding_alerts.arm_ms | property double rw | 0.2.0
-member | not_responding_alerts.card_of | method (client:string) -> object:not_responding_dialog? | 0.2.0
+member | not_responding_alerts.card_of | method (client:object:gnoblin.model.client) -> object:not_responding_dialog? | 0.2.0
 member | not_responding_alerts.check | method () | 0.2.0
 member | not_responding_alerts.close_menu | property callback:alert_close_menu rw | 0.2.0
 member | not_responding_alerts.interval_ms | property double rw | 0.2.0

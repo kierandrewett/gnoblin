@@ -5,8 +5,6 @@
 //! dragging `span` pixels along its [`SplitAxis`] moves `ratio` by one, in the direction `direction` says, and the layout holds the ratio to
 //! `min` and `max`. The [`SplitResizeBinding`](crate::SplitResizeBinding) is the drag that drives one.
 
-use gnoblin_core::NodeId;
-
 use crate::bindings::Point;
 use crate::client::AsClient;
 use crate::error::Result;
@@ -132,10 +130,10 @@ impl Workspace {
     ///
     /// The workspace is gone, or the generation retired.
     pub fn find_split(&self, client: impl AsClient, at: Point) -> Result<Option<Split>> {
-        let NodeId(id) = client.client_id();
+        let core = self.std().core_client(client.client_id())?;
         Ok(self
             .object()
-            .find_split(&id.to_string(), at.x, at.y)?
+            .find_split(&core, at.x, at.y)?
             .map(|split| Split::from_class(&split)))
     }
 

@@ -116,15 +116,6 @@ pub(crate) fn workspace_value(cx: &mut Cx<'_>, handle: Id) -> Res<gnoblin_object
     workspaces::workspace_val(cx, handle)
 }
 
-/// The node a client value (its node number as text) names, for a class of another module that takes one.
-///
-/// # Errors
-///
-/// The value is not a client's number.
-pub(crate) fn client_node(value: &gnoblin_object::Val) -> Res<crate::state::NodeId> {
-    values::client_of(value)
-}
-
 /// The generation ended: the objects it held are gone.
 pub(crate) fn retired(ctx: GnoblinCtx) {
     WORKSPACE_OBJECTS.with(|held| held.borrow_mut().retain(|(owner, _), _| *owner != ctx));

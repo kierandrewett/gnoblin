@@ -14,9 +14,10 @@ use gnoblin_std_abi as sabi;
 
 use super::clients::{collection_val, restore_snap};
 use super::layouts::{self, mode_of, step_of};
-use super::values::{checked_rect, client_of, gaps_of, gaps_val, member_val, rect_val, wire_of};
+use super::values::{checked_rect, gaps_of, gaps_val, member_val, rect_val, wire_of};
 use super::{LIST_OBJECTS, WORKSPACE_OBJECTS, edit, look};
 use crate::floating::{DEFAULT_CASCADE_STEP, PlaceMode};
+use crate::object::client::{client_node, optional_client_node};
 use crate::object::record::{field, number_field, record, text_field};
 use crate::state::{Id, NodeId, State};
 
@@ -237,7 +238,11 @@ fn register_workspace(builder: &mut Builder) {
             Ok(Val::None)
         })
         .method("find_split", |held, _, args| {
-            let (client, x, y) = (client_of(&args[0])?, args[1].double()?, args[2].double()?);
+            let (client, x, y) = (
+                client_node(held.ctx, "find_split", &args[0])?,
+                args[1].double()?,
+                args[2].double()?,
+            );
             if !x.is_finite() || !y.is_finite() {
                 return Err(Fail::type_error("a drag's point must be two finite numbers"));
             }
@@ -335,7 +340,7 @@ fn register_list(builder: &mut Builder) {
             maybe_workspace(cx, found)
         })
         .method("of_client", |_, cx, args| {
-            let client = client_of(&args[0])?;
+            let client = client_node(cx.ctx(), "of_client", &args[0])?;
             let found = look(cx.ctx(), |st| Ok(st.rec.get(&client).and_then(|rec| rec.workspace)))?;
             maybe_workspace(cx, found)
         })
@@ -511,7 +516,8 @@ fn register_desks(builder: &mut Builder) {
             Ok(Val::None)
         })
         .method("areas", |_, cx, args| {
-            let client = client_of(&args[0])?;
+            // No client is the primary output's room: the node 0.
+            let client = optional_client_node(cx.ctx(), "areas", args.first())?.unwrap_or(0);
             let areas = look(cx.ctx(), |st| st.client_areas_raw(client))?;
             Ok(record(vec![
                 rect_option((areas.flags & sabi::STD_AREAS_HAS_OUTPUT != 0).then(|| raw_rect(&areas.output))),
@@ -520,12 +526,12 @@ fn register_desks(builder: &mut Builder) {
         })
         .method("restore_client", |_, cx, args| {
             let workspace = handle_of(cx, &args[0])?;
-            let client = client_of(&args[1])?;
+            let client = client_node(cx.ctx(), "restore_client", &args[1])?;
             let arrived = args[2].bool()?;
             edit(cx.ctx(), |st| st.restore_client(workspace, client, arrived)).map(Val::Bool)
         })
         .method("restore_snap", |_, cx, args| {
-            let client = client_of(&args[0])?;
+            let client = client_node(cx.ctx(), "restore_snap", &args[0])?;
             let zone = wire_of(&args[1])? + 1;
             let area = checked_rect(&args[2], "the floating rectangle")?;
             restore_snap(cx.ctx(), client, zone, &rect_val(&area))?;

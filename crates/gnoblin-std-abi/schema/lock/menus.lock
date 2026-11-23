@@ -197,15 +197,15 @@ member | window_menu.x | property double rw | 0.2.0
 member | window_menu.y | property double rw | 0.2.0
 member | window_menus.close | method () -> bool | 0.2.0
 member | window_menus.current | property object:window_menu ro,optional | 0.2.0
-member | window_menus.default_items | method (client:string) -> list<object:menu_entry> | 0.2.0
-member | window_menus.is_above | method (client:string) -> bool | 0.2.0
-member | window_menus.items | method (client:string) -> list<object:menu_entry> | 0.2.0
+member | window_menus.default_items | method (client:object:gnoblin.model.client) -> list<object:menu_entry> | 0.2.0
+member | window_menus.is_above | method (client:object:gnoblin.model.client) -> bool | 0.2.0
+member | window_menus.items | method (client:object:gnoblin.model.client) -> list<object:menu_entry> | 0.2.0
 member | window_menus.move_with_keys | property callback:menu_run rw | 0.2.0
-member | window_menus.open | method (client:string, x:double, y:double) -> object:window_menu? | 0.2.0
+member | window_menus.open | method (client:object:gnoblin.model.client, x:double, y:double) -> object:window_menu? | 0.2.0
 member | window_menus.provider | property object:menu_provider rw,optional | 0.2.0
 member | window_menus.resize_with_keys | property callback:menu_run rw | 0.2.0
-member | window_menus.set_above | method (client:string, on:bool) | 0.2.0
-member | window_menus.show | method (client:string, x?:double, y?:double) -> object:window_menu? | 0.2.0
+member | window_menus.set_above | method (client:object:gnoblin.model.client, on:bool) | 0.2.0
+member | window_menus.show | method (client:object:gnoblin.model.client, x?:double, y?:double) -> object:window_menu? | 0.2.0
 member | window_menus.start | method () | 0.2.0
 member | window_menus.started | property bool ro | 0.2.0
 

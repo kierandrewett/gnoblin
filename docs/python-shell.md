@@ -318,6 +318,12 @@ action = FocusPolicy.focus_decision(           # a function of a service: record
   `amount` of 1. A call that takes a family refuses anything but an instance of a variant, with a `TypeError` that names them.
 - A record is a detached value. One you read is a copy, so write it or its list back to change anything. The library checks it when it
   takes it, not when you build it.
+- A member that takes a window takes the core's `gnoblin.objects.model.Client`. `examples/36-native-clients/shell.py` shows these calls:
+    - `decorations.inset_of(client)`
+    - `menus.show(client, x, y)`
+    - `workspace.clients.add(client)`
+- An id as text, or an object of another class, is a `TypeError`. A window that has closed raises `NodeGoneError`.
+- A window the library tells the shell of is still its id as text. `Gnoblin.get().clients.get(id)` gives its `Client`.
 - An **enum** is an `IntEnum` (a method also takes its name, `"follow-mouse"`), and a list a `list`.
 - `on(event, handler)` returns a `Listener` with `stop()`; without a handler it is a decorator. It lasts until stopped or the
   generation ends, not until the object is collected.

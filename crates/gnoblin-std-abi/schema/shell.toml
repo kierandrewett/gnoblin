@@ -1,7 +1,7 @@
 # The `shell` module of `gnoblin.std`: the parts of the stock shell that sit above the toolkit. The not-responding alert (the tracker that
 # decides which windows get one, the dialog, and the service that looks at the windows), the launcher and the overview. The toast is in `widgets`.
 #
-# A window is named by its node number as text, as every client is in this namespace. The alert reads what it needs of a window (`alive`,
+# A shell passes a window to a member as the core's `Client`; a list of windows it gives (`check`) names them by node number as text. The alert reads what it needs of a window (`alive`,
 # `unresponsive`, `title`, `secure`) from the compositor's tree and asks it to kill the process through the window's own `kill`.
 namespace = "gnoblin.std"
 version = "0.2.0"
@@ -67,7 +67,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Whether alerts for `client` are suppressed until it answers again.
 [[object.method]]
@@ -77,7 +77,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Looks at `clients` and returns the alerts to open and to close. A window that is not alive is forgotten; one that is unresponsive and has no alert,
 # is not waited on and is not under a lock gets one; one that answers again, is gone from the list or lies under a lock loses its alert.
@@ -103,7 +103,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "answer"
@@ -299,7 +299,7 @@ optional = true
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # An alert ended: the user chose, or the window answered, went, or lies under a lock.
 [[object.signal]]

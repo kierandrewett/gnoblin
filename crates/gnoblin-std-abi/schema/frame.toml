@@ -6,8 +6,9 @@
 # and adds canvases to them, or leaves the stock titlebar (`titlebar.fill`). The frame places its outlets from the window's size and its
 # inset, and tells the window's layout how much room it takes.
 #
-# A window is named by its node number as text (`window_frame.client`), as every client is in this namespace, and the closures of this module
-# are given a `frame_client`: what the window was when the closure was called.
+# A shell passes a window to a member of `decorations` as the core's `Client`. The window a frame or a closure tells the shell of is named by
+# its node number as text (`window_frame.client`), and the closures of this module are given a `frame_client`: what the window was when the
+# closure was called.
 namespace = "gnoblin.std"
 version = "0.2.0"
 local = true
@@ -1419,7 +1420,7 @@ optional = true
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # The room the frame of `client` takes round its content: nothing on any side with no frame, or while fullscreen.
 [[object.method]]
@@ -1429,7 +1430,7 @@ returns = "object:frame_inset"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # The room the frame of `client` keeps for itself even while fullscreen hides it.
 [[object.method]]
@@ -1439,7 +1440,7 @@ returns = "object:frame_inset"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Takes the frame of `client` away and makes it again, calling the fill again. A rule that reads the title or a fill that reads another property of
 # the window is decided when the frame is made, so a shell that wants it decided again calls this.
@@ -1449,4 +1450,4 @@ since = "0.2.0"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"

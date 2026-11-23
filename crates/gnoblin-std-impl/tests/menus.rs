@@ -545,7 +545,7 @@ fn workspace_submenu() {
 
 /// The id of the workspace window `node` is on.
 fn workspace_id(rig: &Rig, node: u64) -> String {
-    let state = rig.function("client_state", "of", &[t(&node.to_string())]);
+    let state = rig.function("client_state", "of", &[rig.client(node)]);
     let Val::Object { class, obj } = state else {
         panic!("a client state");
     };
@@ -576,7 +576,7 @@ fn entries_run() {
     key(&mut rig, &menus, "Return");
     rig.rec(
         "above",
-        json!(menus.call("is_above", &[t("3")]).bool().expect("a flag")),
+        json!(menus.call("is_above", &[rig.client(3)]).bool().expect("a flag")),
     );
     rig.settle();
     rig.step("pinned");
@@ -791,7 +791,7 @@ fn the_menu_opens_at_the_pointer() {
     rig.external(21, "pointer_y", MirrorValue::Double(140.0));
     rig.settle();
     rig.step("pointer_moved");
-    menus.call("show", &[t("3")]);
+    menus.call("show", &[rig.client(3)]);
     rig.settle();
     rig.rec("card", card(&menus));
     rig.step("shown_at_the_pointer");
@@ -801,7 +801,7 @@ fn the_menu_opens_at_the_pointer() {
     rig.rec("open", json!(current(&menus).is_some()));
     rig.settle();
     rig.step("middle_click");
-    menus.call("show", &[t("3")]);
+    menus.call("show", &[rig.client(3)]);
     rig.settle();
     rig.rec("card", card(&menus));
     rig.step("right_click_opens");

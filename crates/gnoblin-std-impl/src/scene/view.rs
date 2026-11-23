@@ -126,10 +126,10 @@ pub(super) fn register(builder: &mut Builder) {
             h.touched();
             Ok(Val::None)
         })
-        .method("show_client", |h, _, args| {
-            // A client as the text of its node number, as everywhere a client is named: the number has the top bit set, which a
-            // script's number cannot hold (`source` is that number for the shells that can).
-            let node = crate::workspace_objects::client_node(&args[0])?;
+        .method("show_client", |h, cx, args| {
+            // A client handle of the core: its node number has the top bit set, which a script's number cannot hold (`source` is that
+            // number for the shells that can).
+            let node = crate::object::client::client_node(cx.ctx(), "show_client", &args[0])?;
             h.world.mirror_stop(h.node);
             h.put("source", Prop::Node(node))?;
             Ok(Val::None)

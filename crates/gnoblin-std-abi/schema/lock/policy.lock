@@ -136,7 +136,7 @@ member | reposition_grab.visible | property bool rw | 0.2.0
 member | reposition_grab.width | property double rw | 0.2.0
 member | reposition_grab.x | property double rw | 0.2.0
 member | reposition_grab.y | property double rw | 0.2.0
-member | repositioning.begin | method (client:string, mode:enum:reposition_mode) -> bool | 0.2.0
+member | repositioning.begin | method (client:object:gnoblin.model.client, mode:enum:reposition_mode) -> bool | 0.2.0
 member | repositioning.current | property string ro,optional | 0.2.0
 member | repositioning.ended | signal (client:string, kept:bool) | 0.2.0
 member | repositioning.finish | method (keep:bool) -> bool | 0.2.0
@@ -177,28 +177,28 @@ member | swipe_action_binding.threshold | property double rw | 0.2.0
 member | swipe_action_binding.trigger | property string rw | 0.2.0
 member | swipe_action_binding.uninstall | method () | 0.2.0
 member | swipe_direction.way | property enum:swipe_way rw | 0.2.0
-member | window_state.add_listener | method (listener:object:request_listener, client?:string) | 0.2.0
-member | window_state.answer | method (client:string, kind:enum:client_request_kind) | 0.2.0
-member | window_state.begin_move | method (client:string) -> bool | 0.2.0
-member | window_state.begin_resize | method (client:string) -> bool | 0.2.0
+member | window_state.add_listener | method (listener:object:request_listener, client?:object:gnoblin.model.client) | 0.2.0
+member | window_state.answer | method (client:object:gnoblin.model.client, kind:enum:client_request_kind) | 0.2.0
+member | window_state.begin_move | method (client:object:gnoblin.model.client) -> bool | 0.2.0
+member | window_state.begin_resize | method (client:object:gnoblin.model.client) -> bool | 0.2.0
 member | window_state.drag_limit_ms | property double ro | 0.2.0
 member | window_state.dragging | property bool ro | 0.2.0
-member | window_state.enter_fullscreen | method (client:string) -> bool | 0.2.0
-member | window_state.keep | method (client:string, rects:object:kept_rects) | 0.2.0
-member | window_state.kept | method (client:string) -> object:kept_rects | 0.2.0
-member | window_state.leave_fullscreen | method (client:string) -> bool | 0.2.0
-member | window_state.lower | method (client:string) | 0.2.0
-member | window_state.maximise | method (client:string) -> bool | 0.2.0
-member | window_state.minimise | method (client:string) -> bool | 0.2.0
+member | window_state.enter_fullscreen | method (client:object:gnoblin.model.client) -> bool | 0.2.0
+member | window_state.keep | method (client:object:gnoblin.model.client, rects:object:kept_rects) | 0.2.0
+member | window_state.kept | method (client:object:gnoblin.model.client) -> object:kept_rects | 0.2.0
+member | window_state.leave_fullscreen | method (client:object:gnoblin.model.client) -> bool | 0.2.0
+member | window_state.lower | method (client:object:gnoblin.model.client) | 0.2.0
+member | window_state.maximise | method (client:object:gnoblin.model.client) -> bool | 0.2.0
+member | window_state.minimise | method (client:object:gnoblin.model.client) -> bool | 0.2.0
 member | window_state.now | property callback:time_source rw | 0.2.0
-member | window_state.present | method (client:string) -> bool | 0.2.0
-member | window_state.raise | method (client:string) | 0.2.0
+member | window_state.present | method (client:object:gnoblin.model.client) -> bool | 0.2.0
+member | window_state.raise | method (client:object:gnoblin.model.client) | 0.2.0
 member | window_state.remove_listener | method (listener:object:request_listener) | 0.2.0
 member | window_state.resize_corner_zone | property double ro | 0.2.0
 member | window_state.start | method () | 0.2.0
 member | window_state.started | property bool ro | 0.2.0
-member | window_state.unmaximise | method (client:string) -> bool | 0.2.0
-member | window_state.unminimise | method (client:string) -> bool | 0.2.0
+member | window_state.unmaximise | method (client:object:gnoblin.model.client) -> bool | 0.2.0
+member | window_state.unminimise | method (client:object:gnoblin.model.client) -> bool | 0.2.0
 member | workspace_slide_binding.commit | property double rw | 0.2.0
 member | workspace_slide_binding.duration | property double rw | 0.2.0
 member | workspace_slide_binding.install | method (context?:string) | 0.2.0

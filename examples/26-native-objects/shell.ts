@@ -5,6 +5,7 @@
 // Makes a workspace with the library's master and stack layout. When the third window joins, the workspace gets a layout this shell
 // implements (equal columns); when the fourth joins it goes back to the library's layout and the shell moves the divider as a drag would
 // (`findSplit`, `setSplit`). Every line starts with `objects:`, as the Rust shell of the same example spells it.
+import { Gnoblin } from "gnoblin-core/generated/objects";
 import { Desks, Layout, MasterStackLayout, Workspace, Workspaces } from "gnoblin-std/generated/objects";
 import type { LayoutContextInit, LayoutPlacementInit } from "gnoblin-std/generated/objects";
 import type {} from "gnoblin-std";
@@ -46,8 +47,10 @@ clients.on("added", (node: number) => {
     } else if (count >= 5 && phase === 2) {
         // The library has laid the four windows out by now, so the divider is there to be found.
         phase = 3;
-        const area = desks.areas("0").area;
-        const first = clients.members[0];
+        // The divider is asked of a window: the `Client` of the first member, which the core looks up by its id.
+        const area = desks.areas().area;
+        const id = clients.members[0];
+        const first = id === undefined ? undefined : Gnoblin.get().clients.get(id);
         if (area === undefined || first === undefined) {
             console.log("objects: cannot find the divider");
             return;

@@ -66,7 +66,7 @@ fn press(rig: &mut Rig, menu: &W, key: &str) {
 #[test]
 fn the_stock_entries_are_the_ones_a_provider_adds_to() {
     let (mut rig, menus) = started();
-    let stock = objects(&menus.call("default_items", &[t("3")]), menus.api);
+    let stock = objects(&menus.call("default_items", &[rig.client(3)]), menus.api);
     assert_eq!(
         labels(&stock),
         [
@@ -272,7 +272,7 @@ fn a_menu_is_not_opened_for_a_window_that_is_not_one() {
     rig.settle();
     assert!(matches!(menus.get("current"), Val::None));
     let refused = menus.try_call("open", &[t("not a node"), Val::Double(0.0), Val::Double(0.0)]);
-    assert!(refused.is_err(), "a client is its node as text");
+    assert!(refused.is_err(), "a client is the core's Client, not text");
 }
 
 #[test]

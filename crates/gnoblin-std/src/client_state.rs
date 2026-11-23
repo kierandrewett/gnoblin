@@ -111,7 +111,10 @@ impl Client {
     /// The library's record of the client: the class `client_state` of the client's node.
     pub(crate) fn state(&self) -> Result<classes::ClientState> {
         let objects = self.std().objects()?;
-        Ok(classes::ClientState::of(&objects, &self.window().id().0.to_string())?)
+        Ok(classes::ClientState::of(
+            &objects,
+            &self.std().core_client(self.window().id())?,
+        )?)
     }
 
     /// Writes the property `name` of the record, which clears it when `value` is none: the typed setters take a value only.

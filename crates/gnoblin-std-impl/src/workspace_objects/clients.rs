@@ -12,10 +12,11 @@ use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{Fail, Res, Val};
 use gnoblin_std_abi as sabi;
 
-use super::values::{checked_rect, client_of, client_val, member_val, rect_of, rect_val, wire_of};
+use super::values::{checked_rect, client_val, member_val, rect_of, rect_val, wire_of};
 use super::workspaces::{WorkspaceRef, workspace_val};
 use super::{COLLECTION_OBJECTS, edit, look};
 use crate::collection::{Source, Want};
+use crate::object::client::client_node;
 use crate::object::record::{field, number_field, record};
 use crate::state::{Id, NodeId};
 
@@ -115,7 +116,7 @@ fn register_collection(builder: &mut Builder) {
             members(held).map(|list| Val::List(list.into_iter().map(client_val).collect()))
         })
         .method("contains", |held, _, args| {
-            let client = client_of(&args[0])?;
+            let client = client_node(held.ctx, "contains", &args[0])?;
             members(held).map(|list| Val::Bool(list.contains(&client)))
         })
         .method("where", |held, cx, args| {
@@ -125,13 +126,13 @@ fn register_collection(builder: &mut Builder) {
         })
         .method("add", |held, _, args| {
             let workspace = workspace_of(held)?;
-            let client = client_of(&args[0])?;
+            let client = client_node(held.ctx, "add", &args[0])?;
             edit(held.ctx, |st| st.transfer_client(workspace, client))?;
             Ok(Val::None)
         })
         .method("remove", |held, _, args| {
             let workspace = workspace_of(held)?;
-            let client = client_of(&args[0])?;
+            let client = client_node(held.ctx, "remove", &args[0])?;
             edit(held.ctx, |st| Ok(st.detach_client(workspace, client))).map(Val::Bool)
         })
         .method("clear", |held, _, _| {
@@ -144,7 +145,10 @@ fn register_collection(builder: &mut Builder) {
         })
         .method("swap", |held, _, args| {
             let workspace = workspace_of(held)?;
-            let (a, b) = (client_of(&args[0])?, client_of(&args[1])?);
+            let (a, b) = (
+                client_node(held.ctx, "swap", &args[0])?,
+                client_node(held.ctx, "swap", &args[1])?,
+            );
             edit(held.ctx, |st| st.swap_clients(workspace, a, b))?;
             Ok(Val::None)
         })
@@ -391,8 +395,8 @@ fn register_state(builder: &mut Builder) {
             edit(held.ctx, |st| st.unsnap_known(held.node, true)).map(Val::Bool)
         })
         .function("of", |cx, args| {
-            let node = client_of(&args[0])?;
             let ctx = cx.ctx();
+            let node = client_node(ctx, "of", &args[0])?;
             look(ctx, |st| {
                 st.rec.contains_key(&node).then_some(()).ok_or_else(|| no_client(node))
             })?;

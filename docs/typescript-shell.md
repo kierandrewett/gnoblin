@@ -286,6 +286,13 @@ itself (`clients()`, `tile`, `createWorkspace`).
 - They are **generated** from the catalog the library serves (`gnoblin-sdkgen`, at build time and never committed; [the generator](sdk-generator.md)) and embedded in the runtime library, and so are their declarations, which `gnoblinctl types init` and `gnoblinctl check --types` give the editor.
 - A class added to the catalog is a class here with no change to the runtime.
 - `gnoblin-core/generated/objects` is the same for the core's `gnoblin.model`.
+- A member that takes a window takes the core's `Client`. `examples/36-native-clients/shell.ts` shows these calls:
+    - `Decorations.get().insetOf(client)`
+    - `WindowMenus.get().show(client, x, y)`
+    - `workspace.clients.add(client)`
+- An id as text is a `TypeError`, and so is an object of another class. A member called with a window that has closed fails with
+  `the client is gone`.
+- A window the library tells the shell of (an event, `members`) is still its id as text. `gnoblin.clients.get(id)` gives its `Client`.
 
 ```ts
 import { EntryModel, FocusPolicy } from "gnoblin-std/generated/objects";

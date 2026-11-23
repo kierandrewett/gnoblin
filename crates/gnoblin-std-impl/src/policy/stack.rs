@@ -4,21 +4,11 @@
 use std::collections::HashSet;
 
 use gnoblin_core::Rect;
-use gnoblin_object::{Fail, Res, Val};
+use gnoblin_object::{Res, Val};
 
 use crate::nodes;
 use crate::object::record::{look, number_field, record};
 use crate::ui::Ui;
-
-/// The window a value names: a client is its node number as text.
-pub(super) fn client_of(value: &Val) -> Res<u64> {
-    let text = value.text()?;
-    text.parse::<u64>().map_err(|_| {
-        Fail::type_error(format!(
-            "`{text}` does not name a window: a client is its node number as text"
-        ))
-    })
-}
 
 /// Whether `client` is a window that is still there.
 pub(super) fn alive(ui: &Ui, client: u64) -> bool {

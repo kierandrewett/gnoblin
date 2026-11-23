@@ -4,7 +4,7 @@
 # every press outside its cards to close itself, and answers the arrows, Home, End, Tab, Return, Escape and a letter. Its members are
 # the public members of the TypeScript library it replaces (`data/js/gnoblin-std/menus/*`), with the same meanings.
 #
-# A client is named by its node as text, as everywhere in `gnoblin.std`. An entry (`menu_entry`) is what a person sees in the menu and
+# A shell passes a window to a member as the core's `Client`; the window a menu or an entry tells the shell of is its node number as text. An entry (`menu_entry`) is what a person sees in the menu and
 # what runs; the card builds a row (`menu_item`) for each when it opens, so an entry made but not shown has no node.
 namespace = "gnoblin.std"
 version = "0.2.0"
@@ -569,7 +569,7 @@ returns = "list<object:menu_entry>"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # The entries of `client`'s menu: the provider's, or the stock ones.
 [[object.method]]
@@ -579,7 +579,7 @@ returns = "list<object:menu_entry>"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Opens `client`'s menu at (`x`, `y`), or at the pointer when they are left out. The provider's `show` is asked first.
 [[object.method]]
@@ -590,7 +590,7 @@ optional = true
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "x"
@@ -612,7 +612,7 @@ optional = true
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "x"
@@ -636,7 +636,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # Pins `client` above the windows that are not, or lets it go. A pinned window is raised when another would cover it; a fullscreen window
 # keeps the top.
@@ -646,7 +646,7 @@ since = "0.2.0"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "on"

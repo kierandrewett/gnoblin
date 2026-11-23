@@ -521,7 +521,7 @@ fn the_first_listener_that_handles_a_request_answers_it_and_the_stock_answer_doe
     let own = listener("window-3", false, Rc::clone(&heard));
     state.call("add_listener", &[first.clone(), none()]);
     state.call("add_listener", &[second.clone(), none()]);
-    state.call("add_listener", &[own, t("3")]);
+    state.call("add_listener", &[own, rig.client(3)]);
     request(&mut rig, 3, "maximize");
     veq!(
         *heard.borrow(),
@@ -547,7 +547,7 @@ fn a_move_request_drags_the_window_with_the_pointer_until_a_button_edge() {
     set(&mut rig, 3, "y", MirrorValue::Double(100.0));
     rig.comp.set_pointer(SEAT, 150.0, 150.0);
     rig.settle();
-    veq!(state.call("begin_move", &[t("3")]), b(true));
+    veq!(state.call("begin_move", &[rig.client(3)]), b(true));
     veq!(state.get("dragging"), b(true));
     rig.comp.set_pointer(SEAT, 250.0, 200.0);
     rig.advance(20);
@@ -566,8 +566,8 @@ fn a_move_or_resize_request_leaves_a_maximised_or_fullscreen_window_alone() {
     let state = started_state(&rig);
     rig.comp.set_pointer(SEAT, 50.0, 50.0);
     request(&mut rig, 3, "maximize");
-    veq!(state.call("begin_move", &[t("3")]), b(false));
-    veq!(state.call("begin_resize", &[t("3")]), b(false));
+    veq!(state.call("begin_move", &[rig.client(3)]), b(false));
+    veq!(state.call("begin_resize", &[rig.client(3)]), b(false));
 }
 
 #[test]
@@ -577,7 +577,7 @@ fn a_resize_request_takes_the_corner_the_pointer_is_near() {
     // The window is at (10, 20) and 300 by 200: its bottom right corner is (310, 220).
     rig.comp.set_pointer(SEAT, 308.0, 218.0);
     rig.settle();
-    veq!(state.call("begin_resize", &[t("3")]), b(true));
+    veq!(state.call("begin_resize", &[rig.client(3)]), b(true));
     rig.comp.set_pointer(SEAT, 358.0, 238.0);
     rig.advance(20);
     let (x, y, w, h) = rect_of(&rig, 3);
@@ -589,7 +589,7 @@ fn the_rectangles_a_window_returns_to_are_the_services_to_keep_across_a_reload()
     let mut rig = Rig::scratch_policy(1);
     let state = started_state(&rig);
     request(&mut rig, 3, "maximize");
-    let kept = state.call("kept", &[t("3")]);
+    let kept = state.call("kept", &[rig.client(3)]);
     let Val::Record { fields, .. } = &kept else {
         panic!("{kept:?}");
     };
@@ -599,8 +599,8 @@ fn the_rectangles_a_window_returns_to_are_the_services_to_keep_across_a_reload()
         "the floating rectangle is kept"
     );
     veq!(fields[1], Val::None);
-    state.call("keep", &[t("3"), record(vec![none(), rect(1.0, 2.0, 3.0, 4.0)])]);
-    let again = state.call("kept", &[t("3")]);
+    state.call("keep", &[rig.client(3), record(vec![none(), rect(1.0, 2.0, 3.0, 4.0)])]);
+    let again = state.call("kept", &[rig.client(3)]);
     let Val::Record { fields, .. } = &again else {
         panic!("{again:?}");
     };
@@ -645,7 +645,7 @@ fn key(rig: &mut Rig, grab: &W, name: &str) {
 fn the_arrow_keys_move_the_window_by_a_step_and_return_keeps_the_place() {
     let (mut rig, mode) = floating_world();
     let start = rect_of(&rig, 3);
-    veq!(mode.call("begin", &[t("3"), en(1)]), b(true));
+    veq!(mode.call("begin", &[rig.client(3), en(1)]), b(true));
     let grab = match mode.get("grab") {
         Val::Object { class, obj } => W {
             api: mode.api,
@@ -669,7 +669,7 @@ fn the_arrow_keys_move_the_window_by_a_step_and_return_keeps_the_place() {
 fn escape_puts_the_window_back() {
     let (mut rig, mode) = floating_world();
     let start = rect_of(&rig, 3);
-    mode.call("begin", &[t("3"), en(1)]);
+    mode.call("begin", &[rig.client(3), en(1)]);
     let grab = match mode.get("grab") {
         Val::Object { class, obj } => W {
             api: mode.api,
@@ -686,7 +686,7 @@ fn escape_puts_the_window_back() {
 #[test]
 fn the_arrow_keys_grow_and_shrink_a_window_in_resize_mode_down_to_the_least_size() {
     let (mut rig, mode) = floating_world();
-    mode.call("begin", &[t("3"), en(2)]);
+    mode.call("begin", &[rig.client(3), en(2)]);
     let grab = match mode.get("grab") {
         Val::Object { class, obj } => W {
             api: mode.api,
@@ -711,12 +711,12 @@ fn the_mode_refuses_a_maximised_window_and_the_closing_of_its_window_puts_it_bac
     let (mut rig, mode) = floating_world();
     set(&mut rig, 3, "maximised", MirrorValue::Bool(true));
     veq!(
-        mode.call("begin", &[t("3"), en(1)]),
+        mode.call("begin", &[rig.client(3), en(1)]),
         b(false),
         "a maximised window is refused"
     );
     set(&mut rig, 3, "maximised", MirrorValue::Bool(false));
-    veq!(mode.call("begin", &[t("3"), en(1)]), b(true));
+    veq!(mode.call("begin", &[rig.client(3), en(1)]), b(true));
     rig.external_destroy(3);
     rig.settle();
     rig.advance(20);
@@ -727,7 +727,7 @@ fn the_mode_refuses_a_maximised_window_and_the_closing_of_its_window_puts_it_bac
 fn a_window_a_mode_unsnapped_is_snapped_again_when_the_mode_is_cancelled() {
     let (mut rig, mode) = floating_world();
     seat(&mut rig, "edge_tiling", MirrorValue::Bool(true));
-    let state = match rig.function("client_state", "of", &[t("3")]) {
+    let state = match rig.function("client_state", "of", &[rig.client(3)]) {
         Val::Object { class, obj } => W {
             api: rig.api,
             class,
@@ -743,7 +743,7 @@ fn a_window_a_mode_unsnapped_is_snapped_again_when_the_mode_is_cancelled() {
     rig.settle();
     let snapped = rect_of(&rig, 3);
     veq!(snapped.2, 500.0);
-    mode.call("begin", &[t("3"), en(1)]);
+    mode.call("begin", &[rig.client(3), en(1)]);
     rig.settle();
     veq!(rect_of(&rig, 3), floating, "the mode unsnaps first");
     let grab = match mode.get("grab") {

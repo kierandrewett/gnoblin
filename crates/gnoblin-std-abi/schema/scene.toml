@@ -479,15 +479,15 @@ since = "0.2.0"
 name = "workspace"
 type = "object:workspace"
 
-# Draws a client, as setting `source` does, given the client as the text of its node number (the `id` of a client). A client's number has
-# the top bit set, which JavaScript's numbers cannot hold, so a script uses this and not `source`.
+# Draws a client, as setting `source` does, given the core's `Client`. A client's node number has the top bit set, which JavaScript's
+# numbers cannot hold, so a script uses this and not `source`.
 [[object.method]]
 name = "show_client"
 since = "0.2.0"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # A camera that projects what is under it in three dimensions. A view draws through its camera.
 [[object]]

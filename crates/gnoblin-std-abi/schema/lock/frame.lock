@@ -131,17 +131,17 @@ member | corner_outlet.width | property double rw | 0.2.0
 member | corner_outlet.x | property double rw | 0.2.0
 member | corner_outlet.y | property double rw | 0.2.0
 member | decorations.frame | property callback:frame_fill rw | 0.2.0
-member | decorations.frame_of | method (client:string) -> object:window_frame? | 0.2.0
-member | decorations.inset_of | method (client:string) -> object:frame_inset | 0.2.0
+member | decorations.frame_of | method (client:object:gnoblin.model.client) -> object:window_frame? | 0.2.0
+member | decorations.inset_of | method (client:object:gnoblin.model.client) -> object:frame_inset | 0.2.0
 member | decorations.lower | property callback:frame_action rw | 0.2.0
 member | decorations.maximise | property callback:frame_maximise rw | 0.2.0
 member | decorations.menu | property callback:frame_action rw | 0.2.0
 member | decorations.minimise | property callback:frame_action rw | 0.2.0
 member | decorations.now | property callback:time_source rw | 0.2.0
 member | decorations.press | property callback:frame_press rw | 0.2.0
-member | decorations.reframe | method (client:string) | 0.2.0
+member | decorations.reframe | method (client:object:gnoblin.model.client) | 0.2.0
 member | decorations.release | property callback:frame_press rw | 0.2.0
-member | decorations.reserved_of | method (client:string) -> object:frame_inset | 0.2.0
+member | decorations.reserved_of | method (client:object:gnoblin.model.client) -> object:frame_inset | 0.2.0
 member | decorations.resize_handles | property double rw | 0.2.0
 member | decorations.rule | method (app_id?:string, title?:string, test?:callback:frame_question, fill?:callback:frame_fill) | 0.2.0
 member | decorations.start | method () | 0.2.0

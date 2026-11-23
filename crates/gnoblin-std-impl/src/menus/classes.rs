@@ -12,6 +12,7 @@ use super::entry::{self, EntryObj};
 use super::metrics::{self, KeyAction};
 use super::navigator::Nav;
 use super::windows::{self, MenuProviderRef};
+use crate::object::client::client_node;
 use crate::object::record::{enumeration, record};
 use crate::ui::{CanvasHandle, Cid, Special, Ui, WidgetKind, box_members, canvas_members, ui_of};
 
@@ -41,16 +42,6 @@ fn handouts(ui: &Ui, cx: &Cx<'_>, cids: &[Cid]) -> Res<Val> {
         .map(|cid| handout(ui, cx, *cid))
         .collect::<Res<Vec<_>>>()
         .map(Val::List)
-}
-
-/// A window is named by its node as text.
-fn client_of(value: &Val) -> Res<u64> {
-    let text = value.text()?;
-    text.parse::<u64>().map_err(|_| {
-        Fail::type_error(format!(
-            "`{text}` does not name a window: a client is its node number as text"
-        ))
-    })
 }
 
 // ---- the navigator ------------------------------------------------------------------------------------------------------------------
@@ -394,11 +385,13 @@ fn service(builder: &mut Builder) {
         })
         .method("default_items", |_, cx, args| {
             let ui = ui_of(cx)?;
-            entry::hand_out(cx, windows::default_entries(&ui, client_of(&args[0])?))
+            let client = client_node(cx.ctx(), "default_items", &args[0])?;
+            entry::hand_out(cx, windows::default_entries(&ui, client))
         })
         .method("items", |_, cx, args| {
             let ui = ui_of(cx)?;
-            let entries = windows::items_in(&ui, cx, client_of(&args[0])?)?;
+            let client = client_node(cx.ctx(), "items", &args[0])?;
+            let entries = windows::items_in(&ui, cx, client)?;
             entry::hand_out(cx, entries)
         })
         .method("show", |_, cx, args| {
@@ -409,12 +402,14 @@ fn service(builder: &mut Builder) {
                     .map(Val::double)
                     .transpose()
             };
-            let shown = windows::show_in(&ui, cx, client_of(&args[0])?, number(1)?, number(2)?)?;
+            let client = client_node(cx.ctx(), "show", &args[0])?;
+            let shown = windows::show_in(&ui, cx, client, number(1)?, number(2)?)?;
             shown.map_or(Ok(Val::None), |obj| cx.handout(obj))
         })
         .method("open", |_, cx, args| {
             let ui = ui_of(cx)?;
-            let opened = windows::open_in(&ui, cx, client_of(&args[0])?, args[1].double()?, args[2].double()?)?;
+            let client = client_node(cx.ctx(), "open", &args[0])?;
+            let opened = windows::open_in(&ui, cx, client, args[1].double()?, args[2].double()?)?;
             opened.map_or(Ok(Val::None), |obj| cx.handout(obj))
         })
         .method("close", |_, cx, _| {
@@ -423,11 +418,13 @@ fn service(builder: &mut Builder) {
         })
         .method("is_above", |_, cx, args| {
             let ui = ui_of(cx)?;
-            Ok(Val::Bool(windows::is_above(&ui, client_of(&args[0])?)))
+            let client = client_node(cx.ctx(), "is_above", &args[0])?;
+            Ok(Val::Bool(windows::is_above(&ui, client)))
         })
         .method("set_above", |_, cx, args| {
             let ui = ui_of(cx)?;
-            windows::set_above(&ui, client_of(&args[0])?, args[1].bool()?);
+            let client = client_node(cx.ctx(), "set_above", &args[0])?;
+            windows::set_above(&ui, client, args[1].bool()?);
             Ok(Val::None)
         });
 }

@@ -142,7 +142,7 @@ member | view.position | property object:vec3 rw | 0.2.0
 member | view.properties | property object:node_bindings ro | 0.2.0
 member | view.rotation | property object:vec3 rw | 0.2.0
 member | view.scale | property object:vec3 rw | 0.2.0
-member | view.show_client | method (client:string) | 0.2.0
+member | view.show_client | method (client:object:gnoblin.model.client) | 0.2.0
 member | view.show_workspace | method (workspace:object:workspace) | 0.2.0
 member | view.size | property object:scene_size rw | 0.2.0
 member | view.source | property uint rw | 0.2.0

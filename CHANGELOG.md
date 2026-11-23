@@ -13,6 +13,7 @@
 #### Windows, workspaces and shell
 
 - The `DwindleLayout` split direction now follows its cell's shape on every layout, so taller cells split top and bottom, unless `preserveSplit: true` or an explicit `split` is set.
+- A member of `libgnoblin-std` that takes a window now takes the core's `Client` object instead of its id as text, in all three languages: `Client` in TypeScript, `gnoblin.objects.model.Client` in Python and `&gnoblin_core::objects::Client` in Rust (lane H9ot, beads gnoblin-h9ot and gnoblin-kcg1; docs/sdk-generator.md, `examples/36-native-clients`). Examples are `decorations.insetOf(client)`, `menus.show(client, x, y)` and `workspace.clients.add(client)`. An id as text, or an object of another class, is a `TypeError` in TypeScript and Python and a build error in Rust. A window that has closed fails the member with `the client is gone`. A window the library reports to the shell is still its id as text, and `clients.get(id)` gives its `Client`.
 
 #### Input, seats and accessibility
 

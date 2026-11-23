@@ -157,6 +157,23 @@ pub fn en(value: u32) -> Val {
 pub const ROW: u32 = 1;
 pub const COLUMN: u32 = 2;
 
+/// The core's `Client` of the window `node` over the core's object protocol `core`: `gnoblin.clients.get(id)`.
+pub fn client_of(core: Api, node: u64) -> Val {
+    let service = core.class("gnoblin").expect("the core's root class");
+    let root = core.create(service, &[]).expect("the core's root object");
+    let clients = core
+        .member(service, abi::MEMBER_PROPERTY, "clients")
+        .and_then(|member| core.get(root, member))
+        .and_then(|list| list.object())
+        .expect("the core's list of clients");
+    let class = core.class_of(clients).expect("the class of the list");
+    let get = core.member(class, abi::MEMBER_METHOD, "get").expect("the list's `get`");
+    match core.call(clients, get, &[Val::Text(node.to_string())]) {
+        Ok(found @ Val::Object { .. }) => found,
+        other => panic!("the core has no client {node}: {other:?}"),
+    }
+}
+
 /// A number as a script's JSON shows it: a whole one without a fraction.
 pub fn js(value: f64) -> Value {
     if value.fract() == 0.0 && value.abs() < 9.0e15 {
@@ -500,6 +517,13 @@ impl Rig {
             forgotten: Vec::new(),
             _lock: lock,
         }
+    }
+
+    /// The core's `Client` of the window `node`, as the value a shell passes to a member of the std library that takes a window. The
+    /// handle carries a reference the rig never releases, so the client stays held for as long as the generation lives, as a shell's
+    /// variable would hold it.
+    pub fn client(&self, node: u64) -> Val {
+        client_of(self.core, node)
     }
 
     /// One turn of the core: what is posted runs, the compositor's events are heard, the timers that are due fire.

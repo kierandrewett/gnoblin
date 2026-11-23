@@ -136,6 +136,22 @@ impl Std {
         }
     }
 
+    /// The core's `Client` of the window `node`, which the classes of the library take where they take a window: the core looks it up by
+    /// its id.
+    ///
+    /// # Errors
+    ///
+    /// The core has no such window.
+    pub(crate) fn core_client(&self, node: gnoblin_core::NodeId) -> Result<gnoblin_core::objects::Client> {
+        let model = gnoblin_core::objects::ModelRoot::get(&self.inner.g.objects()?)?;
+        let id = node.0.to_string();
+        match model.clients()? {
+            Some(clients) => clients.get_by_id(&id)?,
+            None => None,
+        }
+        .ok_or_else(|| Error::new(ErrorKind::NoSuchNode, format!("the core has no window {id}")))
+    }
+
     /// The core handle of this generation.
     pub fn gnoblin(&self) -> &Gnoblin {
         &self.inner.g
