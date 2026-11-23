@@ -465,7 +465,19 @@ pub(super) fn register(builder: &mut Builder) {
     let _ = builder
         .class::<()>("compositor_settings")
         .ctor(|_, _| Ok(()))
-        .get("user_shaders", |_, cx| Ok(Val::Bool(super::input::user_shaders(cx))));
+        .get("user_shaders", |_, cx| Ok(Val::Bool(super::input::user_shaders(cx))))
+        .set("user_shaders", |_, cx, value| {
+            super::input::write_user_shaders(cx, &value)
+        })
+        .method("reset", |_, cx, args| {
+            let name = args[0].text()?;
+            match name {
+                "user_shaders" => super::input::write_user_shaders(cx, &Val::None).map(|()| Val::None),
+                _ => Err(Fail::type_error(format!(
+                    "CompositorSettings.reset: no setting `{name}`"
+                ))),
+            }
+        });
     let _ = builder
         .class::<()>("session")
         .ctor(|cx, _| {

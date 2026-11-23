@@ -1,11 +1,13 @@
-//! The settings of the devices: what a shell wrote to `keyboard`, `mouse` and `touchpad`, checked when it is written and kept as one ledger.
+//! The settings a shell writes to the configuration document: what it wrote to `keyboard`, `mouse` and `touchpad`, and to the compositor's own
+//! settings, checked when it is written and kept as one ledger.
 //!
-//! The compositor reads these settings from the `input` section of the configuration document, once for each kind of device and not for each
-//! device, so a write on one mouse is the setting of every mouse, and another mouse reads it too. The ledger is the generation's: it holds
-//! what was written, in the order each setting was first written, and a number that grows with each change. `document` is its text in the
-//! document's own spelling (`{"input":{"mouse":{"speed":0.5}}}`); the host commits it, and commits it again when `document_revision` has grown.
-//! Writing none takes a setting back to the system's. This module reaches no compositor: a write is checked against the ranges the
-//! configuration schema accepts, and nothing more.
+//! The compositor reads the device settings from the `input` section of the configuration document, once for each kind of device and not for
+//! each device, so a write on one mouse is the setting of every mouse, and another mouse reads it too. Its own settings are the `compositor`
+//! section, which it reads when it starts, so a write to them applies at the next login. The ledger is the generation's: it holds what was
+//! written, in the order each setting was first written, and a number that grows with each change. `document` is its text in the document's
+//! own spelling (`{"input":{"mouse":{"speed":0.5}},"compositor":{"user-shaders":false}}`); the host commits it, and commits it again when
+//! `document_revision` has grown. Writing none takes a setting back to the system's. This module reaches no compositor: a write is checked
+//! against the ranges the configuration schema accepts, and nothing more.
 
 use gnoblin_object::server::Cx;
 use gnoblin_object::{Fail, Obj, Res, Val};
@@ -28,6 +30,8 @@ pub(super) enum DeviceSetting {
     TouchpadAcceleration,
     TouchpadNaturalScroll,
     TapToClick,
+    /// `compositor.user-shaders`, the compositor's own setting (`gnoblin.compositor.user_shaders`).
+    UserShaders,
 }
 
 /// What a setting holds.
@@ -39,17 +43,18 @@ pub(super) enum DeviceSettingValue {
 }
 
 impl DeviceSetting {
-    /// The kind of device it belongs to.
-    fn kind(self) -> InputDeviceKind {
+    /// The kind of device it belongs to, none for a setting of the compositor.
+    fn kind(self) -> Option<InputDeviceKind> {
         match self {
-            DeviceSetting::RepeatRate | DeviceSetting::RepeatDelay => InputDeviceKind::Keyboard,
+            DeviceSetting::RepeatRate | DeviceSetting::RepeatDelay => Some(InputDeviceKind::Keyboard),
             DeviceSetting::MouseSensitivity | DeviceSetting::MouseAcceleration | DeviceSetting::MouseNaturalScroll => {
-                InputDeviceKind::Mouse
+                Some(InputDeviceKind::Mouse)
             }
             DeviceSetting::TouchpadSensitivity
             | DeviceSetting::TouchpadAcceleration
             | DeviceSetting::TouchpadNaturalScroll
-            | DeviceSetting::TapToClick => InputDeviceKind::Touchpad,
+            | DeviceSetting::TapToClick => Some(InputDeviceKind::Touchpad),
+            DeviceSetting::UserShaders => None,
         }
     }
 
@@ -62,6 +67,7 @@ impl DeviceSetting {
             DeviceSetting::MouseAcceleration | DeviceSetting::TouchpadAcceleration => "acceleration",
             DeviceSetting::MouseNaturalScroll | DeviceSetting::TouchpadNaturalScroll => "natural_scroll",
             DeviceSetting::TapToClick => "tap_to_click",
+            DeviceSetting::UserShaders => "user_shaders",
         }
     }
 
@@ -74,6 +80,7 @@ impl DeviceSetting {
             DeviceSetting::MouseAcceleration | DeviceSetting::TouchpadAcceleration => "accel-profile",
             DeviceSetting::MouseNaturalScroll | DeviceSetting::TouchpadNaturalScroll => "natural-scroll",
             DeviceSetting::TapToClick => "tap-to-click",
+            DeviceSetting::UserShaders => "user-shaders",
         }
     }
 
@@ -84,9 +91,10 @@ impl DeviceSetting {
             DeviceSetting::RepeatDelay => "a whole number of milliseconds from 1 to 10000",
             DeviceSetting::MouseSensitivity | DeviceSetting::TouchpadSensitivity => "a number from -1 to 1",
             DeviceSetting::MouseAcceleration | DeviceSetting::TouchpadAcceleration => "one of default, flat, adaptive",
-            DeviceSetting::MouseNaturalScroll | DeviceSetting::TouchpadNaturalScroll | DeviceSetting::TapToClick => {
-                "true or false"
-            }
+            DeviceSetting::MouseNaturalScroll
+            | DeviceSetting::TouchpadNaturalScroll
+            | DeviceSetting::TapToClick
+            | DeviceSetting::UserShaders => "true or false",
         }
     }
 
@@ -156,25 +164,33 @@ impl SettingsLedger {
         self.revision
     }
 
-    /// The sections of the configuration document the written settings make: `{}` when none is written.
+    /// The sections of the configuration document the written settings make: `input` with a group for each kind of device, then
+    /// `compositor`; `{}` when none is written.
     pub(super) fn document(&self) -> String {
         let mut groups: Vec<(&'static str, Vec<String>)> = Vec::new();
+        let mut compositor: Vec<String> = Vec::new();
         for (setting, value) in &self.entries {
-            let group = setting.kind().group();
             let item = format!("\"{}\":{}", setting.key(), setting.document(*value));
-            match groups.iter_mut().find(|(name, _)| *name == group) {
-                Some((_, items)) => items.push(item),
-                None => groups.push((group, vec![item])),
+            match setting.kind() {
+                Some(kind) => match groups.iter_mut().find(|(name, _)| *name == kind.group()) {
+                    Some((_, items)) => items.push(item),
+                    None => groups.push((kind.group(), vec![item])),
+                },
+                None => compositor.push(item),
             }
         }
-        if groups.is_empty() {
-            return "{}".to_owned();
+        let mut sections: Vec<String> = Vec::new();
+        if !groups.is_empty() {
+            let kinds: Vec<String> = groups
+                .iter()
+                .map(|(name, items)| format!("\"{name}\":{{{}}}", items.join(",")))
+                .collect();
+            sections.push(format!("\"input\":{{{}}}", kinds.join(",")));
         }
-        let sections: Vec<String> = groups
-            .iter()
-            .map(|(name, items)| format!("\"{name}\":{{{}}}", items.join(",")))
-            .collect();
-        format!("{{\"input\":{{{}}}}}", sections.join(","))
+        if !compositor.is_empty() {
+            sections.push(format!("\"compositor\":{{{}}}", compositor.join(",")));
+        }
+        format!("{{{}}}", sections.join(","))
     }
 }
 
@@ -231,9 +247,10 @@ fn accept(cx: &Cx<'_>, setting: DeviceSetting, value: &Val, target: &str) -> Res
                 None => return Err(refuse(format!("enum value {wanted}"))),
             }
         }
-        DeviceSetting::MouseNaturalScroll | DeviceSetting::TouchpadNaturalScroll | DeviceSetting::TapToClick => {
-            DeviceSettingValue::Flag(value.bool()?)
-        }
+        DeviceSetting::MouseNaturalScroll
+        | DeviceSetting::TouchpadNaturalScroll
+        | DeviceSetting::TapToClick
+        | DeviceSetting::UserShaders => DeviceSettingValue::Flag(value.bool()?),
     }))
 }
 
@@ -251,7 +268,7 @@ pub(super) fn write(cx: &Cx<'_>, device: Obj, setting: DeviceSetting, value: &Va
         let peers: Vec<Obj> = table
             .devices
             .iter()
-            .filter(|(_, held)| held.alive && held.kind == setting.kind())
+            .filter(|(_, held)| Some(held.kind) == setting.kind())
             .map(|(obj, _)| *obj)
             .collect();
         (changed, peers)
@@ -260,6 +277,17 @@ pub(super) fn write(cx: &Cx<'_>, device: Obj, setting: DeviceSetting, value: &Va
         for peer in peers {
             cx.changed_on(peer, setting.property());
         }
+    }
+    Ok(())
+}
+
+/// Writes `setting` of the compositor (`gnoblin.compositor`). The setting applies at the next login: the ledger holds it, the document the host
+/// commits has it, and the object that was written is told the property changed when it did.
+pub(super) fn write_compositor(cx: &Cx<'_>, setting: DeviceSetting, value: &Val) -> Res<()> {
+    let target = format!("CompositorSettings.{}", setting.property());
+    let accepted = accept(cx, setting, value, &target)?;
+    if with(cx.ctx(), |table| table.settings.set(setting, accepted)) {
+        cx.changed_on(cx.me(), setting.property());
     }
     Ok(())
 }
@@ -289,5 +317,19 @@ mod tests {
         assert!(ledger.set(DeviceSetting::MouseSensitivity, None));
         assert!(!ledger.set(DeviceSetting::MouseSensitivity, None));
         assert_eq!(ledger.revision(), 4);
+    }
+
+    #[test]
+    fn the_compositor_settings_make_a_section_after_the_input_section_whatever_the_order_they_were_written_in() {
+        let mut ledger = SettingsLedger::default();
+        assert!(ledger.set(DeviceSetting::UserShaders, Some(DeviceSettingValue::Flag(false))));
+        assert_eq!(ledger.document(), r#"{"compositor":{"user-shaders":false}}"#);
+        assert!(ledger.set(DeviceSetting::MouseSensitivity, Some(DeviceSettingValue::Number(0.5))));
+        assert_eq!(
+            ledger.document(),
+            r#"{"input":{"mouse":{"speed":0.5}},"compositor":{"user-shaders":false}}"#
+        );
+        assert!(ledger.set(DeviceSetting::UserShaders, None));
+        assert_eq!(ledger.document(), r#"{"input":{"mouse":{"speed":0.5}}}"#);
     }
 }

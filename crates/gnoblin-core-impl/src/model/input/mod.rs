@@ -344,9 +344,21 @@ pub(in crate::model) fn reduced_motion(cx: &Cx<'_>) -> bool {
     super::values::attached(cx) && seat::main_seat().is_some_and(seat::reduced_motion)
 }
 
-/// Whether the compositor accepts a shader effect from a shell, as the main seat says. True while there is no seat to say otherwise.
+/// Whether the compositor accepts a shader effect from a shell: what the shell wrote to `compositor.user-shaders` in this generation, which
+/// the compositor reads at the next login, and else what the main seat says the running compositor holds. True while there is no seat to say
+/// otherwise.
 pub(in crate::model) fn user_shaders(cx: &Cx<'_>) -> bool {
+    if let Some(settings::DeviceSettingValue::Flag(written)) = with(cx.ctx(), |table| {
+        table.settings.get(settings::DeviceSetting::UserShaders)
+    }) {
+        return written;
+    }
     !super::values::attached(cx) || seat::main_seat().is_none_or(seat::user_shaders)
+}
+
+/// Writes `compositor.user-shaders`, or with none takes it back to the default: the document the input manager holds has it from now on.
+pub(in crate::model) fn write_user_shaders(cx: &Cx<'_>, value: &Val) -> Res<()> {
+    settings::write_compositor(cx, settings::DeviceSetting::UserShaders, value)
 }
 
 /// Implements the classes of the catalog.

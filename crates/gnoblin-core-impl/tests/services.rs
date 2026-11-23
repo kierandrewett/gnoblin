@@ -1965,11 +1965,88 @@ fn compositor_settings_read_what_the_main_seat_publishes() {
     );
     let again = rig.object(rig.prop(root_of(&rig), "compositor"));
     assert_eq!(again, compositor, "the settings are one object for the generation");
-    let member = rig.member(compositor, abi::MEMBER_PROPERTY, "user_shaders");
+}
+
+/// The ledger of `gnoblin.compositor` is the generation's: what a shell wrote reads back, the seat still says what the running compositor read,
+/// and the document the host commits holds the `compositor` section.
+#[test]
+fn compositor_user_shaders_is_written_to_the_document_and_reads_back_until_the_next_login() {
+    let rig = Rig::new();
+    let compositor = rig.object(rig.prop(root_of(&rig), "compositor"));
+    let input = rig.object(rig.prop(root_of(&rig), "input"));
+    let document = || rig.text_of(input, "document");
+    let revision = || rig.prop(input, "document_revision").uint().expect("a number");
+    let write = |value: Val| {
+        let member = rig.member(compositor, abi::MEMBER_PROPERTY, "user_shaders");
+        rig.api.set(compositor, member, &value)
+    };
+    assert_eq!((document().as_str(), revision()), ("{}", 0));
+
+    write(Val::Bool(false)).expect("a shell may write it");
     assert!(
-        rig.api.set(compositor, member, &Val::Bool(true)).is_err(),
-        "a setting the compositor read at its start is not written from a shell"
+        !rig.flag(compositor, "user_shaders"),
+        "it reads what the shell wrote, though the compositor holds true until the next login"
     );
+    assert_eq!(
+        (document().as_str(), revision()),
+        (r#"{"compositor":{"user-shaders":false}}"#, 1)
+    );
+
+    write(Val::Bool(false)).expect("the same value");
+    assert_eq!(revision(), 1, "the same value is no change");
+
+    write(Val::Text("no".to_owned())).expect_err("a boolean only");
+    assert!(
+        !rig.flag(compositor, "user_shaders"),
+        "a refused write leaves the setting"
+    );
+    assert_eq!(revision(), 1);
+
+    write(Val::Bool(true)).expect("written");
+    assert!(rig.flag(compositor, "user_shaders"));
+    assert_eq!(
+        (document().as_str(), revision()),
+        (r#"{"compositor":{"user-shaders":true}}"#, 2)
+    );
+
+    // `reset` gives the setting back: the document drops it, and the getter reads what the running compositor holds again.
+    rig.comp.external_set(21, "user_shaders", MirrorValue::Bool(false));
+    rig.settle();
+    rig.call(compositor, "reset", &[Val::Text("user_shaders".to_owned())]);
+    assert_eq!((document().as_str(), revision()), ("{}", 3));
+    assert!(
+        !rig.flag(compositor, "user_shaders"),
+        "the compositor's own value again"
+    );
+    rig.call(compositor, "reset", &[Val::Text("user_shaders".to_owned())]);
+    assert_eq!(revision(), 3, "giving up a setting that is not written is no change");
+    rig.try_call(compositor, "reset", &[Val::Text("no_such_setting".to_owned())])
+        .expect_err("a name the object has no setting for");
+    write(Val::None).expect_err("a property takes a boolean, and the way back is `reset`");
+    assert_eq!(revision(), 3);
+}
+
+/// A write is heard on the settings object, as a device setting is on the device.
+#[test]
+fn compositor_user_shaders_tells_its_listeners_when_a_shell_writes_it() {
+    let rig = Rig::new();
+    let compositor = rig.object(rig.prop(root_of(&rig), "compositor"));
+    let member = rig.member(compositor, abi::MEMBER_PROPERTY, "user_shaders");
+    let heard = Rc::new(RefCell::new(0_u32));
+    let counter = Rc::clone(&heard);
+    let _reg = rig
+        .api
+        .listen(compositor, member, move |_, _| {
+            *counter.borrow_mut() += 1;
+            Ok(Val::None)
+        })
+        .expect("a listener");
+    rig.api.set(compositor, member, &Val::Bool(false)).expect("written");
+    rig.api
+        .set(compositor, member, &Val::Bool(false))
+        .expect("the same value");
+    rig.settle();
+    assert_eq!(*heard.borrow(), 1, "once, for the change");
 }
 
 #[test]

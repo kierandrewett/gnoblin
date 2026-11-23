@@ -325,10 +325,14 @@ const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", he
     - `timers.after(ms, fn)` and `timers.now()`.
     - `version()`, a method.
     - `motion(duration)`, which is 0 while the seat asks for reduced motion.
-    - `compositor.userShaders`, read-only here.
+    - `compositor.userShaders`.
     - `find(kind, filter)`. `find("Window", filter)` and `find("Output", filter)` take a table of fields (`{ appId: "foot" }`) or a
       function that keeps an object when it returns a true value. A kind the core does not list, such as `"Workspace"` in a shell that
       loads no std, throws a `TypeError` that names the kinds that work. So does a field the filter lacks.
+- `gnoblin.compositor.userShaders = false` writes `compositor.user-shaders` into the configuration document the runtime commits with the
+  shell's own, so it applies at the next login. The property reads what you wrote until then, and `gnoblin.compositor.reset("user_shaders")`
+  takes it back to the default and reads what the running compositor holds (`true` unless the setting is off). A value that is not a
+  boolean throws a `TypeError`.
 - Classes keep the names of the shell API: `Camera2D`, `Camera3D`, `ClientStyle`, `InputDevice`, `IdleMonitor` and
   `LaunchFeedback`. The generated Rust and Python classes use the same names.
 

@@ -51,7 +51,7 @@ default = 0
 name = "lock_state"
 type = "enum:lock_state"
 since = "0.2.0"
-optional = true
+readonly = true
 
 # The build identity (`gnoblin.version()`). A field the build does not give is `unknown`; credentials are removed from the remote.
 [[object]]
@@ -477,17 +477,29 @@ type = "object:runtime"
 name = "failure"
 type = "object:config_reload_failed"
 
-# `gnoblin.compositor`: the compositor's own settings, as it read them when it started. A change of a setting applies at the next
-# login, so a shell reads the values the running compositor holds.
+# `gnoblin.compositor`: the compositor's own settings. The compositor reads them when it starts, so a shell writes one to the `compositor`
+# section of the configuration document (the host commits `input_manager.document`, which holds it with the device settings) and it applies
+# at the next login. Until then the object reads what the shell wrote, and what the running compositor holds for a setting no shell wrote.
 [[object]]
 name = "compositor_settings"
 since = "0.2.0"
 kind = "service"
 
 # Whether the compositor accepts a shader effect from a shell (`compositor.user-shaders`, true unless it is switched off). While it is
-# false the compositor refuses the effects of a node that hold a shader. True while the compositor has not said.
+# false the compositor refuses the effects of a node that hold a shader. Writing it sets `compositor.user-shaders` in the document from the
+# next login, and it reads back as written until then; a write of anything but a boolean is refused. `reset` takes it back. It reads what the
+# running compositor holds when no shell wrote it, which is true while the compositor has not said.
 [[object.property]]
 name = "user_shaders"
 type = "bool"
 since = "0.2.0"
-readonly = true
+
+# Takes the setting `name` (`user_shaders`) back to the default: the document the host commits no longer sets it, and the property reads what
+# the running compositor holds again. Refused for another name.
+[[object.method]]
+name = "reset"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"

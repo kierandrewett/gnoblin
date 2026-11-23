@@ -280,7 +280,7 @@ Python and TypeScript have the same two calls, generated from the same schema: `
 ## Read the root object of the core
 
 The typed object model of the core starts at `ModelRoot`. Its members are the ones a script reads on `gnoblin`: `timers()` (`after` and
-`now`), `version()`, `motion(duration)`, `compositor()` (`user_shaders`), and `find`.
+`now`), `version()`, `motion(duration)`, `compositor()` (`user_shaders`, `set_user_shaders` and `reset`), and `find`.
 
 ```rust
 use gnoblin_core::objects::{Client, ClientQuery, Finds, ModelRoot, Output};
@@ -295,6 +295,13 @@ let foot = model.find::<Client>(Some(&ClientQuery {
 }))?;
 let outputs = model.find::<Output>(None)?;
 ```
+
+`compositor.set_user_shaders(false)?` writes `compositor.user-shaders` to the shell's settings document, `user_shaders()` reads what was
+written (else what the running compositor holds), and `reset("user_shaders")` takes it back.
+
+A Rust shell commits no configuration document of its own, so nothing commits the write: it stays in the `document` of `gnoblin.input`,
+which only the JavaScript runtime commits. To change the setting for the next login, set it in a `shell.ts` as
+[custom shaders](/custom-shaders) says.
 
 `find` takes the kind as a type. A kind the core does not list has no `Finds<ModelRoot>` impl, so asking for it is an error when the
 shell is built and not when it runs. `find` takes no function: filter the list in Rust. `examples/35-native-root` is this.

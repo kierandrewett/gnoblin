@@ -20,7 +20,8 @@ member | build_version.gnoblin | property string rw | 0.2.0
 member | build_version.gnome | property string rw | 0.2.0
 member | build_version.js | property string rw | 0.2.0
 member | build_version.mutter | property string rw | 0.2.0
-member | compositor_settings.user_shaders | property bool ro | 0.2.0
+member | compositor_settings.reset | method (name:string) | 0.2.0
+member | compositor_settings.user_shaders | property bool rw | 0.2.0
 member | config_reload_failed.error | property string rw | 0.2.0
 member | config_reload_failed.path | property string rw | 0.2.0
 member | config_reload_failed.sequence | property uint rw | 0.2.0
@@ -60,7 +61,7 @@ member | session_listener.on_lock_state_changed | method (session:object:session
 member | session_listener.on_ready | method (session:object:session) | 0.2.0
 member | session_listener.on_reload_requested | method (session:object:session, generation:uint) | 0.2.0
 member | session_status.lock_available | property bool rw | 0.2.0
-member | session_status.lock_state | property enum:lock_state rw,optional | 0.2.0
+member | session_status.lock_state | property enum:lock_state ro | 0.2.0
 member | session_status.revision | property uint rw | 0.2.0
 member | session_status.state | property enum:session_state rw | 0.2.0
 

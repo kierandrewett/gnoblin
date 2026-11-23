@@ -344,9 +344,15 @@ gnoblin = Gnoblin.get()
 gnoblin.timers.after(40, lambda: print("later"))   # `timers.now()` is the monotonic clock in milliseconds
 print(gnoblin.version().api)                       # a method, not a property
 print(gnoblin.motion(200))                         # 200.0, or 0.0 while the seat asks for reduced motion
-print(gnoblin.compositor.user_shaders)             # what the compositor read when it started
+print(gnoblin.compositor.user_shaders)             # what you wrote, else what the compositor read when it started
+gnoblin.compositor.user_shaders = False            # compositor.user-shaders in the shell's settings document
+gnoblin.compositor.reset("user_shaders")           # back to the default
 windows = gnoblin.find("Window", {"app_id": "foot"})   # a dict of fields, a ClientQuery, or a function
 ```
+
+A Python shell commits no configuration document of its own, so nothing commits the write: it stays in `gnoblin.input.document`, which only
+the JavaScript runtime commits. To change the setting for the next login, set it in a `shell.ts` as [custom shaders](/custom-shaders) says.
+A value that is not a boolean raises a `TypeError`.
 
 `find("Window", ...)` and `find("Output", ...)` raise a `TypeError` for a kind the core does not list (`"Workspace"` in a shell that loads
 no std), naming the kinds that work, and for a field the filter lacks. `examples/35-native-root/shell.py` is this.
