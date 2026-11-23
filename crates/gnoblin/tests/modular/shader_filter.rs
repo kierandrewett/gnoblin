@@ -95,7 +95,7 @@ fn start_native(home: Home, shell: &Path) -> Gnoblin {
 }
 
 /// The last accepted document of the session at `ipc`, as JSON, once it holds one.
-fn accepted_document(ipc: &Path) -> Option<serde_json::Value> {
+pub(crate) fn accepted_document(ipc: &Path) -> Option<serde_json::Value> {
     let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
     let transport = gnoblin_client::unix::UnixTransport::connect(ipc).ok()?;
     let mut client =
