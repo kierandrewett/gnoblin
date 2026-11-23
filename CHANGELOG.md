@@ -399,7 +399,8 @@
 
 #### Session, services and recovery
 
-- The session lock card's takeover timing is now measured and documented: in release builds it takes the password about 3.4 s after the shell's last healthy beat and about 1.3 s after the keyboard leaves the lock screen, matching the documented "3 seconds" and "1 second" plus half a second.
+- The session lock card's takeover timing is now measured and documented: in release builds it takes the password about 3.1 s after the shell's last healthy beat and about 1.1 s after the keyboard leaves the lock screen, matching the documented "3 seconds" and "1 second" plus half a second.
+- The session clock, which idle, rest focus and the lock screen's lease read, no longer runs slow while the loop turns more often than once a millisecond: each turn dropped the sub-millisecond rest of its time, so the lock screen's 2 s lease and 1 s grace took about 3.2 s of the wall clock while keys were typed. The rest now carries to the next turn (`TurnClock` in `gnoblin-wayland`), and the card takes the password about 0.15 s earlier.
 - Fixed a JavaScript shell reload leaving most keys dead: the new generation keeps its seat claims until takeover, and the swap releases the old claims first, so `Super+1` to `Super+9`, media keys and the three-finger swipe keep working.
 - Fixed a click's focus change being lost when the seat changed mid-transaction; refused writes are now resent, up to `STALE_RETRIES` times in a row.
 - Session lock password checks now answer `denied` for wrong passwords, `rate-limited` after three failures, and `failed` when the check cannot run, keeping the session locked and logging a single warning without the password.

@@ -833,21 +833,17 @@ impl Server {
             // can be watched from inside the turn that created it, and so the Xwayland
             // session can be ticked from the loop's own timeout.
             let handle = event_loop.handle();
-            let mut last_turn: Option<std::time::Instant> = None;
+            let mut turns = crate::clock::TurnClock::default();
             // What the backend was last told the session's clients hold the pointer to.
             let mut last_constraint = gnoblin_backend::PointerConstraint::Free;
             event_loop.run(Duration::from_millis(100), &mut state, move |state| {
                 // The session clock follows the loop's real time, so idle fires without a
                 // caller having to advance it; a caller that advances it as well is jumping
                 // the same counter forwards.
-                let now = clock.now();
-                if let Some(previous) = last_turn {
-                    let elapsed = now.duration_since(previous).as_millis();
-                    let milliseconds = u64::try_from(elapsed).unwrap_or(u64::MAX);
+                if let Some(milliseconds) = turns.elapsed_ms(clock.now()) {
                     state.tick_clock(milliseconds);
-                    state.advance_motion(u32::try_from(elapsed).unwrap_or(u32::MAX));
+                    state.advance_motion(u32::try_from(milliseconds).unwrap_or(u32::MAX));
                 }
-                last_turn = Some(now);
                 // A global scale a control handle asked for since the last turn moves the
                 // outputs before this turn's dispatch, so the heads it publishes are the ones
                 // this turn reports.
