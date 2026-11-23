@@ -40,9 +40,11 @@ const POLL: Duration = Duration::from_millis(25);
 const RESOLUTION: Duration = Duration::from_millis(125);
 
 /// What the card may take beyond the lease and the grace, as the page states it: half a second in a release build,
-/// which is the product's, and a second in a debug build, which is what `cargo test` runs. Twenty runs in a release
-/// build ended 0.31 to 0.40 s after the lease and the grace, and 0.19 to 0.31 s after the grace alone; one debug run
-/// took 0.51 s.
+/// which is the product's, and a second in a debug build, which is what `cargo test` runs. On a 2-CPU box, twenty runs
+/// in a release build ended 0.09 to 0.16 s after the lease and the grace, and 0.12 to 0.15 s after the grace alone.
+/// Sixty runs in a debug build, which draws the card twice at about 110 ms a draw, ended 0.29 to 0.46 s and 0.28 to
+/// 0.43 s after them; with both CPUs kept busy by two loops of their own, 48 runs ended up to 0.73 s and 0.91 s after
+/// them.
 const TAIL: Duration = Duration::from_millis(if cfg!(debug_assertions) { 1_000 } else { 500 });
 
 /// The card takes the password this long after the last healthy beat at the latest, before [`TAIL`].

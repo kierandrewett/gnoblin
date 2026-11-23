@@ -330,16 +330,29 @@ The half second is what lies between the grace running out and the password acce
 - The card's pump runs every 50 ms. It draws the card, takes the keys and sends the check.
 - The answer to the check is applied on the next turn.
 
+The clock counts the whole milliseconds between two turns and keeps the rest for the next turn, so 3 seconds of the
+session's clock are 3 seconds of the wall clock.
+
+A clock that dropped the rest of every turn ran slow by half a millisecond a turn on average. While the test typed,
+3 seconds of that clock took 3.2 of the wall clock's.
+
 `crates/gnoblin/tests/js_lock_bound.rs` measures both from outside the compositor and asserts them. In a release build
-on a 4-CPU box, 20 runs each:
+on a 2-CPU box, 20 runs each:
 
 | From                                   | Min     | Median  | Max     |
 | -------------------------------------- | ------- | ------- | ------- |
-| the last healthy beat, to the password | 3.313 s | 3.357 s | 3.404 s |
-| the keyboard leaving, to the password  | 1.189 s | 1.255 s | 1.306 s |
+| the last healthy beat, to the password | 3.095 s | 3.143 s | 3.165 s |
+| the keyboard leaving, to the password  | 1.121 s | 1.137 s | 1.149 s |
 
-A debug build is slower: one run took 3.51 s from the beat, so the test allows a second there. The other lock tests allow
-5 seconds more, for a machine that other tests keep busy.
+A debug build, which is what `cargo test` runs, is slower:
+
+- The pump that draws the card takes about 110 ms there, and it draws twice: when the card appears, and when the first
+  keys reach it.
+- Sixty runs on the same box took 3.294 s to 3.456 s from the last beat and 1.275 s to 1.425 s from the keyboard
+  leaving, so the test allows a second there.
+- With both CPUs kept busy by two loops of their own, 48 runs took up to 3.731 s and 1.909 s: inside that second, but
+  not far inside it.
+- The other lock tests allow 5 seconds more, for a machine that other tests keep busy.
 
 The compositor does not wait for the shell. Its tree answers a second connection within milliseconds while the shell is
 inside a call, and while a frozen shell's socket is not read.
@@ -414,6 +427,8 @@ inside a call, and while a frozen shell's socket is not read.
     - a window that arrived under the lock when none had the keyboard before gets it.
 - `crates/gnoblin/tests/js_lock_bound.rs` measures the takeover bounds above and asserts them, and the card's bounds with a
   shell that imports only `gnoblin-core` and with none.
+- The tests of `TurnClock` in `crates/gnoblin-wayland/src/clock.rs` pin how the loop counts the session clock: turns
+  shorter than a millisecond lose no time, and the count is never ahead of the wall clock.
 - `crates/gnoblin/tests/js_lock_core_only.rs` runs the real compositor with a shell that imports only `gnoblin-core` and
   holds the tree, and with no shell:
     - no lock screen is drawn and the card takes the password;
@@ -438,9 +453,10 @@ Not proven:
 - The password check is a scripted double, not PAM. `GNOBLIN_PAM_TEST=1` runs the real one by hand.
 - The real runtime process is killed and frozen, but no test types at it, because the real session has no key
   injection. The card taking a password after a kill is proved in-process.
-- The bounds are measured on one kind of machine (4 CPUs, nothing else running) with the shell driven by the test, which
-  stops ticking to hang. A busy machine, a real runtime process hung by a signal and a real keyboard were not measured.
-  The card's first frame is not timed, because no test reads pixels: the interval ends at the password accepted.
+- The bounds are measured on one kind of machine (2 CPUs) with the shell driven by the test, which stops ticking to
+  hang. A release build was measured with nothing else running, and a debug build also with both CPUs kept busy by two
+  loops. A slower machine, a real runtime process hung by a signal and a real keyboard were not measured.
+- The card's first frame is not timed, because no test reads pixels: the interval ends at the password accepted.
 
 ## Portal and remote access while locked
 
