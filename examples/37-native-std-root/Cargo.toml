@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-example-native-std-root"
+description = "Example 37: a native shell that reads the workspaces, displays, scene, gestures, requestTransition and output profiles the std library adds to the core's root."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "native_std_root"
+crate-type = ["cdylib"]
+
+# The shell depends on the std SDK and the core SDK and nothing else. The core's typed root is `gnoblin_core::objects::ModelRoot`; the members
+# the std library adds to it come in with the std prelude (`ModelRootStdExt`), over the classes written from the library's catalog.
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+gnoblin-std = { path = "../../crates/gnoblin-std" }
+
+[lints]
+workspace = true
