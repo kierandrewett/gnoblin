@@ -64,6 +64,8 @@ pub struct Shells {
     pub root: PathBuf,
     /// Writes `compositor.user_shaders` through the core's settings object and says what it read before and after.
     pub settings: PathBuf,
+    /// Example 39: the code and target of a refused call: `already_exists`, `not_found`, and a bad argument that has no code.
+    pub errors: PathBuf,
     /// Example 28: key chords on the seat's input context of the core, in generation 1.
     pub input: PathBuf,
     /// Example 30: a pointer drag, a click and a swipe on the seat's input context of the core, in generation 1.
@@ -116,6 +118,8 @@ fn build_shells() -> Result<Shells, String> {
             "gnoblin-example-native-root",
             "-p",
             "gnoblin-fixture-shell-settings",
+            "-p",
+            "gnoblin-example-native-errors",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -140,6 +144,7 @@ fn build_shells() -> Result<Shells, String> {
         pointer: debug.join("libnative_pointer.so"),
         root: debug.join("libnative_root.so"),
         settings: debug.join("libshell_settings.so"),
+        errors: debug.join("libnative_errors.so"),
     })
 }
 

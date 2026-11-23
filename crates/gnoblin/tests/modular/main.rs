@@ -20,6 +20,7 @@ mod js_esm;
 mod motion;
 mod native_clients;
 mod native_displays;
+mod native_errors;
 mod native_frame;
 mod native_input;
 mod native_menus;

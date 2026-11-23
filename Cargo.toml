@@ -140,6 +140,7 @@ members = [
     "examples/36-native-clients",
     "examples/37-native-std-root",
     "examples/38-native-options",
+    "examples/39-native-errors",
     "examples/32-native-policy",
     "xtask",
 ]

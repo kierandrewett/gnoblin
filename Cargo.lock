@@ -1424,6 +1424,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-example-native-errors"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+]
+
+[[package]]
 name = "gnoblin-example-native-frame"
 version = "0.2.0-alpha.0"
 dependencies = [
