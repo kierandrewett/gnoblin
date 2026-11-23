@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-example-native-options"
+description = "Example 38: a native shell that makes workspaces and output profiles with the options record of their constructors, and reads what the library refuses."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "native_options"
+crate-type = ["cdylib"]
+
+# The shell depends on the std SDK and the core SDK and nothing else. The classes are the typed classes of the library's catalog
+# (`gnoblin_std::objects`); the core's typed root gives the lists the objects are added to.
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+gnoblin-std = { path = "../../crates/gnoblin-std" }
+
+[lints]
+workspace = true

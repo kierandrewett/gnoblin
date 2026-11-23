@@ -26,6 +26,7 @@ mod native_menus;
 mod native_model;
 mod native_object;
 mod native_objects;
+mod native_options;
 mod native_pointer;
 mod native_policy;
 mod native_root;

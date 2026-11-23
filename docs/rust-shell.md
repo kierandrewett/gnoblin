@@ -331,6 +331,39 @@ A shell that does not use the std prelude has none of them, and a call of one do
 shell's `readelf -d` names `libgnoblin-core.so.1` and no std library. Each member is read through the std library of the generation
 the core's object belongs to. `examples/37-native-std-root` is this.
 
+## Make an object with options
+
+`new` takes the properties the catalog names for the constructor. `new_with` takes them and then an options struct named after the
+class (`WorkspaceOptions` for `Workspace`).
+
+The struct has an `Option` field for every other writable property, and it implements `Default`.
+
+A `Some` field is sent in the call that makes the object. A `None` field is not sent, so that property keeps the library's default.
+
+```rust
+use gnoblin_std::objects::{Gaps, MasterStackLayout, Workspace, WorkspaceOptions};
+
+let main = Workspace::new_with(
+    &objects,
+    "main",
+    WorkspaceOptions {
+        name: Some("Main".to_owned()),
+        gaps: Some(Gaps { inner: 6.0, outer: 12.0 }),
+        layout: Some(MasterStackLayout::new(&objects)?.as_layout()?),
+    },
+)?;
+let half = Workspace::new_with(
+    &objects,
+    "half",
+    WorkspaceOptions { name: Some("Half".to_owned()), ..WorkspaceOptions::default() },
+)?;
+```
+
+- A value the library refuses fails the call with the library's error, and no object is left.
+- A closure property is a boxed closure in the struct: `on_tick: Some(Box::new(|x| Ok(x * 10)))`.
+- The struct is `<Class>Options`, or `<Class>CreateOptions` where the catalog already has a type of the first name.
+- `examples/38-native-options` is this.
+
 ## Run your own event loop
 
 A default shell never sees the loop: the host calls `dispatch` for it. A shell that already has a loop (tokio, calloop, GLib, an

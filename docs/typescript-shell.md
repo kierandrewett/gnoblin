@@ -311,6 +311,16 @@ const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", he
 - A **record** is a class (`Border`, `Shadow`, `TextRange`). Its constructor takes an object of fields. A field with a default may be
   left out and starts at it, an optional one is `undefined`, and a field the class does not have is a `TypeError`.
 - A call that takes a record also takes a plain object of the same fields, and a record comes back as an instance of its class.
+- A **handle** is made with `new`. The constructor takes the properties its catalog names as positional parameters, then one optional
+  options object: `new Workspace("main", { name: "Main", layout: new MasterStackLayout() })`.
+- The options object has a field for each other writable property, and every field is optional. The declarations call it
+  `WorkspaceOptions`. Where the catalog already has a type of that name, it is `<Class>CreateOptions`. A class with no positional
+  property takes the options object alone.
+- A field that is left out or `undefined` is not sent, so the property keeps the library's default.
+- The fields go in the call that makes the object. A value the library refuses throws from the constructor with the library's text,
+  and no object is left.
+- The shell API's `new Workspace({ id })` takes the id inside the object. The generated class takes it first, because the object cannot
+  be made without it. `examples/38-native-options/shell.ts` is this.
 - The record of a **family** has no class of its own. It is one of its variants, each a class, and a call takes an instance of one:
   `style.backdropFilter = [new BlurFilter(), new SaturateFilter({ amount: 1.5 })]`. A `BlurFilter` starts at a `radius` of 12 and a
   grade at an `amount` of 1.

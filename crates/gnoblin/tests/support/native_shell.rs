@@ -260,6 +260,8 @@ pub struct StdShells {
     /// Example 37: the members the std library adds to the core's root: workspaces, displays, scene, gestures, `requestTransition` and the
     /// output profiles.
     pub std_root: PathBuf,
+    /// Example 38: workspaces and output profiles made with the options record of their constructors.
+    pub options: PathBuf,
 }
 
 /// Builds the std examples into the shells' target directory. Built once per test binary.
@@ -314,6 +316,8 @@ fn build_std_shells() -> Result<StdShells, String> {
             "gnoblin-example-native-clients",
             "-p",
             "gnoblin-example-native-std-root",
+            "-p",
+            "gnoblin-example-native-options",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -343,6 +347,7 @@ fn build_std_shells() -> Result<StdShells, String> {
         displays: debug.join("libnative_displays.so"),
         clients: debug.join("libnative_clients.so"),
         std_root: debug.join("libnative_std_root.so"),
+        options: debug.join("libnative_options.so"),
     })
 }
 

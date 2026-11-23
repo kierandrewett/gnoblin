@@ -1477,6 +1477,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-example-native-options"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
+]
+
+[[package]]
 name = "gnoblin-example-native-pointer"
 version = "0.2.0-alpha.0"
 dependencies = [

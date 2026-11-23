@@ -389,6 +389,24 @@ print(gnoblin.scene.root, gnoblin.gestures.swipe_threshold)
 - `examples/37-native-std-root/shell.py` is this, run by `crates/gnoblin/tests/modular/native_std_root.rs` in a real session beside the
   Rust and TypeScript shells of the same example.
 
+### Make an object with options
+
+A constructor takes the properties its catalog names as positional arguments, then one keyword-only argument for every other writable
+property. Each is `None` unless you give it, and a keyword that is `None` is not sent, so the property keeps the library's default.
+
+```python
+from gnoblin.objects.std import Gaps, MasterStackLayout, OutputMatch, OutputProfile, ProfileSettings, Workspace
+
+main = Workspace("main", name="Main", gaps=Gaps(inner=6.0, outer=12.0), layout=MasterStackLayout())
+profile = OutputProfile(OutputMatch(connector="HDMI-A-1"), id="tv", settings=ProfileSettings(scale=2.0))
+```
+
+- The keywords go in the call that makes the object. A value the library refuses raises from the constructor with the library's text,
+  and no object is left.
+- A class with no positional property takes the keywords alone. The stub (`.pyi`) lists each keyword with its type.
+- `examples/38-native-options/shell.py` is this, run by `crates/gnoblin/tests/modular/native_options.rs` in a real session
+  beside the Rust and TypeScript shells of the same example.
+
 ### The functions of `gnoblin-std` in the generated classes
 
 A bare function of the TypeScript `gnoblin-std` is a function of a class in `gnoblin.objects.std`, with the same behaviour. The
