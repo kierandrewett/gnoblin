@@ -4,7 +4,7 @@
 //! appearing, going, and changing; an output appearing, going, and changing. Each handler updates the object model, queues the
 //! notices the shell's listeners are owed, posts a turn, and delivers what is queued, outside any borrow.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 
 use gnoblin_core::{Gnoblin, LogLevel, ShellValue, Value};
@@ -78,6 +78,10 @@ impl State {
             publish_active: false,
             counters: Counters::default(),
             placements_written: false,
+            unverified: BTreeSet::new(),
+            scan_all: false,
+            cover_unconfirmed: BTreeSet::new(),
+            geometry_waiting: false,
             compute_failed: None,
             anim: crate::animation::engine::AnimState::default(),
             styles: crate::style::cascade::StyleState::default(),
@@ -155,6 +159,7 @@ impl State {
             }
         }
         self.clients.retain(|one| *one != id);
+        self.unverified.remove(&id);
         let root = self.roots[0];
         self.notify_one(abi::STD_EVENT_REMOVED, id, root);
         self.rec.remove(&id);
@@ -197,6 +202,11 @@ impl State {
             "x" | "y" | "width" | "height" => {
                 if let Some(rec) = self.rec.get_mut(&id) {
                     rec.geometry_pending = true;
+                    self.geometry_waiting = true;
+                    // A rectangle the pass wrote and that was seen held may have moved: it is read again for a lost write.
+                    if rec.expected.is_some() {
+                        self.unverified.insert(id);
+                    }
                 }
                 if property == "x" || property == "y" {
                     self.dialogs_follow(id);
@@ -210,6 +220,10 @@ impl State {
                 self.place_dialog(id);
             }
             _ => {}
+        }
+        if matches!(property, "focused" | "fullscreen" | "maximised") {
+            // The layout pass reads these three flags of every window of a workspace (`plan_workspace`): it reads them again.
+            self.scan_again(id);
         }
         self.recompute(abi::STD_COLLECTION_CLIENTS, id);
     }

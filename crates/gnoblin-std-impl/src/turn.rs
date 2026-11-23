@@ -11,8 +11,20 @@
 //! core hands back as a lost write is not part of its table, so the driver finds a lost placement itself: a window that still holds
 //! what it held before the pass wrote its rectangle was never moved, and its workspace is laid out again (at most three times in a
 //! row, so a compositor that keeps refusing is not asked for ever).
+//!
+//! A pass reads the focus, fullscreen and maximised flags of a workspace's windows only when one may have changed: the handler of each
+//! of those properties marks the workspace (`scan_again`), and a workspace that is not marked, whose members, gaps, area and layout
+//! revision are as the last pass saw them, and that is not due a compute, is left alone (`workspace_at_rest`). A turn that only a title
+//! changed therefore costs the same at any number of windows. Lost writes are looked for in the windows whose placement has not been
+//! seen held (`unverified`), and a pass that reads staged values (`settle`) looks at everything.
+//!
+//! A flag a pass reads may be a write the compositor has not answered: the tree shows a write that was sent until the answer comes (the
+//! library's own answer to a window's request is one), and a write the compositor refuses, or drops after the gate's resends, is
+//! forgotten with no event, so the flag reads as it was and nothing says so. A pass that finds the windows that cover their workspace
+//! (the fullscreen and maximised ones) other than it had noted them therefore reads the workspace again once the compositor has
+//! answered everything sent (`reread_when_answered`). `focused` is read-only for a shell, so no write of it is ever in flight.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 
 use gnoblin_core::{Gnoblin, LogLevel, Rect};
@@ -80,6 +92,10 @@ pub(crate) fn turn(std: &Rc<Std>) {
     if wrote {
         acknowledge_writes(std, &g);
     }
+    let unconfirmed = std::mem::take(&mut std.st.borrow_mut().cover_unconfirmed);
+    if !unconfirmed.is_empty() {
+        reread_when_answered(std, &g, unconfirmed);
+    }
     std.drain();
     // The views of workspaces follow what the pass did.
     let ctx = std.st.borrow().ctx;
@@ -97,7 +113,13 @@ pub(crate) fn turn(std: &Rc<Std>) {
 /// the layout pass, then the style pass.
 pub(crate) fn settle(std: &Rc<Std>) {
     let g = std.g();
+    // What the pass reads of a window is what the transition staged, which the tree does not hold and says nothing of when it does
+    // not take it (the callback failed, or the commit was refused). So `scan_all` is set twice, on purpose: before the pass, so that it
+    // looks at every window against the staged state; and after it, because the pass has noted that staged state as read, and the
+    // next turn has to look at every window again against the tree.
+    std.st.borrow_mut().scan_all = true;
     layout_pass(std, &g);
+    std.st.borrow_mut().scan_all = true;
     std.st.borrow_mut().apply_styles();
 }
 
@@ -113,7 +135,13 @@ struct Play {
 fn layout_pass(std: &Rc<Std>, g: &Gnoblin) {
     {
         let mut st = std.st.borrow_mut();
-        st.relay_lost_writes();
+        let all = std::mem::take(&mut st.scan_all);
+        if all {
+            for ws in st.ws.values_mut() {
+                ws.scan_stale = true;
+            }
+        }
+        st.relay_lost_writes(all);
         st.fill_desks();
         st.counters.layout_passes += 1;
     }
@@ -152,6 +180,27 @@ fn acknowledge_writes(std: &Rc<Std>, g: &Gnoblin) {
     });
 }
 
+/// A pass read the windows that cover `workspaces` (the fullscreen and maximised ones) other than it had noted them, and what it read may
+/// be a write the compositor has not answered. Once it has answered everything sent, the workspaces' flags are read again: a write that
+/// was refused, or dropped after its resends, is forgotten with no event, and the pass that finds the flags changed asks again, so this
+/// ends when they hold.
+fn reread_when_answered(std: &Rc<Std>, g: &Gnoblin, workspaces: BTreeSet<Id>) {
+    let ctx = std.st.borrow().ctx;
+    let _ = g.flush(move |_answer| {
+        if let Some(std) = state::find(ctx) {
+            {
+                let mut st = std.st.borrow_mut();
+                for workspace in &workspaces {
+                    if let Some(ws) = st.ws.get_mut(workspace) {
+                        ws.scan_stale = true;
+                    }
+                }
+            }
+            schedule(&std);
+        }
+    });
+}
+
 /// Everything the pass needs to know about one workspace before it calls the layout.
 struct Plan {
     cx: LayoutContext,
@@ -173,6 +222,11 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
         return;
     };
     let revision = layout.revision();
+    // A workspace whose windows, area, gaps and layout are as the last pass left them, and that is not due a compute, has nothing to
+    // read and nothing to write: what it would read of every window is what `plan_workspace` read before (`workspace_at_rest`).
+    if std.st.borrow().workspace_at_rest(workspace, revision) {
+        return;
+    }
     let Some(plan) = std.st.borrow_mut().plan_workspace(workspace, revision) else {
         return;
     };
@@ -217,7 +271,7 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
         let mut st = std.st.borrow_mut();
         let mut moved = false;
         for client in &plan.cx.children {
-            if nodes::alive(&st.g, *client) && st.follow_frame(*client, &plan.cx.area) {
+            if st.fit_pending(*client) && nodes::alive(&st.g, *client) && st.follow_frame(*client, &plan.cx.area) {
                 moved = true;
             }
         }
@@ -261,8 +315,12 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
 }
 
 impl State {
-    /// The windows whose geometry changed since the listeners were last told: one event each.
+    /// The windows whose geometry changed since the listeners were last told: one event each. Nothing is looked at while no window's
+    /// `geometry_pending` is set, which `geometry_waiting` says (`client_changed` sets both).
     pub(crate) fn flush_geometry(&mut self) {
+        if !std::mem::take(&mut self.geometry_waiting) {
+            return;
+        }
         for client in self.clients.clone() {
             let pending = self
                 .rec
@@ -281,30 +339,102 @@ impl State {
         }
     }
 
+    /// Whether the pass has nothing to do for `workspace`, which holds when everything `plan_workspace` and `begin_compute` look at is
+    /// as the last pass saw it:
+    ///
+    /// - the layout's revision, the gaps, the area and whether a desk shows the workspace are read again here, as they are cheap;
+    /// - the windows' `focused`, `fullscreen` and `maximised` flags are not: `scan_stale` says one changed (`scan_again`, called by
+    ///   the handler of each of those properties), that a pass read staged values (`scan_all`), or that a pass read the windows that
+    ///   cover the workspace other than it had noted them, which a write the compositor has not answered may have made
+    ///   (`cover_unconfirmed`, read again once it has);
+    /// - the members and their order are compared with what was scanned, and a window that arrived, left or swapped is the layout's to
+    ///   be told of;
+    /// - the workspace is shown and dirty, or shown on an area it did not compute for: `begin_compute` starts.
+    ///
+    /// A workspace with no area to lay out in is at rest when the revision and the gaps are as they were: `plan_workspace` returns
+    /// before it looks at a window.
+    pub(crate) fn workspace_at_rest(&self, workspace: Id, revision: u64) -> bool {
+        let Some(ws) = self.ws.get(&workspace) else {
+            return false;
+        };
+        if ws.revision != Some(revision) || (ws.gap_inner, ws.gap_outer) != ws.gaps_seen {
+            return false;
+        }
+        let desk = self.desk_showing(workspace);
+        let area = match desk {
+            Some(desk) => self.area_of_desk(desk),
+            None => self.screen_area(),
+        };
+        let Some(area) = area else {
+            return true;
+        };
+        if ws.scan_stale
+            || !ws.arrived.is_empty()
+            || !ws.departed.is_empty()
+            || !ws.swapped.is_empty()
+            || ws.clients != ws.scanned
+        {
+            return false;
+        }
+        desk.is_none() || (!ws.dirty && ws.area == Some(area))
+    }
+
+    /// A flag of `client` that `plan_workspace` reads changed (`focused`, `fullscreen`, `maximised`): the next pass over its workspace
+    /// reads the flags of every window again.
+    pub(crate) fn scan_again(&mut self, client: NodeId) {
+        if let Some(ws) = self
+            .rec
+            .get(&client)
+            .and_then(|rec| rec.workspace)
+            .and_then(|workspace| self.ws.get_mut(&workspace))
+        {
+            ws.scan_stale = true;
+        }
+    }
+
+    /// Whether the room the client's frame takes is not the one it was last fitted for, so that `follow_frame` has something to do.
+    /// It has nothing otherwise, whatever the window's flags are: it returns before it changes anything when the two are equal.
+    fn fit_pending(&self, client: NodeId) -> bool {
+        self.rec.get(&client).is_some_and(|rec| rec.fitted != Some(rec.inset))
+    }
+
     /// Finds the windows whose placement the compositor never took: a window that still holds what it held before the last pass
     /// wrote its rectangle. Its workspace is laid out again, and what the pass last wrote to its visibility is forgotten.
-    fn relay_lost_writes(&mut self) {
-        for client in self.clients.clone() {
-            let Some((expected, before)) = self
-                .rec
-                .get(&client)
-                .filter(|rec| rec.acked)
-                .and_then(|rec| rec.expected.zip(rec.before))
-                .filter(|_| nodes::alive(&self.g, client))
-            else {
+    ///
+    /// Only the windows in `unverified` are read: one whose rectangle was last seen to be the one written stays where it is until an
+    /// event of its geometry says otherwise (`client_changed`), and a window whose placement has not been answered yet waits in the
+    /// set. `all` reads every window that holds a written rectangle: a pass that reads staged values, and the turn after it.
+    fn relay_lost_writes(&mut self, all: bool) {
+        let watched: Vec<NodeId> = if all {
+            self.clients.clone()
+        } else {
+            self.unverified.iter().copied().collect()
+        };
+        for client in watched {
+            let Some(rec) = self.rec.get(&client) else {
+                self.unverified.remove(&client);
                 continue;
             };
+            let Some((expected, before)) = rec.expected.zip(rec.before) else {
+                self.unverified.remove(&client);
+                continue;
+            };
+            if !rec.acked || !nodes::alive(&self.g, client) {
+                continue;
+            }
             let now = nodes::rect_of(&self.g, client);
             let Some(rec) = self.rec.get_mut(&client) else {
                 continue;
             };
             if now == expected {
                 rec.lost = 0;
+                self.unverified.remove(&client);
             } else if now == before {
                 rec.lost += 1;
                 if rec.lost > LOST_RETRIES {
                     rec.expected = None;
                     rec.before = None;
+                    self.unverified.remove(&client);
                     continue;
                 }
                 rec.written_visible = None;
@@ -316,6 +446,7 @@ impl State {
                 rec.expected = None;
                 rec.before = None;
                 rec.lost = 0;
+                self.unverified.remove(&client);
             }
         }
     }
@@ -329,6 +460,18 @@ impl State {
             None => self.screen_area(),
         };
         let children = self.ws.get(&workspace)?.clients.clone();
+        let ws = self.ws.get_mut(&workspace)?;
+        if ws.revision != Some(revision) {
+            ws.dirty = true;
+            ws.revision = Some(revision);
+        }
+        if (ws.gap_inner, ws.gap_outer) != ws.gaps_seen {
+            ws.gaps_seen = (ws.gap_inner, ws.gap_outer);
+            ws.dirty = true;
+        }
+        let area = area?;
+        // The windows are read only for a workspace with an area to be laid out in, and what is read is what `workspace_at_rest` takes
+        // as known until a flag changes or the members do.
         let focused = children
             .iter()
             .copied()
@@ -341,16 +484,8 @@ impl State {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(",");
-        let ws = self.ws.get_mut(&workspace)?;
-        if ws.revision != Some(revision) {
-            ws.dirty = true;
-            ws.revision = Some(revision);
-        }
-        if (ws.gap_inner, ws.gap_outer) != ws.gaps_seen {
-            ws.gaps_seen = (ws.gap_inner, ws.gap_outer);
-            ws.dirty = true;
-        }
-        let area = area?;
+        ws.scan_stale = false;
+        ws.scanned.clone_from(&children);
         if focused != ws.focus_seen {
             ws.focus_seen = focused;
             ws.dirty = true;
@@ -358,6 +493,7 @@ impl State {
         if covering != ws.cover_seen {
             ws.cover_seen = covering;
             ws.dirty = true;
+            self.cover_unconfirmed.insert(workspace);
         }
         let cx = LayoutContext {
             workspace,
@@ -472,6 +608,10 @@ impl State {
                 }
                 if before != bounds {
                     self.placements_written = true;
+                    // Whether the compositor took it is told when it has answered (`relay_lost_writes`).
+                    self.unverified.insert(*client);
+                } else {
+                    self.unverified.remove(client);
                 }
             }
             nodes::write_flag(&g, *client, "tiled", placement.is_some_and(|placement| placement.tiled));
@@ -516,7 +656,7 @@ impl State {
                     continue;
                 };
                 let want = shown && rec.shown_by_layout.unwrap_or(true);
-                if nodes::alive(&self.g, client) && rec.written_visible.unwrap_or(true) != want {
+                if rec.written_visible.unwrap_or(true) != want && nodes::alive(&self.g, client) {
                     self.write_shown(client, want);
                 }
             }

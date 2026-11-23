@@ -82,7 +82,8 @@ gnoblin-testkit = { path = "../gnoblin-testkit" }
 # what `impl-sealed` allows: a test target may load the implementation, and that edge cannot ship.
 gnoblin-core-impl = { path = "../gnoblin-core-impl" }
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
-gnoblin-std-impl = { path = "../gnoblin-std-impl" }
+# `testing`: the counter of trips to the core that `tests/turn_scans.rs` compares across a turn.
+gnoblin-std-impl = { path = "../gnoblin-std-impl", features = ["testing"] }
 # The library that serves the `probe` catalog, one class of every kind, which `tests/object_probe.rs` runs the generated classes against.
 gnoblin-fixture-object-probe = { path = "../gnoblin-object/fixtures/probe" }
 gnoblin-std-dyn = { path = "../gnoblin-std-dyn" }

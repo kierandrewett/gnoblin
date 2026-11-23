@@ -224,8 +224,11 @@ impl State {
             bottom: state.fitted_bottom,
             left: state.fitted_left,
         });
-        if changed && let Some(workspace) = rec.workspace.and_then(|id| self.ws.get_mut(&id)) {
-            workspace.dirty = true;
+        if let Some(workspace) = rec.workspace.and_then(|id| self.ws.get_mut(&id)) {
+            // The pass refits a window whose frame is not the one it was fitted for (`follow_frame`), which the shell may have set
+            // here as well as the inset: the pass looks at the workspace's windows again.
+            workspace.scan_stale = true;
+            workspace.dirty |= changed;
         }
         Ok(())
     }

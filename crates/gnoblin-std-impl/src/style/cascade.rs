@@ -369,19 +369,24 @@ impl State {
         }
         let epoch = self.styles.epoch;
         for client in self.clients.clone() {
-            if !crate::nodes::alive(&self.g, client) {
-                continue;
-            }
             let layers = self.client_layers(client);
             let key = layers
                 .iter()
                 .map(|layer| layer.origin.as_str())
                 .collect::<Vec<_>>()
                 .join("\n");
-            let seen = self.styles.clients.entry(client).or_default();
-            if seen.applied && seen.epoch == epoch && seen.layers == key {
+            // What was applied is compared first and the window's liveness asked only for one that has something to apply: a window
+            // that is gone and one that is up to date are both left alone, and the second needs no trip to the core.
+            if self
+                .styles
+                .clients
+                .get(&client)
+                .is_some_and(|seen| seen.applied && seen.epoch == epoch && seen.layers == key)
+                || !crate::nodes::alive(&self.g, client)
+            {
                 continue;
             }
+            let seen = self.styles.clients.entry(client).or_default();
             seen.applied = true;
             seen.epoch = epoch;
             seen.layers = key;

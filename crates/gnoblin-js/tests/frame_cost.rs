@@ -4,12 +4,15 @@
 //! gating it was proportional to the windows; with it, a frame that has nothing to do stops at a few comparisons.
 //! `idle_frame_cost` prints the table (`cargo test --release -p gnoblin-js --test frame_cost -- --ignored
 //! --nocapture`); it is ignored because a timing needs a release build, and it asserts that an idle frame at 300 windows stays under 300 us. What gating promises without a clock is
-//! asserted by `frame_gating.rs` through the shell's frame counters.
+//! asserted by `frame_gating.rs` through the shell's frame counters. That the library's turn for a frame with one title change reads none
+//! of the windows is asserted by `turn_scans.rs`, through the trips the library makes to the core.
 //!
 //! The link here is the fake of `tests/common`, which answers a poll at once. What a turn costs when it reads the real
 //! tree, slot, session and idle links is `idle_turn_cost_over_the_real_links` in `crates/gnoblin/tests/js_shell.rs`.
 
 use std::time::Instant;
+
+use gnoblin_tree_client::tree_mirror::MirrorValue;
 
 mod common;
 use common::policy::*;
@@ -58,5 +61,51 @@ fn idle_frame_cost() {
                 "an idle frame at 300 windows costs {idle:.1} us, over the {IDLE_CEILING_US} us ceiling"
             );
         }
+    }
+}
+
+/// A shell over the screen, the seat, the lock and `n` windows that are numbered from 100, so that none of them is one of the others.
+/// `world` numbers its windows from 3 and the screen, the seat and the lock are 20, 21 and 23: from 18 windows on a window has taken
+/// their place, so the shell of `idle_frame_cost` at 25, 100 and 300 windows has no screen to lay out on and no seat, and the library
+/// reads every window for the focus. This world is laid out.
+fn laid_out_world(n: u64) -> Rig {
+    let init = "for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({ id, layout: new MasterStackLayout() }));\n";
+    let mut rig = rig_setup(&imports(), init, move |comp| {
+        populate(comp, 0, false);
+        for i in 0..n {
+            comp.add_node(
+                100 + i,
+                ROOT,
+                "window",
+                vec![
+                    ("title", text(&format!("win{i}"))),
+                    ("app_id", text("foot")),
+                    ("decoration", text("server")),
+                    ("x", MirrorValue::Double(10.0 * i as f64)),
+                    ("y", MirrorValue::Double(20.0 * i as f64)),
+                    ("width", MirrorValue::Double(300.0)),
+                    ("height", MirrorValue::Double(200.0)),
+                ],
+            );
+        }
+    });
+    settle(&mut rig);
+    rig
+}
+
+#[test]
+#[ignore = "a benchmark: run with --ignored --nocapture"]
+fn title_frame_cost_with_a_screen() {
+    println!("windows | frame with one title change us (laid out: a screen, a seat, windows from 100)");
+    for windows in [25_u64, 100, 300] {
+        let mut rig = laid_out_world(windows);
+        for _ in 0..12 {
+            rig.frame();
+        }
+        let changed = mean_us(CHANGED_FRAMES, |index| {
+            rig.comp.external_set(100, "title", text(&format!("title {index}")));
+            rig.frame();
+        });
+        println!("{windows:7} | {changed:13.1}");
     }
 }

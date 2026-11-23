@@ -79,3 +79,12 @@ pub use exports::{gnoblin_std_abi_version, gnoblin_std_get_api, gnoblin_std_last
 #[cfg(feature = "testing")]
 #[doc(hidden)]
 pub use ui::testing as ui_testing;
+
+/// How many times this thread's library has asked the core for a node (a read or a write of one window, output or seat). A test that
+/// says a turn does no work per window compares it before and after. Not part of the library's interface.
+#[cfg(feature = "testing")]
+#[doc(hidden)]
+#[must_use]
+pub fn native_accesses() -> u64 {
+    nodes::accesses()
+}

@@ -18,8 +18,9 @@ crate-type = ["cdylib", "rlib"]
 next-minor = ["gnoblin-std-abi/next-minor"]
 # Test only: a std library that reports ABI major 2 (its file is still `libgnoblin-std.so.1`). See `gnoblin-std-abi`.
 next-major = ["gnoblin-std-abi/next-major"]
-# Test only: the hooks of the toolkit's tests (a fixed measurer of text). Enabled for this crate's own tests by a development dependency
-# on itself; a shell never turns it on.
+# Test only: the hooks of the toolkit's tests (a fixed measurer of text) and the counter of trips to the core (`native_accesses`).
+# Enabled for this crate's own tests by a development dependency on itself, and for `gnoblin-js`'s tests (`tests/turn_scans.rs`); a
+# shell never turns it on.
 testing = []
 
 [dependencies]

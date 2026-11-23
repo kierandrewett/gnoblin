@@ -5,12 +5,34 @@
 //! write that fails is logged by the caller's guard; the next pass tries again.
 
 use gnoblin_core::{Gnoblin, NodeId, Rect, Value};
+#[cfg(feature = "testing")]
+use std::cell::Cell;
 
 use crate::animation::staging::{self, Prop};
 use crate::state::NodeId as Id;
 
+#[cfg(feature = "testing")]
+thread_local! {
+    static ACCESSES: Cell<u64> = const { Cell::new(0) };
+}
+
+/// How many times this thread's library has asked the core for a node since it started. A test that says a turn reads no window
+/// compares it before and after the turn (`gnoblin_std_impl::native_accesses`).
+#[cfg(feature = "testing")]
+pub(crate) fn accesses() -> u64 {
+    ACCESSES.with(Cell::get)
+}
+
+/// Notes one trip to the core, for [`accesses`]; nothing without the testing feature.
+#[inline]
+fn counted() {
+    #[cfg(feature = "testing")]
+    ACCESSES.with(|count| count.set(count.get() + 1));
+}
+
 /// A handle on the node `id`.
 fn node(g: &Gnoblin, id: Id) -> gnoblin_core::Node {
+    counted();
     g.node(NodeId(id))
 }
 
@@ -126,6 +148,7 @@ pub(crate) fn write_triple(g: &Gnoblin, id: Id, key: &str, value: [f64; 3], defa
 
 /// The first seat of the tree, or `None` for a tree with no seat (nothing then has the keyboard, and nothing is asked to).
 pub(crate) fn seat(g: &Gnoblin) -> Option<gnoblin_core::Node> {
+    counted();
     let seat = g.class("seat").ok()?;
     g.root()
         .ok()?

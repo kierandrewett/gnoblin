@@ -47,6 +47,11 @@ pub(crate) struct Workspace {
     pub(crate) gaps_seen: (f64, f64),
     /// The area the layout last computed for.
     pub(crate) area: Option<Rect>,
+    /// A flag the layout reads of one of the workspace's windows (`focused`, `fullscreen`, `maximised`) changed since the pass last read
+    /// them: the next pass reads them again (`State::workspace_at_rest`).
+    pub(crate) scan_stale: bool,
+    /// The members the flags were last read for, in order.
+    pub(crate) scanned: Vec<NodeId>,
     /// The library added this workspace for an output (the per-output policy), so it removes it when the output goes.
     pub(crate) auto: bool,
 }
@@ -146,6 +151,8 @@ impl State {
                 revision: None,
                 gaps_seen: gaps,
                 area: None,
+                scan_stale: true,
+                scanned: Vec::new(),
                 auto,
             },
         );

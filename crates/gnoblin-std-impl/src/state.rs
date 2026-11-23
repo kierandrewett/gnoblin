@@ -14,7 +14,7 @@
 
 use core::ffi::c_void;
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
@@ -227,6 +227,18 @@ pub(crate) struct State {
     pub(crate) counters: Counters,
     /// The pass wrote a placement: the compositor's answer to the transaction that carries it is awaited.
     pub(crate) placements_written: bool,
+    /// The windows whose written rectangle has not been seen held since: the placement waits for the compositor's answer, or the
+    /// window's geometry changed after it. Only these are read for a lost write (`relay_lost_writes`), in the order of their ids.
+    pub(crate) unverified: BTreeSet<NodeId>,
+    /// A pass read staged values (`turn::settle`): the next one reads every window of every workspace.
+    pub(crate) scan_all: bool,
+    /// The workspaces whose last pass read the windows that cover them (the fullscreen and maximised ones) other than it had noted them.
+    /// What it read may be a write the compositor has not answered, which the tree shows until then and forgets with no event when the
+    /// compositor refuses it or drops it after the gate's resends: the pass that follows the compositor's answer reads these workspaces
+    /// again (`turn::reread_when_answered`).
+    pub(crate) cover_unconfirmed: BTreeSet<Id>,
+    /// Some window's `geometry_pending` is set: the next turn tells the listeners (`flush_geometry`).
+    pub(crate) geometry_waiting: bool,
     /// A layout's compute failed in a pass: a transition that is committing fails with it, and nothing it staged is sent.
     pub(crate) compute_failed: Option<String>,
     /// The transition engine: staged writes, tracks and what owns them.
