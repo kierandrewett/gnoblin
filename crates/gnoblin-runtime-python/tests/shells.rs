@@ -1498,6 +1498,35 @@ fn the_stub_of_the_generated_classes_agrees_with_what_the_runtime_reflects() {
         })
         .filter(|line| line != "reflect done")
         .collect();
+    // The std library adds its augment members to the core's classes when `gnoblin.objects.std` is imported, which the reflection did. A
+    // stub cannot add a member to a class of another file, so it declares them on the std classes that hold them (`GnoblinAugment`,
+    // `OutputCollectionAugment`): the core's declared names are completed with those.
+    let augments: Vec<(String, Vec<String>)> = declared
+        .iter()
+        .filter_map(|line| {
+            let rest = line.strip_prefix("reflect std.")?;
+            let (class, names) = rest.split_once(' ').unwrap_or((rest, ""));
+            let members = names
+                .split(' ')
+                .filter(|name| !matches!(*name, "" | "get" | "on" | "destroy"))
+                .map(str::to_owned)
+                .collect();
+            Some((class.strip_suffix("Augment")?.to_owned(), members))
+        })
+        .collect();
+    assert!(
+        !augments.is_empty(),
+        "the std stub holds the augment members: {declared:?}"
+    );
+    for (target, members) in augments {
+        let prefix = format!("reflect model.{target} ");
+        for line in declared.iter_mut().filter(|line| line.starts_with(&prefix)) {
+            let mut names: Vec<String> = line[prefix.len()..].split(' ').map(str::to_owned).collect();
+            names.extend(members.iter().cloned());
+            names.sort();
+            *line = format!("{prefix}{}", names.join(" "));
+        }
+    }
     reflected.sort();
     declared.sort();
     assert!(run.stderr.contains("reflect done"), "{}", run.dump());

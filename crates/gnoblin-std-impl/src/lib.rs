@@ -34,6 +34,7 @@
 //! `cargo xtask dist-check` exists to catch.
 
 mod animation;
+mod augment;
 mod bindings;
 mod builtin;
 mod builtin_api;

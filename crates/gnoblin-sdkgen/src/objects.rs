@@ -138,6 +138,32 @@ pub(super) fn finds_of(object: &ObjectType) -> Vec<(&str, &gnoblin_schema::Metho
         .collect()
 }
 
+/// The classes of `objects` that hold the members of an augment, each with the class of the core's catalog it extends, in the order of their
+/// names. The core catalog is read to name the class a member is installed on, and is never changed by it.
+pub(super) fn augments_of<'a>(
+    catalog: &'a Catalog,
+    objects: &BTreeMap<&'a str, &'a ObjectType>,
+) -> Result<Vec<(&'a ObjectType, &'a ObjectType)>, String> {
+    let mut found = Vec::new();
+    for object in objects.values().filter(|object| object.augment_of.is_some()) {
+        let class = object.augment_of.as_deref().unwrap_or_default();
+        let target = catalog
+            .schemas()
+            .iter()
+            .filter(|schema| schema.namespace.as_str() == gnoblin_schema::CORE_NAMESPACE)
+            .flat_map(|schema| schema.objects.iter())
+            .find(|candidate| candidate.name == class)
+            .ok_or_else(|| {
+                format!(
+                    "the class `{}` holds the members of an augment of `core.{class}`, which the core catalog lacks",
+                    object.name
+                )
+            })?;
+        found.push((*object, target));
+    }
+    Ok(found)
+}
+
 /// One member of a class, before it is written.
 pub(super) enum Member<'a> {
     Property(&'a Property),

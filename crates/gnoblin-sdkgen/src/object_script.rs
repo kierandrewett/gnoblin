@@ -419,7 +419,7 @@ mod tests {
             text("js/native/gnoblin-core/generated/object_base.js"),
         )
         .expect("the base");
-        // The std classes take the core's `Client`, so the module they import is there too.
+        // The std classes take the core's `Client` and add members to the core's classes, so the module they import is there too.
         fs::write(
             dir.path().join("model.mjs"),
             text("js/native/gnoblin-core/generated/objects.js"),

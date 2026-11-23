@@ -340,6 +340,20 @@ const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", he
   shell's own, so it applies at the next login. The property reads what you wrote until then, and `gnoblin.compositor.reset("user_shaders")`
   takes it back to the default and reads what the running compositor holds (`true` unless the setting is off). A value that is not a
   boolean throws a `TypeError`.
+- Importing `gnoblin-std/generated/objects` gives `gnoblin` the members the library adds, which the core has no class for.
+  `examples/37-native-std-root` uses each of them:
+    - `workspaces`: the list (`list`, `length`, `add`, `remove`, `clear`, `byId`), `area` (where windows are laid out; `undefined` while
+      there is no output), `show(workspace, options)` and `showById(id, options)`.
+    - `displays`: the list of logical displays, and `replace(old, next)`, which swaps one display of the shell's for another as one
+      validated change.
+    - `outputs.profiles`: the hardware profiles. Every output collection reports the desktop's list, the root's `outputs` and a
+      selection made with `where` alike.
+    - `scene` and `gestures`.
+    - `requestTransition(work, options, rollback)`, the same call as `Transition.request`.
+
+    A shell that never imports the module has none of them: `"workspaces" in gnoblin` is false, and the declarations only merge them into
+    the core's `Gnoblin` where the module is imported. After a reload they belong to the new generation's library.
+
 - Classes keep the names of the shell API: `Camera2D`, `Camera3D`, `ClientStyle`, `InputDevice`, `IdleMonitor` and
   `LaunchFeedback`. The generated Rust and Python classes use the same names.
 

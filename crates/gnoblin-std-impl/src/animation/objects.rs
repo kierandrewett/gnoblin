@@ -256,8 +256,9 @@ fn commit(cx: &mut Cx<'_>) -> Res<Val> {
     }
 }
 
-/// Runs `work` once, and commits what it staged.
-fn request(cx: &mut Cx<'_>, args: &[Val]) -> Res<Val> {
+/// Runs `work` once, and commits what it staged: the function `transition.request`, and the root's `requestTransition` that the library
+/// adds to the core's `gnoblin`.
+pub(crate) fn request(cx: &mut Cx<'_>, args: &[Val]) -> Res<Val> {
     let work = Rc::clone(args[0].closure()?);
     let rollback = (!args[2].is_none()).then(|| args[2].closure().cloned()).transpose()?;
     begin(cx.ctx(), &args[1], rollback)?;

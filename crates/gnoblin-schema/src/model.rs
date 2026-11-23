@@ -255,6 +255,34 @@ pub struct CallbackDecl {
     pub returns: Option<Type>,
 }
 
+/// The namespace a `[[augment]]` names with `core.`: the core library's catalog. A library above the core (std) adds members to its
+/// classes without the core ever reading the library's files.
+pub const CORE_NAMESPACE: &str = "gnoblin.model";
+
+/// The members a library adds to a class of the core's catalog: `[[augment]]`. A local namespace may declare it (the std library does,
+/// for `core.gnoblin` and `core.output_collection`). The catalog checks the target and the names, and lowers the members of every
+/// augment of one target into a service class of the augmenting namespace (`<class>_augment`, with [`ObjectType::augment_of`] set), which
+/// the library implements and the generators read like any class; a generator then installs each member on the core's class, in the
+/// language's own way, when the library's module is loaded.
+#[derive(Clone, Debug)]
+pub struct Augment {
+    /// The target as written: `core.<class>`.
+    pub target: String,
+    /// The class of the core's catalog, without the `core.` prefix.
+    pub class: String,
+    /// The version that added the augment.
+    pub since: Version,
+    /// The read-only properties the augment adds.
+    pub properties: Vec<Property>,
+    /// The methods the augment adds.
+    pub methods: Vec<Method>,
+}
+
+/// The name of the class that holds the augments of the core class `class`.
+pub fn augment_class_name(class: &str) -> String {
+    format!("{class}_augment")
+}
+
 /// One schema file: a namespace at one version, with its objects and error codes.
 #[derive(Clone, Debug)]
 pub struct Schema {
@@ -275,6 +303,8 @@ pub struct Schema {
     pub enums: Vec<EnumDecl>,
     /// The callbacks declared, in file order.
     pub callbacks: Vec<CallbackDecl>,
+    /// The augments declared, in file order.
+    pub augments: Vec<Augment>,
 }
 
 /// An object type: an identity with typed properties, methods and signals.
@@ -299,6 +329,9 @@ pub struct ObjectType {
     pub ctor: Option<Vec<String>>,
     /// An instance stays until it is destroyed, whatever the shell releases (a widget on screen).
     pub retained: bool,
+    /// For the class that holds the members of the augments of a core class: that class's name in the core's catalog (`gnoblin`). The
+    /// members of the class are installed on it, and the class is the std library's.
+    pub augment_of: Option<String>,
     /// The object's name in each language when it differs from the mechanical conversion.
     pub export: Export,
     /// For a record that is the family of a tagged value: the enum property whose value says which variant a value is.
@@ -341,6 +374,7 @@ impl ObjectType {
             kind: self.kind,
             ctor: self.ctor.clone(),
             retained: self.retained,
+            augment_of: self.augment_of.clone(),
             export: self.export.clone(),
             tag: self.tag.clone(),
             variants: self.variants.clone(),
@@ -567,6 +601,7 @@ impl Catalog {
     /// Build a catalog from parsed schemas.
     pub fn new(mut schemas: Vec<Schema>) -> Result<Catalog, SchemaError> {
         let mut problems = Vec::new();
+        lower_augments(&mut schemas, &mut problems);
         let mut versions: BTreeMap<&str, (Version, &str)> = BTreeMap::new();
         let mut objects: BTreeMap<&str, BTreeMap<&str, &str>> = BTreeMap::new();
         let mut errors: BTreeMap<&str, BTreeMap<&str, &str>> = BTreeMap::new();
@@ -699,6 +734,7 @@ impl Catalog {
         if let Err(inheritance) = crate::inherit::resolve(&mut schemas) {
             problems.extend(inheritance);
         }
+        check_augment_clashes(&schemas, &mut problems);
 
         if !problems.is_empty() {
             return Err(SchemaError::Invalid {
@@ -978,6 +1014,9 @@ impl Catalog {
                 object.ctor,
                 object.export
             );
+            if let Some(target) = &object.augment_of {
+                let _ = writeln!(text, "augment_of {target}");
+            }
             for property in &object.properties {
                 let _ = writeln!(
                     text,
@@ -1072,6 +1111,159 @@ impl Catalog {
             hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
         }
         hash
+    }
+}
+
+/// What the augments of one target add, while the catalog collects them.
+struct AugmentGroup {
+    namespace: Namespace,
+    class: String,
+    /// The schema that holds the lowered class: the first one that declares an augment of the target.
+    schema: usize,
+    since: Version,
+    properties: Vec<Property>,
+    methods: Vec<Method>,
+    /// The file each member came from, to name both when two augments declare one member.
+    declared_in: BTreeMap<String, String>,
+}
+
+/// Lowers every `[[augment]]` into the service class `<class>_augment` of the namespace that declares it, one for each target, and checks
+/// the target. The members are checked against the target's own members once inheritance is resolved ([`check_augment_clashes`]).
+fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
+    let core: BTreeMap<String, ObjectKind> = schemas
+        .iter()
+        .filter(|schema| schema.namespace.as_str() == CORE_NAMESPACE)
+        .flat_map(|schema| schema.objects.iter().map(|object| (object.name.clone(), object.kind)))
+        .collect();
+    let mut groups: Vec<AugmentGroup> = Vec::new();
+    for (index, schema) in schemas.iter().enumerate() {
+        for augment in &schema.augments {
+            let target = &augment.target;
+            if schema.namespace.as_str() == CORE_NAMESPACE {
+                problems.push(format!(
+                    "{}: the core catalog does not augment itself (`{target}`): only a library above the core adds members to it",
+                    schema.origin
+                ));
+                continue;
+            }
+            match core.get(&augment.class) {
+                None => {
+                    problems.push(format!(
+                        "{}: augment target `{target}` is not a class of the core catalog (`{CORE_NAMESPACE}`)",
+                        schema.origin
+                    ));
+                    continue;
+                }
+                Some(ObjectKind::Record | ObjectKind::Interface) => {
+                    problems.push(format!(
+                        "{}: augment target `{target}` is a {} in the core catalog: only a handle or a service takes members",
+                        schema.origin,
+                        core[&augment.class].as_str()
+                    ));
+                    continue;
+                }
+                Some(_) => {}
+            }
+            let at = match groups
+                .iter()
+                .position(|group| group.namespace == schema.namespace && group.class == augment.class)
+            {
+                Some(at) => at,
+                None => {
+                    groups.push(AugmentGroup {
+                        namespace: schema.namespace.clone(),
+                        class: augment.class.clone(),
+                        schema: index,
+                        since: augment.since,
+                        properties: Vec::new(),
+                        methods: Vec::new(),
+                        declared_in: BTreeMap::new(),
+                    });
+                    groups.len() - 1
+                }
+            };
+            let group = &mut groups[at];
+            group.since = group.since.min(augment.since);
+            let names = augment
+                .properties
+                .iter()
+                .map(|property| &property.name)
+                .chain(augment.methods.iter().map(|method| &method.name));
+            for name in names {
+                if let Some(first) = group.declared_in.insert(name.clone(), schema.origin.clone()) {
+                    problems.push(format!(
+                        "member `{name}` of augment `{target}` is declared in {first} and in {}",
+                        schema.origin
+                    ));
+                }
+            }
+            group.properties.extend(augment.properties.iter().cloned());
+            group.methods.extend(augment.methods.iter().cloned());
+        }
+    }
+    for group in groups {
+        schemas[group.schema].objects.push(ObjectType {
+            name: augment_class_name(&group.class),
+            base: None,
+            since: group.since,
+            secret: false,
+            record: false,
+            kind: ObjectKind::Service,
+            ctor: None,
+            retained: false,
+            augment_of: Some(group.class),
+            export: Export::default(),
+            tag: None,
+            variants: Vec::new(),
+            properties: group.properties,
+            methods: group.methods,
+            signals: Vec::new(),
+        });
+    }
+}
+
+/// Refuses an augment member that has the name of a member of its target, which is the target's own or one it inherits.
+fn check_augment_clashes(schemas: &[Schema], problems: &mut Vec<String>) {
+    let core: BTreeMap<&str, (&ObjectType, &str)> = schemas
+        .iter()
+        .filter(|schema| schema.namespace.as_str() == CORE_NAMESPACE)
+        .flat_map(|schema| {
+            schema
+                .objects
+                .iter()
+                .map(move |object| (object.name.as_str(), (object, schema.origin.as_str())))
+        })
+        .collect();
+    for schema in schemas {
+        for augment in &schema.augments {
+            let Some((class, core_origin)) = core.get(augment.class.as_str()) else {
+                continue;
+            };
+            let taken = |name: &str| {
+                if class.properties.iter().any(|member| member.name == name) {
+                    Some("property")
+                } else if class.methods.iter().any(|member| member.name == name) {
+                    Some("method")
+                } else if class.signals.iter().any(|member| member.name == name) {
+                    Some("signal")
+                } else {
+                    None
+                }
+            };
+            let names = augment
+                .properties
+                .iter()
+                .map(|property| &property.name)
+                .chain(augment.methods.iter().map(|method| &method.name));
+            for name in names {
+                if let Some(kind) = taken(name) {
+                    problems.push(format!(
+                        "member `{name}` of augment `{}` ({}) clashes with the {kind} `{name}` of core class `{}` ({core_origin})",
+                        augment.target, schema.origin, class.name
+                    ));
+                }
+            }
+        }
     }
 }
 

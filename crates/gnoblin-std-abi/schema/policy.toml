@@ -1244,3 +1244,15 @@ name = "duration"
 type = "double"
 since = "0.2.0"
 default = 250.0
+
+# The gesture policy is `gnoblin.gestures` of the core's root once this library is loaded: the core binds no gesture to an action.
+[[augment]]
+target = "core.gnoblin"
+since = "0.2.0"
+
+# The thresholds and the actions of the touchpad gestures.
+[[augment.property]]
+name = "gestures"
+type = "object:gestures"
+since = "0.2.0"
+readonly = true

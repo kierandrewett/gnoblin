@@ -1,8 +1,10 @@
 //! `display_manager`: `gnoblin.displays` and `gnoblin.outputs.profiles`, and what changes them.
 //!
 //! `data/js/gnoblin-std/display_manager/manager.ts` is the reference. The lists are the library's (`displays.rs`): this service hands out
-//! their objects and passes a shell's changes to them.
+//! their objects and passes a shell's changes to them. The root lists `displays` and `output_profiles` (`lists.rs`) are the same lists seen
+//! as collections, and use the functions here.
 
+use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{Res, Val};
 
@@ -22,6 +24,60 @@ fn maybe_display(cx: &mut Cx<'_>, hid: Option<Hid>) -> Res<Val> {
     }
 }
 
+/// The displays in the list, as objects, in order.
+pub(super) fn display_list(cx: &mut Cx<'_>) -> Res<Val> {
+    let list = look(cx.ctx(), |st| Ok(st.disp.display_list.clone()))?;
+    displays_val(cx, list).map(Val::List)
+}
+
+/// The profiles in the list, as objects, in the order they were added.
+pub(super) fn profile_list(cx: &mut Cx<'_>) -> Res<Val> {
+    let list = look(cx.ctx(), |st| Ok(st.disp.profile_list.clone()))?;
+    list.into_iter()
+        .map(|hid| profile_val(cx, hid))
+        .collect::<Res<Vec<_>>>()
+        .map(Val::List)
+}
+
+/// The display in the list with the id `id`, or none.
+pub(super) fn display_by_id(cx: &mut Cx<'_>, id: &str) -> Res<Val> {
+    let found = look(cx.ctx(), |st| {
+        Ok(st
+            .disp
+            .display_list
+            .iter()
+            .copied()
+            .find(|hid| st.disp.displays.get(hid).is_some_and(|rec| rec.id == id)))
+    })?;
+    maybe_display(cx, found)
+}
+
+/// The profile in the list with the id `id`, or none.
+pub(super) fn profile_by_id(cx: &mut Cx<'_>, id: &str) -> Res<Val> {
+    let found = look(cx.ctx(), |st| {
+        Ok(st
+            .disp
+            .profile_list
+            .iter()
+            .copied()
+            .find(|hid| st.disp.profiles.get(hid).is_some_and(|rec| rec.id == id)))
+    })?;
+    match found {
+        Some(hid) => profile_val(cx, hid),
+        None => Ok(Val::None),
+    }
+}
+
+/// Stops managing every profile.
+pub(super) fn clear_profiles(ctx: GnoblinCtx) -> Res<()> {
+    edit(ctx, |st| {
+        for profile in st.disp.profile_list.clone() {
+            st.remove_profile(profile);
+        }
+        Ok(())
+    })
+}
+
 pub(super) fn register(builder: &mut Builder) {
     let _ = builder
         .class::<()>("display_manager")
@@ -31,17 +87,8 @@ pub(super) fn register(builder: &mut Builder) {
             MANAGERS.with(|held| held.borrow_mut().insert(ctx, cx.me()));
             Ok(())
         })
-        .get("displays", |_, cx| {
-            let list = look(cx.ctx(), |st| Ok(st.disp.display_list.clone()))?;
-            displays_val(cx, list).map(Val::List)
-        })
-        .get("profiles", |_, cx| {
-            let list = look(cx.ctx(), |st| Ok(st.disp.profile_list.clone()))?;
-            list.into_iter()
-                .map(|hid| profile_val(cx, hid))
-                .collect::<Res<Vec<_>>>()
-                .map(Val::List)
-        })
+        .get("displays", |_, cx| display_list(cx))
+        .get("profiles", |_, cx| profile_list(cx))
         .method("add_profile", |_, cx, args| {
             let profile = profile_of(cx, &args[0])?;
             edit(cx.ctx(), |st| st.add_profile(profile))?;
@@ -55,21 +102,7 @@ pub(super) fn register(builder: &mut Builder) {
             })
             .map(Val::Bool)
         })
-        .method("profile_named", |_, cx, args| {
-            let id = args[0].text()?.to_owned();
-            let found = look(cx.ctx(), |st| {
-                Ok(st
-                    .disp
-                    .profile_list
-                    .iter()
-                    .copied()
-                    .find(|hid| st.disp.profiles.get(hid).is_some_and(|rec| rec.id == id)))
-            })?;
-            match found {
-                Some(hid) => profile_val(cx, hid),
-                None => Ok(Val::None),
-            }
-        })
+        .method("profile_named", |_, cx, args| profile_by_id(cx, args[0].text()?))
         .method("add_display", |_, cx, args| {
             let display = display_of(cx, &args[0])?;
             edit(cx.ctx(), |st| st.add_display(display))?;
@@ -91,18 +124,7 @@ pub(super) fn register(builder: &mut Builder) {
             })?;
             Ok(Val::None)
         })
-        .method("display_named", |_, cx, args| {
-            let id = args[0].text()?.to_owned();
-            let found = look(cx.ctx(), |st| {
-                Ok(st
-                    .disp
-                    .display_list
-                    .iter()
-                    .copied()
-                    .find(|hid| st.disp.displays.get(hid).is_some_and(|rec| rec.id == id)))
-            })?;
-            maybe_display(cx, found)
-        })
+        .method("display_named", |_, cx, args| display_by_id(cx, args[0].text()?))
         .method("display_at", |_, cx, args| {
             let (x, y) = (args[0].double()?, args[1].double()?);
             let found = edit(cx.ctx(), |st| Ok(st.display_at(x, y)))?;

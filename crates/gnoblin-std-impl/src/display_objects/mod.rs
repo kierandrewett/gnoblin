@@ -13,6 +13,7 @@
 //! output is, so the outputs, the desks and the default workspace come with the first call, as they come with `open` of the table.
 
 mod display;
+mod lists;
 mod manager;
 mod profile;
 mod viewport;
@@ -42,8 +43,17 @@ thread_local! {
     static VIEWPORTS: RefCell<HashMap<(GnoblinCtx, u64), Obj>> = RefCell::new(HashMap::new());
     /// The manager, once a shell has one.
     static MANAGERS: RefCell<HashMap<GnoblinCtx, Obj>> = RefCell::new(HashMap::new());
+    /// The objects of the root lists `displays` and `output_profiles`, once a shell has them.
+    static LISTS: RefCell<HashMap<(GnoblinCtx, ListKind), Obj>> = RefCell::new(HashMap::new());
     /// The outputs each display presented when its object was last told, to tell when they change.
     static TOLD: RefCell<HashMap<(GnoblinCtx, Hid), Vec<NodeId>>> = RefCell::new(HashMap::new());
+}
+
+/// Which of the root lists an object is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum ListKind {
+    Displays,
+    Profiles,
 }
 
 /// Runs `work` over the library's state as its desktop, for a change.
@@ -73,6 +83,12 @@ pub(crate) fn announce(std: &Std, notice: &Notice) {
             changed_outputs(std, ctx);
             if let Some(manager) = manager_of(ctx) {
                 let _ = with_lib(|lib| lib.with_cx(ctx, manager, |cx| cx.emit("changed", Vec::new())));
+            }
+            for kind in [ListKind::Displays, ListKind::Profiles] {
+                let list = LISTS.with(|held| held.borrow().get(&(ctx, kind)).copied());
+                if let Some(list) = list {
+                    let _ = with_lib(|lib| lib.with_cx(ctx, list, |cx| cx.emit("changed", Vec::new())));
+                }
             }
         }
         abi::STD_EVENT_APPLIED => {
@@ -169,6 +185,7 @@ pub(crate) fn retired(ctx: GnoblinCtx) {
     VIEWPORTS.with(|held| held.borrow_mut().retain(|(owner, _), _| *owner != ctx));
     MANAGERS.with(|held| held.borrow_mut().remove(&ctx));
     TOLD.with(|held| held.borrow_mut().retain(|(owner, _), _| *owner != ctx));
+    LISTS.with(|held| held.borrow_mut().retain(|(owner, _), _| *owner != ctx));
 }
 
 /// Implements the classes of the display module.
@@ -177,4 +194,5 @@ pub(crate) fn register(builder: &mut Builder) {
     viewport::register(builder);
     display::register(builder);
     manager::register(builder);
+    lists::register(builder);
 }

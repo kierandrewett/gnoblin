@@ -306,6 +306,31 @@ which only the JavaScript runtime commits. To change the setting for the next lo
 `find` takes the kind as a type. A kind the core does not list has no `Finds<ModelRoot>` impl, so asking for it is an error when the
 shell is built and not when it runs. `find` takes no function: filter the list in Rust. `examples/35-native-root` is this.
 
+## Read the std members of the root object
+
+`use gnoblin_std::prelude::*;` brings in `ModelRootStdExt` and `OutputCollectionStdExt`, which give the core's typed `ModelRoot` the members
+the std library adds: `workspaces()`, `displays()`, `scene()`, `gestures()` and `request_transition(..)`, and `profiles()` for the
+`outputs()` of the root.
+
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::Workspace;
+use gnoblin_std::prelude::*;
+
+let model = ModelRoot::get(&g.objects()?)?;
+let objects = g.std()?.objects()?;
+let workspaces = model.workspaces()?;
+let main = Workspace::new(&objects, "main")?;
+workspaces.add(&main)?;
+workspaces.show(&main, None)?; // `show_by_id("main", None)` takes the id; `area()` is where windows are laid out
+let displays = model.displays()?; // `replace(&old, &new)` swaps a display of the shell's own for another
+let profiles = model.outputs()?.expect("the core has outputs").profiles()?;
+```
+
+A shell that does not use the std prelude has none of them, and a call of one does not compile: the trait is not in scope, and the
+shell's `readelf -d` names `libgnoblin-core.so.1` and no std library. Each member is read through the std library of the generation
+the core's object belongs to. `examples/37-native-std-root` is this.
+
 ## Run your own event loop
 
 A default shell never sees the loop: the host calls `dispatch` for it. A shell that already has a loop (tokio, calloop, GLib, an

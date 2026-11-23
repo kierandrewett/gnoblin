@@ -4,6 +4,20 @@
 //! client of the object protocol (`gnoblin-object`). [`Std::objects`] is the one way in: it asks the installed library for the table
 //! that serves the namespace and gives the handle every class is made from. A class added to the catalog is a class here with no
 //! change to this file.
+//!
+//! The members the library adds to the core's typed classes (the `[[augment]]` blocks of its catalog) are the extension traits
+//! `ModelRootStdExt`, for the root's `workspaces`, `displays`, `scene`, `gestures` and `request_transition`, and
+//! `OutputCollectionStdExt`, for `profiles`. `gnoblin_std::prelude` brings them in; a shell that does not use it has none of them, and a
+//! call of one does not compile:
+//!
+//! ```compile_fail,E0599
+//! use gnoblin_core::objects::ModelRoot;
+//!
+//! fn read(model: &ModelRoot) {
+//!     // `ModelRootStdExt` is not in scope: the core's root has no `workspaces`.
+//!     let _ = model.workspaces();
+//! }
+//! ```
 #![allow(unsafe_code)]
 
 use std::cell::RefCell;
@@ -56,4 +70,17 @@ impl Std {
         OPENED.with(|opened| *opened.borrow_mut() = Some((ctx, objects.clone())));
         Ok(objects)
     }
+}
+
+/// The typed classes of `gnoblin.std` for the generation the core object table `core` belongs to: what the members this library adds to a
+/// core class (`ModelRootStdExt`) use, since a core object holds the core's table and not this library's. A shell of a generation that
+/// has retired gets the error the retired generation gives, and never the library of a newer one.
+///
+/// # Errors
+///
+/// The installed std library is not usable by this SDK, or the generation has retired.
+pub(crate) fn std_objects(core: gnoblin_object::client::Api) -> gnoblin_object::Res<Objects> {
+    let fail = |error: Error| gnoblin_object::Fail::err(error.to_string());
+    let g = gnoblin_core::__private::gnoblin_for(core.ctx()).map_err(|error| fail(error.into()))?;
+    Std::open(&g).map_err(fail)?.objects().map_err(fail)
 }

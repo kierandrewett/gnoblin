@@ -363,6 +363,32 @@ A value that is not a boolean raises a `TypeError`.
 `find("Window", ...)` and `find("Output", ...)` raise a `TypeError` for a kind the core does not list (`"Workspace"` in a shell that loads
 no std), naming the kinds that work, and for a field the filter lacks. `examples/35-native-root/shell.py` is this.
 
+### The members std adds to the root: `gnoblin.objects.std`
+
+The core has no workspaces, displays, scene or gestures, so its `Gnoblin` has no member of those names. Importing `gnoblin.objects.std`
+sets them on the core's class. A shell that does not import it has none: the attribute is missing.
+
+```python
+import gnoblin.objects.std                       # puts the members on `Gnoblin` and `OutputCollection`
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import TransitionOptions, Workspace
+
+gnoblin = Gnoblin.get()
+main = Workspace("main")
+gnoblin.workspaces.add(main)                     # `workspaces` is the list: `list`, `length`, `add`, `remove`, `clear`, `by_id`
+gnoblin.workspaces.show(main)                    # `show_by_id("main")` takes the id; `area` is where windows are laid out
+gnoblin.displays.replace(old, new)               # swaps a display of the shell's own for another as one validated change
+gnoblin.outputs.profiles.add(profile)            # the hardware profiles; every output collection reports the desktop's list
+gnoblin.request_transition(lambda: ..., TransitionOptions(duration=200.0))   # the same call as `Transition.request`
+print(gnoblin.scene.root, gnoblin.gestures.swipe_threshold)
+```
+
+- Each member is read through the std library of the generation that is running, so after a reload it is the new generation's.
+- A stub cannot add a member to a class of another file, so a type checker finds them on `gnoblin.objects.std.GnoblinAugment` and
+  `OutputCollectionAugment`; at run time they are on `Gnoblin` and `OutputCollection`.
+- `examples/37-native-std-root/shell.py` is this, run by `crates/gnoblin/tests/modular/native_std_root.rs` in a real session beside the
+  Rust and TypeScript shells of the same example.
+
 ### The functions of `gnoblin-std` in the generated classes
 
 A bare function of the TypeScript `gnoblin-std` is a function of a class in `gnoblin.objects.std`, with the same behaviour. The

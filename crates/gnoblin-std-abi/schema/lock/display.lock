@@ -9,10 +9,15 @@
 # to the version that ships, and from then on its entries are frozen.
 released none
 
+augment | core.gnoblin | members added to a class of the core catalog | 0.2.0
+augment | core.output_collection | members added to a class of the core catalog | 0.2.0
+
 enum | output_transform | values normal rotate-90 rotate-180 rotate-270 flipped flipped-90 flipped-180 flipped-270 | 0.2.0
 enum | position_kind | values absolute right_of left_of above below | 0.2.0
 enum | present_mode | values single mirror span | 0.2.0
 
+member | core.gnoblin.displays | property object:displays ro | 0.2.0
+member | core.output_collection.profiles | property object:output_profiles ro | 0.2.0
 member | display.id | property string rw | 0.2.0
 member | display.implicit | property bool ro | 0.2.0
 member | display.listed | property bool ro | 0.2.0
@@ -39,6 +44,14 @@ member | display_manager.restore | method (token:uint) | 0.2.0
 member | display_manager.snapshot | method () -> uint | 0.2.0
 member | display_selector.output | property uint rw,optional | 0.2.0
 member | display_selector.profile | property object:output_profile rw,optional | 0.2.0
+member | displays.add | method (display:object:display) | 0.2.0
+member | displays.by_id | method (id:string) -> object:display? | 0.2.0
+member | displays.changed | signal () | 0.2.0
+member | displays.clear | method () | 0.2.0
+member | displays.length | property uint ro | 0.2.0
+member | displays.list | property list<object:display> ro | 0.2.0
+member | displays.remove | method (display:object:display) -> bool | 0.2.0
+member | displays.replace | method (old:object:display, next:object:display) | 0.2.0
 member | output_match.connector | property string rw,optional | 0.2.0
 member | output_match.make | property string rw,optional | 0.2.0
 member | output_match.model | property string rw,optional | 0.2.0
@@ -54,6 +67,13 @@ member | output_profile.id | property string rw | 0.2.0
 member | output_profile.listed | property bool ro | 0.2.0
 member | output_profile.match | property object:output_match ro | 0.2.0
 member | output_profile.settings | property object:profile_settings rw | 0.2.0
+member | output_profiles.add | method (profile:object:output_profile) | 0.2.0
+member | output_profiles.by_id | method (id:string) -> object:output_profile? | 0.2.0
+member | output_profiles.changed | signal () | 0.2.0
+member | output_profiles.clear | method () | 0.2.0
+member | output_profiles.length | property uint ro | 0.2.0
+member | output_profiles.list | property list<object:output_profile> ro | 0.2.0
+member | output_profiles.remove | method (profile:object:output_profile) -> bool | 0.2.0
 member | profile_settings.enabled | property bool rw,optional | 0.2.0
 member | profile_settings.mode | property string rw,optional | 0.2.0
 member | profile_settings.position | property object:output_position rw,optional | 0.2.0
@@ -69,8 +89,10 @@ member | viewport.display | property object:display ro,optional | 0.2.0
 object | display | base none retained ctor(selectors) | 0.2.0
 object | display_manager | base none service | 0.2.0
 object | display_selector | base none record | 0.2.0
+object | displays | base none service | 0.2.0
 object | output_match | base none record | 0.2.0
 object | output_position | base none record | 0.2.0
 object | output_profile | base none retained ctor(match) | 0.2.0
+object | output_profiles | base none service | 0.2.0
 object | profile_settings | base none record | 0.2.0
 object | viewport | base none retained | 0.2.0

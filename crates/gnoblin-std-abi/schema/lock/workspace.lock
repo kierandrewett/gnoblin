@@ -9,6 +9,8 @@
 # to the version that ships, and from then on its entries are frozen.
 released none
 
+augment | core.gnoblin | members added to a class of the core catalog | 0.2.0
+
 enum | output_policy_mode | values separate duplicate extend | 0.2.0
 enum | place_mode | values smart center cascade | 0.2.0
 enum | snap_zone | values left right top | 0.2.0
@@ -50,6 +52,7 @@ member | client_state.snap | property object:client_snap ro,optional | 0.2.0
 member | client_state.snap_to | method (zone:enum:snap_zone, area:object:layout_rect, edge_tiling?:bool) -> bool | 0.2.0
 member | client_state.unsnap | method () -> bool | 0.2.0
 member | client_state.workspace | property object:workspace ro,optional | 0.2.0
+member | core.gnoblin.workspaces | property object:workspaces ro | 0.2.0
 member | desks.areas | method (client?:object:gnoblin.model.client) -> object:client_areas | 0.2.0
 member | desks.output | method (output:uint) -> object:output_desk | 0.2.0
 member | desks.outputs | property object:output_policy rw | 0.2.0
@@ -162,6 +165,7 @@ member | workspace_policy.name_prefix | property string rw | 0.2.0
 member | workspace_policy.placement | property enum:place_mode rw | 0.2.0
 member | workspaces.add | method (workspace:object:workspace) | 0.2.0
 member | workspaces.added | signal (workspace:object:workspace) | 0.2.0
+member | workspaces.area | property object:layout_rect ro,optional | 0.2.0
 member | workspaces.by_id | method (id:string) -> object:workspace? | 0.2.0
 member | workspaces.clear | method () | 0.2.0
 member | workspaces.length | property uint ro | 0.2.0
@@ -170,6 +174,8 @@ member | workspaces.of_client | method (client:object:gnoblin.model.client) -> o
 member | workspaces.of_output | method (output:uint) -> object:workspace? | 0.2.0
 member | workspaces.remove | method (workspace:object:workspace) -> bool | 0.2.0
 member | workspaces.removed | signal (workspace:object:workspace) | 0.2.0
+member | workspaces.show | method (workspace:object:workspace, options?:object:show_options) | 0.2.0
+member | workspaces.show_by_id | method (id:string, options?:object:show_options) | 0.2.0
 
 object | client_areas | base none record | 0.2.0
 object | client_collection | base none | 0.2.0

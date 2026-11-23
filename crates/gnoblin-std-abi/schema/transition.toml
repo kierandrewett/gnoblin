@@ -350,3 +350,29 @@ type = "enum:easing"
 [[object.method.param]]
 name = "t"
 type = "double"
+
+# `gnoblin.requestTransition` of the core's root once this library is loaded: the core has no transaction of the shell's own writes.
+[[augment]]
+target = "core.gnoblin"
+since = "0.2.0"
+
+# Runs `work` once, at once, and commits what it staged as one transition: the same call as `transition.request`. When `work` fails the
+# transition is aborted and the failure is answered as it was; the `rollback` runs first.
+[[augment.method]]
+name = "request_transition"
+since = "0.2.0"
+returns = "object:transition"
+
+[[augment.method.param]]
+name = "work"
+type = "callback:staged_work"
+
+[[augment.method.param]]
+name = "options"
+type = "object:transition_options"
+optional = true
+
+[[augment.method.param]]
+name = "rollback"
+type = "callback:rollback"
+optional = true

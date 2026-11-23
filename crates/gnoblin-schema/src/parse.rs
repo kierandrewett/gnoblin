@@ -76,6 +76,10 @@
 //!   a kind of its own.
 //! - `inert = "reason"` on a member: accepted and not applied. `abi = "fn:<name>"`: served by an existing typed table function.
 //! - `base = "<namespace>.<class>"`: a class of another namespace's catalog; the members are not copied into the derived class.
+//! - `[[augment]]` with `target = "core.<class>"`, and `[[augment.property]]` and `[[augment.method]]` blocks: members a library above the
+//!   core adds to a class of the core's catalog (`gnoblin.model`), which the core never reads. A property is `readonly`, and a method is a
+//!   method of the object. The catalog refuses a target the core lacks and a member name the target has, and lowers the members of every
+//!   augment of one target into the service class `<class>_augment` of the augmenting namespace ([`crate::Augment`]).
 
 use std::collections::BTreeSet;
 
@@ -83,8 +87,8 @@ use serde::Deserialize;
 
 use crate::error::SchemaError;
 use crate::model::{
-    CallbackDecl, DefaultValue, EnumDecl, ErrorDecl, Export, Extras, Field, Method, Namespace, ObjectKind, ObjectType,
-    Property, Schema, Signal, TaggedVariant, Type, is_class_ref, is_error_code, is_lower_name,
+    Augment, CallbackDecl, DefaultValue, EnumDecl, ErrorDecl, Export, Extras, Field, Method, Namespace, ObjectKind,
+    ObjectType, Property, Schema, Signal, TaggedVariant, Type, is_class_ref, is_error_code, is_lower_name,
 };
 use gnoblin_types::Version;
 
@@ -116,6 +120,19 @@ struct RawSchema {
     enums: Vec<RawEnum>,
     #[serde(default, rename = "callback")]
     callbacks: Vec<RawCallback>,
+    #[serde(default, rename = "augment")]
+    augments: Vec<RawAugment>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawAugment {
+    target: String,
+    since: Option<String>,
+    #[serde(default, rename = "property")]
+    properties: Vec<RawProperty>,
+    #[serde(default, rename = "method")]
+    methods: Vec<RawMethod>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -325,6 +342,7 @@ pub fn parse_schema(origin: &str, text: &str) -> Result<Schema, SchemaError> {
     let objects = parse_objects(&raw.objects, scope, &mut problems);
     let enums = parse_enums(&raw.enums, scope, &mut problems);
     let callbacks = parse_callbacks(&raw.callbacks, scope, &mut problems);
+    let augments = parse_augments(&raw.augments, scope, &mut problems);
 
     if !problems.is_empty() {
         return Err(SchemaError::Invalid {
@@ -342,6 +360,7 @@ pub fn parse_schema(origin: &str, text: &str) -> Result<Schema, SchemaError> {
             errors,
             enums,
             callbacks,
+            augments,
         }),
         // Unreachable in practice: a bad namespace or version already pushed a
         // problem, so the branch above returned. Reported rather than panicked so
@@ -488,6 +507,69 @@ fn parse_callbacks(raw_callbacks: &[RawCallback], scope: Scope, problems: &mut V
     callbacks
 }
 
+/// The augments of a local namespace: the members a library adds to a class of the core's catalog. The catalog checks the target against
+/// the core's classes and the members against the target's; here a member is read the way an object's is, with the rules an augment adds:
+/// a property is read-only (the library serves it and no language writes it) and a method is a method of the object, not a function.
+fn parse_augments(raw_augments: &[RawAugment], scope: Scope, problems: &mut Vec<String>) -> Vec<Augment> {
+    let mut augments = Vec::new();
+    for raw_augment in raw_augments {
+        let owner = format!("augment `{}`", raw_augment.target);
+        local_only(scope, problems, &owner, "[[augment]]", true);
+        let Some(class) = raw_augment
+            .target
+            .strip_prefix("core.")
+            .filter(|class| is_lower_name(class))
+        else {
+            problems.push(format!(
+                "{owner}: `target` must be `core.<class>`, a class of the core catalog, written [a-z][a-z0-9_]*"
+            ));
+            continue;
+        };
+        let Some(since) = since_of(problems, raw_augment.since.as_deref(), &owner, scope.version) else {
+            continue;
+        };
+        let mut members = BTreeSet::new();
+        let properties = parse_properties(
+            &raw_augment.properties,
+            &owner,
+            since,
+            scope,
+            &mut members,
+            false,
+            problems,
+        );
+        for property in properties.iter().filter(|property| !property.readonly) {
+            problems.push(format!(
+                "{owner}: property `{}` must be read-only (`readonly = true`): the library serves it and no language writes it",
+                property.name
+            ));
+        }
+        let methods = parse_methods(
+            &raw_augment.methods,
+            &owner,
+            since,
+            ObjectKind::Service,
+            scope,
+            &mut members,
+            problems,
+        );
+        for method in methods.iter().filter(|method| method.function) {
+            problems.push(format!(
+                "{owner}: method `{}` is a `function`: an augment adds methods of the object it extends",
+                method.name
+            ));
+        }
+        augments.push(Augment {
+            target: raw_augment.target.clone(),
+            class: class.to_owned(),
+            since,
+            properties,
+            methods,
+        });
+    }
+    augments
+}
+
 fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<String>) -> Vec<ObjectType> {
     let mut objects = Vec::new();
     let mut seen_objects = BTreeSet::new();
@@ -580,6 +662,7 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
             kind,
             ctor: raw_object.ctor.clone(),
             retained: raw_object.retained,
+            augment_of: None,
             export: export_of(raw_object.export.as_ref()),
             tag: raw_object.tag.clone(),
             variants,

@@ -31,7 +31,7 @@ use gnoblin_schema::{
     Type,
 };
 
-use super::objects::{Member, check_foreign, crate_path_of, finds_of, foreign_handle, slots_of, stem_of};
+use super::objects::{Member, augments_of, check_foreign, crate_path_of, finds_of, foreign_handle, slots_of, stem_of};
 use super::text::{pascal, rust_ident, snake};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family};
 use super::{Comment, File, SdkSpec, Target};
@@ -1026,6 +1026,68 @@ impl go::typed::FromVal<Objects> for @Name@ {
         Ok(())
     }
 
+    /// The extension trait that gives the core's typed class `target` the members of the class `class`, which holds an augment: the trait is
+    /// the library's and is implemented for the core's class, so a shell sees the members only when it uses this library's prelude. A member
+    /// is read or called through the service of this library, made for the generation the core's object belongs to. A property is always
+    /// there, so it reads as the value and not as an `Option`.
+    fn augment_source(&self, class: &ObjectType, target: &ObjectType) -> Result<String, String> {
+        let service = class_name(class);
+        let core = format!("::gnoblin_core::objects::{}", class_name(target));
+        let trait_name = format!("{}StdExt", class_name(target));
+        let mut declared = String::new();
+        let mut defined = String::new();
+        for property in &class.properties {
+            let ident = property_ident(property);
+            let owned = self.owned(&property.ty)?;
+            let _ = write!(
+                declared,
+                "    /// The property `{}`.\n    ///\n    /// # Errors\n    ///\n    /// The generation has retired, or the library cannot read it.\n    fn {ident}(&self) -> go::Res<{owned}>;\n\n",
+                property.name
+            );
+            let read = if matches!(property.ty, Type::ObjectRef(_)) {
+                format!(
+                    "{service}::get(&super::std_objects(self.handle().api())?)?.{ident}()?.ok_or_else(|| go::Fail::err(\"the library gave no `{}`\"))",
+                    property.name
+                )
+            } else {
+                format!("{service}::get(&super::std_objects(self.handle().api())?)?.{ident}()")
+            };
+            let _ = write!(
+                defined,
+                "    fn {ident}(&self) -> go::Res<{owned}> {{\n        {read}\n    }}\n\n"
+            );
+        }
+        for method in &class.methods {
+            let ident = member_ident(&method.name, &method.extras.export.rust);
+            let (params, _) = self.params_source(&method.params)?;
+            let returns = match &method.returns {
+                Some(ty) if method.optional => format!("Option<{}>", self.owned(ty)?),
+                Some(ty) => self.owned(ty)?,
+                None => "()".to_owned(),
+            };
+            let given: Vec<String> = method
+                .params
+                .iter()
+                .map(|field| rust_ident(&snake(&field.name)))
+                .collect();
+            let _ = write!(
+                declared,
+                "    /// The method `{}`.\n    ///\n    /// # Errors\n    ///\n    /// The generation has retired, or the library refuses the arguments.\n    fn {ident}(&self{params}) -> go::Res<{returns}>;\n\n",
+                method.name
+            );
+            let _ = write!(
+                defined,
+                "    fn {ident}(&self{params}) -> go::Res<{returns}> {{\n        {service}::get(&super::std_objects(self.handle().api())?)?.{ident}({})\n    }}\n\n",
+                given.join(", ")
+            );
+        }
+        Ok(format!(
+            "/// The members `{ns}` adds to the core's `{name}`: `use gnoblin_std::prelude::*` brings them in, and a shell that never does has none.\n///\n/// Each is read through the library's service for the generation the object belongs to, so a member never binds to a library of another\n/// generation.\npub trait {trait_name} {{\n{declared}}}\n\nimpl {trait_name} for {core} {{\n{defined}}}\n\n",
+            ns = self.namespace,
+            name = class_name(target),
+        ))
+    }
+
     fn signal_source(
         &self,
         out: &mut String,
@@ -1306,6 +1368,9 @@ pub(super) fn render(catalog: &Catalog, namespace: &Namespace) -> Result<String,
                 body.push_str(&text);
             }
         }
+    }
+    for (class, target) in augments_of(catalog, &gen_.objects)? {
+        body.push_str(&gen_.augment_source(class, target)?);
     }
     let ids_fields: Vec<String> = fields
         .iter()

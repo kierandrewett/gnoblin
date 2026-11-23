@@ -630,3 +630,15 @@ optional = true
 [[object.method.param]]
 name = "name"
 type = "string"
+
+# The scene is `gnoblin.scene` of the core's root once this library is loaded: the core has no scene tree of the shell's own.
+[[augment]]
+target = "core.gnoblin"
+since = "0.2.0"
+
+# The one tree the shell's nodes hang from.
+[[augment.property]]
+name = "scene"
+type = "object:scene"
+since = "0.2.0"
+readonly = true

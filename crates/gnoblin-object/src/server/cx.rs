@@ -249,6 +249,27 @@ impl<'a> Cx<'a> {
         self.lib.handout(self.st, obj)
     }
 
+    /// The object of the service `class` of this library, made the first time the generation asks for it, as the value that hands it to the
+    /// shell. A member of one class that is the service of another (the root's `workspaces`, which the std library adds to the core's
+    /// `gnoblin`) answers with it, so the shell reads the one object the service's own `get` gives.
+    ///
+    /// # Errors
+    ///
+    /// The class is not in the catalog or is not a service, or its constructor refuses.
+    pub fn service(&self, class: &str) -> Res<Val> {
+        let id = self.class_named(class)?;
+        if self.class_def(id)?.kind != abi::CLASS_SERVICE {
+            return Err(Fail::type_error(format!("`{class}` is not a service")));
+        }
+        let obj = self.lib.create(self.st.ctx, id, Vec::new())?;
+        // `create` gave one reference and `handout` makes the one the shell holds: the first is let go.
+        let handed = self.handout(obj);
+        let released = self.lib.release(self.st.ctx, obj);
+        let value = handed?;
+        released?;
+        Ok(value)
+    }
+
     /// Makes `parent` own `child`: the child lives until `destroy` of it or of the parent, whatever the shell releases.
     ///
     /// # Errors

@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type};
 
 use super::object_script::{ScriptView, quote};
-use super::objects::{ClassMember, Member, check_foreign, finds_of, slots_of};
+use super::objects::{ClassMember, Member, augments_of, check_foreign, finds_of, slots_of};
 use super::text::{CodeWriter, pascal, python_ident, snake};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family, py_field};
 
@@ -258,6 +258,33 @@ class Object(_Held):
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__} {self._h!r}>"
+
+
+_augmented: set[tuple[type, str]] = set()
+
+
+def _augmentable(target: type, name: str) -> None:
+    """Refuses a member the class has of its own; a library that is loaded again replaces what it added before."""
+    if hasattr(target, name) and (target, name) not in _augmented:
+        raise TypeError(f"{target.__name__} has a member {name!r} of its own: a library cannot add one of the same name")
+    _augmented.add((target, name))
+
+
+def augment_property(target: type, name: str, read: Callable[[], Any]) -> None:
+    """Adds the read-only property `name` to the core class `target`, which reads `read()`."""
+    _augmentable(target, name)
+    setattr(target, name, property(lambda self: read()))
+
+
+def augment_method(target: type, name: str, run: Callable[..., Any]) -> None:
+    """Adds the method `name` to the core class `target`, which calls `run(*args, **kwargs)`."""
+    _augmentable(target, name)
+
+    def method(self: Any, *args: Any, **kwargs: Any) -> Any:
+        return run(*args, **kwargs)
+
+    method.__name__ = name
+    setattr(target, name, method)
 "#;
 
 fn class_name(object: &ObjectType) -> String {
@@ -1363,6 +1390,36 @@ impl<'a> Py<'a> {
     }
 }
 
+impl Py<'_> {
+    /// What installs the members of the class `class`, which holds an augment, on the class `target` of the core's module: each is read or
+    /// called through the service of this library, made for the generation that is running when the member is used, so a member binds to
+    /// the library of the generation and never to one that has retired.
+    fn augment_source(&self, c: &mut CodeWriter, class: &ObjectType, target: &ObjectType) {
+        let name = class_name(class);
+        let core = format!("_core.{}", class_name(target));
+        c.line(format!(
+            "# The members `{}` adds to `{}` of `gnoblin.objects.model`: they exist on it once this module is imported, and a shell that never imports it has none.",
+            self.view.namespace,
+            class_name(target)
+        ));
+        for property in &class.properties {
+            let ident = member_name(&property.name, &property.extras.export.py);
+            c.line(format!(
+                "_B.augment_property({core}, {}, lambda: {name}.get().{ident})",
+                quote(&ident)
+            ));
+        }
+        for method in &class.methods {
+            let ident = member_name(&method.name, &method.extras.export.py);
+            c.line(format!(
+                "_B.augment_method({core}, {}, lambda *args, **kwargs: {name}.get().{ident}(*args, **kwargs))",
+                quote(&ident)
+            ));
+        }
+        c.blank();
+    }
+}
+
 /// The classes of `view`'s namespace as a Python module, or as its stub.
 pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String> {
     let py = Py { view, stub };
@@ -1412,6 +1469,9 @@ pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String
         c.line(format!("_NS_NAME = {}", quote(view.namespace.as_str())));
         c.line("_NS = _B.open(_NS_NAME)");
     }
+    if !stub && !augments_of(view.catalog, &view.objects)?.is_empty() {
+        c.line("from gnoblin.objects import model as _core");
+    }
     c.blank();
     for declared in view.enums.values() {
         py.enum_source(&mut c, declared);
@@ -1424,6 +1484,11 @@ pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String
             ObjectKind::Record => py.record_source(&mut c, object)?,
             ObjectKind::Handle | ObjectKind::Service => py.handle_source(&mut c, object)?,
             ObjectKind::Interface => py.interface_source(&mut c, object)?,
+        }
+    }
+    if !stub {
+        for (class, target) in augments_of(view.catalog, &view.objects)? {
+            py.augment_source(&mut c, class, target);
         }
     }
     Ok(c.finish())

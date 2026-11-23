@@ -256,6 +256,19 @@ mod tests {
         assert_eq!(choose(&root, Path::new("shell.ts")), Choice::Generated);
     }
 
+    /// A shell whose only stock import is the std module, the one that puts the std members on the core's root, runs on the generated
+    /// library, whether it names a class of it or imports it for its effect.
+    #[test]
+    fn a_shell_whose_only_stock_import_is_the_std_object_module_is_generated() {
+        for text in [
+            "import \"gnoblin-std/generated/objects\";\n",
+            "import { Workspaces } from \"gnoblin-std/generated/objects\";\nvoid Workspaces;\n",
+        ] {
+            let (_dir, root) = root_with(&[("shell.ts", text)]);
+            assert_eq!(choose(&root, Path::new("shell.ts")), Choice::Generated, "{text}");
+        }
+    }
+
     #[test]
     fn a_shell_that_imports_no_generated_module_stays_on_the_typescript_library() {
         let (_dir, root) = root_with(&[("shell.ts", "gnoblin.clients.length;\n")]);

@@ -9,6 +9,8 @@
 # to the version that ships, and from then on its entries are frozen.
 released none
 
+augment | core.gnoblin | members added to a class of the core catalog | 0.2.0
+
 callback | compute_flag | () -> bool | 0.2.0
 callback | compute_number | () -> double | 0.2.0
 callback | compute_numbers | () -> list<double> | 0.2.0
@@ -76,6 +78,7 @@ member | camera3d.world_transform | property object:pose ro | 0.2.0
 member | camera3d.x | property double rw | 0.2.0
 member | camera3d.y | property double rw | 0.2.0
 member | camera3d.z | property double rw | 0.2.0
+member | core.gnoblin.scene | property object:scene ro | 0.2.0
 member | node_binding.alive | property bool ro | 0.2.0
 member | node_binding.dispose | method () | 0.2.0
 member | node_binding.property | property string ro | 0.2.0

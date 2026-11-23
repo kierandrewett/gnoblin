@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type};
 
 use super::object_script::{ScriptView, quote};
-use super::objects::{ClassMember, Member, check_foreign, finds_of, slots_of};
+use super::objects::{ClassMember, Member, augments_of, check_foreign, finds_of, slots_of};
 use super::text::{CodeWriter, camel, pascal, snake, ts_ident};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family, js_field};
 
@@ -206,6 +206,38 @@ export function setTimed(self, member, value, timing) {
     tween: timing.tween ?? 0,
     samples: timing.samples ?? [],
   });
+}
+
+/** The members already added to a class, so that loading a library again replaces its own and refuses another's. */
+const augmented = new WeakSet();
+
+function augmentable(target, name) {
+  if (name in target.prototype) {
+    const own = Object.getOwnPropertyDescriptor(target.prototype, name);
+    if (own === undefined || !augmented.has(own.get ?? own.value)) {
+      throw new TypeError(`${target.name} has a member "${name}" of its own: a library cannot add one of the same name`);
+    }
+  }
+}
+
+/** Adds the read-only property `name` to the core class `target`, which reads `read()`. */
+export function augmentGet(target, name, read) {
+  augmentable(target, name);
+  const get = function () {
+    return read();
+  };
+  augmented.add(get);
+  Object.defineProperty(target.prototype, name, { configurable: true, enumerable: false, get });
+}
+
+/** Adds the method `name` to the core class `target`, which calls `run(...args)`. */
+export function augmentCall(target, name, run) {
+  augmentable(target, name);
+  const value = function (...args) {
+    return run(...args);
+  };
+  augmented.add(value);
+  Object.defineProperty(target.prototype, name, { configurable: true, enumerable: false, writable: true, value });
 }
 "#;
 
@@ -1115,6 +1147,9 @@ pub(super) fn render_js(view: &ScriptView<'_>) -> Result<String, String> {
             foreign.js, foreign.alias, foreign.package
         ));
     }
+    if !augments_of(view.catalog, &view.objects)?.is_empty() {
+        c.line("import * as Core from \"gnoblin-core/generated/objects\";");
+    }
     c.blank();
     c.line(format!("const NS = B.open({});", quote(view.namespace.as_str())));
     c.line("const N = B.native;");
@@ -1142,7 +1177,72 @@ pub(super) fn render_js(view: &ScriptView<'_>) -> Result<String, String> {
         );
         c.line(format!("export const gnoblin = {}.get();", class_name(object)));
     }
+    for (class, target) in augments_of(view.catalog, &view.objects)? {
+        js.augment_source(&mut c, class, target);
+    }
     Ok(c.finish())
+}
+
+impl Js<'_> {
+    /// What installs the members of the class `class`, which holds an augment, on the class `target` of the core's module: each is read or
+    /// called through the service of this library, made for the generation that is running when the member is used, so a member binds to
+    /// the library of the generation and never to one that has retired.
+    fn augment_source(&self, c: &mut CodeWriter, class: &ObjectType, target: &ObjectType) {
+        let name = class_name(class);
+        let core = format!("Core.{}", class_name(target));
+        c.line(format!(
+            "// The members `{}` adds to `{}` of `gnoblin-core`: they exist on it once this module is loaded, and a shell that never loads it has none.",
+            self.view.namespace,
+            class_name(target)
+        ));
+        for property in &class.properties {
+            let ident = member_name(&property.name, &property.extras.export.js);
+            c.line(format!(
+                "B.augmentGet({core}, {}, () => {name}.get().{ident});",
+                quote(&ident)
+            ));
+        }
+        for method in &class.methods {
+            let ident = member_name(&method.name, &method.extras.export.js);
+            c.line(format!(
+                "B.augmentCall({core}, {}, (...args) => {name}.get().{ident}(...args));",
+                quote(&ident)
+            ));
+        }
+        c.blank();
+    }
+
+    /// The declarations of those members, merged into the core's class of the same name.
+    fn augment_dts(&self, c: &mut CodeWriter, class: &ObjectType, target: &ObjectType) -> Result<(), String> {
+        c.line("declare module \"gnoblin-core/generated/objects\" {");
+        c.indent();
+        c.line(format!(
+            "/** What `{}` adds to the core's `{}`: it is on the class once the module of this library is imported. */",
+            self.view.namespace,
+            class_name(target)
+        ));
+        c.line(format!("interface {} {{", class_name(target)));
+        c.indent();
+        for property in &class.properties {
+            let ident = member_name(&property.name, &property.extras.export.js);
+            c.line(format!("readonly {ident}: {};", self.ts(&property.ty, false)?));
+        }
+        for method in &class.methods {
+            let ident = member_name(&method.name, &method.extras.export.js);
+            let returns = match &method.returns {
+                Some(ty) if method.optional => self.ts_read(ty)?,
+                Some(ty) => self.ts(ty, false)?,
+                None => "void".to_owned(),
+            };
+            c.line(format!("{ident}({}): {returns};", self.params_dts(&method.params)?));
+        }
+        c.dedent();
+        c.line("}");
+        c.dedent();
+        c.line("}");
+        c.blank();
+        Ok(())
+    }
 }
 
 // ---- the declarations ------------------------------------------------------------------------------------------------------
@@ -1551,6 +1651,9 @@ pub(super) fn render_dts(view: &ScriptView<'_>) -> Result<String, String> {
             "/** The service `gnoblin`, made once: the root of the object model, which a shell reads as `gnoblin`. */",
         );
         c.line(format!("export declare const gnoblin: {};", class_name(object)));
+    }
+    for (class, target) in augments_of(view.catalog, &view.objects)? {
+        js.augment_dts(&mut c, class, target)?;
     }
     Ok(c.finish())
 }

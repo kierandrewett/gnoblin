@@ -526,3 +526,166 @@ since = "0.2.0"
 [[object.signal.field]]
 name = "text"
 type = "string"
+
+# `gnoblin.displays`: the logical displays, the shell's own and the ones the library keeps for the other outputs, as a list a shell changes.
+# It is the displays of `display_manager` seen as the root collection of the desktop: the same list and the same checks.
+[[object]]
+name = "displays"
+since = "0.2.0"
+kind = "service"
+
+# The displays in the list, in order.
+[[object.property]]
+name = "list"
+type = "list<object:display>"
+since = "0.2.0"
+readonly = true
+
+# How many displays are in the list.
+[[object.property]]
+name = "length"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Adds a display. Refused (busy) naming both displays when one of its outputs is presented by another display of the shell, and when
+# another display has its id.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "display"
+type = "object:display"
+
+# Removes a display of the shell's: its mirror and span end and each of its outputs gets a display of the library's. Answers whether it was
+# removed: a display of the library's own stays, and so does one that is not in the list.
+[[object.method]]
+name = "remove"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "display"
+type = "object:display"
+
+# Removes every display of the shell's.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+# Swaps `old` for `next` as one validated change: `old` and any other display of the shell that shares an output with `next` leave, and
+# `next` takes the place of `old`. Nothing changes when the check fails.
+[[object.method]]
+name = "replace"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "old"
+type = "object:display"
+
+[[object.method.param]]
+name = "next"
+type = "object:display"
+
+# The display in the list with this id, or none.
+[[object.method]]
+name = "by_id"
+since = "0.2.0"
+returns = "object:display"
+optional = true
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# The list changed, or a display presents other outputs.
+[[object.signal]]
+name = "changed"
+since = "0.2.0"
+
+# `gnoblin.outputs.profiles`: the hardware profiles the library applies to outputs, as a list a shell changes. It is the profiles of
+# `display_manager` seen as a collection: the same list and the same checks.
+[[object]]
+name = "output_profiles"
+since = "0.2.0"
+kind = "service"
+
+# The profiles in the list, in the order they were added.
+[[object.property]]
+name = "list"
+type = "list<object:output_profile>"
+since = "0.2.0"
+readonly = true
+
+# How many profiles are in the list.
+[[object.property]]
+name = "length"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Adds a profile. Refused when another profile in the list has its id.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "profile"
+type = "object:output_profile"
+
+# Stops managing a profile; the compositor keeps the arrangement it applied last. Answers whether it was in the list.
+[[object.method]]
+name = "remove"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "profile"
+type = "object:output_profile"
+
+# Stops managing every profile.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+# The profile in the list with this id, or none.
+[[object.method]]
+name = "by_id"
+since = "0.2.0"
+returns = "object:output_profile"
+optional = true
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# The list changed.
+[[object.signal]]
+name = "changed"
+since = "0.2.0"
+
+# The displays are `gnoblin.displays` of the core's root once this library is loaded, and the profiles `gnoblin.outputs.profiles`: the
+# core has no display and no output profile, so the members are the library's.
+[[augment]]
+target = "core.gnoblin"
+since = "0.2.0"
+
+# The logical displays: the shell's own and the ones the library keeps for the other outputs.
+[[augment.property]]
+name = "displays"
+type = "object:displays"
+since = "0.2.0"
+readonly = true
+
+[[augment]]
+target = "core.output_collection"
+since = "0.2.0"
+
+# The hardware profiles the library applies to outputs. Every output collection reports the desktop's list, the root's `outputs` and a
+# selection made with `where` alike.
+[[augment.property]]
+name = "profiles"
+type = "object:output_profiles"
+since = "0.2.0"
+readonly = true

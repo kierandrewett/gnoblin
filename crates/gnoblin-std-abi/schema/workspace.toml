@@ -1295,6 +1295,45 @@ optional = true
 name = "output"
 type = "uint"
 
+# The area windows are laid out in on the primary output: its rectangle less the room the shell's bars take. None while the tree has no
+# output yet.
+[[object.property]]
+name = "area"
+type = "object:layout_rect"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# Shows `workspace` on `options.output`, or on the output under the pointer (the primary output when no pointer says). With
+# `options.duration` the windows slide from one workspace to the other; without it the switch is at once. Refused when the workspace is
+# not in the list.
+[[object.method]]
+name = "show"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "workspace"
+type = "object:workspace"
+
+[[object.method.param]]
+name = "options"
+type = "object:show_options"
+optional = true
+
+# `show` for the workspace of the list that has this id. Refused when no workspace in the list has it.
+[[object.method]]
+name = "show_by_id"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+[[object.method.param]]
+name = "options"
+type = "object:show_options"
+optional = true
+
 # A workspace joined the list.
 [[object.signal]]
 name = "added"
@@ -1418,3 +1457,16 @@ type = "enum:snap_zone"
 [[object.method.param]]
 name = "floating"
 type = "object:layout_rect"
+
+# The list of workspaces is `gnoblin.workspaces` of the core's root once this library is loaded: the core has no workspace, so the member is
+# the library's. A shell that loads no std library has no such member.
+[[augment]]
+target = "core.gnoblin"
+since = "0.2.0"
+
+# The workspaces: their list, the area windows are laid out in, and which workspace an output shows.
+[[augment.property]]
+name = "workspaces"
+type = "object:workspaces"
+since = "0.2.0"
+readonly = true

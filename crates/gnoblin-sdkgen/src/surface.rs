@@ -22,7 +22,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
-use gnoblin_schema::{CallbackDecl, EnumDecl, Method, ObjectKind, ObjectType, Property, Signal, Version};
+use gnoblin_schema::{Augment, CallbackDecl, EnumDecl, Method, ObjectKind, ObjectType, Property, Signal, Version};
 
 use super::model::{MODEL_DIRS, SdkSpec};
 
@@ -262,6 +262,32 @@ pub fn surface_lines(spec: &SdkSpec) -> BTreeMap<String, Vec<SurfaceEntry>> {
     surface
 }
 
+/// The lines of an augment: the augment itself, and each member it adds, keyed by the core class it extends (`core.gnoblin.workspaces`).
+fn augment_entries(augment: &Augment, entries: &mut Vec<SurfaceEntry>) {
+    entries.push(SurfaceEntry {
+        kind: "augment",
+        key: augment.target.clone(),
+        detail: "members added to a class of the core catalog".to_owned(),
+        since: augment.since,
+    });
+    for property in &augment.properties {
+        entries.push(SurfaceEntry {
+            kind: "member",
+            key: format!("{}.{}", augment.target, property.name),
+            detail: property_detail(property),
+            since: property.since,
+        });
+    }
+    for method in &augment.methods {
+        entries.push(SurfaceEntry {
+            kind: "member",
+            key: format!("{}.{}", augment.target, method.name),
+            detail: method_detail(method),
+            since: method.since,
+        });
+    }
+}
+
 /// The locks of the namespaces a library serves: one per module (a file of the catalog directory), so two lanes that add classes
 /// to different modules edit different locks.
 pub fn module_units(spec: &SdkSpec) -> Vec<LockUnit> {
@@ -281,8 +307,12 @@ pub fn module_units(spec: &SdkSpec) -> Vec<LockUnit> {
             source: (*dir).to_owned(),
             entries: Vec::new(),
         });
-        for object in &schema.objects {
+        // The class that holds the members of an augment is the catalog's own making: the lock records the augment, which is the source.
+        for object in schema.objects.iter().filter(|object| object.augment_of.is_none()) {
             object_entries(schema.namespace.as_str(), object, &mut unit.entries);
+        }
+        for augment in &schema.augments {
+            augment_entries(augment, &mut unit.entries);
         }
         unit.entries.extend(schema.enums.iter().map(enum_entry));
         unit.entries.extend(schema.callbacks.iter().map(callback_entry));
@@ -351,6 +381,7 @@ fn parse_lock(text: &str, path: &str) -> Result<ParsedLock, String> {
         let kind = match *kind {
             "object" => "object",
             "member" => "member",
+            "augment" => "augment",
             "variant" => "variant",
             "variant_field" => "variant_field",
             "enum" => "enum",

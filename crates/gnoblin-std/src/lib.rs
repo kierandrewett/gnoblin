@@ -133,4 +133,8 @@ pub mod prelude {
         Projection, Scene, SceneNode, Shadow, Style, Transition, TransitionOptions, TransitionResult, View,
         ViewOptions,
     };
+
+    // The members this library adds to the core's typed root and output collections: `model.workspaces()?`, `model.request_transition(..)`,
+    // `outputs.profiles()?`. A shell that does not use this prelude has none of them.
+    pub use crate::objects::{ModelRootStdExt, OutputCollectionStdExt};
 }

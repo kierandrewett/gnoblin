@@ -101,6 +101,40 @@ A local file may use keys a compositor file may not:
 The wire never carries such a namespace and the `gnoblin` catalog hash (`gnoblin_catalog_hash`) does not include it. The namespace has
 a hash of its own (`Catalog::namespace_fingerprint`), which its object table reports.
 
+### Members a library adds to a class of the core
+
+A local file of a library above the core may declare `[[augment]]` with `target = "core.<class>"`, where the target is a class of the
+core catalog. Its `[[augment.property]]` and `[[augment.method]]` blocks are written as an object's members are. The std catalog
+augments two classes:
+
+- `core.gnoblin` gets `workspaces`, `displays`, `scene`, `gestures` and `request_transition`.
+- `core.output_collection` gets `profiles`.
+
+The rules:
+
+- The core catalog never reads the file, and no symbol of the core names std. The core's namespace fingerprint, its static catalog and
+  its typed Rust API are the same bytes with and without the std files (`cargo test -p gnoblin-sdkgen` proves it).
+- An augment's property is read-only, and its method is a method of the object, not a function.
+- The catalog refuses a target the core catalog lacks (the message names `core.<class>`), a record or an interface as a target, and a
+  member whose name the target has as a property, a method or a signal, its own or inherited (the message names the member, the
+  augment, the file of each and the core class). Two augments of one target may not declare one member.
+- The members of every augment of one target are lowered into one service class of the augmenting namespace, `<class>_augment`
+  (`gnoblin_augment`, `output_collection_augment`). The library implements it like any class, with each member answering through the
+  library's own service (`crates/gnoblin-std-impl/src/augment.rs`), and every generator renders it.
+- The surface lock records the augment, and not the lowered class, in the lock of the module that declares it
+  (`augment | core.gnoblin | ...` and `member | core.gnoblin.workspaces | ...`). The members are the std library's ABI, in the std
+  locks, and the core's locks and `abi-check` hold none of them.
+- Each generator installs the members on the core's class when the library's module is loaded, and reads each through that service for
+  the generation that is running, so a member never binds to a library of another generation:
+    - TypeScript: importing `gnoblin-std/generated/objects` defines the members on the prototype of the core's class, and its
+      declarations merge them into it (`declare module "gnoblin-core/generated/objects"`).
+    - Python: importing `gnoblin.objects.std` sets them on the core's class. A stub cannot add a member to a class of another file, so
+      the stubs name them on `GnoblinAugment` and `OutputCollectionAugment`.
+    - Rust: the extension traits `ModelRootStdExt` and `OutputCollectionStdExt` (the core's typed class and the suffix `StdExt`) are
+      implemented for `gnoblin_core::objects::ModelRoot` and `OutputCollection`, and `gnoblin_std::prelude` brings them in.
+- A shell that loads no std has none of the members: the attribute is missing in TypeScript and Python, and a call of an extension
+  trait that is not imported does not compile in Rust.
+
 A catalog may also take a schema file that is not on disk (`Catalog::load_dirs_with`). The std catalog does, for the built-in layouts:
 
 - `layouts.toml` is written from `gnoblin_std_abi::layouts::LAYOUT_KINDS` (`crates/gnoblin-sdkgen/src/layout_schema.rs`), one class

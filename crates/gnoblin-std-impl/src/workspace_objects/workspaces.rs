@@ -104,6 +104,19 @@ fn assign_layout(cx: &mut Cx<'_>, held: &mut WorkspaceRef, value: &Val) -> Res<(
     Ok(())
 }
 
+/// Shows the workspace `handle` as the `show_options` value `options` says (none for the defaults): the call of a workspace's `show` and
+/// of the list's.
+fn show(ctx: GnoblinCtx, handle: Id, options: &Val) -> Res<()> {
+    let fields: &[Val] = if options.is_none() { &[] } else { options.record()? };
+    let duration = number_field(fields, 0, 0.0)?;
+    let progress = number_field(fields, 1, 0.0)?;
+    let output = field(fields, 2)
+        .map(Val::uint)
+        .transpose()?
+        .filter(|output| *output != 0);
+    edit(ctx, |st| st.show_workspace(handle, output, duration, progress))
+}
+
 fn register_workspace(builder: &mut Builder) {
     let _ = builder
         .class::<WorkspaceRef>("workspace")
@@ -213,16 +226,7 @@ fn register_workspace(builder: &mut Builder) {
             .map(Val::Uint)
         })
         .method("show", |held, _, args| {
-            let fields: &[Val] = if args[0].is_none() { &[] } else { args[0].record()? };
-            let duration = number_field(fields, 0, 0.0)?;
-            let progress = number_field(fields, 1, 0.0)?;
-            let output = field(fields, 2)
-                .map(Val::uint)
-                .transpose()?
-                .filter(|output| *output != 0);
-            edit(held.ctx, |st| {
-                st.show_workspace(held.handle, output, duration, progress)
-            })?;
+            show(held.ctx, held.handle, &args[0])?;
             Ok(Val::None)
         })
         .method("invalidate", |held, _, _| {
@@ -293,6 +297,17 @@ fn maybe_workspace(cx: &mut Cx<'_>, handle: Option<Id>) -> Res<Val> {
     }
 }
 
+/// The workspace of the list that has the id `id`, if there is one.
+fn workspace_named(ctx: GnoblinCtx, id: &str) -> Res<Option<Id>> {
+    look(ctx, |st| {
+        Ok(st
+            .workspaces
+            .iter()
+            .copied()
+            .find(|handle| st.ws.get(handle).is_some_and(|ws| ws.id == id)))
+    })
+}
+
 fn register_list(builder: &mut Builder) {
     let _ = builder
         .class::<()>("workspaces")
@@ -312,6 +327,25 @@ fn register_list(builder: &mut Builder) {
         .get("length", |_, cx| {
             look(cx.ctx(), |st| Ok(st.workspaces.len() as u64)).map(Val::Uint)
         })
+        .get("area", |_, cx| {
+            let areas = look(cx.ctx(), |st| st.client_areas_raw(0))?;
+            Ok(rect_option(
+                (areas.flags & sabi::STD_AREAS_HAS_AREA != 0).then(|| raw_rect(&areas.area)),
+            ))
+        })
+        .method("show", |_, cx, args| {
+            let handle = handle_of(cx, &args[0])?;
+            show(cx.ctx(), handle, &args[1])?;
+            Ok(Val::None)
+        })
+        .method("show_by_id", |_, cx, args| {
+            let id = args[0].text()?;
+            let Some(handle) = workspace_named(cx.ctx(), id)? else {
+                return Err(Fail::no_such(format!("there is no workspace \"{id}\" in the list")));
+            };
+            show(cx.ctx(), handle, &args[1])?;
+            Ok(Val::None)
+        })
         .method("add", |_, cx, args| {
             let handle = handle_of(cx, &args[0])?;
             edit(cx.ctx(), |st| st.add_workspace(handle))?;
@@ -329,14 +363,7 @@ fn register_list(builder: &mut Builder) {
             Ok(Val::None)
         })
         .method("by_id", |_, cx, args| {
-            let id = args[0].text()?.to_owned();
-            let found = look(cx.ctx(), |st| {
-                Ok(st
-                    .workspaces
-                    .iter()
-                    .copied()
-                    .find(|handle| st.ws.get(handle).is_some_and(|ws| ws.id == id)))
-            })?;
+            let found = workspace_named(cx.ctx(), args[0].text()?)?;
             maybe_workspace(cx, found)
         })
         .method("of_client", |_, cx, args| {
