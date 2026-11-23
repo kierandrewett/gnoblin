@@ -7,6 +7,7 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 
 use gnoblin_js::{JsBytecodeCache, JsShell};
@@ -16,14 +17,21 @@ use common::*;
 
 const BOOTS: usize = 10;
 
+/// One boot: attach a shell, load the stock library and evaluate `shell.ts`. The stock `gnoblin-std` calls
+/// `libgnoblin-std` through `__gnoblinStd`, so the shell runs over a core generation with the std library loaded, as in the
+/// compositor. That core is set up before the clock starts: what is timed is the shell's start, the same span as before
+/// the library went native.
 fn boot(root: &Path, cache: &JsBytecodeCache) -> f64 {
-    let started = Instant::now();
     let mut config = honest_config(root);
     config.js.cache = cache.clone();
-    let mut shell = JsShell::new(Box::new(FakeCompositor::new()), config).expect("the shell boots");
+    let core = common::native::NativeCore::new(&FakeCompositor::new(), Arc::clone(&config.clock));
+    core.configure(&mut config);
+    let started = Instant::now();
+    let mut shell = JsShell::new(core.link(), config).expect("the shell boots over the core");
     shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     let took = started.elapsed().as_secs_f64() * 1e3;
     drop(shell);
+    drop(core);
     took
 }
 
