@@ -22,7 +22,7 @@ use std::rc::Rc;
 
 use gnoblin_core::Rect;
 use gnoblin_object::server::{Builder, ShellImpl};
-use gnoblin_object::{Closure, Fail, Obj, Res, Val};
+use gnoblin_object::{Closure, ErrorCode, Fail, Obj, Res, Val};
 use gnoblin_std_abi::{STD_CONSTRAINT_MINIMUM_STRIP, STD_CONSTRAINT_WORK_AREA};
 
 use super::drags::work_area;
@@ -559,7 +559,12 @@ fn rects_val(kept: Rests) -> Val {
 pub(super) fn register(builder: &mut Builder) {
     let _ = builder
         .class::<ClientAsk>("client_request")
-        .ctor(|_cx, _inits| Err(Fail::refused("the library makes a request when a window asks")))
+        .ctor(|_cx, _inits| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "the library makes a request when a window asks",
+            ))
+        })
         .get("kind", |h, _| Ok(enumeration(h.kind)))
         .get("client", |h, _| Ok(Val::Text(h.client.to_string())))
         .get("x", |h, _| Ok(Val::Double(h.x)))

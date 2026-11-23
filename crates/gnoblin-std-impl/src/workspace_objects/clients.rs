@@ -9,7 +9,7 @@
 use gnoblin_core::Rect;
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Fail, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Res, Val};
 use gnoblin_std_abi as sabi;
 
 use super::values::{checked_rect, client_val, member_val, rect_of, rect_val, wire_of};
@@ -91,9 +91,11 @@ fn workspace_of(held: &CollectionRef) -> Res<Id> {
         match coll.source {
             Some(Source::WorkspaceClients(workspace)) => Ok(workspace),
             Some(_) => Err(crate::error::Fail::refused(
+                ErrorCode::ReadOnly,
                 "this collection's membership cannot be changed: it is the list of every client",
             )),
             None => Err(crate::error::Fail::refused(
+                ErrorCode::ReadOnly,
                 "this collection is a selection: its membership follows its parent's",
             )),
         }
@@ -105,6 +107,7 @@ fn register_collection(builder: &mut Builder) {
         .class::<CollectionRef>("client_collection")
         .ctor(|_, _| {
             Err(Fail::refused(
+                ErrorCode::Unsupported,
                 "a collection of clients is the clients of a workspace, every client, or a selection: ask for one with \
                  `workspace.clients`, `all` or `where`",
             ))
@@ -236,6 +239,7 @@ fn register_state(builder: &mut Builder) {
         .class::<ClientRef>("client_state")
         .ctor(|_, _| {
             Err(Fail::refused(
+                ErrorCode::Unsupported,
                 "the state of a client is the one `of` gives for its node",
             ))
         })

@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use gnoblin_core::Rect;
 use gnoblin_object::server::{Builder, ClassBuilder, Cx, Inits};
-use gnoblin_object::{Fail, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Res, Val};
 use gnoblin_std_abi::layouts::{ActionDesc, LAYOUT_KINDS, LayoutKindDesc, OptionDesc, ValueDesc, ValueShape};
 
 use super::layouts::{OwnedLayout, layout_members};
@@ -107,10 +107,13 @@ fn act(
         });
     }
     let Some(workspace) = held.on else {
-        return Err(Fail::refused(format!(
-            "the {} layout acts on the workspace that has it: give it to a workspace first",
-            kind.name
-        )));
+        return Err(Fail::refused(
+            ErrorCode::InvalidState,
+            format!(
+                "the {} layout acts on the workspace that has it: give it to a workspace first",
+                kind.name
+            ),
+        ));
     };
     let env = look(cx.ctx(), |st| action_env(st, workspace))?;
     // The layout runs outside the library's borrow of its state.

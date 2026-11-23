@@ -13,11 +13,12 @@ use std::collections::BTreeMap;
 
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 use gnoblin_tree_client::tree_mirror::{MirrorValue, TxAnimation};
 
 use super::glue::{self, PerGeneration};
 use super::values::{nodes_of, published, size, tree_class};
+use super::world::{detached, write_fail};
 use crate::session;
 
 /// The least time between two `heartbeat` calls, in milliseconds. The compositor's lease on the lock screen lasts two seconds, so twice a
@@ -109,18 +110,18 @@ fn answered(cx: &Cx<'_>, token: u64, result: &str, error: &str) {
 fn authenticate(cx: &Cx<'_>, password: &str) -> Res<Val> {
     let ctx = cx.ctx();
     let service = cx.me();
-    let node = node().ok_or_else(|| Fail::refused("gnoblin.lock.authenticate: the tree has no lock node"))?;
+    let node = node().ok_or_else(|| {
+        Fail::refused(
+            ErrorCode::Unavailable,
+            "gnoblin.lock.authenticate: the tree has no lock node",
+        )
+    })?;
     let token = session::with(|session| {
         session
             .tree()
-            .map_err(|(code, text)| Fail::new(code, text))?
+            .map_err(detached)?
             .call(node, "authenticate", Vec::new(), password.to_owned())
-            .map_err(|error| {
-                Fail::new(
-                    gnoblin_core_abi::E_NO_SUCH_NODE,
-                    format!("gnoblin.lock.authenticate: {error}"),
-                )
-            })
+            .map_err(|error| write_fail("gnoblin.lock.authenticate", &error))
     })?;
     let answer = glue::answer_once(ctx, "password answer", token, move |answer| {
         let result = String::from_utf8_lossy(&answer.result).into_owned();
@@ -162,14 +163,9 @@ fn heartbeat(cx: &Cx<'_>) -> Res<Val> {
     let sent = session::with(|session| {
         session
             .tree()
-            .map_err(|(code, text)| Fail::new(code, text))?
+            .map_err(detached)?
             .call(node, "heartbeat", Vec::new(), String::new())
-            .map_err(|error| {
-                Fail::new(
-                    gnoblin_core_abi::E_NO_SUCH_NODE,
-                    format!("gnoblin.lock.heartbeat: {error}"),
-                )
-            })
+            .map_err(|error| write_fail("gnoblin.lock.heartbeat", &error))
     });
     if sent.is_ok() {
         LOCK.with(|lock| lock.with(ctx, |table| table.last_beat = Some(now)));
@@ -193,18 +189,15 @@ pub(super) fn register(builder: &mut Builder) {
         })
         .method("engage", |_, _, args| {
             let engaged = args[0].bool()?;
-            let node = node().ok_or_else(|| Fail::refused("gnoblin.lock.engage: the tree has no lock node"))?;
+            let node = node().ok_or_else(|| {
+                Fail::refused(ErrorCode::Unavailable, "gnoblin.lock.engage: the tree has no lock node")
+            })?;
             session::with(|session| {
                 session
                     .tree()
-                    .map_err(|(code, text)| Fail::new(code, text))?
+                    .map_err(detached)?
                     .set(node, "engaged", MirrorValue::Bool(engaged), TxAnimation::default())
-                    .map_err(|error| {
-                        Fail::new(
-                            gnoblin_core_abi::E_NO_SUCH_NODE,
-                            format!("gnoblin.lock.engage: {error}"),
-                        )
-                    })
+                    .map_err(|error| write_fail("gnoblin.lock.engage", &error))
             })?;
             Ok(Val::None)
         })

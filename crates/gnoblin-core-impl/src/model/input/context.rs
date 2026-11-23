@@ -4,7 +4,7 @@
 //! seat's.
 
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Closure, Fail, Obj, Res, Val};
+use gnoblin_object::{Closure, ErrorCode, Fail, Obj, Res, Val};
 
 use super::super::values::record;
 use super::binding::{bind_closure, bind_drag, bind_gesture, bind_handler, follow, new_collection, unfollow};
@@ -111,10 +111,13 @@ fn live(cx: &Cx<'_>, context: Obj, what: &str) -> Res<(String, u64)> {
                 "InputContext \"{}\".{what}: the context was removed from the input manager",
                 held.name
             ))),
-            Life::Detached => Err(Fail::refused(format!(
-                "InputContext \"{}\".{what}: add the context to the input manager first",
-                held.name
-            ))),
+            Life::Detached => Err(Fail::refused(
+                ErrorCode::InvalidState,
+                format!(
+                    "InputContext \"{}\".{what}: add the context to the input manager first",
+                    held.name
+                ),
+            )),
         }
     })
 }
@@ -433,7 +436,10 @@ pub(super) fn register(builder: &mut Builder) {
                     .is_some_and(|held| held.layouts.contains(&layout))
             });
             if attached {
-                return Err(Fail::refused("this layout is already attached to the input context"));
+                return Err(Fail::refused(
+                    ErrorCode::InvalidState,
+                    "this layout is already attached to the input context",
+                ));
             }
             if with(cx.ctx(), |table| table.collections.get(&layout).map(|held| held.tier)) != Some(BindingTier::Layout)
             {

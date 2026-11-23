@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use gnoblin_core::Rect;
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
+use gnoblin_object::ErrorCode;
 use gnoblin_std_abi::layouts::{LAYOUT_KINDS, layout_kind};
 use gnoblin_std_abi::{
     GnoblinStdOption, GnoblinStdRect, GnoblinStdRingSlot, GnoblinStdWorkspace, STD_BUILTIN_CAROUSEL,
@@ -29,6 +30,7 @@ fn builtin_of(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace) -> Res<Rc<LayoutO
         Ok(layout)
     } else {
         Err(Fail::refused(
+            ErrorCode::Unsupported,
             "the workspace's layout is not a built-in one: it has no options and no actions",
         ))
     }

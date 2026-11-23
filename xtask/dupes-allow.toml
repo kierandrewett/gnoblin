@@ -2168,12 +2168,6 @@ kind = "same-name"
 reason = "the C `Dl_info` that `dladdr` fills, declared where it is called; the shell host is the one loader and the call layer is an SDK crate that may name no workspace crate but the ABI ones"
 
 [[allow]]
-left = "gnoblin-std-dyn::StdError"
-right = "gnoblin-std-impl::Fail"
-kind = "same-shape"
-reason = "an ABI code and its text, the library's failure and the call layer's view of it; the call layer is an SDK crate and cannot name the implementation"
-
-[[allow]]
 left = "gnoblin-capture::Refusal"
 right = "gnoblin-portal-core::Refusal"
 kind = "same-name"
@@ -2732,10 +2726,10 @@ kind = "same-shape"
 reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
 
 [[allow]]
-left = "gnoblin-object::Fail"
-right = "gnoblin-std-dyn::StdError"
-kind = "same-shape"
-reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+left = "gnoblin-object::ErrorCode"
+right = "gnoblin-types::ErrorCode"
+kind = "same-name"
+reason = "the script API's closed set of thirteen snake_case failure codes (gnoblin-object) against the wire's open kebab-case code (gnoblin-types); a different spelling and a different set, and the object protocol names no other workspace crate"
 
 [[allow]]
 left = "gnoblin-core::WindowRequest"

@@ -189,6 +189,12 @@ pub fn field<C, T: FromVal<C>>(cx: &C, fields: &[Val], index: usize, default: im
     }
 }
 
+/// `fail` as a failure of the call `Class.member` that has no object: a function of the class, or the making of one.
+#[must_use]
+pub fn at_class(fail: Fail, class: &str, member: &str) -> Fail {
+    fail.at(format!("{class}.{member}"))
+}
+
 /// The id of the property `name` of `class`, which a typed class looks up once.
 ///
 /// # Errors

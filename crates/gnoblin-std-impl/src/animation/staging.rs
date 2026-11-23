@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gnoblin_core::{Gnoblin, NodeId, Value};
-use gnoblin_object::Callable;
+use gnoblin_object::{Callable, ErrorCode};
 
 use crate::displays::DisplaysSnapshot;
 use crate::error::{Fail, Res};
@@ -166,10 +166,16 @@ pub(crate) fn check(g: &Gnoblin, node: u64, key: &str, value: &Prop, timed: bool
         .member(class, gnoblin_core::MemberKind::Property, key)
         .map_err(|_| Fail::no_such(format!("node {node} has no property `{key}`")))?;
     if member.readonly {
-        return Err(Fail::refused(format!("`{key}` of node {node} is read-only")));
+        return Err(Fail::refused(
+            ErrorCode::ReadOnly,
+            format!("`{key}` of node {node} is read-only"),
+        ));
     }
     if timed && !animated(key) {
-        return Err(Fail::refused(format!("`{key}` of node {node} cannot be animated")));
+        return Err(Fail::refused(
+            ErrorCode::Unsupported,
+            format!("`{key}` of node {node} cannot be animated"),
+        ));
     }
     use gnoblin_core_abi as abi;
     let fits = match (member.value_kind, value) {

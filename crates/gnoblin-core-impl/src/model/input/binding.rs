@@ -4,7 +4,7 @@
 
 use gnoblin_core_abi as abi;
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Closure, Fail, Obj, Res, Val};
+use gnoblin_object::{Closure, ErrorCode, Fail, Obj, Res, Val};
 
 use super::super::values::fields_of;
 use super::trigger::{ParsedTrigger, TriggerClass};
@@ -158,10 +158,13 @@ impl InputTable {
                 && rec.parsed.text == text
                 && rec.priority == priority
             {
-                return Err(Fail::refused(format!(
-                    "binding \"{id}\" conflicts with \"{}\": both match {text} at priority {priority}; give one a different priority or trigger",
-                    rec.id
-                )));
+                return Err(Fail::refused(
+                    ErrorCode::AlreadyExists,
+                    format!(
+                        "binding \"{id}\" conflicts with \"{}\": both match {text} at priority {priority}; give one a different priority or trigger",
+                        rec.id
+                    ),
+                ));
             }
         }
         Ok(())
@@ -317,9 +320,10 @@ fn add(cx: &Cx<'_>, collection: Obj, rec: BindingRec) -> Res<Obj> {
                 .iter()
                 .any(|other| table.bindings.get(other).is_some_and(|b| b.id == id))
         }) {
-            return Err(Fail::refused(format!(
-                "a binding with id \"{id}\" is already in this collection"
-            )));
+            return Err(Fail::refused(
+                ErrorCode::AlreadyExists,
+                format!("a binding with id \"{id}\" is already in this collection"),
+            ));
         }
         table.assert_free(collection, obj, &text, priority, &id)?;
         table.bindings.insert(obj, rec);
@@ -658,7 +662,7 @@ fn freeze(cx: &Cx<'_>, binding: Obj, rec: BindingRec) {
 pub(super) fn register(builder: &mut Builder) {
     let _ = builder
         .class::<BindingState>("binding")
-        .ctor(|_, _| Err(Fail::refused("a binding is made by `bind`")))
+        .ctor(|_, _| Err(Fail::refused(ErrorCode::Unsupported, "a binding is made by `bind`")))
         .get("id", |state, cx| state.read(cx, |rec| Val::Text(rec.id.clone())))
         .get("trigger", |state, cx| {
             state.read(cx, |rec| Val::Text(rec.written.clone()))

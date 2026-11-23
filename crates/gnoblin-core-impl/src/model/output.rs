@@ -5,11 +5,11 @@
 
 use gnoblin_core_abi as abi;
 use gnoblin_object::server::{Builder, ClassBuilder, Cx};
-use gnoblin_object::{Fail, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Res, Val};
 
 use super::operation::OperationState;
 use super::values::{fields_of, record, rect, size};
-use super::world::OutputNode;
+use super::world::{OutputNode, detached, write_fail};
 use super::{handout, listener, properties, with_world};
 use crate::session;
 
@@ -123,9 +123,9 @@ fn send(cx: &Cx<'_>, state: &OutputNode, text: String, notice: Option<String>, t
     let token = session::with(|session| {
         session
             .tree()
-            .map_err(|(code, text)| Fail::new(code, text))?
+            .map_err(detached)?
             .call(state.node, "apply", Vec::new(), text)
-            .map_err(|error| Fail::new(abi::E_NO_SUCH_NODE, format!("{target}: {error}")))
+            .map_err(|error| write_fail(target, &error))
     })?;
     let me = cx.me();
     let operation = cx.spawn("output_operation", OperationState::for_output(me))?;
@@ -161,7 +161,12 @@ fn mode_size(mode: &str) -> (f64, f64) {
 pub(super) fn register(builder: &mut Builder) {
     let mut class = builder
         .class::<OutputNode>("output")
-        .ctor(|_, _| Err(Fail::refused("an output is made by the compositor, not by a shell")))
+        .ctor(|_, _| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "an output is made by the compositor, not by a shell",
+            ))
+        })
         .get("id", |state, _| Ok(Val::Text(state.node.to_string())))
         .get("alive", |state, _| Ok(Val::Bool(state.alive)));
     for (name, key) in [

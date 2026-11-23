@@ -14,7 +14,7 @@ use gnoblin_core::Subscription;
 use gnoblin_core::objects::{LockAnswer, SessionLock};
 use gnoblin_object::server::Cx;
 use gnoblin_object::typed::Listener;
-use gnoblin_object::{Closure, Fail, Obj, Res, Val};
+use gnoblin_object::{Closure, ErrorCode, Fail, Obj, Res, Val};
 
 use super::entry;
 use super::style::LockStyle;
@@ -68,7 +68,10 @@ pub(crate) struct LockWorld {
 /// A screen is already at work, the core serves no session lock, or a subscription is refused.
 pub(crate) fn begin(ui: &Rc<Ui>, style: LockStyle, obj: Obj) -> Res<()> {
     if ui.lock.borrow().started {
-        return Err(Fail::refused("there is one lock screen for each generation"));
+        return Err(Fail::refused(
+            ErrorCode::Busy,
+            "there is one lock screen for each generation",
+        ));
     }
     let objects = ui.g.objects().map_err(core_fail)?;
     let service = Rc::new(SessionLock::get(&objects)?);

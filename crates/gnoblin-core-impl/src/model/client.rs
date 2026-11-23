@@ -5,11 +5,11 @@
 
 use gnoblin_core_abi as abi;
 use gnoblin_object::server::{Builder, ClassBuilder};
-use gnoblin_object::{Fail, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Res, Val};
 use gnoblin_tree_client::tree_mirror::{MirrorValue, TxAnimation};
 
 use super::values::{self, enum_name, fields_of, finite, nodes_of, rect, size};
-use super::world::{ClientState, gone};
+use super::world::{ClientState, detached, gone, write_fail};
 use super::{handout, listener, properties, with_world};
 use crate::session;
 
@@ -29,9 +29,9 @@ impl ClientState {
         session::with(|session| {
             session
                 .tree()
-                .map_err(|(code, text)| Fail::new(code, text))?
+                .map_err(detached)?
                 .set(self.node, key, value, TxAnimation::default())
-                .map_err(|error| Fail::new(abi::E_NO_SUCH_NODE, format!("Client#{}.{key}: {error}", self.node)))
+                .map_err(|error| write_fail(&format!("Client#{}.{key}", self.node), &error))
         })
     }
 
@@ -44,10 +44,10 @@ impl ClientState {
         session::with(|session| {
             session
                 .tree()
-                .map_err(|(code, text)| Fail::new(code, text))?
+                .map_err(detached)?
                 .call(self.node, method, Vec::new(), String::new())
                 .map(|_| ())
-                .map_err(|error| Fail::new(abi::E_NO_SUCH_NODE, format!("{target}: {error}")))
+                .map_err(|error| write_fail(&target, &error))
         })
     }
 
@@ -117,11 +117,11 @@ fn raise(state: &ClientState) -> Res<()> {
         .filter(|node| *node != state.node)
         .collect();
     session::with(|session| {
-        let tree = session.tree().map_err(|(code, text)| Fail::new(code, text))?;
+        let tree = session.tree().map_err(detached)?;
         let root = tree.root();
-        let refuse = |error: &dyn std::fmt::Display| Fail::new(abi::E_NO_SUCH_NODE, format!("{target}: {error}"));
         if tree.children_of(root).and_then(|children| children.last().copied()) != Some(state.node) {
-            tree.insert(state.node, root, -1).map_err(|error| refuse(&error))?;
+            tree.insert(state.node, root, -1)
+                .map_err(|error| write_fail(&target, &error))?;
         }
         if !fullscreen {
             for node in others {
@@ -129,7 +129,8 @@ fn raise(state: &ClientState) -> Res<()> {
                     .get(node, "fullscreen")
                     .is_some_and(|value| matches!(value, MirrorValue::Bool(true)));
                 if over {
-                    tree.insert(node, root, -1).map_err(|error| refuse(&error))?;
+                    tree.insert(node, root, -1)
+                        .map_err(|error| write_fail(&target, &error))?;
                 }
             }
         }
@@ -144,11 +145,11 @@ fn lower(state: &ClientState) -> Res<()> {
         return Err(Fail::new(abi::E_NO_SUCH_NODE, format!("{target}: the client is gone")));
     }
     session::with(|session| {
-        let tree = session.tree().map_err(|(code, text)| Fail::new(code, text))?;
+        let tree = session.tree().map_err(detached)?;
         let root = tree.root();
         if tree.children_of(root).and_then(|children| children.first().copied()) != Some(state.node) {
             tree.insert(state.node, root, 0)
-                .map_err(|error| Fail::new(abi::E_NO_SUCH_NODE, format!("{target}: {error}")))?;
+                .map_err(|error| write_fail(&target, &error))?;
         }
         Ok(())
     })
@@ -161,21 +162,29 @@ fn focus(state: &ClientState) -> Res<()> {
         return Err(Fail::new(abi::E_NO_SUCH_NODE, format!("{target}: the client is gone")));
     }
     let Some(seat) = nodes_of("seat").first().copied() else {
-        return Err(Fail::refused(format!("{target}: there is no seat to hold the focus")));
+        return Err(Fail::refused(
+            ErrorCode::Unavailable,
+            format!("{target}: there is no seat to hold the focus"),
+        ));
     };
     session::with(|session| {
         session
             .tree()
-            .map_err(|(code, text)| Fail::new(code, text))?
+            .map_err(detached)?
             .set(seat, "focus", MirrorValue::Node(state.node), TxAnimation::default())
-            .map_err(|error| Fail::new(abi::E_NO_SUCH_NODE, format!("{target}: {error}")))
+            .map_err(|error| write_fail(&target, &error))
     })
 }
 
 pub(super) fn register(builder: &mut Builder) {
     let mut class = builder
         .class::<ClientState>("client")
-        .ctor(|_, _| Err(Fail::refused("a client is made by the compositor, not by a shell")))
+        .ctor(|_, _| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "a client is made by the compositor, not by a shell",
+            ))
+        })
         .get("id", |state, _| Ok(Val::Text(state.node.to_string())))
         .get("alive", |state, _| Ok(Val::Bool(state.alive)));
     for (name, key) in [

@@ -21,6 +21,7 @@ use super::engine::Options;
 use super::staging::{self, Prop};
 use crate::error::{Fail, Res};
 use crate::state::{self, RegData};
+use gnoblin_object::ErrorCode;
 // The animation functions need no desktop: they open the library's model alone (`state::lookup_quiet`).
 use crate::table::{
     call, call_reg, fill_out, lent, mutate_quiet as mutate, put, quiet_of as std_of, read_ext, read_quiet as read, utf8,
@@ -177,9 +178,10 @@ pub(crate) unsafe extern "C" fn transition_get(
 /// the object protocol's `Transition.commit` are this.
 pub(crate) fn commit_staged(std: &Rc<state::Std>) -> Res<state::Id> {
     if !staging::active() {
-        return Err(Fail::stale(
-            "no transition is being staged: call `transition_begin` first",
-        ));
+        return Err(
+            Fail::stale("no transition is being staged: call `transition_begin` first")
+                .with_code(ErrorCode::InvalidState),
+        );
     }
     std.st.borrow_mut().compute_failed = None;
     crate::turn::settle(std);
@@ -188,13 +190,16 @@ pub(crate) fn commit_staged(std: &Rc<state::Std>) -> Res<state::Id> {
     if let Some(message) = failed {
         // A layout that fails fails the transition: nothing staged is sent, and the shell puts back what it changed.
         let _ = std.st.borrow_mut().anim_take_pending();
-        return Err(Fail::refused(format!("the layout's compute failed: {message}")));
+        return Err(Fail::refused(
+            ErrorCode::Internal,
+            format!("the layout's compute failed: {message}"),
+        ));
     }
     let result = {
         let mut st = std.st.borrow_mut();
         match st.anim_take_pending() {
             Some(options) => st.transition_commit(entries, &options),
-            None => Err(Fail::stale("no transition is being staged")),
+            None => Err(Fail::stale("no transition is being staged").with_code(ErrorCode::InvalidState)),
         }
     };
     schedule(std);

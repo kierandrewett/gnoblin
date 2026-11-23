@@ -14,6 +14,7 @@ use crate::floating::{DEFAULT_CASCADE_STEP, PlaceMode};
 use crate::layout::LayoutObj;
 use crate::nodes;
 use crate::state::{Id, NodeId, Notice, State};
+use gnoblin_object::ErrorCode;
 
 /// A workspace.
 pub(crate) struct Workspace {
@@ -352,7 +353,8 @@ impl State {
             .iter()
             .any(|other| self.ws.get(other).is_some_and(|ws| ws.id == id))
         {
-            return Err(Fail::busy(format!("there is already a workspace with id \"{id}\"")));
+            return Err(Fail::busy(format!("there is already a workspace with id \"{id}\""))
+                .with_code(ErrorCode::AlreadyExists));
         }
         let ws = self.workspace_mut(workspace)?;
         ws.attached = true;
@@ -472,7 +474,10 @@ impl State {
     /// `workspace.clients.add(client)`: the client leaves its workspace and joins this one.
     pub(crate) fn transfer_client(&mut self, workspace: Id, client: NodeId) -> Res<()> {
         if !self.workspace(workspace)?.attached {
-            return Err(Fail::refused("add the workspace to the list first"));
+            return Err(Fail::refused(
+                ErrorCode::InvalidState,
+                "add the workspace to the list first",
+            ));
         }
         if !self.rec.contains_key(&client) || !nodes::alive(&self.g, client) {
             return Err(Fail::no_such("the client is gone or is not a client of the compositor"));
@@ -509,7 +514,7 @@ impl State {
             ws.clients.iter().position(|one| *one == a),
             ws.clients.iter().position(|one| *one == b),
         ) else {
-            return Err(Fail::err("both members must be in the collection"));
+            return Err(Fail::err("both members must be in the collection").with_code(ErrorCode::InvalidArgument));
         };
         if first == second {
             return Ok(());

@@ -275,15 +275,13 @@ fn node_members(class: Class<'_>) -> Class<'_> {
                 _ => None,
             };
             h.world.insert(child_node, h.node, index).map_err(|fail| {
-                Fail::new(
-                    fail.code,
-                    format!(
-                        "{}.add: the shell refused to add {} ({})",
-                        h.label(),
-                        h.world.label(child_node),
-                        fail.message
-                    ),
-                )
+                let message = format!(
+                    "{}.add: the shell refused to add {} ({})",
+                    h.label(),
+                    h.world.label(child_node),
+                    fail.message
+                );
+                fail.with_message(message)
             })?;
             // The tree's root is the compositor's, and its objects stay until they end themselves.
             if !h.root {

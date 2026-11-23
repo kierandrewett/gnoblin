@@ -13,7 +13,7 @@ use std::rc::{Rc, Weak};
 use gnoblin_core::Rect;
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::{Builder, ClassBuilder, Cx, Inits};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 use gnoblin_std_abi as sabi;
 
 use super::shell_layout::{self, LayoutMemberIds, ObjectLayout};
@@ -110,14 +110,10 @@ pub(super) fn adopt(cx: &mut Cx<'_>, obj: Obj, owner: Option<Id>) -> Res<Rc<Layo
     cx.with_state(obj, |held: &mut OwnedLayout| {
         match (held.on, owner) {
             (Some(on), Some(owner)) if on != owner => {
-                return Err(Fail::refused(
-                    "that layout already places another workspace: a layout places one workspace, so make another for this one",
-                ));
+                return Err(Fail::refused(ErrorCode::Busy, "that layout already places another workspace: a layout places one workspace, so make another for this one"));
             }
             (Some(_), None) => {
-                return Err(Fail::refused(
-                    "that layout already places a workspace: a layout places one workspace, so make another for this one",
-                ));
+                return Err(Fail::refused(ErrorCode::Busy, "that layout already places a workspace: a layout places one workspace, so make another for this one"));
             }
             _ => {}
         }

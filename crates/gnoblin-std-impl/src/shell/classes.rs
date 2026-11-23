@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gnoblin_object::server::Builder;
-use gnoblin_object::{Closure, Fail, Res, Val};
+use gnoblin_object::{Closure, ErrorCode, Fail, Res, Val};
 
 use super::alerts::{self, AlertTracker, clean_text, text_node};
 use super::{dialog, launcher, overview};
@@ -85,9 +85,12 @@ fn button_class(builder: &mut Builder) {
             None => not_a("an alert button"),
         }
     }
-    let class = builder
-        .class::<CanvasHandle>("alert_button")
-        .ctor(|_cx, _inits| Err(Fail::refused("an alert button is made by its dialog")));
+    let class = builder.class::<CanvasHandle>("alert_button").ctor(|_cx, _inits| {
+        Err(Fail::refused(
+            ErrorCode::Unsupported,
+            "an alert button is made by its dialog",
+        ))
+    });
     let class = box_members(canvas_members(class));
     let _ = class
         .get("label", |h, cx| {

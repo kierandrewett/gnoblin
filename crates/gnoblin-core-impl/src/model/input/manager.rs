@@ -2,7 +2,7 @@
 //! the compositor reports become contexts and devices.
 
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 
 use super::context::{attach, dispose, register_context};
 use super::devices::{disown, held_by, own, sync_devices};
@@ -88,8 +88,12 @@ fn all(cx: &Cx<'_>) -> Vec<Obj> {
 
 fn primary(cx: &Cx<'_>) -> Res<Obj> {
     sync(cx);
-    with(cx.ctx(), |table| table.seats.first().map(|(_, obj)| *obj))
-        .ok_or_else(|| Fail::refused("gnoblin.input.primary: the compositor reports no input seat"))
+    with(cx.ctx(), |table| table.seats.first().map(|(_, obj)| *obj)).ok_or_else(|| {
+        Fail::refused(
+            ErrorCode::Unavailable,
+            "gnoblin.input.primary: the compositor reports no input seat",
+        )
+    })
 }
 
 /// Puts a context a shell made into the contexts, over the first seat's devices.
@@ -121,14 +125,16 @@ fn add_context(cx: &Cx<'_>, context: Obj) -> Res<()> {
             .any(|other| table.contexts.get(other).is_some_and(|held| held.name == name))
     });
     if taken {
-        return Err(Fail::refused(format!(
-            "{what}: a context named \"{name}\" is already there"
-        )));
+        return Err(Fail::refused(
+            ErrorCode::AlreadyExists,
+            format!("{what}: a context named \"{name}\" is already there"),
+        ));
     }
     let Some(seat_node) = with(cx.ctx(), |table| table.seats.first().map(|(node, _)| *node)) else {
-        return Err(Fail::refused(format!(
-            "{what}: the compositor reports no input seat to hold the context"
-        )));
+        return Err(Fail::refused(
+            ErrorCode::Unavailable,
+            format!("{what}: the compositor reports no input seat to hold the context"),
+        ));
     };
     attach(cx, context, seat_node, true)?;
     cx.hold(context)?;
@@ -151,9 +157,12 @@ fn remove_context(cx: &Cx<'_>, context: Obj) -> Res<bool> {
         )
     });
     if is_seat {
-        return Err(Fail::refused(format!(
-            "gnoblin.input.contexts.remove: \"{name}\" is a seat the compositor reports; only contexts a script added can be removed"
-        )));
+        return Err(Fail::refused(
+            ErrorCode::Denied,
+            format!(
+                "gnoblin.input.contexts.remove: \"{name}\" is a seat the compositor reports; only contexts a script added can be removed"
+            ),
+        ));
     }
     if !is_scripted {
         return Ok(false);

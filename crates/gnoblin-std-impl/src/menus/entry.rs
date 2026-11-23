@@ -5,7 +5,7 @@
 //! way: their `run` is an [`MenuAction`] the library does itself, not a closure.
 
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Closure, Fail, Obj, Res, Val};
+use gnoblin_object::{Closure, ErrorCode, Fail, Obj, Res, Val};
 use std::rc::Rc;
 
 /// What a stock entry does.
@@ -111,7 +111,10 @@ pub(crate) fn read(cx: &Cx<'_>, obj: Obj) -> Res<Entry> {
 
 fn read_at(cx: &Cx<'_>, obj: Obj, depth: usize) -> Res<Entry> {
     if depth > DEPTH {
-        return Err(Fail::refused("a menu entry holds itself in its submenu"));
+        return Err(Fail::refused(
+            ErrorCode::InvalidArgument,
+            "a menu entry holds itself in its submenu",
+        ));
     }
     let (mut entry, submenu) = cx.with_state(obj, |held: &mut EntryObj| (held.entry.clone(), held.submenu.clone()))?;
     if let Some(items) = submenu {
@@ -233,7 +236,10 @@ pub(crate) fn register(builder: &mut Builder) {
             for item in value.list()? {
                 let obj = item.object()?;
                 if obj == me {
-                    return Err(Fail::refused("a menu entry cannot be its own submenu"));
+                    return Err(Fail::refused(
+                        ErrorCode::InvalidArgument,
+                        "a menu entry cannot be its own submenu",
+                    ));
                 }
                 cx.set_parent(obj, me)?;
                 items.push(obj);

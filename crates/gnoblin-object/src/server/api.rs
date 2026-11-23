@@ -5,6 +5,7 @@
 //! runs inside a panic guard, so a panic is `E_PANIC` and a last-error text, never an abort.
 #![allow(unsafe_code)]
 
+use core::cell::Cell;
 use core::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -16,7 +17,7 @@ use gnoblin_core_abi::{
 
 use super::Library;
 use crate::catalog::{ClassDef, MemberDef};
-use crate::error::{Fail, Res};
+use crate::error::{ErrorCode, Fail, Res};
 use crate::value::{MemberId, Timing, Val};
 use crate::wire::{from_raw, lend, read_args};
 
@@ -49,16 +50,27 @@ pub const fn api_table<P: Provider>(hash: u64) -> GnoblinObjectApi {
         implement: implement::<P>,
         class_of: class_of::<P>,
         track: track::<P>,
+        last_error_code,
     }
 }
 
-/// Runs one function: contains a panic, records a failure, returns the code.
+thread_local! {
+    /// The script API's code of the last object function that failed on this thread, or none when it succeeded or failed with a bad
+    /// argument. `last_error_code` of the table reads it.
+    static LAST_CODE: Cell<Option<ErrorCode>> = const { Cell::new(None) };
+}
+
+/// Runs one function: contains a panic, records a failure and its code, returns the integer code.
 fn run<P: Provider>(what: &'static str, body: impl FnOnce(&Library) -> Res<()>) -> i32 {
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         P::with(|lib| match body(lib) {
-            Ok(()) => abi::E_OK,
+            Ok(()) => {
+                LAST_CODE.with(|last| last.set(None));
+                abi::E_OK
+            }
             Err(fail) => {
                 (lib.hooks.set_last)(&fail);
+                LAST_CODE.with(|last| last.set(fail.reason()));
                 fail.code
             }
         })
@@ -66,14 +78,36 @@ fn run<P: Provider>(what: &'static str, body: impl FnOnce(&Library) -> Res<()>) 
     outcome.unwrap_or_else(|_| {
         let _ = catch_unwind(AssertUnwindSafe(|| {
             P::with(|lib| {
-                (lib.hooks.set_last)(&Fail::new(
+                let fail = Fail::new(
                     abi::E_PANIC,
                     format!("a panic was caught in the object function `{what}`"),
-                ));
+                );
+                (lib.hooks.set_last)(&fail);
+                LAST_CODE.with(|last| last.set(fail.reason()));
             });
         }));
         abi::E_PANIC
     })
+}
+
+/// `last_error_code(buf, cap)` of the table: copies the code of the last failed call on this thread into `buf`, NUL terminated and
+/// truncated to `cap` bytes, and returns the code's full length (zero, with `buf` untouched, when there is none).
+///
+/// # Safety
+///
+/// `buf` must be null or point at `cap` writable bytes.
+unsafe extern "C" fn last_error_code(buf: *mut u8, cap: usize) -> usize {
+    let code = LAST_CODE.with(Cell::get).map_or("", ErrorCode::as_str);
+    if !code.is_empty() && !buf.is_null() && cap > 0 {
+        let kept = code.len().min(cap - 1);
+        // SAFETY: the caller guarantees `buf` is writable for `cap` bytes; `kept + 1 <= cap`, and `code` is static text that cannot
+        // overlap the caller's buffer.
+        unsafe {
+            core::ptr::copy_nonoverlapping(code.as_ptr(), buf, kept);
+            buf.add(kept).write(0);
+        }
+    }
+    code.len()
 }
 
 /// [`run`] for a function that returns a registration: zero is the failure.

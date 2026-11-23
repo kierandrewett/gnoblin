@@ -13,7 +13,7 @@ use super::registry::Inits;
 use super::shell::ShellImpl;
 use crate::catalog::{ClassDef, MemberDef};
 use crate::client::Api;
-use crate::error::{Fail, Res};
+use crate::error::{ErrorCode, Fail, Res};
 use crate::value::{Callable, ClassId, MemberId, Obj, Timing, Val};
 use crate::wire::RawClosure;
 
@@ -371,7 +371,9 @@ impl Library {
         let class = self.target(&st, obj)?.class;
         let property = self.member_def(class, member, abi::MEMBER_PROPERTY)?;
         if property.flags & abi::MEMBER_ANIMATED == 0 {
-            return Err(Fail::type_error(format!("`{}` cannot be animated", property.name)));
+            return Err(
+                Fail::type_error(format!("`{}` cannot be animated", property.name)).with_code(ErrorCode::Unsupported)
+            );
         }
         if !(timing.seconds.is_finite() && timing.seconds > 0.0) {
             return Err(Fail::type_error("a timed write needs a duration above zero"));
@@ -401,7 +403,7 @@ impl Library {
             };
         }
         if property.flags & abi::MEMBER_READONLY != 0 {
-            return Err(Fail::type_error(format!(
+            return Err(Fail::read_only(format!(
                 "`{}.{}` is read-only",
                 def.name, property.name
             )));

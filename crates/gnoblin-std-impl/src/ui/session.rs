@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use gnoblin_object::server::Builder;
-use gnoblin_object::{Closure, Fail, Res, Val};
+use gnoblin_object::{Closure, ErrorCode, Fail, Res, Val};
 
 use super::classes::metrics_val;
 use super::paint;
@@ -136,7 +136,12 @@ fn point(x: f64, y: f64) -> Val {
 pub(super) fn register(builder: &mut Builder) {
     let _ = builder
         .class::<HookHandle>("ui_hook")
-        .ctor(|_cx, _inits| Err(Fail::refused("a hook is made by `ui.on_frame` and `ui.on_request`")))
+        .ctor(|_cx, _inits| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "a hook is made by `ui.on_frame` and `ui.on_request`",
+            ))
+        })
         .method("remove", |hook, _cx, _args| {
             hook.remove();
             Ok(Val::None)

@@ -20,6 +20,7 @@ use super::staging::{self, Curve, Prop, Staged};
 use crate::error::{Fail, Res};
 use crate::nodes;
 use crate::state::{Id, Notice, State};
+use gnoblin_object::ErrorCode;
 
 /// The properties of a node whose change is a place: a node that is not drawn yet is put there at once, not tweened.
 const PLACE_KEYS: [&str; 4] = ["x", "y", "width", "height"];
@@ -163,9 +164,10 @@ fn land(g: &Gnoblin, node: u64, key: &str, value: &Prop, play: Option<(&Curve, f
 /// Makes the `tween` node the tracks of a transition join.
 fn make_tween(g: &Gnoblin) -> Res<u64> {
     g.create_node("tween").map(|node| node.id().0).map_err(|error| {
-        Fail::refused(format!(
-            "the shell could not make the node that holds the transition's play state: {error}"
-        ))
+        Fail::refused(
+            ErrorCode::Internal,
+            format!("the shell could not make the node that holds the transition's play state: {error}"),
+        )
     })
 }
 
@@ -181,7 +183,7 @@ impl State {
         if staging::active() {
             return Err(Fail::busy(format!(
                 "{SITE}: was called inside a requestTransition callback; stage every change in the outer callback instead"
-            )));
+            )).with_code(ErrorCode::InvalidState));
         }
         self.anim.pending = Some(Options::check(raw, SITE)?);
         staging::begin();
@@ -326,7 +328,10 @@ impl State {
             if let Some(tween) = tween {
                 drop_tween(&g, tween);
             }
-            return Err(Fail::refused(format!("the host refused {}", refused.join(", "))));
+            return Err(Fail::refused(
+                ErrorCode::Denied,
+                format!("the host refused {}", refused.join(", ")),
+            ));
         }
         let has_tracks = !transition.owned.is_empty();
         self.anim.transitions.insert(id, transition);
@@ -376,9 +381,7 @@ impl State {
     /// Plays, pauses, reverses, seeks or cancels a transition.
     pub(crate) fn transition_control(&mut self, id: Id, op: u32, value: f64) -> Res<()> {
         if staging::active() {
-            return Err(Fail::busy(
-                "a transition cannot be controlled inside a requestTransition callback: it has a side effect, and a callback only stages property writes",
-            ));
+            return Err(Fail::busy("a transition cannot be controlled inside a requestTransition callback: it has a side effect, and a callback only stages property writes").with_code(ErrorCode::InvalidState));
         }
         self.process_released();
         let g = self.g.clone();

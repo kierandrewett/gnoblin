@@ -6,7 +6,7 @@
 
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 
 use super::{PROFILES, edit, look};
 use crate::displays::{Hid, Match, NeighbourSide, PlaceTarget, Position, ProfileSettings};
@@ -345,7 +345,7 @@ pub(super) fn register(builder: &mut Builder) {
             edit(held.ctx, |st| {
                 let rec = st.profile(held.hid)?;
                 if rec.listed && rec.id != id {
-                    return Err(crate::error::Fail::refused(format!(
+                    return Err(crate::error::Fail::refused(ErrorCode::InvalidState, format!(
                         "OutputProfile \"{}\".id: cannot change while the profile is in the manager",
                         rec.id
                     )));

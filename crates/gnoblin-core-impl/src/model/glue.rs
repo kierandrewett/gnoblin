@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::Cx;
-use gnoblin_object::{Callable, Fail, MemberId, Obj, Res, Val};
+use gnoblin_object::{Callable, ErrorCode, Fail, MemberId, Obj, Res, Val};
 use gnoblin_shell_host::generation::{CallbackOutcome, Release};
 
 use crate::events::ShellEvent;
@@ -212,7 +212,7 @@ pub(super) fn answer_once(
 
 /// Why a call could not go out: the compositor cannot be reached.
 fn unreachable_owner(what: &str, text: impl std::fmt::Display) -> Fail {
-    Fail::refused(format!("{what}: {text}"))
+    Fail::refused(ErrorCode::Unavailable, format!("{what}: {text}"))
 }
 
 /// Calls `method` of the compositor's one `class` object (`session`, `idle`) and tells `done` how it ended: `Ok` when the compositor

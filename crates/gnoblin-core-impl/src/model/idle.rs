@@ -12,7 +12,7 @@
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_model::{Fields, Value};
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 
 use super::glue::{self, PerGeneration};
 use super::listener;
@@ -366,7 +366,12 @@ fn release(cx: &Cx<'_>, hold: &mut Hold) {
 pub(super) fn register(builder: &mut Builder) {
     let _ = builder
         .class::<IdleWatchState>("idle_watch")
-        .ctor(|_, _| Err(Fail::refused("a watch is made with `gnoblin.idle.watch`")))
+        .ctor(|_, _| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "a watch is made with `gnoblin.idle.watch`",
+            ))
+        })
         .get("id", |state, _| Ok(Val::Text(state.id.clone())))
         .get("ms", |state, _| Ok(Val::Double(state.ms)))
         .get("is_idle", |state, _| Ok(Val::Bool(state.idle)))
@@ -377,7 +382,12 @@ pub(super) fn register(builder: &mut Builder) {
         });
     let _ = builder
         .class::<Hold>("idle_inhibitor")
-        .ctor(|_, _| Err(Fail::refused("a hold is made with `gnoblin.idle.inhibit`")))
+        .ctor(|_, _| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "a hold is made with `gnoblin.idle.inhibit`",
+            ))
+        })
         .get("holder", |state, _| Ok(Val::Text(state.holder.clone())))
         .get("alive", |state, _| Ok(Val::Bool(state.alive)))
         .method("release", |state, cx, _| {

@@ -14,7 +14,7 @@ use gnoblin_core_abi::{
     GnoblinTiming, GnoblinValue,
 };
 
-use crate::error::{Fail, Res};
+use crate::error::{ErrorCode, Fail, Res};
 use crate::value::{Callable, ClassId, Closure, MemberId, Obj, Timing, Val};
 use crate::wire::{Arena, export_closure, free_closure_user, from_raw, none_value, to_raw};
 
@@ -104,19 +104,42 @@ impl Api {
         self.raw.catalog_hash
     }
 
-    fn check(&self, code: i32) -> Res<()> {
-        if code == abi::E_OK {
-            return Ok(());
+    /// The script API's code the library reported for the call that just failed, when its table has `last_error_code` and the failure
+    /// has one. A table built before the accessor existed is shorter than the field and reports none: the integer is all it says.
+    fn reported(&self) -> Option<ErrorCode> {
+        const END: usize = core::mem::offset_of!(GnoblinObjectApi, last_error_code) + size_of::<usize>();
+        if !abi::table_has(self.raw.size, END) {
+            return None;
         }
+        let mut buf = [0u8; 32];
+        // SAFETY: `buf` is a live local of exactly the `cap` bytes the function may write.
+        let len = unsafe { (self.raw.last_error_code)(buf.as_mut_ptr(), buf.len()) };
+        if len == 0 || len >= buf.len() {
+            return None;
+        }
+        std::str::from_utf8(&buf[..len]).ok().and_then(ErrorCode::parse)
+    }
+
+    /// The failure of a call that returned `code`, with the library's words and the code it reported. Read it right after the call.
+    fn failure(&self, code: i32) -> Fail {
+        let reported = self.reported();
         let text = (self.last_error)();
-        Err(Fail::new(
+        Fail::new(
             code,
             if text.is_empty() {
                 format!("the call failed with code {code}")
             } else {
                 text
             },
-        ))
+        )
+        .with_reported(reported)
+    }
+
+    fn check(&self, code: i32) -> Res<()> {
+        if code == abi::E_OK {
+            return Ok(());
+        }
+        Err(self.failure(code))
     }
 
     /// The id of the class `name`.
@@ -358,7 +381,7 @@ impl Api {
         let reg = unsafe { (self.raw.listen)(self.ctx, obj, member, invoke, user, Some(drop_user)) };
         if reg == 0 {
             free_closure_user(user);
-            return Err(Fail::new(abi::E_ERR, (self.last_error)()));
+            return Err(self.failure(abi::E_ERR));
         }
         Ok(reg)
     }
@@ -503,6 +526,33 @@ impl Object {
     /// The object is gone.
     pub fn destroy(&self) -> Res<()> {
         self.api.destroy(self.obj)
+    }
+
+    /// `fail` as a failure of the call of `member` on this object, where `class` is the class as the script API names it. Its target is
+    /// `Class#id.member`, with `id` the object's `id` property when its class has one and the object can still be read, and `Class.member`
+    /// otherwise. The call site is the one place that knows the three, and it reads the id only on this path, after the call failed.
+    #[must_use]
+    pub fn at(&self, fail: Fail, class: &str, member: &str) -> Fail {
+        match self.id() {
+            Some(id) => fail.at(format!("{class}#{id}.{member}")),
+            None => fail.at(format!("{class}.{member}")),
+        }
+    }
+
+    /// The object's `id` property as text, when its class has one.
+    fn id(&self) -> Option<String> {
+        let class = if self.class == 0 {
+            self.api.class_of(self.obj).ok()?
+        } else {
+            self.class
+        };
+        let member = self.api.member(class, abi::MEMBER_PROPERTY, "id").ok()?;
+        match self.api.get(self.obj, member).ok()? {
+            Val::Text(text) => Some(text),
+            Val::Int(number) => Some(number.to_string()),
+            Val::Uint(number) => Some(number.to_string()),
+            _ => None,
+        }
     }
 }
 

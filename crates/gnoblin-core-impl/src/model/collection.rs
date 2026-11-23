@@ -4,9 +4,8 @@
 //! collection that match a query, following them as they change. All three tell their listeners when a member joins or leaves, and
 //! hear what happens to a member after the member's own listeners do.
 
-use gnoblin_core_abi as abi;
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 
 use super::values::fields_of;
 use super::world::{
@@ -55,8 +54,8 @@ fn changeable(state: &CollState, what: &str) -> Res<()> {
     if state.mutable {
         Ok(())
     } else {
-        Err(Fail::new(
-            abi::E_REFUSED,
+        Err(Fail::refused(
+            ErrorCode::ReadOnly,
             format!("Collection.{what}: this collection's membership cannot be changed"),
         ))
     }
@@ -80,6 +79,7 @@ fn register_collection(builder: &mut Builder, class: &'static str, kind: CollKin
                 Ok(CollState::list(CollKind::Client))
             }
             CollKind::Output => Err(Fail::refused(
+                ErrorCode::ReadOnly,
                 "the outputs belong to the compositor: `gnoblin.outputs` is the collection",
             )),
         })

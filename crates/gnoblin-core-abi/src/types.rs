@@ -1166,6 +1166,15 @@ abi_structs! {
         /// each library it may read, and listens to what was read). `user` is borrowed: the caller keeps it alive until it clears the
         /// tracker. A second tracker replaces the first. The tracker must not call into the library that called it.
         pub track: unsafe extern "C" fn(ctx: GnoblinCtx, cb: Option<GnoblinTrackFn>, user: *mut c_void) -> i32,
+        /// Copies the code the script API gives the last failed call of this table on this thread, as `gnoblin_last_error` copies its text:
+        /// into `buf`, NUL terminated and truncated to `cap`, returning the code's full length. The code is one of `invalid_argument`,
+        /// `not_found`, `already_exists`, `invalid_state`, `read_only`, `unsupported`, `denied`, `busy`, `cancelled`, `timed_out`,
+        /// `unavailable`, `internal` and `config_rejected`, in ASCII and at most 16 bytes. The integer a failed call returns says the kind
+        /// of failure and stays as it is; this says why, because `E_REFUSED` and `E_ERR` stand for several reasons. The length is zero and
+        /// `buf` is not written when the failure has no code (a bad argument, `E_TYPE`) or no call has failed. The library copies: nothing
+        /// is lent. Read it right after the call that failed, on the same thread, before another call into the table. A table too short to
+        /// hold this field (`table_has`) belongs to a library that reports no codes, and the integer is all it says.
+        pub last_error_code: unsafe extern "C" fn(buf: *mut u8, cap: usize) -> usize,
     }
 
     /// The versioned function table. `size` is the byte size of the table the core filled in; a field is present when

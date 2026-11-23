@@ -8,7 +8,7 @@ use std::borrow::Borrow;
 use std::rc::Rc;
 
 use gnoblin_object::server::{Builder, Cx, Inits};
-use gnoblin_object::{Closure, Fail, Res, Val};
+use gnoblin_object::{Closure, ErrorCode, Fail, Res, Val};
 
 use super::client::Win;
 use super::decorations::{self, DecoHandle, inset_val};
@@ -131,7 +131,12 @@ fn frame_member(class: Class<'_>) -> Class<'_> {
 fn frame_members(builder: &mut Builder) {
     let _ = builder
         .class::<FrameHandle>("window_frame")
-        .ctor(|_cx, _inits| Err(Fail::refused("a window frame is made by the decorations")))
+        .ctor(|_cx, _inits| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "a window frame is made by the decorations",
+            ))
+        })
         .get("client", |h, _| {
             Ok(Val::Text(
                 h.ui.frame_node(h.id).map_or_else(String::new, |node| node.to_string()),
@@ -260,9 +265,9 @@ fn outlet_members(class: Class<'_>) -> Class<'_> {
         .method("add_node", |h, _, args| {
             let node = args[0].uint()?;
             let outlet = h.read(|widget| widget.node)?;
-            h.ui.node(node)
-                .insert_into(&h.ui.node(outlet), None)
-                .map_err(|error| Fail::refused(format!("Outlet.addNode: the host refused ({error})")))?;
+            h.ui.node(node).insert_into(&h.ui.node(outlet), None).map_err(|error| {
+                Fail::refused(ErrorCode::Denied, format!("Outlet.addNode: the host refused ({error})"))
+            })?;
             outlet_set(h, |part| part.nodes.push(node))?;
             h.ui.schedule();
             Ok(Val::None)
@@ -277,6 +282,7 @@ fn outlet_members(class: Class<'_>) -> Class<'_> {
 fn outlet_class<'a>(builder: &'a mut Builder, name: &str) -> Class<'a> {
     outlet_members(class_with(builder, name, WidgetKind::Box, |_ui, _cx, _inits, _cid| {
         Err(Fail::refused(
+            ErrorCode::Unsupported,
             "an outlet is made when a frame's outlet is first read (`frame.top`, `frame.overlay`)",
         ))
     }))
@@ -402,7 +408,12 @@ fn edge_zone(h: &CanvasHandle, cx: &mut Cx<'_>, which: usize) -> Res<Val> {
 fn actions_classes(builder: &mut Builder) {
     let _ = builder
         .class::<ActionsHandle>("window_actions")
-        .ctor(|_cx, _inits| Err(Fail::refused("a window's actions are made with its frame")))
+        .ctor(|_cx, _inits| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "a window's actions are made with its frame",
+            ))
+        })
         .get("frame", |h, cx| frame_object(&h.ui, h.id, cx))
         .get("closing", |h, _| Ok(Val::Bool(h.ui.frame_closing(h.id))))
         .get("now", |h, _| {

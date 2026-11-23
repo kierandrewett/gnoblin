@@ -395,7 +395,12 @@ pub(super) fn forget(ctx: GnoblinCtx) {
 fn trigger_class(builder: &mut Builder) {
     let _ = builder
         .class::<()>("triggers")
-        .ctor(|_, _| Err(gnoblin_object::Fail::refused("`triggers` holds functions only")))
+        .ctor(|_, _| {
+            Err(gnoblin_object::Fail::refused(
+                gnoblin_object::ErrorCode::Unsupported,
+                "`triggers` holds functions only",
+            ))
+        })
         .function("parse", |cx, args| {
             let trigger = parse_arg(args)?;
             trigger_value(cx, &trigger)

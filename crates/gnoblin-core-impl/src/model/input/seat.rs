@@ -1,12 +1,12 @@
 //! What the input module reads and writes of the seats: their names, pointer and focus, the settings the compositor published and the
 //! device lists. Each is the schema's default until the compositor says otherwise.
 
-use gnoblin_core_abi as abi;
 use gnoblin_object::server::Cx;
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{Obj, Res, Val};
 use gnoblin_tree_client::tree_mirror::{MirrorValue, NIL, TxAnimation};
 
 use super::super::values::{self, live, nodes_of, tree_class};
+use super::super::world::{detached, write_fail};
 use crate::session;
 
 /// The seat nodes, in the order the tree made them.
@@ -115,9 +115,9 @@ fn write(seat: u64, key: &str, value: MirrorValue) -> Res<()> {
     session::with(|session| {
         session
             .tree()
-            .map_err(|(code, text)| Fail::new(code, text))?
+            .map_err(detached)?
             .set(seat, key, value, TxAnimation::default())
-            .map_err(|error| Fail::new(abi::E_NO_SUCH_NODE, format!("Seat#{seat}.{key}: {error}")))
+            .map_err(|error| write_fail(&format!("Seat#{seat}.{key}"), &error))
     })
 }
 

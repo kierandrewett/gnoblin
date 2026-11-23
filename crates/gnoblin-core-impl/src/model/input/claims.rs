@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use gnoblin_core_abi as abi;
 use gnoblin_object::server::Cx;
-use gnoblin_object::{Closure, Fail, Obj, Res};
+use gnoblin_object::{Closure, ErrorCode, Fail, Obj, Res};
 use gnoblin_shell_host::generation::CallbackOutcome;
 
 use super::trigger::{self, SeatClaim};
@@ -148,7 +148,8 @@ impl InputTable {
                     "InputContext \"{}\": add the context to the input manager first",
                     held.name
                 ),
-            ));
+            )
+            .with_code(ErrorCode::InvalidState));
         }
         let seat = held.seat;
         let name = held.name.clone();

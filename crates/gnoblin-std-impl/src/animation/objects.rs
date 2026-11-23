@@ -13,7 +13,7 @@ use std::rc::Rc;
 use gnoblin_core::LogLevel;
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Callable, Fail, Obj, Res, Val};
+use gnoblin_object::{Callable, ErrorCode, Fail, Obj, Res, Val};
 use gnoblin_std_abi as sabi;
 
 use super::easing::Easing;
@@ -296,6 +296,7 @@ pub(crate) fn register(builder: &mut Builder) {
         .class::<TransitionRef>("transition")
         .ctor(|_, _| {
             Err(Fail::refused(
+                ErrorCode::InvalidState,
                 "a transition is the one a commit made: stage its writes with `begin` or `request`, and `commit`",
             ))
         })

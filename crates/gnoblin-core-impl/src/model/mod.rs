@@ -89,9 +89,9 @@ fn ensure(cx: &Cx<'_>) -> Res<()> {
 fn with_world<R>(cx: &Cx<'_>, work: impl FnOnce(&mut World) -> R) -> Res<R> {
     ensure(cx)?;
     let ctx = cx.ctx();
-    let mut world = WORLDS
-        .with(|worlds| worlds.borrow_mut().remove(&ctx))
-        .ok_or_else(|| gnoblin_object::Fail::err("the model of the generation is in use"))?;
+    let mut world = WORLDS.with(|worlds| worlds.borrow_mut().remove(&ctx)).ok_or_else(|| {
+        gnoblin_object::Fail::err("the model of the generation is in use").with_code(gnoblin_object::ErrorCode::Busy)
+    })?;
     let outcome = work(&mut world);
     WORLDS.with(|worlds| worlds.borrow_mut().insert(ctx, world));
     world_booted(cx, ctx);

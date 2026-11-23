@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use gnoblin_core::{ShellValue, SignalEvent};
 use gnoblin_core_abi::GnoblinCtx;
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 
 use super::entry;
 use super::tree::{core_fail, find, forget};
@@ -352,7 +352,7 @@ impl Ui {
                 }
                 let is_window = target.class_name().is_ok_and(|class| class == "window");
                 if !is_window {
-                    return Err(Fail::refused("focus: the host refused (not-owned)"));
+                    return Err(Fail::refused(ErrorCode::Denied, "focus: the host refused (not-owned)"));
                 }
             }
         }

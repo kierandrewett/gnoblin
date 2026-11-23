@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Builder, ClassBuilder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 
 use super::glue::{self, PerGeneration};
 use super::listener::{self, Registered};
@@ -493,7 +493,12 @@ fn listen(cx: &Cx<'_>, authentication: bool, listener_val: &Val, add: bool) -> R
 /// The members every request class has.
 fn request_members<'a>(class: ClassBuilder<'a, OfferedRequest>) -> ClassBuilder<'a, OfferedRequest> {
     class
-        .ctor(|_, _| Err(Fail::refused("a request is offered by the compositor")))
+        .ctor(|_, _| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "a request is offered by the compositor",
+            ))
+        })
         .get("kind", |state, cx| cx.enum_val("dialog_kind", state.kind.name()))
         .get("app_id", |state, _| Ok(Val::Text(state.app_id.clone())))
         .get("subject", |state, _| Ok(Val::Text(state.subject.clone())))

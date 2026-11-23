@@ -21,5 +21,5 @@ pub mod typed;
 mod value;
 pub mod wire;
 
-pub use error::{Fail, Res};
+pub use error::{ErrorCode, Fail, Res};
 pub use value::{Callable, ClassId, Closure, MemberId, Obj, Timing, Val};

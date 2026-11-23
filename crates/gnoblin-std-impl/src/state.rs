@@ -27,6 +27,7 @@ use crate::desks::{Desk, Policy, Slide};
 use crate::error::{Fail, Res};
 use crate::layout::LayoutObj;
 use crate::workspace::Workspace;
+use gnoblin_object::ErrorCode;
 
 /// A library-made id: a workspace, a collection or a registration. Never zero, never reused in the process.
 pub(crate) type Id = u64;
@@ -372,9 +373,10 @@ pub(crate) fn lookup(ctx: GnoblinCtx) -> Res<Rc<Std>> {
             "the generation has retired; its std objects are gone",
         ));
     }
-    Err(Fail::stale(
-        "libgnoblin-std is not open for this generation: call `open` first",
-    ))
+    Err(
+        Fail::stale("libgnoblin-std is not open for this generation: call `open` first")
+            .with_code(ErrorCode::InvalidState),
+    )
 }
 
 /// The library state of the generation `ctx` for the functions that need no desktop (animation, styles, the scene): it is made, with

@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::{Builder, ClassBuilder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 use gnoblin_std_abi as sabi;
 
 use super::cascade::Scalar;
@@ -496,6 +496,7 @@ fn made_style(cx: &mut Cx<'_>, work: impl FnOnce(&mut State) -> StdRes<Id>) -> R
 fn register_style(builder: &mut Builder) {
     let class = builder.class::<StyleRef>("style").ctor(|_, _| {
         Err(Fail::refused(
+            ErrorCode::Unsupported,
             "a style is the style of a scope: ask for it with `of_clients`, `of_workspace`, `of_client` or `where`",
         ))
     });
@@ -715,6 +716,7 @@ fn list_entries(class: ListClass<'_>) -> ListClass<'_> {
 /// A list is made by a style, never by itself.
 fn refuse_list() -> Fail {
     Fail::refused(
+        ErrorCode::Unsupported,
         "a list is a list of a style: ask for it with `shadow_list`, `border_list` or `filter_list` of the style",
     )
 }

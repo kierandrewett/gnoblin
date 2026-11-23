@@ -77,7 +77,10 @@ pub(crate) fn rotation_from_quaternion(target: &str, [x, y, z, w]: [f64; 4]) -> 
     let y = finite(target, y, "y")?;
     let z = finite(target, z, "z")?;
     let w = finite(target, w, "w")?;
-    euler_of_quaternion(x, y, z, w).map_err(|fail| Fail::new(fail.code, format!("{target}: {}", fail.message)))
+    euler_of_quaternion(x, y, z, w).map_err(|fail| {
+        let message = format!("{target}: {}", fail.message);
+        fail.with_message(message)
+    })
 }
 
 fn not_scale(target: &str) -> Fail {

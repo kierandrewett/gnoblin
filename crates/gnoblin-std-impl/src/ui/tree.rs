@@ -8,7 +8,7 @@ use std::rc::Rc;
 use gnoblin_core::{LogLevel, Node, NodeId, Value};
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Cx, Library};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 
 use super::widget::{CanvasHandle, Canvases, Cid, Ids, ModelIds, Ui, Widget, WidgetIds, WidgetKind};
 use crate::object::with_lib;
@@ -274,7 +274,8 @@ impl Ui {
     ///
     /// The tree has no seat, or the compositor refuses.
     pub(crate) fn set_focus(&self, node: u64) -> Res<()> {
-        let seat = crate::nodes::seat(&self.g).ok_or_else(|| Fail::refused("focus: the tree has no seat"))?;
+        let seat = crate::nodes::seat(&self.g)
+            .ok_or_else(|| Fail::refused(ErrorCode::Unavailable, "focus: the tree has no seat"))?;
         seat.set("focus", Value::Node(NodeId(node)))
             .map_err(|error| refused("focus", &error))
     }

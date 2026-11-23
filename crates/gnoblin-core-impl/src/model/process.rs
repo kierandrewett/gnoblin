@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 use gnoblin_shell_host::process::{ProcessCode, ProcessError, SpawnOptions, StreamMode};
 
 use super::glue::{self, PerGeneration};
@@ -246,7 +246,12 @@ fn exit_of(state: &ProcessState, cx: &Cx<'_>) -> Res<Val> {
 pub(super) fn register(builder: &mut Builder) {
     let _ = builder
         .class::<ProcessState>("process")
-        .ctor(|_, _| Err(Fail::refused("a process is started with `gnoblin.spawn`")))
+        .ctor(|_, _| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "a process is started with `gnoblin.spawn`",
+            ))
+        })
         .get("id", |state, _| Ok(Val::Uint(state.id)))
         .get("argv", |state, _| {
             Ok(Val::List(state.argv.iter().cloned().map(Val::Text).collect()))

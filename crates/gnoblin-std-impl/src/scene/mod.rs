@@ -101,7 +101,8 @@ pub(crate) fn write(g: &Gnoblin, node: u64, label: &str, key: &str, value: Prop)
 /// A failure of the core, with what the library was doing in front of its text.
 fn with_context(error: gnoblin_core::CoreError, context: &str) -> Fail {
     let fail = Fail::from(error);
-    Fail::new(fail.code, format!("{context} ({})", fail.message))
+    let message = format!("{context} ({})", fail.message);
+    fail.with_message(message)
 }
 
 /// A number that is finite, in a property of a node.

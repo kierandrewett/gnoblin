@@ -14,7 +14,7 @@ use gnoblin_core::objects::{
     PointerDragBindingHandlers,
 };
 use gnoblin_object::server::{ClassBuilder, Cx};
-use gnoblin_object::{Fail, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Res, Val};
 
 use super::drags::Stock;
 use super::gesture_actions::{Pinch, Swipe};
@@ -67,6 +67,7 @@ impl PolicyBinding {
     pub(super) fn open(&self) -> Res<()> {
         if self.installed.is_some() {
             return Err(Fail::refused(
+                ErrorCode::InvalidState,
                 "the binding is installed: uninstall it before changing it",
             ));
         }
@@ -75,7 +76,10 @@ impl PolicyBinding {
 
     fn install(&mut self, ui: &Rc<Ui>, context: Option<&str>) -> Res<()> {
         if self.installed.is_some() {
-            return Err(Fail::refused("the binding is installed already"));
+            return Err(Fail::refused(
+                ErrorCode::InvalidState,
+                "the binding is installed already",
+            ));
         }
         let objects = ui.g.objects().map_err(core_fail)?;
         let context = context_in(&objects, context)?;
@@ -119,14 +123,14 @@ fn context_in(objects: &Objects, name: Option<&str>) -> Res<InputContext> {
     let model = ModelRoot::get(objects)?;
     let input = model
         .input()?
-        .ok_or_else(|| Fail::refused("the compositor reports no input"))?;
+        .ok_or_else(|| Fail::refused(ErrorCode::Unavailable, "the compositor reports no input"))?;
     match name {
         Some(name) => input
             .find_context(name)?
             .ok_or_else(|| Fail::no_such(format!("there is no input context named `{name}`"))),
         None => input
             .primary()?
-            .ok_or_else(|| Fail::refused("the compositor reports no seat")),
+            .ok_or_else(|| Fail::refused(ErrorCode::Unavailable, "the compositor reports no seat")),
     }
 }
 
@@ -147,6 +151,7 @@ pub(super) fn members(class: ClassBuilder<'_, PolicyBinding>) -> ClassBuilder<'_
 pub(super) fn register_base(builder: &mut gnoblin_object::server::Builder) {
     let class = builder.class::<PolicyBinding>("policy_binding").ctor(|_cx, _inits| {
         Err(Fail::refused(
+            ErrorCode::Unsupported,
             "make a move, resize, swap, split resize, swipe, pinch or slide binding",
         ))
     });

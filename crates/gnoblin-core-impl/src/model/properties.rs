@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Callable, ClassId, Fail, MemberId, Obj, Res, Val};
+use gnoblin_object::{Callable, ClassId, ErrorCode, Fail, MemberId, Obj, Res, Val};
 
 /// The most passes of dirty bindings one turn runs.
 const MAX_PASSES: usize = 8;
@@ -250,7 +250,7 @@ fn bind(shape: BindShape) -> impl Fn(&mut BindingsState, &mut Cx<'_>, &[Val]) ->
             .and_then(|def| def.member(member))
             .ok_or_else(|| Fail::no_such(format!("`{property}` is not a property")))?;
         if def.flags & abi::MEMBER_READONLY != 0 {
-            return Err(Fail::type_error(format!("{property} is not a writable property")));
+            return Err(Fail::read_only(format!("{property} is not a writable property")));
         }
         let ctx = cx.ctx();
         let id = ENGINES.with(|engines| {
@@ -286,7 +286,12 @@ fn bind(shape: BindShape) -> impl Fn(&mut BindingsState, &mut Cx<'_>, &[Val]) ->
 pub(super) fn register(builder: &mut Builder) {
     let _ = builder
         .class::<BindingsState>("property_bindings")
-        .ctor(|_, _| Err(Fail::refused("the bindings of an object are its `properties`")))
+        .ctor(|_, _| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "the bindings of an object are its `properties`",
+            ))
+        })
         .method("bind_double", bind(BindShape::Double))
         .method("bind_bool", bind(BindShape::Bool))
         .method("bind_string", bind(BindShape::Text))
@@ -316,7 +321,12 @@ pub(super) fn register(builder: &mut Builder) {
         });
     let _ = builder
         .class::<BindingState>("property_binding")
-        .ctor(|_, _| Err(Fail::refused("a binding is made with `bind_double` and the others")))
+        .ctor(|_, _| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "a binding is made with `bind_double` and the others",
+            ))
+        })
         .get("property", |state, _| {
             let name = ENGINES.with(|engines| {
                 engines

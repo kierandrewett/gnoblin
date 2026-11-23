@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 
 use super::glue::{self, PerGeneration};
 use super::listener::{self, Registered};
@@ -329,7 +329,12 @@ fn leave(cx: &Cx<'_>, record: LaunchRecord) {
 pub(super) fn register(builder: &mut Builder) {
     let _ = builder
         .class::<LaunchState>("launch")
-        .ctor(|_, _| Err(Fail::refused("a launch is made by `gnoblin.launches.begin`")))
+        .ctor(|_, _| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "a launch is made by `gnoblin.launches.begin`",
+            ))
+        })
         .get("token", |state, cx| {
             read(state, cx, |record| Val::Text(record.token.clone()))
         })

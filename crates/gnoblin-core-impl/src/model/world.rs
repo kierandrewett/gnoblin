@@ -9,7 +9,9 @@ use std::collections::{HashMap, HashSet};
 
 use gnoblin_core_abi as abi;
 use gnoblin_object::server::Cx;
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
+use gnoblin_tree_client::session::WriteError;
+use gnoblin_tree_client::tree_mirror::TxError;
 
 use super::values::{self, class_name, live, nodes_of, published, record, rect, tree_class};
 use crate::events::ShellEvent;
@@ -961,4 +963,24 @@ impl World {
 /// The failure for a window or an output that is gone.
 pub(super) fn gone(what: &str, id: u64, member: &str, noun: &str) -> Fail {
     Fail::new(abi::E_NO_SUCH_NODE, format!("{what}#{id}.{member}: the {noun} is gone"))
+}
+
+/// The failure of a write or a call the tree refused before it was sent. `target` names the node and member; the error of the tree says
+/// why, and the code follows it: a node that is not there is `not_found`, an id that is in use `already_exists`, a move that would make a
+/// node its own ancestor `invalid_argument`, the root `denied` and a shell with no ids left `unavailable`. The ABI code stays
+/// `E_NO_SUCH_NODE`, as it was for each of them.
+pub(super) fn write_fail(target: &str, error: &WriteError) -> Fail {
+    let code = match error {
+        WriteError::Tx(TxError::UnknownNode(_)) => ErrorCode::NotFound,
+        WriteError::Tx(TxError::Exists(_)) => ErrorCode::AlreadyExists,
+        WriteError::Tx(TxError::Cycle(_)) => ErrorCode::InvalidArgument,
+        WriteError::Tx(TxError::Root(_)) => ErrorCode::Denied,
+        WriteError::OutOfIds => ErrorCode::Unavailable,
+    };
+    Fail::new(abi::E_NO_SUCH_NODE, format!("{target}: {error}")).with_code(code)
+}
+
+/// The failure of a call made before the shell attached to the tree (`invalid_state`): the code and the words the session gave.
+pub(super) fn detached((code, text): (i32, String)) -> Fail {
+    Fail::new(code, text).with_code(ErrorCode::InvalidState)
 }

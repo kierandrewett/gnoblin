@@ -14,6 +14,7 @@ use crate::layout::LayoutObj;
 use crate::nodes;
 use crate::state::{Id, NodeId, Notice, State};
 use crate::workspace_objects::{NOTICE_HIDDEN, NOTICE_SHOWN};
+use gnoblin_object::ErrorCode;
 
 /// The workspace shown by an output, and how its windows are handled when outputs come and go.
 #[derive(Clone, Debug)]
@@ -482,7 +483,10 @@ impl State {
         progress: f64,
     ) -> Res<()> {
         if !self.workspace(workspace)?.attached {
-            return Err(Fail::refused("add the workspace to the list first"));
+            return Err(Fail::refused(
+                ErrorCode::InvalidState,
+                "add the workspace to the list first",
+            ));
         }
         if !duration_ms.is_finite() || duration_ms < 0.0 {
             return Err(Fail::type_error(
@@ -495,7 +499,7 @@ impl State {
         if let Some(output) = output
             && !nodes::alive(&self.g, output)
         {
-            return Err(Fail::refused(format!("output {output} is gone")));
+            return Err(Fail::refused(ErrorCode::NotFound, format!("output {output} is gone")));
         }
         self.ensure_desk();
         let own = match output {
@@ -503,7 +507,10 @@ impl State {
             Some(output) => self.desk_of_output(output),
         };
         let Some(desk) = own.map(|desk| self.effective_desk(desk)) else {
-            return Err(Fail::refused("there is no output to show a workspace on"));
+            return Err(Fail::refused(
+                ErrorCode::Unavailable,
+                "there is no output to show a workspace on",
+            ));
         };
         let from = self.desk(desk).and_then(|desk| desk.shown);
         // A workspace can appear on only one desk, so swap the two desks' shown workspaces.

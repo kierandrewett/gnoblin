@@ -31,6 +31,7 @@ use crate::layout::{Foreign, LayoutObj};
 use crate::state::{self, RegData, State, Std};
 use crate::turn::schedule;
 use crate::workspace::check_gap;
+use gnoblin_object::ErrorCode;
 
 // ---- the shape of a call ---------------------------------------------------------------------------------------------------
 
@@ -521,7 +522,10 @@ unsafe extern "C" fn collection_add(ctx: GnoblinCtx, collection: GnoblinStdColle
         mutate(ctx, |st| match source_of(st, collection)? {
             Source::WorkspaceClients(workspace) => st.transfer_client(workspace, member).map(|()| abi::E_OK),
             Source::Workspaces => st.add_workspace(member).map(|()| abi::E_OK),
-            _ => Err(Fail::refused("this collection's membership cannot be changed")),
+            _ => Err(Fail::refused(
+                ErrorCode::ReadOnly,
+                "this collection's membership cannot be changed",
+            )),
         })
     })
 }
@@ -538,7 +542,10 @@ unsafe extern "C" fn collection_remove(ctx: GnoblinCtx, collection: GnoblinStdCo
                 st.remove_workspace(member);
                 Ok(1)
             }
-            _ => Err(Fail::refused("this collection's membership cannot be changed")),
+            _ => Err(Fail::refused(
+                ErrorCode::ReadOnly,
+                "this collection's membership cannot be changed",
+            )),
         })
     })
 }
@@ -556,7 +563,10 @@ unsafe extern "C" fn collection_clear(ctx: GnoblinCtx, collection: GnoblinStdCol
                 }
                 Ok(abi::E_OK)
             }
-            _ => Err(Fail::refused("this collection's membership cannot be changed")),
+            _ => Err(Fail::refused(
+                ErrorCode::ReadOnly,
+                "this collection's membership cannot be changed",
+            )),
         })
     })
 }
@@ -565,7 +575,10 @@ unsafe extern "C" fn collection_swap(ctx: GnoblinCtx, collection: GnoblinStdColl
     call("collection_swap", || {
         mutate(ctx, |st| match source_of(st, collection)? {
             Source::WorkspaceClients(workspace) => st.swap_clients(workspace, a, b).map(|()| abi::E_OK),
-            _ => Err(Fail::refused("this collection's order cannot be changed")),
+            _ => Err(Fail::refused(
+                ErrorCode::ReadOnly,
+                "this collection's order cannot be changed",
+            )),
         })
     })
 }
@@ -576,8 +589,12 @@ fn source_of(st: &State, collection: GnoblinStdCollection) -> Res<Source> {
         .colls
         .get(&collection)
         .ok_or_else(|| Fail::stale(format!("collection {collection} does not exist")))?;
-    coll.source
-        .ok_or_else(|| Fail::refused("this collection is a selection: its membership follows its parent's"))
+    coll.source.ok_or_else(|| {
+        Fail::refused(
+            ErrorCode::ReadOnly,
+            "this collection is a selection: its membership follows its parent's",
+        )
+    })
 }
 
 unsafe extern "C" fn client_workspace(ctx: GnoblinCtx, client: GnoblinNode, out: *mut GnoblinStdWorkspace) -> i32 {
@@ -873,6 +890,7 @@ unsafe extern "C" fn policy_workspaces(ctx: GnoblinCtx, policy: *const GnoblinSt
                 Layout::Floating { mode, step } => (mode, step),
                 Layout::Foreign { .. } => {
                     return Err(Fail::refused(
+                        ErrorCode::Unsupported,
                         "the per-output policy makes a workspace for each output and a foreign layout has one `user`: set the layout of each workspace instead",
                     ));
                 }

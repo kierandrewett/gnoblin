@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use gnoblin_core_abi as abi;
 use gnoblin_object::server::{Builder, ClassBuilder, Cx};
-use gnoblin_object::{Callable, Fail, Obj, Res, Val};
+use gnoblin_object::{Callable, ErrorCode, Fail, Obj, Res, Val};
 
 use crate::{registry, session};
 
@@ -159,7 +159,12 @@ fn queue_calls(cx: &Cx<'_>, op: Obj, run: Vec<Rc<dyn Callable>>, ok: bool, error
 /// The members of the base class, for each class that has them.
 fn base<'a>(class: ClassBuilder<'a, OperationState>) -> ClassBuilder<'a, OperationState> {
     class
-        .ctor(|_, _| Err(Fail::refused("an operation is made by the library, from a request")))
+        .ctor(|_, _| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "an operation is made by the library, from a request",
+            ))
+        })
         .get("status", |state, cx| {
             let name = match state.status {
                 OpStatus::Pending => "pending",
@@ -273,7 +278,12 @@ pub(super) fn register(builder: &mut Builder) {
     });
     let _ = builder
         .class::<TimerState>("timer")
-        .ctor(|_, _| Err(Fail::refused("a timer is made with `gnoblin.timers.after`")))
+        .ctor(|_, _| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "a timer is made with `gnoblin.timers.after`",
+            ))
+        })
         .get("pending", |state, _| Ok(Val::Bool(state.pending.get())))
         .method("cancel", |state, cx, _| {
             if state.pending.replace(false) {

@@ -51,6 +51,7 @@ use crate::nodes;
 use crate::state::{Id, NodeId, State, Std, next_id};
 use crate::table::{call_reg, read_ext};
 use crate::turn::schedule;
+use gnoblin_object::ErrorCode;
 
 use self::gesture::{GestureTrigger, progress_of, way_of};
 use self::steps::DragRule;
@@ -763,7 +764,8 @@ fn add_drag(
     {
         return Err(Fail::busy(format!(
             "a binding of {key} at priority {priority} exists: give one a different priority or trigger"
-        )));
+        ))
+        .with_code(ErrorCode::AlreadyExists));
     }
     if !std.router.borrow().pointer_claims.contains_key(key) {
         let weak = Rc::downgrade(std);
@@ -847,7 +849,8 @@ pub(crate) unsafe extern "C" fn binding_gesture(
             return Err(Fail::busy(format!(
                 "a binding of {} at priority {priority} exists: give one a different priority or trigger",
                 trigger.text()
-            )));
+            ))
+            .with_code(ErrorCode::AlreadyExists));
         }
         if !std.router.borrow().gesture_claims.contains_key(&key) {
             let weak = Rc::downgrade(&std);

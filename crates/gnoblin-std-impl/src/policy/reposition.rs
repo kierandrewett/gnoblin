@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use gnoblin_core::Rect;
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 use gnoblin_std_abi::{STD_CONSTRAINT_MINIMUM_STRIP, STD_CONSTRAINT_WORK_AREA};
 
 use super::drags::work_area;
@@ -288,9 +288,12 @@ fn read<R>(handle: &CanvasHandle, read: impl FnOnce(&GrabPart) -> R) -> Res<R> {
 }
 
 pub(super) fn register(builder: &mut Builder) {
-    let class = builder
-        .class::<CanvasHandle>("reposition_grab")
-        .ctor(|_cx, _inits| Err(Fail::refused("the library makes the line when a keyboard mode begins")));
+    let class = builder.class::<CanvasHandle>("reposition_grab").ctor(|_cx, _inits| {
+        Err(Fail::refused(
+            ErrorCode::Unsupported,
+            "the library makes the line when a keyboard mode begins",
+        ))
+    });
     let _ = box_members(canvas_members(class))
         .get("mode", |h, _| Ok(enumeration(read(h, |part| part.mode)?)))
         .get("client", |h, _| Ok(Val::Text(read(h, |part| part.client)?.to_string())))

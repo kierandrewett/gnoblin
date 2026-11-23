@@ -2,15 +2,32 @@
 //! The object protocol end to end, in this process, over two small libraries with hand-written catalogs: values of every kind, a
 //! closure property, an interface the shell implements, signals and property changes told from the turn, a class whose base class
 //! another library serves, and the property-read tracker. The libraries are `gnoblin-object`'s own server behind its own C table.
+//!
+//! The string code of a failed call (`GnoblinObjectApi::last_error_code`, appended to the table within ABI 1.0) is held to these failure
+//! modes, each of which has the test named beside it:
+//!
+//! 1. A table shorter than the field (a library built before it) reports no code, and the client never reads past the table:
+//!    `a_table_shorter_than_the_field_reports_no_code_and_is_never_read_past`.
+//! 2. A table that has the field, and a failure that has no code (a bad argument): the accessor says zero and leaves the buffer alone:
+//!    `a_failure_with_no_code_reports_nothing`.
+//! 3. A code from an earlier failure on the same thread must not read as the code of a later call:
+//!    `a_success_clears_the_code_of_the_failure_before_it`.
+//! 4. A code text the client does not know, is too long or is not UTF-8 falls back to the code the integer says, and never panics:
+//!    `a_garbage_code_falls_back_to_the_code_the_integer_says`.
+//! 5. A buffer too small for the code is truncated and NUL terminated, and the full length returned, as `gnoblin_last_error` does:
+//!    `a_small_buffer_gets_a_truncated_nul_terminated_code_and_the_full_length`.
+//! 6. The error text is the same whether or not a code is present: `the_error_text_is_the_same_with_and_without_a_code`.
+//! 7. A coded failure reads as its code: `a_refused_write_and_a_gone_object_carry_their_codes`.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::LazyLock;
 
 use gnoblin_core_abi::{self as abi, GnoblinObjectApi};
 use gnoblin_object::catalog::{ArgDef, CatalogDef, ClassDef, DefaultDef, MemberDef, TypeDef};
 use gnoblin_object::client::{Api, closure};
 use gnoblin_object::server::{Builder, Cx, Hooks, Library, Provider, api_table};
-use gnoblin_object::{Callable, Fail, Val};
+use gnoblin_object::{Callable, ErrorCode, Fail, Val};
 
 const CTX: u64 = 7;
 
@@ -740,4 +757,204 @@ fn a_method_may_answer_none_for_an_object_only_when_the_catalog_says_optional() 
         "a result that is not marked and answers none names the method: {}",
         fault.message
     );
+}
+
+// ---- the string code of a failure ---------------------------------------------------------------------------------------------
+
+/// What the accessor of the probe's own table says right now: its length and the bytes it wrote into a buffer of `cap` bytes.
+fn raw_code(cap: usize) -> (usize, Vec<u8>) {
+    let mut buf = vec![0xAAu8; cap.max(1)];
+    // SAFETY: `buf` is a live buffer of at least `cap` bytes.
+    let len = unsafe { (PROBE_API.last_error_code)(buf.as_mut_ptr(), cap) };
+    (len, buf)
+}
+
+/// A copy of the probe's table cut to `size` bytes, with `accessor` as the function of its last field. What a library built before the
+/// field existed looks like to a client: its table is shorter than the field, and the bytes past `size` are never to be read.
+fn table_cut_to(size: u32, accessor: unsafe extern "C" fn(*mut u8, usize) -> usize) -> GnoblinObjectApi {
+    // SAFETY: `GnoblinObjectApi` is plain data (integers and function pointers), so a bitwise copy is a valid value.
+    let mut copy: GnoblinObjectApi = unsafe { std::ptr::read(&PROBE_API) };
+    copy.size = size;
+    copy.last_error_code = accessor;
+    copy
+}
+
+const FIELD_AT: u32 = core::mem::offset_of!(GnoblinObjectApi, last_error_code) as u32;
+
+static OLD: LazyLock<GnoblinObjectApi> = LazyLock::new(|| table_cut_to(FIELD_AT, must_not_be_called));
+static BOGUS: LazyLock<GnoblinObjectApi> =
+    LazyLock::new(|| table_cut_to(size_of::<GnoblinObjectApi>() as u32, says_bogus));
+static LONG: LazyLock<GnoblinObjectApi> =
+    LazyLock::new(|| table_cut_to(size_of::<GnoblinObjectApi>() as u32, says_too_long));
+static BINARY: LazyLock<GnoblinObjectApi> =
+    LazyLock::new(|| table_cut_to(size_of::<GnoblinObjectApi>() as u32, says_not_utf8));
+
+unsafe extern "C" fn must_not_be_called(_: *mut u8, _: usize) -> usize {
+    // A client that reads past a short table calls this; the process ends, which fails the test.
+    std::process::abort()
+}
+
+unsafe extern "C" fn says_bogus(buf: *mut u8, cap: usize) -> usize {
+    let text = b"bogus_code";
+    if !buf.is_null() && cap > text.len() {
+        // SAFETY: `buf` has `cap` writable bytes, and the text fits with its NUL.
+        unsafe {
+            std::ptr::copy_nonoverlapping(text.as_ptr(), buf, text.len());
+            buf.add(text.len()).write(0);
+        }
+    }
+    text.len()
+}
+
+unsafe extern "C" fn says_too_long(buf: *mut u8, cap: usize) -> usize {
+    let text = [b'x'; 100];
+    if !buf.is_null() && cap > 0 {
+        let kept = text.len().min(cap - 1);
+        // SAFETY: `buf` has `cap` writable bytes and `kept + 1 <= cap`.
+        unsafe {
+            std::ptr::copy_nonoverlapping(text.as_ptr(), buf, kept);
+            buf.add(kept).write(0);
+        }
+    }
+    text.len()
+}
+
+unsafe extern "C" fn says_not_utf8(buf: *mut u8, cap: usize) -> usize {
+    let text = [0xFFu8, 0xFE, 0xFD];
+    if !buf.is_null() && cap > text.len() {
+        // SAFETY: `buf` has `cap` writable bytes, and the text fits with its NUL.
+        unsafe {
+            std::ptr::copy_nonoverlapping(text.as_ptr(), buf, text.len());
+            buf.add(text.len()).write(0);
+        }
+    }
+    text.len()
+}
+
+/// A call on a client over `table` that fails with the integer `abi::E_STALE`: a destroyed object read.
+fn stale_read(table: &'static GnoblinObjectApi) -> Fail {
+    let api = Api::new(table, CTX, last_error);
+    let class = api.class("probe").unwrap();
+    let count = api.member(class, abi::MEMBER_PROPERTY, "count").unwrap();
+    let obj = api.create(class, &[]).unwrap();
+    api.destroy(obj).unwrap();
+    api.get(obj, count).unwrap_err()
+}
+
+#[test]
+fn a_table_shorter_than_the_field_reports_no_code_and_is_never_read_past() {
+    let fail = stale_read(&OLD);
+    assert_eq!(fail.code, abi::E_STALE);
+    assert_eq!(
+        fail.reason(),
+        Some(ErrorCode::NotFound),
+        "the integer is all an old library says"
+    );
+    let api = Api::new(&OLD, CTX, last_error);
+    let bad = api.create(api.class("point").unwrap(), &[]).unwrap_err();
+    assert_eq!(
+        bad.reason(),
+        None,
+        "a bad argument of an old library is still a bad argument"
+    );
+}
+
+#[test]
+fn a_failure_with_no_code_reports_nothing() {
+    let api = probe();
+    let fail = api.create(api.class("point").unwrap(), &[]).unwrap_err();
+    assert_eq!(fail.code, abi::E_TYPE);
+    assert_eq!(
+        fail.reason(),
+        None,
+        "a bad argument has no code: a script runtime raises a TypeError"
+    );
+    let (len, buf) = raw_code(16);
+    assert_eq!(len, 0);
+    assert_eq!(buf[0], 0xAA, "the buffer is not written when there is no code");
+}
+
+#[test]
+fn a_success_clears_the_code_of_the_failure_before_it() {
+    let api = probe();
+    let fail = stale_read(&PROBE_API);
+    assert_eq!(fail.reason(), Some(ErrorCode::NotFound));
+    assert_eq!(raw_code(16).0, "not_found".len());
+    api.class("probe").unwrap();
+    assert_eq!(
+        raw_code(16).0,
+        0,
+        "a call that succeeded leaves no code behind for the next reader"
+    );
+    // And a failure with no code after one with a code does not read as the earlier one.
+    stale_read(&PROBE_API);
+    api.create(api.class("point").unwrap(), &[]).unwrap_err();
+    assert_eq!(raw_code(16).0, 0);
+}
+
+#[test]
+fn a_garbage_code_falls_back_to_the_code_the_integer_says() {
+    for table in [&*BOGUS, &*LONG, &*BINARY] {
+        let fail = stale_read(table);
+        assert_eq!(fail.code, abi::E_STALE);
+        assert_eq!(
+            fail.reason(),
+            Some(ErrorCode::NotFound),
+            "garbage is not a code: the integer's reading stands"
+        );
+    }
+}
+
+#[test]
+fn a_small_buffer_gets_a_truncated_nul_terminated_code_and_the_full_length() {
+    let api = probe();
+    let class = api.class("probe").unwrap();
+    let last = api.member(class, abi::MEMBER_PROPERTY, "last").unwrap();
+    let obj = api.create(class, &[]).unwrap();
+    let refused = api.set(obj, last, &Val::Int(1)).unwrap_err();
+    assert_eq!(
+        (refused.code, refused.reason()),
+        (abi::E_TYPE, Some(ErrorCode::ReadOnly))
+    );
+    let (len, buf) = raw_code(4);
+    assert_eq!(len, "read_only".len(), "the full length is returned");
+    assert_eq!(&buf[..4], b"rea\0", "truncated to the buffer and NUL terminated");
+    let (len, buf) = raw_code(10);
+    assert_eq!((len, &buf[..10]), (9, &b"read_only\0"[..]));
+    // A zero capacity only asks for the length.
+    let (len, buf) = raw_code(0);
+    assert_eq!((len, buf[0]), (9, 0xAA));
+    // SAFETY: a null buffer with zero capacity is the documented way to ask for the length.
+    assert_eq!(unsafe { (PROBE_API.last_error_code)(std::ptr::null_mut(), 0) }, 9);
+}
+
+#[test]
+fn the_error_text_is_the_same_with_and_without_a_code() {
+    let with_code = stale_read(&PROBE_API);
+    let without = stale_read(&OLD);
+    assert_eq!(with_code.message, without.message);
+    assert!(with_code.message.contains("gone"), "{}", with_code.message);
+    let prefixed = Fail::new(abi::E_STALE, "E_STALE: the client is gone").at("Client#7.x");
+    assert_eq!(
+        prefixed.to_string(),
+        "Client#7.x: the client is gone",
+        "the symbolic ABI code of the last-error text is dropped"
+    );
+    let words = with_code.message.clone();
+    let at = with_code.at("Probe#3.count");
+    assert_eq!(at.target(), Some("Probe#3.count"));
+    assert!(at.to_string().starts_with("Probe#3.count: "), "{at}");
+    assert!(at.to_string().ends_with(&words), "{at}");
+}
+
+#[test]
+fn a_refused_write_and_a_gone_object_carry_their_codes() {
+    let api = probe();
+    let class = api.class("probe").unwrap();
+    let last = api.member(class, abi::MEMBER_PROPERTY, "last").unwrap();
+    let obj = api.create(class, &[]).unwrap();
+    let refused = api.set(obj, last, &Val::Int(1)).unwrap_err();
+    assert_eq!(refused.code(), ErrorCode::ReadOnly);
+    assert_eq!(stale_read(&PROBE_API).code(), ErrorCode::NotFound);
+    assert_eq!(api.class("nothing").unwrap_err().code(), ErrorCode::NotFound);
 }

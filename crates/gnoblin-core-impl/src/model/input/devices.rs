@@ -2,7 +2,7 @@
 //! at a time and carries the bindings that match only its own events; they run before a layout's and the context's.
 
 use gnoblin_object::server::{Builder, ClassBuilder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 
 use super::binding::{
     bind_closure, bind_drag, bind_gesture, bind_handler, follow, new_collection, unfollow, wants_only,
@@ -346,7 +346,7 @@ fn title(cx: &Cx<'_>) -> Res<String> {
 /// The members every class of a device has.
 fn base(class: ClassBuilder<'_, ()>) -> ClassBuilder<'_, ()> {
     class
-        .ctor(|_, _| Err(Fail::refused("a device is reported by the seat")))
+        .ctor(|_, _| Err(Fail::refused(ErrorCode::Unsupported, "a device is reported by the seat")))
         .get("id", |_, cx| read(cx, |device| Val::Text(device.id.clone())))
         .get("name", |_, cx| read(cx, |device| Val::Text(device.name.clone())))
         .get("capabilities", |_, cx| {

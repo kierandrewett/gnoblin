@@ -15,7 +15,7 @@ use std::rc::Rc;
 use gnoblin_core_abi as abi;
 use gnoblin_object::client::Api;
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Callable, ClassId, Fail, MemberId, Obj, Res, Val};
+use gnoblin_object::{Callable, ClassId, ErrorCode, Fail, MemberId, Obj, Res, Val};
 
 use super::registry::{NodeHandle, SceneWorld, world_of};
 use crate::math::triple_val;
@@ -155,7 +155,9 @@ impl SceneWorld {
                         .and_then(|def| def.member(*member))
                         .is_some_and(|def| def.flags & abi::MEMBER_READONLY == 0)
                 })
-                .ok_or_else(|| Fail::no_such(format!("{property} is not a writable property")))?;
+                .ok_or_else(|| {
+                    Fail::no_such(format!("{property} is not a writable property")).with_code(ErrorCode::ReadOnly)
+                })?;
             lib.set(ctx, owner, writable, value)
         })
     }
@@ -457,7 +459,12 @@ pub(crate) fn bindings_val(cx: &mut Cx<'_>, handle: &NodeHandle) -> Res<Val> {
 pub(crate) fn register(builder: &mut Builder) {
     let _ = builder
         .class::<BindingHandle>("node_binding")
-        .ctor(|_cx, _inits| Err(Fail::refused("a binding is made by `properties.bind_*`")))
+        .ctor(|_cx, _inits| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "a binding is made by `properties.bind_*`",
+            ))
+        })
         .get("property", |h, _| Ok(Val::Text(h.property.clone())))
         .get("alive", |h, _| Ok(Val::Bool(h.world.engine.borrow().live(h.id))))
         .method("dispose", |h, _, _| {
@@ -466,7 +473,12 @@ pub(crate) fn register(builder: &mut Builder) {
         });
     let _ = builder
         .class::<BindingsHandle>("node_bindings")
-        .ctor(|_cx, _inits| Err(Fail::refused("the bindings of a node are `node.properties`")))
+        .ctor(|_cx, _inits| {
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                "the bindings of a node are `node.properties`",
+            ))
+        })
         .method("bind_number", |h, cx, args| bind_with(h, cx, args, Shape::Number))
         .method("bind_flag", |h, cx, args| bind_with(h, cx, args, Shape::Flag))
         .method("bind_text", |h, cx, args| bind_with(h, cx, args, Shape::Text))

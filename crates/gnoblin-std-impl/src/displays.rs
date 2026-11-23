@@ -21,6 +21,7 @@ use crate::error::{Fail, Res};
 use crate::nodes;
 use crate::state::{self, Id, NodeId, Notice, State};
 use crate::turn::schedule;
+use gnoblin_object::ErrorCode;
 
 /// A profile or a display, by the library's own id.
 pub(crate) type Hid = u64;
@@ -336,7 +337,8 @@ impl State {
         {
             return Err(Fail::busy(format!(
                 "there is already a profile \"{id}\"; give the profile an id of its own"
-            )));
+            ))
+            .with_code(ErrorCode::AlreadyExists));
         }
         if let Some(rec) = self.disp.profiles.get_mut(&profile) {
             rec.listed = true;
@@ -666,13 +668,18 @@ impl State {
                 continue;
             }
             if held.id == id {
-                return Err(Fail::busy(format!("there is already a display \"{id}\"")));
+                return Err(
+                    Fail::busy(format!("there is already a display \"{id}\"")).with_code(ErrorCode::AlreadyExists)
+                );
             }
             if let Some(shared) = self.overlap(display, *other) {
-                return Err(Fail::refused(format!(
-                    "display \"{id}\" cannot present {shared}: display \"{}\" does already (use gnoblin.displays.replace(\"{}\", ...) to swap them)",
-                    held.id, held.id
-                )));
+                return Err(Fail::refused(
+                    ErrorCode::Busy,
+                    format!(
+                        "display \"{id}\" cannot present {shared}: display \"{}\" does already (use gnoblin.displays.replace(\"{}\", ...) to swap them)",
+                        held.id, held.id
+                    ),
+                ));
             }
         }
         Ok(())
@@ -760,10 +767,10 @@ impl State {
         }
         let next_rec = self.display(next)?;
         if next_rec.listed {
-            return Err(Fail::busy(format!(
-                "Display#{} is in the collection already",
-                next_rec.id
-            )));
+            return Err(
+                Fail::busy(format!("Display#{} is in the collection already", next_rec.id))
+                    .with_code(ErrorCode::AlreadyExists),
+            );
         }
         let mut leaving = HashSet::from([old]);
         for other in &self.disp.display_list {

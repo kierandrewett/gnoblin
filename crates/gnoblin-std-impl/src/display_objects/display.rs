@@ -5,7 +5,7 @@
 
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 use gnoblin_std_abi as abi;
 
 use super::profile::{profile_of, profile_val};
@@ -140,10 +140,13 @@ pub(super) fn register(builder: &mut Builder) {
             edit(held.ctx, |st| {
                 let rec = st.display(held.hid)?;
                 if rec.listed && rec.id != id {
-                    return Err(crate::error::Fail::refused(format!(
-                        "Display \"{}\".id: cannot change while the display is in the manager",
-                        rec.id
-                    )));
+                    return Err(crate::error::Fail::refused(
+                        ErrorCode::InvalidState,
+                        format!(
+                            "Display \"{}\".id: cannot change while the display is in the manager",
+                            rec.id
+                        ),
+                    ));
                 }
                 if let Some(rec) = st.disp.displays.get_mut(&held.hid) {
                     rec.id = id;
@@ -193,7 +196,8 @@ pub(super) fn register(builder: &mut Builder) {
                     let id = st.disp.displays.get(&owner).map_or("", |rec| rec.id.as_str());
                     return Err(crate::error::Fail::type_error(format!(
                         "Display.viewport: already shown by display \"{id}\""
-                    )));
+                    ))
+                    .with_code(ErrorCode::Busy));
                 }
                 let content = rec.content;
                 if let Some(old) = old

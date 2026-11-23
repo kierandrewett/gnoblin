@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gnoblin_object::server::{Builder, Cx};
-use gnoblin_object::{Fail, Obj, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 
 use super::card::{self, MenuPart};
 use super::entry::{self, EntryObj};
@@ -206,9 +206,10 @@ fn canvas_classes(builder: &mut Builder) {
 
     let refused = |what: &'static str| {
         move |_: &mut Cx<'_>, _: &mut gnoblin_object::server::Inits| -> Res<CanvasHandle> {
-            Err(Fail::refused(format!(
-                "{what} is made by the library when a menu opens"
-            )))
+            Err(Fail::refused(
+                ErrorCode::Unsupported,
+                format!("{what} is made by the library when a menu opens"),
+            ))
         }
     };
     let panel = builder.class::<CanvasHandle>("menu_panel").ctor(refused("a menu card"));

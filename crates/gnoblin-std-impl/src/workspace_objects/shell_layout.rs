@@ -61,7 +61,7 @@ pub(crate) struct ObjectLayout {
 }
 
 fn failed(fail: Fail) -> StdFail {
-    StdFail::new(fail.code, fail.message)
+    StdFail::from(fail)
 }
 
 impl ObjectLayout {
@@ -97,10 +97,10 @@ impl ObjectLayout {
 
     /// Where the tiled clients go: the shell's `compute`.
     pub(crate) fn compute(&self, cx: &LayoutContext) -> StdRes<Vec<Placement>> {
-        let answer = self
-            .shell
-            .call(self.ids.compute, &[self.context(cx)])
-            .map_err(|fail| StdFail::new(fail.code, format!("the layout's compute failed: {}", fail.message)))?;
+        let answer = self.shell.call(self.ids.compute, &[self.context(cx)]).map_err(|fail| {
+            let message = format!("the layout's compute failed: {}", fail.message);
+            StdFail::from(fail).with_message(message)
+        })?;
         placements_of(&answer, &cx.children).map_err(failed)
     }
 
