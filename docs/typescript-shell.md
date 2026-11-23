@@ -465,6 +465,39 @@ The window menu opens on a right click on a titlebar, and with `Alt+Space`:
 
 ![The window menu open under a titlebar](images/js-shell/window-menu.png)
 
+## Catch a failed call
+
+A call the library refuses throws a `GnoblinError`, which `gnoblin-core/generated/objects` and `gnoblin-std/generated/objects` export.
+
+- `error.code` says why.
+- `error.target` names the object and member, such as `Client#7.close`.
+- A bad argument throws a `TypeError` or a `RangeError` and has no code.
+
+[Errors](shell-api/errors.md) lists the codes.
+
+```ts
+import { GnoblinError } from "gnoblin-core/generated/objects";
+
+try {
+    client.close();
+} catch (error) {
+    if (error instanceof GnoblinError && error.code === "not_found") {
+        console.log(`${error.target} is gone`);
+    }
+}
+```
+
+Put the file in `~/.config/gnoblin/shell.ts`. Closing a window that has already closed logs its target instead of stopping the
+handler. `examples/39-native-errors/shell.ts` shows a taken name, a closed window and a bad argument.
+
+A shell that tests the failure of a call the old way does not match. The old failure was a plain `Error` whose `code` was the ABI's integer.
+
+- `code` is the word, such as `"not_found"`.
+- A message does not start with `E_TYPE: ` or another ABI symbol.
+- A write to a read-only property is a `GnoblinError` with `read_only`.
+
+[A shell that read the old failure](shell-api/errors.md#a-shell-that-read-the-old-failure) lists what changed.
+
 ## Window requests
 
 A client asks the compositor for a change of its window: fullscreen, minimise, maximise, raise, activate, move, resize.

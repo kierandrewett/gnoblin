@@ -371,6 +371,26 @@ let half = Workspace::new_with(
 - The struct is `<Class>Options`, or `<Class>CreateOptions` where the catalog already has a type of the first name.
 - `examples/38-native-options` is this.
 
+## Read why a call failed
+
+A call of a typed object returns `Result<T, Fail>`, where `Fail` is `gnoblin_object::Fail`. You import nothing to match it:
+
+- `fail.code()` is the `ErrorCode`. Its `Display` and `as_str()` give the snake_case word, such as `not_found`.
+- `fail.reason()` is `Option<ErrorCode>`, and `None` for a bad argument.
+- `fail.target()` is `Option<&str>`, the object and member, such as `Client#7.close`.
+
+```rust
+match client.close() {
+    Ok(()) => {}
+    Err(fail) => g.log(&format!("{}: {}", fail.target().unwrap_or("none"), fail.code())),
+}
+```
+
+A bad argument has `reason()` of `None` and `code()` of `invalid_argument`.
+
+The `?` operator into `gnoblin_core::Result` keeps the words and drops the code and the target, so match the `Fail` first when you need them.
+`examples/39-native-errors` does this for a taken name, a closed window and a bad argument. [Errors](shell-api/errors.md) lists the codes.
+
 ## Run your own event loop
 
 A default shell never sees the loop: the host calls `dispatch` for it. A shell that already has a loop (tokio, calloop, GLib, an

@@ -184,6 +184,17 @@ The names follow the language: `camelCase` members and `PascalCase` classes in T
 `export = { js, py }` attribute covers a name the mechanical conversion does not give (a Python keyword gets a trailing underscore:
 `raise_`).
 
+A failed call raises the language's own error:
+
+- A call the library refuses is a `GnoblinError` with a `code` and a `target`.
+- The target is `Class#id.member`, or `Class.member` for a function, a constructor or an object with no `id`.
+- A bad argument stays a `TypeError` or a `RangeError`, with no code.
+
+- TypeScript: every generated getter, setter, method, constructor, `on` and `destroy` is wrapped to throw `GnoblinError`. The
+  class and the `ErrorCode` union are exported beside the generated classes.
+- Python: the same members are decorated to raise `gnoblin.errors.GnoblinError`, with `code` and `target` set.
+- Rust: a generated member returns `Res<T>`, and its `Fail` carries `code()`, `reason()` and `target()`.
+
 | Catalog type | TypeScript (`gnoblin-std/generated/objects`)                   | Python (`gnoblin.objects.std`)                       |
 | ------------ | -------------------------------------------------------------- | ---------------------------------------------------- |
 | enum         | a string-literal union (`"click" \| "sloppy"`)                 | an `IntEnum`; a name is accepted where one is read   |

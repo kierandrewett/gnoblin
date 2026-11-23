@@ -89,6 +89,44 @@ try {
 Put the file in `~/.config/gnoblin/shell.ts`. A second workspace with the id `main` shows a notification instead of
 stopping the file.
 
+### Which failure carries which code
+
+A call on an object of the library, such as `Client`, `InputContext` or a std widget, fails with the code that says why. The shell
+sets it where it refuses the call.
+
+| Failure                                                                 | Code                            |
+| ----------------------------------------------------------------------- | ------------------------------- |
+| A window or object that has closed, or a name the object does not have  | `not_found`                     |
+| A second object with an id, name or trigger that is taken               | `already_exists`                |
+| An object not added yet, or a transition that is not being staged       | `invalid_state`                 |
+| A property or a collection that cannot be written                       | `read_only`                     |
+| A member the library names and does not implement, or cannot animate    | `unsupported`                   |
+| A request the compositor or the host refuses with no more specific word | `denied`                        |
+| A single holder, or an object in use by a call that is running          | `busy`                          |
+| No seat, or an owner that does not answer                               | `unavailable`                   |
+| A fault of the shell itself, or a panic it caught                       | `internal`                      |
+| A generation a reload has replaced                                      | `invalid_state`                 |
+| A value of the wrong kind or out of range                               | none: `TypeError`, `RangeError` |
+
+`cancelled` and `config_rejected` come from `Operation` and the configuration, and `timed_out` from `timeout(ms)` and logind. A
+call on an object does not raise them.
+
+The `target` is `Class#id.member`, such as `Client#7.close`, where `id` is the object's `id` property. A class function, a
+constructor or an object with no readable `id` gives `Class.member`, such as `InputContext.new`. The message begins with the
+target.
+
+### A shell that read the old failure
+
+Five things about a failed call of an object of the library read differently from before the codes. A shell written for the old reading changes as follows.
+
+- `error.code` is the word, such as `"not_found"`. It was the ABI's integer, such as `-6`, on a plain `Error`. Compare `error.code` with a word, and with `instanceof GnoblinError` for a failure that has one.
+- The message does not start with `E_TYPE: ` or another ABI symbol, as it did. A `TypeError` says what was wrong in the words of the library. A `GnoblinError` begins with its `target`.
+- A write to a property or a collection that cannot be written is a `GnoblinError` with the code `read_only`, in TypeScript and in Python. It was a `TypeError`. A bad argument is still a `TypeError`.
+- A timed write to a property that cannot animate is a `GnoblinError` with the code `unsupported`. It was a `TypeError`. A generated class has a timed setter only for a property that can animate, so only a direct call of the native module meets this.
+- `Display.viewport` on a display that already shows a viewport is a `GnoblinError` with the code `busy`. It was a `TypeError`.
+
+The ABI integer is not part of the script API. A shell that needs it reads `abi` on the `Error` a call of the native module throws, which a generated class never lets out.
+
 ## Timers
 
 `gnoblin.timers.after(ms, fn)` runs `fn` once, `ms` milliseconds from now, at the first frame after that time. `ms` is from

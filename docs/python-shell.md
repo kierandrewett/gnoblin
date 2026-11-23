@@ -168,6 +168,30 @@ wrong arguments raises `TypeError`. A session with no owner socket raises `Gnobl
 A failed call of the core is an exception: `GnoblinError` and its subclasses (`NodeGoneError`, `MemberError`, `RefusedError`,
 `RetiredError`, ...). A value of the wrong kind is `TypeError`.
 
+A call on an object of the library sets two attributes on the exception:
+
+- `error.code` says why: `not_found`, `already_exists`, `read_only` and so on.
+- `error.target` names the object and member, such as `Client#7.close`.
+- Both are `None` on an error that did not come from such a call.
+
+The message begins with the target. The subclass says the kind of failure and `code` says the reason, so catch `GnoblinError` and read `code`.
+
+```python
+from gnoblin.errors import GnoblinError
+
+try:
+    client.close()
+except GnoblinError as error:
+    if error.code == "not_found":
+        gnoblin.log(f"{error.target} is gone")
+```
+
+Put the file in `~/.config/gnoblin/shell.py`. Closing a window that has already closed logs its target. A bad argument raises
+`TypeError`, which has no code. `examples/39-native-errors/shell.py` shows all three. [Errors](shell-api/errors.md) lists the codes.
+
+A message does not begin with the symbol of the ABI code (`E_REFUSED: `). A write to a read-only property is a `GnoblinError` with the code
+`read_only`, and not a `TypeError`. [A shell that read the old failure](shell-api/errors.md#a-shell-that-read-the-old-failure) lists what changed.
+
 A callback that raises does not stop the shell: the traceback goes to the log, the next event is delivered, and the core
 counts the failure against the generation. `print` and the `logging` module reach the log too, with the component `python`.
 

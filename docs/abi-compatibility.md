@@ -41,6 +41,22 @@ The rules, as a developer reads them:
 A change that is not allowed in a minor is a new major: a new SONAME (`libgnoblin-core.so.2`) that installs beside the old one, so
 shells built for each keep loading the library they were built for.
 
+### The error code field
+
+`GnoblinObjectApi` has a field `last_error_code`, appended at the end of the table within ABI 1.0. The table grew from 152 to 160 bytes.
+
+- It copies the script API's code of the last failed call on the calling thread, as `gnoblin_last_error` copies the text.
+- The code is ASCII, at most 16 bytes, NUL terminated and truncated to the buffer.
+- It returns the full length, and zero when the failure has no code (a bad argument) or nothing has failed.
+- The integer a call returns is unchanged.
+
+The old-table rule is the one for every appended field:
+
+- A client asks `table_has` before it reads the field.
+- A library built before the field has a shorter table. The client never reads past its end, takes no code, and falls back to the code the integer says.
+- A client built before the field never reads it, so the integer and the text are as they were.
+- A code that is not one of the 13 words is ignored, and the integer decides.
+
 ## The object protocol
 
 A class of the desktop or of the object model is not a function of a table. Both libraries serve their classes through
