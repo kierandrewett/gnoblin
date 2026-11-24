@@ -791,7 +791,7 @@ impl @Ids@ {
     /// The library refuses the arguments.
     pub fn @New@(objects: &Objects@Params@) -> go::Res<@Name@> {
         let ids = @Ids@::of(objects)?;
-        let object = go::client::Object::create(objects.api, ids.class, &[@Inits@]).map_err(|fail| go::typed::at_class(fail, @NameLit@, "new"))?;
+        let object = go::client::Object::create(objects.api, ids.class, &[@Inits@]).map_err(|fail| go::typed::at_class(fail, @NameLit@, @NewLit@))?;
         Ok(@Name@ { object, objects: objects.clone() })
     }
 
@@ -817,6 +817,7 @@ impl @Ids@ {
                     ("Ids", &ids_name),
                     ("Inits", &inits.join(", ")),
                     ("NameLit", &format!("{name:?}")),
+                    ("NewLit", &format!("{new_name:?}")),
                 ],
             ));
             if object.kind != ObjectKind::Service && !ctor.options.is_empty() {

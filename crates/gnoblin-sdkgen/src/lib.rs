@@ -482,4 +482,20 @@ mod tests {
             .expect("Workspace.clients");
         assert!(!clients.contains("Optional"), "{clients}");
     }
+
+    /// A service is reached with `get`, in Rust as in TypeScript and Python, so a failure to reach it names `Class.get`: the target a
+    /// script reads must be the same word in all three languages.
+    #[test]
+    fn a_rust_service_names_get_as_the_target_of_a_failed_get() {
+        let model = generated("object-api", "rust-objects/model_api.rs");
+        let mut services = 0;
+        for (start, _) in model.match_indices("    pub fn get(objects: &Objects") {
+            let body = &model[start..];
+            let body = &body[..body.find("\n    }\n").expect("the function ends")];
+            assert!(body.contains("\"get\")"), "{body}");
+            assert!(!body.contains("\"new\")"), "{body}");
+            services += 1;
+        }
+        assert!(services > 0, "the core catalog has a service");
+    }
 }
