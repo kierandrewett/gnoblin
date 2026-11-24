@@ -169,12 +169,58 @@ fn scan_buffer(renderer: &mut Gles, size: Size) -> Option<ScanBuffer> {
     })
 }
 
-/// The pixels of a scan-out buffer.
+/// The pixels of a scan-out buffer, top row first, as the display shows them.
+///
+/// A scan-out buffer is a dmabuf: its GL row 0 is its first memory row, which the display scans out as the top line.
+/// So the rows are taken in GL order, unlike a readback of the renderer's own target, whose GL row 0 is the bottom of
+/// the picture.
 fn buffer_picture(renderer: &mut Gles, buffer: &ScanBuffer, size: Size) -> Image {
-    let mut bytes = renderer.device.read(&buffer.framebuffer).expect("a readback");
+    let bytes = renderer.device.read(&buffer.framebuffer).expect("a readback");
     let stride = size.width as usize * 4;
-    flip_rows(&mut bytes, stride);
     Image::new(size, stride, bytes).expect("a packed image")
+}
+
+#[test]
+fn a_frame_drawn_into_a_scan_out_buffer_is_top_first() {
+    let size = Size::new(8, 8);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    let Some(mut buffer) = scan_buffer(&mut renderer, size) else {
+        return;
+    };
+    let mut frame = OutputFrame::new();
+    frame.set_background(Color::BLACK);
+    frame.push_damage(Rect::new(0, 0, size.width, size.height));
+    frame.push_layer(Layer::Solid(Solid::new(
+        Rect::new(0, 0, size.width, 2),
+        Color::from_rgba8(10, 200, 90, 255),
+    )));
+    renderer
+        .draw_scanout(&mut buffer, &frame, Scale::IDENTITY)
+        .expect("drawn");
+    let picture = buffer_picture(&mut renderer, &buffer, size);
+    assert_eq!(
+        probe(&picture, 3, 0),
+        [10, 200, 90, 255],
+        "the top of the frame is the buffer's first row, which the display scans out first"
+    );
+    assert_eq!(probe(&picture, 3, 7), [0, 0, 0, 255], "and the bottom is its last");
+
+    // An idle frame still fills a buffer that never saw the frame: a flip buffer holds an older picture.
+    let Some(mut fresh) = scan_buffer(&mut renderer, size) else {
+        return;
+    };
+    let mut idle = OutputFrame::new();
+    idle.set_background(Color::BLACK);
+    renderer
+        .draw_scanout(&mut fresh, &idle, Scale::IDENTITY)
+        .expect("drawn");
+    assert_eq!(
+        buffer_picture(&mut renderer, &fresh, size).data(),
+        picture.data(),
+        "the persistent target keeps the frame, so an idle flip shows it"
+    );
 }
 
 #[test]

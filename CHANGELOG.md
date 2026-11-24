@@ -403,6 +403,7 @@
 - Mode changes on hardware outputs are refused unless the `GNOBLIN_DRM_MODESET=1` environment variable is set for the session, since DRM modesetting is untested on real hardware and can blank the display; scale-only changes still work.
 - Passing `primary` to `output.apply` is now refused with an error instead of being silently ignored, since the layout derives the primary output.
 - The hardware backend now lights the display. Its first frame, and the first after a staged mode change, was queued as a plain page flip, which the kernel refuses with `EINVAL` while the output still needs a modeset, so every frame was refused and the screen stayed off. Such a frame is now committed with the modeset.
+- The hardware backend no longer shows the desktop upside down. A frame was drawn into the scan-out buffer with the renderer's own row order, whose first row is the bottom of the picture, while the display scans a buffer's first memory row out as the top line. The renderer now composes into its own target, which also keeps the frame's damage, and copies it into the buffer with the rows reversed.
 
 #### Session, services and recovery
 

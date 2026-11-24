@@ -1,19 +1,21 @@
 //! The GBM scan-out buffers of one output and the [`Scanout`] adapter that draws into them.
 //!
 //! An output owns two buffers, allocated on the device's GBM node with the plane's XRGB8888
-//! modifiers. Each buffer is exported as a dmabuf, imported into the output's GLES renderer as a
-//! render target, and registered as a KMS framebuffer. [`crate::frame::present`] chooses the
-//! slot; this module draws into it and queues its flip.
+//! modifiers. Each buffer is exported as a dmabuf, imported into the output's GLES renderer, and
+//! registered as a KMS framebuffer. The renderer composes each frame into its own persistent target
+//! and copies that over the buffer with the rows reversed, because a dmabuf's first memory row is
+//! the top scan line ([`Gles::draw_scanout`]). [`crate::frame::present`] chooses the slot; this
+//! module draws into it and queues its flip.
 //!
 //! # Supersampling
 //!
 //! An output composed at `mode * s` keeps one persistent virtual target in its renderer, `composed` pixels across,
 //! beside the scan-out buffers, which stay at the mode: a frame's damage is drawn into the virtual target at the
-//! compositing scale, and the whole target is then averaged down into the buffer being flipped
-//! ([`Gles::draw_scanout_downsampled`]). The scan-out buffer is the only thing the kernel sees, so a modeset, a flip
-//! and the plane's format checks are the ones of an output with no supersampling. Client buffers are never scanned out
-//! directly on this backend (there is no overlay or primary-plane path for them: every frame is composed), so there is
-//! no direct scan-out to turn off while a factor is set.
+//! compositing scale, and the whole target is then averaged down at the mode and copied, rows reversed, into the buffer
+//! being flipped ([`Gles::draw_scanout_downsampled`]). The scan-out buffer is the only thing the kernel sees, so a
+//! modeset, a flip and the plane's format checks are the ones of an output with no supersampling. Client buffers are
+//! never scanned out directly on this backend (there is no overlay or primary-plane path for them: every frame is
+//! composed), so there is no direct scan-out to turn off while a factor is set.
 
 use gnoblin_types::{Scale, Size};
 use smithay::backend::allocator::dmabuf::{AsDmabuf, Dmabuf};

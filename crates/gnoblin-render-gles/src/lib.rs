@@ -59,8 +59,11 @@
 //! space is upwards, so row 0 of the target is the output's top row; a pass that samples the
 //! target (the blur) therefore states its source with a negative v scale
 //! ([`flipped_mapping`]). `glReadPixels` counts from the *bottom* of a framebuffer, so
-//! [`Gles::screenshot`] reverses the rows it gets. That flip is the one place orientation
-//! can go wrong, and `tests::a_readback_is_top_left_first` is what catches it.
+//! [`Gles::screenshot`] reverses the rows it gets. That flip is where a readback can come out
+//! upside down, and `tests::a_readback_is_top_left_first` is what catches it. A scan-out buffer
+//! is the other side of the same rule: it is a dmabuf whose GL row 0 is its first memory row,
+//! which the display scans out as the top line, so [`Gles::draw_scanout`] copies the target into
+//! it with the rows reversed (`downsample_tests::a_frame_drawn_into_a_scan_out_buffer_is_top_first`).
 //!
 //! # Colour
 //!
@@ -555,11 +558,13 @@ impl Gles {
         })
     }
 
-    /// Draws `frame` into a scan-out buffer, repainting all of it.
+    /// Draws `frame` into the target and copies the target into a scan-out buffer: the frame of an output the display
+    /// scans out.
     ///
-    /// A scan-out buffer holds the picture of an earlier flip, not the one this frame damaged, so
-    /// the whole output is painted and the frame's damage is not used. A frame with no layers paints
-    /// its background.
+    /// The target persists between frames, so only the frame's damage is repainted into it, exactly as [`Gles::draw`]
+    /// does; a target nobody has painted yet is painted whole first. The scan-out buffer holds the picture of an
+    /// earlier flip, so the copy is written over all of it. The buffer is a dmabuf whose GL row 0 is its first memory
+    /// row, the top scan line, while the target's row 0 is the bottom of the picture, so the copy reverses the rows.
     ///
     /// # Errors
     ///
@@ -570,27 +575,23 @@ impl Gles {
         frame: &OutputFrame,
         scale: Scale,
     ) -> Result<(), RenderError> {
-        let full = [Rect::new(0, 0, self.physical.width, self.physical.height)];
-        std::mem::swap(&mut self.target, &mut buffer.framebuffer);
-        self.prepare_subtrees(frame);
-        let outcome = self.paint(frame, scale, &full, None);
-        std::mem::swap(&mut self.target, &mut buffer.framebuffer);
-        outcome?;
-        self.draws = self.draws.saturating_add(1);
-        Ok(())
+        let whole = self.stale;
+        self.compose(frame, scale, whole)?;
+        let Self { device, target, .. } = self;
+        scan_out(device, target, &buffer.framebuffer)
     }
 
     /// Draws `frame` into the target, which is `mode * s` pixels, and averages the target down into a scan-out buffer
     /// of the mode: the frame of a supersampled output.
     ///
-    /// The target persists between frames, so only the frame's damage is repainted into it, exactly as [`Gles::draw`]
-    /// does; a target nobody has painted yet is painted whole first. The scan-out buffer holds the picture of an
-    /// earlier flip, so the average is written over all of it. `scale` is the compositing scale, which includes the
-    /// factor.
+    /// The target is composed as [`Gles::draw_scanout`] composes it. The average is made in a target of the mode and
+    /// copied into the scan-out buffer with its rows reversed, for the reason [`Gles::draw_scanout`] gives. `scale` is
+    /// the compositing scale, which includes the factor.
     ///
     /// # Errors
     ///
-    /// [`RenderError::Failed`] when the driver refuses an operation.
+    /// [`RenderError::Unavailable`] when the averaged target cannot be made, and [`RenderError::Failed`] when the
+    /// driver refuses an operation.
     pub fn draw_scanout_downsampled(
         &mut self,
         buffer: &mut ScanBuffer,
@@ -599,7 +600,12 @@ impl Gles {
     ) -> Result<(), RenderError> {
         let whole = self.stale;
         self.compose(frame, scale, whole)?;
-        self.downsample_into(&buffer.framebuffer)
+        let averaged = self.shown_target(buffer.framebuffer.size())?;
+        let outcome = self
+            .downsample_into(&averaged)
+            .and_then(|()| scan_out(&mut self.device, &averaged, &buffer.framebuffer));
+        self.shown = Some(averaged);
+        outcome
     }
 
     /// The target as the display shows it at `shown` pixels: [`Gles::capture`] averaged down on the GPU, with the
@@ -616,15 +622,7 @@ impl Gles {
                 height: shown.height,
             });
         }
-        let framebuffer = match self.shown.take() {
-            Some(framebuffer) if framebuffer.size() == shown => framebuffer,
-            old => {
-                if let Some(old) = old {
-                    self.device.release(old);
-                }
-                self.device.target(shown)?
-            }
-        };
+        let framebuffer = self.shown_target(shown)?;
         let outcome = self.downsample_into(&framebuffer).and_then(|()| {
             let mut bytes = self.device.read(&framebuffer)?;
             let stride = shown.width as usize * 4;
@@ -634,6 +632,20 @@ impl Gles {
         });
         self.shown = Some(framebuffer);
         outcome
+    }
+
+    /// The target the average of a supersampled output is made in, `shown` pixels: the one kept from the last
+    /// average when it has that size, a new one otherwise. The caller puts it back in `self.shown`.
+    fn shown_target(&mut self, shown: Size) -> Result<Framebuffer, RenderError> {
+        match self.shown.take() {
+            Some(framebuffer) if framebuffer.size() == shown => Ok(framebuffer),
+            old => {
+                if let Some(old) = old {
+                    self.device.release(old);
+                }
+                self.device.target(shown)
+            }
+        }
     }
 
     /// Runs the downsample pass: the target is read whole and written over all of `destination`.
@@ -2018,6 +2030,19 @@ fn flip_rows(bytes: &mut [u8], stride: usize) {
         bytes.copy_within(second..second + stride, first);
         bytes[second..second + stride].copy_from_slice(&buffer);
     }
+}
+
+/// Copies all of `picture`, a target of this renderer whose GL row 0 is the bottom of the picture, over all of a
+/// scan-out buffer, whose GL row 0 is its first memory row and so the top scan line: a blit with the rows reversed.
+fn scan_out(device: &mut GlContext, picture: &Framebuffer, buffer: &Framebuffer) -> Result<(), RenderError> {
+    let (from, to) = (picture.size(), buffer.size());
+    device.blit_between(
+        picture,
+        buffer,
+        Rect::new(0, 0, from.width, from.height),
+        Rect::new(0, 0, to.width, to.height),
+        true,
+    )
 }
 
 mod capture;
