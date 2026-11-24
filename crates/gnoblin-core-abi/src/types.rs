@@ -168,6 +168,11 @@ abi_consts! {
     pub const VALUE_ENUM: u32 = 15;
     /// `GnoblinValue.kind`: nothing: an optional value that is absent, or the result of a call that answers nothing.
     pub const VALUE_NONE: u32 = 16;
+    /// `GnoblinValue.kind`: an object another library serves: `bits` is its `GnoblinObj` in that library and `ptr`/`len` that library's
+    /// namespace (`gnoblin.model`) as UTF-8. The receiver reads it through the object table of that namespace and asks it for the
+    /// class (`class_of`). Like `VALUE_OBJECT`, a value a call hands out carries one reference, which the receiver `release`s in the
+    /// table of that namespace, not the table that delivered it.
+    pub const VALUE_FOREIGN_OBJECT: u32 = 17;
 
     /// `GnoblinValue.flags`: `ptr` was allocated by the core and is freed with `value_free`. The object protocol never sets it:
     /// a value its library returns is lent until the next call into that library on the thread.
@@ -1175,6 +1180,11 @@ abi_structs! {
         /// is lent. Read it right after the call that failed, on the same thread, before another call into the table. A table too short to
         /// hold this field (`table_has`) belongs to a library that reports no codes, and the integer is all it says.
         pub last_error_code: unsafe extern "C" fn(buf: *mut u8, cap: usize) -> usize,
+        /// Adds one reference to `obj`, which the caller gives back with `release`. It is how a library that hands out an object of
+        /// another library (`VALUE_FOREIGN_OBJECT`) gives each receiver the reference it releases. Fails with `E_STALE` when the
+        /// object is gone. A table too short to hold this field (`table_has`) belongs to a library built before it, whose objects
+        /// another library cannot pass on.
+        pub retain: unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj) -> i32,
     }
 
     /// The versioned function table. `size` is the byte size of the table the core filled in; a field is present when

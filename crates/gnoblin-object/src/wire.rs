@@ -144,6 +144,12 @@ pub fn to_raw(value: &Val, arena: &Arena) -> GnoblinValue {
             raw(abi::VALUE_RECORD, u64::from(*class), arena.list(raws).cast(), len)
         }
         Val::Object { class, obj } => raw(abi::VALUE_OBJECT, *obj, core::ptr::null(), *class as usize),
+        Val::Foreign { namespace, obj } => raw(
+            abi::VALUE_FOREIGN_OBJECT,
+            *obj,
+            namespace.as_ptr().cast(),
+            namespace.len(),
+        ),
         Val::Enum { class, value } => raw(abi::VALUE_ENUM, u64::from(*value), core::ptr::null(), *class as usize),
         Val::Closure(closure) => closure_value(closure, arena),
     }
@@ -291,6 +297,17 @@ pub unsafe fn from_raw(value: &GnoblinValue, adopting: bool) -> Res<Val> {
             class: value.len as ClassId,
             obj: value.bits,
         }),
+        abi::VALUE_FOREIGN_OBJECT => {
+            // SAFETY: `ptr` holds `len` bytes of the namespace, by the caller's guarantee.
+            let namespace = unsafe { text_at(value.ptr, value.len) }?;
+            if namespace.is_empty() {
+                return Err(Fail::type_error("an object of another library that names no namespace"));
+            }
+            Ok(Val::Foreign {
+                namespace,
+                obj: value.bits,
+            })
+        }
         abi::VALUE_ENUM => Ok(Val::Enum {
             class: value.len as ClassId,
             value: value.bits as u32,

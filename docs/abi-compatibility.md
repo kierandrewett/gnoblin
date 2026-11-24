@@ -57,6 +57,20 @@ The old-table rule is the one for every appended field:
 - A client built before the field never reads it, so the integer and the text are as they were.
 - A code that is not one of the 13 words is ignored, and the integer decides.
 
+### The retain field and objects of another library
+
+`GnoblinObjectApi` has a field `retain(ctx, obj)`, appended after `last_error_code` within ABI 1.0. The table grew from 160 to 168
+bytes. It adds one reference to an object, which the caller gives back with `release`, and fails with `E_STALE` when the object is gone.
+
+A value of kind `VALUE_FOREIGN_OBJECT` (17) is an object that another library serves, such as a `gnoblin.model` client that std hands to a
+shell. `bits` is the handle in that library and `ptr`/`len` is that library's namespace as UTF-8 text.
+
+- The receiver reads the object through the table of that namespace, and asks it for the class with `class_of`.
+- The reference the value carries belongs to that namespace, so the receiver releases it there.
+- The library that hands the value out takes that reference with the owner's `retain`.
+- A client asks `table_has` before it calls `retain`. A library built before the field has no `retain`, and another library cannot pass its
+  objects on.
+
 ## The object protocol
 
 A class of the desktop or of the object model is not a function of a table. Both libraries serve their classes through
@@ -99,9 +113,12 @@ The rules a shell and a library keep, which the table's documentation states in 
   looks up by name what it uses and refuses only a name the library does not have. The `gnoblin` namespace's hash (`gnoblin_catalog_hash`)
   does not include a namespace a library serves.
 
-`gnoblin-object` is the one implementation of both ends. `cargo xtask gen-sdks --check` proves the catalogs of the two libraries and their
-locks, and the golden shells prove the table did not move what they were built against: B1 appended `object_api`, B1.1 appended `track` to
-`GnoblinObjectApi`, and no function was moved.
+`gnoblin-object` is the one implementation of both ends. Two checks hold it to the ABI:
+
+- `cargo xtask gen-sdks --check` proves the catalogs of the two libraries and their locks.
+- The golden shells prove the tables did not move what they were built against. B1 appended `object_api` to `GnoblinApi` and
+  `GnoblinStdApi`. Later changes appended fields to `GnoblinObjectApi` (`track` in B1.1, then `last_error_code` and `retain`), and no
+  function was moved.
 
 ## What a shell sees
 

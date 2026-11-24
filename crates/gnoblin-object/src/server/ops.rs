@@ -202,6 +202,12 @@ impl Library {
         Ok(())
     }
 
+    /// Adds one reference to an object, which the caller gives back with [`Library::release`].
+    pub fn retain(&self, ctx: GnoblinCtx, obj: Obj) -> Res<()> {
+        let st = self.state(ctx, false)?;
+        self.add_ref(&st, obj)
+    }
+
     pub(crate) fn add_ref(&self, st: &CtxState, obj: Obj) -> Res<()> {
         let mut objects = st.objects.borrow_mut();
         let entry = objects.get_mut(obj).ok_or_else(|| Fail::stale("the object is gone"))?;
@@ -232,11 +238,16 @@ impl Library {
         })
     }
 
-    /// Adds a reference for every object a value hands to a receiver.
+    /// Adds a reference for every object a value hands to a receiver. An object another library serves takes its reference there.
     pub(crate) fn hand_out_all(&self, st: &CtxState, value: &Val) {
         match value {
             Val::Object { obj, .. } => {
                 let _ = self.add_ref(st, *obj);
+            }
+            Val::Foreign { namespace, obj } => {
+                if let Ok(api) = (self.hooks.foreign)(st.ctx, namespace) {
+                    let _ = api.retain(*obj);
+                }
             }
             Val::List(items) => items.iter().for_each(|item| self.hand_out_all(st, item)),
             Val::Record { fields, .. } => fields.iter().for_each(|field| self.hand_out_all(st, field)),
@@ -796,10 +807,15 @@ impl Library {
         }
     }
 
-    /// Gives back a reference for every object in a value.
+    /// Gives back a reference for every object in a value, an object another library serves to that library.
     fn release_all(&self, st: &Rc<CtxState>, value: &Val) {
         match value {
             Val::Object { obj, .. } => self.release_ref(st, *obj),
+            Val::Foreign { namespace, obj } => {
+                if let Ok(api) = (self.hooks.foreign)(st.ctx, namespace) {
+                    let _ = api.release(*obj);
+                }
+            }
             Val::List(items) => items.iter().for_each(|item| self.release_all(st, item)),
             Val::Record { fields, .. } => fields.iter().for_each(|field| self.release_all(st, field)),
             _ => {}

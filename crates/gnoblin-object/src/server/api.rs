@@ -51,6 +51,7 @@ pub const fn api_table<P: Provider>(hash: u64) -> GnoblinObjectApi {
         class_of: class_of::<P>,
         track: track::<P>,
         last_error_code,
+        retain: retain::<P>,
     }
 }
 
@@ -339,6 +340,10 @@ unsafe extern "C" fn destroy<P: Provider>(ctx: GnoblinCtx, obj: GnoblinObj) -> i
 
 unsafe extern "C" fn release<P: Provider>(ctx: GnoblinCtx, obj: GnoblinObj) -> i32 {
     run::<P>("release", |lib| lib.release(ctx, obj))
+}
+
+unsafe extern "C" fn retain<P: Provider>(ctx: GnoblinCtx, obj: GnoblinObj) -> i32 {
+    run::<P>("retain", |lib| lib.retain(ctx, obj))
 }
 
 unsafe extern "C" fn get<P: Provider>(

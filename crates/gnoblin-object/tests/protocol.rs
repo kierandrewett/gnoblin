@@ -27,6 +27,7 @@ use gnoblin_core_abi::{self as abi, GnoblinObjectApi};
 use gnoblin_object::catalog::{ArgDef, CatalogDef, ClassDef, DefaultDef, MemberDef, TypeDef};
 use gnoblin_object::client::{Api, Object, closure};
 use gnoblin_object::server::{Builder, Cx, Hooks, Library, Provider, api_table};
+use gnoblin_object::wire::{Arena, from_raw, to_raw};
 use gnoblin_object::{Callable, ErrorCode, Fail, Val};
 
 const CTX: u64 = 7;
@@ -753,6 +754,77 @@ fn an_object_value_that_names_no_class_is_adopted_as_its_most_derived_class() {
     );
     drop(held);
     assert!(api.class_of(obj).is_err(), "the adopted reference was the only one");
+}
+
+#[test]
+fn a_foreign_object_value_crosses_the_wire_naming_the_library_that_serves_it() {
+    let value = Val::Foreign {
+        namespace: "test.probe".into(),
+        obj: 42,
+    };
+    let arena = Arena::new();
+    let raw = to_raw(&value, &arena);
+    assert_eq!(raw.kind, abi::VALUE_FOREIGN_OBJECT);
+    assert_eq!(raw.bits, 42);
+    // SAFETY: `raw` points into `value` and `arena`, both alive.
+    let back = unsafe { from_raw(&raw, false) }.unwrap();
+    assert!(
+        matches!(&back, Val::Foreign { namespace, obj: 42 } if namespace == "test.probe"),
+        "read back as {back:?}"
+    );
+}
+
+#[test]
+fn a_foreign_object_handed_out_takes_a_reference_in_the_library_that_serves_it() {
+    let base = probe();
+    let obj = base.create(base.class("probe").unwrap(), &[]).unwrap();
+    let derived = Api::new(&DERIVED_API, CTX, last_error);
+    let fancy = derived.create(derived.class("fancy").unwrap(), &[]).unwrap();
+    let foreign = || Val::Foreign {
+        namespace: "test.probe".into(),
+        obj,
+    };
+    // Two receivers, as two listeners of one signal: each holds its own reference, in the library that serves the object.
+    DERIVED
+        .with(|lib| lib.with_cx(CTX, fancy, |cx| cx.hand_out(&Val::List(vec![foreign(), foreign()]))))
+        .unwrap();
+    base.release(obj).unwrap();
+    base.release(obj).unwrap();
+    assert!(base.class_of(obj).is_ok(), "one receiver still holds it");
+    base.release(obj).unwrap();
+    assert!(base.class_of(obj).is_err(), "every reference was given back");
+    derived.release(fancy).unwrap();
+}
+
+#[test]
+fn a_retained_object_lives_until_every_reference_is_released() {
+    let api = probe();
+    let obj = api.create(api.class("probe").unwrap(), &[]).unwrap();
+    api.retain(obj).unwrap();
+    api.release(obj).unwrap();
+    assert!(api.class_of(obj).is_ok());
+    api.release(obj).unwrap();
+    assert!(api.class_of(obj).is_err());
+    assert!(api.retain(obj).is_err(), "an object that is gone cannot be retained");
+}
+
+#[test]
+fn a_table_built_before_retain_refuses_it_and_is_never_read_past() {
+    unsafe extern "C" fn retain_must_not_be_called(_: u64, _: u64) -> i32 {
+        panic!("`retain` was read past the end of the table");
+    }
+    static SHORT: LazyLock<GnoblinObjectApi> = LazyLock::new(|| {
+        // SAFETY: `GnoblinObjectApi` is plain data (integers and function pointers), so a bitwise copy is a valid value.
+        let mut copy: GnoblinObjectApi = unsafe { std::ptr::read(&PROBE_API) };
+        copy.size = core::mem::offset_of!(GnoblinObjectApi, retain) as u32;
+        copy.retain = retain_must_not_be_called;
+        copy
+    });
+    let api = Api::new(&SHORT, CTX, last_error);
+    let obj = api.create(api.class("probe").unwrap(), &[]).unwrap();
+    let fail = api.retain(obj).unwrap_err();
+    assert_eq!(fail.code, abi::E_UNSUPPORTED);
+    api.release(obj).unwrap();
 }
 
 #[test]

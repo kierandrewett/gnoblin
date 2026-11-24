@@ -66,6 +66,21 @@ impl ObjectTable {
             .ok_or_else(|| Fail::err("the namespace was not opened"))
     }
 
+    /// The index of the namespace `name`, opened now if it was not.
+    fn open(&self, name: &str) -> Result<usize, String> {
+        if let Some(found) = self.namespaces.borrow().iter().position(|entry| entry.name == name) {
+            return Ok(found);
+        }
+        let api = api_for(name)?;
+        let mut namespaces = self.namespaces.borrow_mut();
+        namespaces.push(OpenedNamespace {
+            name: name.to_owned(),
+            api,
+            classes: RefCell::new(None),
+        });
+        Ok(namespaces.len() - 1)
+    }
+
     /// A slot for a reference to `obj`, which the caller owns and the slot now holds.
     fn adopt(&self, namespace: usize, class: ClassId, obj: Obj) -> f64 {
         let slot = ObjectSlot { namespace, class, obj };
@@ -374,6 +389,17 @@ fn from_val<'js>(
             };
             Value::new_number(ctx.clone(), table.adopt(namespace, class, *obj))
         }
+        // An object another library serves is held in that library's namespace, so its calls and its release go there.
+        Val::Foreign { namespace: home, obj } => {
+            let home = table
+                .open(home)
+                .map_err(|message| Exception::throw_message(ctx, &message))?;
+            let class = table
+                .api(home)
+                .and_then(|api| api.class_of(*obj))
+                .map_err(|fail| throw(ctx, &fail))?;
+            Value::new_number(ctx.clone(), table.adopt(home, class, *obj))
+        }
     })
 }
 
@@ -484,17 +510,10 @@ fn install<'js>(ctx: &Ctx<'js>, ids: &ScriptIds) -> rquickjs::Result<()> {
         Function::new(
             ctx.clone(),
             move |ctx: Ctx<'js>, name: String| -> rquickjs::Result<f64> {
-                if let Some(found) = state.namespaces.borrow().iter().position(|entry| entry.name == name) {
-                    return Ok(found as f64);
-                }
-                let api = api_for(&name).map_err(|message| Exception::throw_message(&ctx, &message))?;
-                let mut namespaces = state.namespaces.borrow_mut();
-                namespaces.push(OpenedNamespace {
-                    name,
-                    api,
-                    classes: RefCell::new(None),
-                });
-                Ok((namespaces.len() - 1) as f64)
+                state
+                    .open(&name)
+                    .map(|index| index as f64)
+                    .map_err(|message| Exception::throw_message(&ctx, &message))
             },
         )?,
     )?;

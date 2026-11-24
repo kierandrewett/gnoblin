@@ -85,6 +85,14 @@ pub enum Val {
         /// The handle.
         obj: Obj,
     },
+    /// An object another library serves: the namespace of that library (`gnoblin.model`) and the handle there. Its reference, when
+    /// a call hands one out, is that library's, and the receiver reads the class from it.
+    Foreign {
+        /// The namespace of the library that serves it.
+        namespace: String,
+        /// The handle in that library.
+        obj: Obj,
+    },
     /// A member of an enum: the enum's class (zero when not said) and the member's id, the first being 1.
     Enum {
         /// The enum's class.
@@ -111,6 +119,7 @@ impl std::fmt::Debug for Val {
             Val::List(items) => f.debug_list().entries(items).finish(),
             Val::Record { class, fields } => f.debug_tuple(&format!("record#{class}")).field(fields).finish(),
             Val::Object { class, obj } => write!(f, "object#{class}({obj:#x})"),
+            Val::Foreign { namespace, obj } => write!(f, "object@{namespace}({obj:#x})"),
             Val::Enum { class, value } => write!(f, "enum#{class}({value})"),
             Val::Closure(_) => f.write_str("closure"),
         }
@@ -133,6 +142,7 @@ impl Val {
             Val::List(_) => "a list",
             Val::Record { .. } => "a record",
             Val::Object { .. } => "an object",
+            Val::Foreign { .. } => "an object of another library",
             Val::Enum { .. } => "an enum value",
             Val::Closure(_) => "a closure",
         }

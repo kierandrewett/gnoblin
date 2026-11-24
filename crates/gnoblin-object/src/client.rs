@@ -258,6 +258,20 @@ impl Api {
         self.check(unsafe { (self.raw.release)(self.ctx, obj) })
     }
 
+    /// Adds one reference to an object, given back with [`Api::release`].
+    ///
+    /// # Errors
+    ///
+    /// The object is gone, or the library was built before its table had `retain`.
+    pub fn retain(&self, obj: Obj) -> Res<()> {
+        const END: usize = core::mem::offset_of!(GnoblinObjectApi, retain) + size_of::<usize>();
+        if !abi::table_has(self.raw.size, END) {
+            return Err(Fail::unsupported("the library's object table has no `retain`"));
+        }
+        // SAFETY: the table is long enough to hold `retain`, and the call takes plain values.
+        self.check(unsafe { (self.raw.retain)(self.ctx, obj) })
+    }
+
     /// Reads a property.
     ///
     /// # Errors

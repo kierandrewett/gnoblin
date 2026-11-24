@@ -246,7 +246,41 @@ fn from_val<'py>(py: Python<'py>, value: &Val, cx: &ConvertCx) -> PyResult<Bound
             )
             .map(|handle| handle.into_bound(py).into_any())
         }
+        // An object another library serves is held in that library's namespace, so its calls and its release go there.
+        Val::Foreign { namespace, obj } => {
+            let home = foreign_cx(py, namespace)?;
+            let class = home.api.class_of(*obj).map_err(|fail| failure(&fail))?;
+            Py::new(
+                py,
+                ObjectHandle {
+                    cx: home,
+                    class,
+                    obj: *obj,
+                },
+            )
+            .map(|handle| handle.into_bound(py).into_any())
+        }
     }
+}
+
+thread_local! {
+    /// The namespaces opened for objects other libraries handed out, one each, so a namespace reads its catalog's class names once.
+    static FOREIGN: std::cell::RefCell<HashMap<String, Py<ObjectNamespace>>> = std::cell::RefCell::new(HashMap::new());
+}
+
+/// The conversion context of the namespace `name`, for an object of another library.
+fn foreign_cx(py: Python<'_>, name: &str) -> PyResult<ConvertCx> {
+    let cached = FOREIGN.with(|opened| opened.borrow().get(name).map(|namespace| namespace.clone_ref(py)));
+    let namespace = match cached {
+        Some(namespace) => namespace,
+        None => {
+            let namespace = Py::new(py, open(name)?)?;
+            FOREIGN.with(|opened| opened.borrow_mut().insert(name.to_owned(), namespace.clone_ref(py)));
+            namespace
+        }
+    };
+    let api = namespace.get().api()?;
+    Ok(ConvertCx { namespace, api })
 }
 
 /// What the library calls when a script gave it a function or an object that implements an interface.
