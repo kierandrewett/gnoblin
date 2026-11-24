@@ -728,6 +728,10 @@ impl Gpu {
     ///
     /// The flip completes at the next vblank, which the notifier reports through [`Gpu::take_flips`].
     ///
+    /// A surface with staged state (its first frame after the device was taken, or a staged mode, connector or VRR
+    /// change) is committed with a modeset instead: smithay's `page_flip` keeps the surface's current state and never
+    /// allows a modeset, so the kernel refuses it with `EINVAL` and the output would never light.
+    ///
     /// # Errors
     ///
     /// The reason the kernel refused the flip, or that no output is scanned out by `crtc`.
@@ -747,9 +751,13 @@ impl Gpu {
             .find(|port| port.crtc() == Some(crtc))
             .ok_or_else(|| format!("no output is scanned out by CRTC {crtc:?}"))?;
         let surface = port.surface()?;
-        surface
-            .page_flip([scanout_plane(surface, framebuffer, size)], true)
-            .map_err(|error| error.to_string())
+        let planes = [scanout_plane(surface, framebuffer, size)];
+        if surface.commit_pending() {
+            surface.commit(planes, true)
+        } else {
+            surface.page_flip(planes, true)
+        }
+        .map_err(|error| error.to_string())
     }
 
     /// The live hardware, or why there is none.
