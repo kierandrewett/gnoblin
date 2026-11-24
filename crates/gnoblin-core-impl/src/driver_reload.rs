@@ -26,6 +26,7 @@
 //! | `stats`         | the running generation's and every retired generation's counters, and the core's                    |
 //! | `put:DEST=SRC`  | replaces the file `DEST` with `SRC`, atomically: an edit of a file a script imports, not the module  |
 //! | `sleep:MS`      | waits `MS` real milliseconds, for a file watcher that runs on the clock and not on the manual one    |
+//! | `wait_programs` | waits until every program the shell started has ended, so what it wrote is on disk before `stop`    |
 //! | `writes:ID:KEY` | prints how many times a transaction set property `KEY` of node `ID` since the scene started          |
 //! | `stop`          | ends the shell                                                                                       |
 #![allow(unsafe_code)]
@@ -34,7 +35,7 @@ use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_testkit::compositor::FakeCompositor;
@@ -48,6 +49,10 @@ macro_rules! out {
         let _ = writeln!(std::io::stdout().lock(), $($arg)*);
     }};
 }
+
+/// How long `wait_programs` waits for the programs a shell started: they are short, so this only bounds a step list whose shell
+/// started one that never ends.
+const PROGRAMS_WAIT: Duration = Duration::from_secs(10);
 
 struct ReloadScene {
     comp: FakeCompositor,
@@ -168,6 +173,7 @@ impl ReloadScene {
             }
             "stats" => self.stats(),
             "sleep" => std::thread::sleep(Duration::from_millis(number(argument)?)),
+            "wait_programs" => self.wait_programs()?,
             "writes" => {
                 let (id, key) = argument.split_once(':').ok_or_else(|| fail("writes takes ID:KEY"))?;
                 let id = number(id)?;
@@ -189,6 +195,25 @@ impl ReloadScene {
             }
         }
         Ok(())
+    }
+
+    /// Runs the shell's turns until every program it started has ended, or [`PROGRAMS_WAIT`] is up, and prints `programs running=N`
+    /// with how many still ran. `stop` takes the programs the shell has running down with it (SIGTERM to each group), so a program
+    /// that has not written yet when it comes writes nothing: a step list that reads what a program wrote waits here first.
+    ///
+    /// The programs are counted as the children of this process that have not ended, from `/proc`: the shell's runtime keeps its
+    /// programs in a table of its own, which the core cannot count.
+    fn wait_programs(&self) -> Result<(), i32> {
+        let deadline = Instant::now() + PROGRAMS_WAIT;
+        loop {
+            self.shell.dispatch(0);
+            let running = live_children().map_err(|error| fail(&format!("wait_programs: {error}")))?;
+            if running == 0 || Instant::now() >= deadline {
+                out!("programs running={running}");
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
     }
 
     /// What a finished build does to the library: a new file is written beside it and renamed over it.
@@ -304,4 +329,32 @@ fn number(text: &str) -> Result<u64, i32> {
 fn fail(message: &str) -> i32 {
     out!("step_failed {message}");
     2
+}
+
+/// How many child processes of this process have not ended. A child that ended and is not reaped yet is a zombie and has done its
+/// work, so it is not counted.
+fn live_children() -> Result<usize, String> {
+    let me = std::process::id();
+    let mut live = 0;
+    for entry in fs::read_dir("/proc").map_err(|error| format!("cannot read /proc: {error}"))? {
+        let entry = entry.map_err(|error| format!("cannot read /proc: {error}"))?;
+        if !entry.file_name().as_encoded_bytes().iter().all(u8::is_ascii_digit) {
+            continue;
+        }
+        // A process that ended between the listing and the read has no file any more.
+        let Ok(stat) = fs::read_to_string(entry.path().join("stat")) else {
+            continue;
+        };
+        // `pid (name) state parent ...`: the name may hold spaces and parentheses, so the fields are those after the last `)`.
+        let Some((_, fields)) = stat.rsplit_once(')') else {
+            continue;
+        };
+        let mut fields = fields.split_whitespace();
+        let state = fields.next();
+        let parent = fields.next().and_then(|parent| parent.parse::<u32>().ok());
+        if parent == Some(me) && !matches!(state, Some("Z" | "X")) {
+            live += 1;
+        }
+    }
+    Ok(live)
 }

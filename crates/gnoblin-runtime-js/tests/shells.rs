@@ -435,6 +435,17 @@ fn lines_of(marker: &Path, tag: &str) -> usize {
         .count()
 }
 
+/// The shell's `sh` processes (each one writes a line of the marker) ended before `stop`. `stop` takes the programs a shell has
+/// running down with it, so one that had not written yet by then would never write: the step `wait_programs` before `stop` makes
+/// every line that will ever be written be in the marker when the test reads it.
+fn assert_programs_ended(run: &Run) {
+    assert!(
+        run.stdout.contains("programs running=0"),
+        "a program the shell started was still running at `stop`\n{}",
+        run.dump()
+    );
+}
+
 #[test]
 fn example_11_editing_the_shell_and_a_module_it_imports_reloads_it_in_place_with_no_listener_twice() {
     let dir = project("reload-edit");
@@ -467,10 +478,12 @@ fn example_11_editing_the_shell_and_a_module_it_imports_reloads_it_in_place_with
             "mark:three",
             "dump",
             "stats",
+            "wait_programs",
             "stop",
         ],
     );
     assert_eq!(run.code, 0, "{}", run.dump());
+    assert_programs_ended(&run);
     // Before: columns with no gap, 500 wide.
     let one = run.section("one");
     assert_eq!(run.window(&one, 40), (0.0, 0.0, 500.0, 800.0), "{}", run.dump());
@@ -545,10 +558,12 @@ fn a_broken_edit_is_reported_at_its_ts_line_keeps_the_running_shell_and_a_fix_lo
             "pump",
             "serve",
             "open:51",
+            "wait_programs",
             "stop",
         ],
     );
     assert_eq!(run.code, 0, "{}", run.dump());
+    assert_programs_ended(&run);
     let failed = run.lines_with("reload failed");
     assert_eq!(failed.len(), 1, "{}", run.dump());
     assert!(failed[0].contains("still running generation 1"), "{}", run.dump());
