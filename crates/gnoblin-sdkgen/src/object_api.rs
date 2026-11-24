@@ -1350,7 +1350,7 @@ impl @Handlers@ {
             let objects = &objects_for_args;
             @Arms@
             Err(go::Fail::unsupported("the library called a method this interface does not have"))
-        })?;
+        }).map_err(|fail| go::typed::at_class(fail, @NameLit@, "implement"))?;
         Ok(@Name@ { object: go::client::Object::adopt(objects.api, ids.class, obj) })
     }
 }
@@ -1384,6 +1384,7 @@ impl go::typed::FromVal<Objects> for @Name@ {
             &[
                 ("Schema", &object.name),
                 ("Name", &name),
+                ("NameLit", &format!("{name:?}")),
                 ("Handlers", &handlers_name),
                 ("Ids", &ids_name),
                 ("Declared", &handlers.join("\n")),

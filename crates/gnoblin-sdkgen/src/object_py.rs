@@ -171,7 +171,10 @@ class Listener:
         """Stops hearing. A second call does nothing."""
         registration, self._registration = self._registration, 0
         if registration:
-            self._namespace.unlisten(registration)
+            try:
+                self._namespace.unlisten(registration)
+            except GnoblinError as error:
+                raise _named(error, None, "Listener", "stop") from None
 
 
 @dataclasses.dataclass
@@ -1406,6 +1409,7 @@ impl<'a> Py<'a> {
         if self.stub {
             return Ok(());
         }
+        self.named(c, &name, "implement", true);
         c.line(format!("def _implement_{snake_name}(obj):"));
         c.indent();
         c.line(format!("i = _ids_{snake_name}()"));

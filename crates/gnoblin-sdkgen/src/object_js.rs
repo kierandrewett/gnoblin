@@ -119,7 +119,13 @@ export function register(namespace, name, constructor) {
 
 /** An instance of the class the library says `slot` is, or of `fallback` when the script has no such class. */
 export function wrap(namespace, slot, fallback) {
-  const constructor = classes.get(`${namespace}/${native.classOf(slot)}`) ?? fallback;
+  let name;
+  try {
+    name = native.classOf(slot);
+  } catch (error) {
+    throw raise(error, undefined, fallback.name, "classOf");
+  }
+  const constructor = classes.get(`${namespace}/${name}`) ?? fallback;
   return adopt(Object.create(constructor.prototype), slot);
 }
 
@@ -233,7 +239,11 @@ export class Listener {
     if (this.#registration !== 0) {
       const registration = this.#registration;
       this.#registration = 0;
-      native.unlisten(this.#namespace, registration);
+      try {
+        native.unlisten(this.#namespace, registration);
+      } catch (error) {
+        throw raise(error, undefined, "Listener", "stop");
+      }
     }
   }
 }
@@ -1244,14 +1254,16 @@ impl<'a> Js<'a> {
             };
             arms.push(format!("if (member === i[{at}]) return {answer};"));
         }
-        c.line("return N.implement(NS, i[0], implemented, (member, args) => {");
-        c.indent();
-        for arm in &arms {
-            c.line(arm);
-        }
-        c.line("throw new Error(\"the library called a method this interface does not have\");");
-        c.dedent();
-        c.line("});");
+        guarded(c, &name, "implement", "undefined", |c| {
+            c.line("return N.implement(NS, i[0], implemented, (member, args) => {");
+            c.indent();
+            for arm in &arms {
+                c.line(arm);
+            }
+            c.line("throw new Error(\"the library called a method this interface does not have\");");
+            c.dedent();
+            c.line("});");
+        });
         c.dedent();
         c.line("}");
         c.blank();
