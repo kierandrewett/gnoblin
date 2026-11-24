@@ -167,6 +167,12 @@ impl Library {
         let queue = std::mem::take(&mut *state.queue.borrow_mut());
         let listeners = std::mem::take(&mut *state.listeners.borrow_mut());
         let objects = state.objects.borrow_mut().drain();
+        // A signal that was never delivered gives back the objects of other libraries it held: their generation may outlive this one.
+        for pending in &queue {
+            if let object::Pending::Signal { args, .. } = pending {
+                self.release_foreign(&state, args);
+            }
+        }
         drop(queue);
         drop(listeners);
         drop(objects);

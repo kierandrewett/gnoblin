@@ -208,6 +208,18 @@ impl Library {
         self.add_ref(&st, obj)
     }
 
+    /// Takes the references one receiver is given with `values`, as a listener is given its own: for arguments the library passes to a
+    /// method the shell implements, from outside a call of the protocol (`Cx::hand_out_args` inside one).
+    ///
+    /// # Errors
+    ///
+    /// The generation holds no objects of this library, or an object of another library in `values` could not be retained: nothing
+    /// was taken, and the values must not be passed.
+    pub fn hand_out(&self, ctx: GnoblinCtx, values: &[Val]) -> Res<()> {
+        let st = self.state(ctx, false)?;
+        self.hand_out_all(&st, values)
+    }
+
     pub(crate) fn add_ref(&self, st: &CtxState, obj: Obj) -> Res<()> {
         let mut objects = st.objects.borrow_mut();
         let entry = objects.get_mut(obj).ok_or_else(|| Fail::stale("the object is gone"))?;
@@ -246,10 +258,37 @@ impl Library {
     /// delivered, because the receiver would release a reference it was never given. A handle of this library that is gone is
     /// handed out as it was before, with no reference: its release is refused as stale and harms nothing.
     pub(crate) fn hand_out_all(&self, st: &CtxState, values: &[Val]) -> Res<()> {
+        self.take_all(st, values, true)
+    }
+
+    /// Takes a reference, in the library that serves it, to every object of another library in `values`: what a signal queued for a
+    /// later turn holds until it is delivered, so the object outlives whatever made the value. All or nothing, as
+    /// [`Library::hand_out_all`]; [`Library::release_foreign`] gives them back.
+    fn hold_foreign(&self, st: &CtxState, values: &[Val]) -> Res<()> {
+        self.take_all(st, values, false)
+    }
+
+    /// Gives back what [`Library::hold_foreign`] took.
+    pub(crate) fn release_foreign(&self, st: &Rc<CtxState>, values: &[Val]) {
+        for value in values {
+            match value {
+                Val::Foreign { namespace, obj } => {
+                    if let Ok(api) = (self.hooks.foreign)(st.ctx, namespace) {
+                        let _ = api.release(*obj);
+                    }
+                }
+                Val::List(items) | Val::Record { fields: items, .. } => self.release_foreign(st, items),
+                _ => {}
+            }
+        }
+    }
+
+    /// A reference to each object in `values` (only those of other libraries unless `own`), or none at all.
+    fn take_all(&self, st: &CtxState, values: &[Val], own: bool) -> Res<()> {
         let mut taken = Vec::new();
         let outcome = values
             .iter()
-            .try_for_each(|value| self.take_refs(st, value, &mut taken));
+            .try_for_each(|value| self.take_refs(st, value, own, &mut taken));
         if outcome.is_err() {
             for held in taken.into_iter().rev() {
                 match held {
@@ -268,9 +307,9 @@ impl Library {
         outcome
     }
 
-    fn take_refs(&self, st: &CtxState, value: &Val, taken: &mut Vec<Taken>) -> Res<()> {
+    fn take_refs(&self, st: &CtxState, value: &Val, own: bool, taken: &mut Vec<Taken>) -> Res<()> {
         match value {
-            Val::Object { obj, .. } => {
+            Val::Object { obj, .. } if own => {
                 if self.add_ref(st, *obj).is_ok() {
                     taken.push(Taken::Own(*obj));
                 }
@@ -282,7 +321,7 @@ impl Library {
             }
             Val::List(items) | Val::Record { fields: items, .. } => {
                 for item in items {
-                    self.take_refs(st, item, taken)?;
+                    self.take_refs(st, item, own, taken)?;
                 }
             }
             _ => {}
@@ -751,6 +790,11 @@ impl Library {
         if !st.listeners.borrow().hears(obj, member) {
             return;
         }
+        // The signal holds the objects of other libraries in it until it is delivered: what made the value may let them go before then.
+        if let Err(fail) = self.hold_foreign(st, &args) {
+            (self.hooks.log)(st.ctx, abi::LOG_WARN, &format!("a signal was not queued: {fail}"));
+            return;
+        }
         st.queue.borrow_mut().push(Pending::Signal { obj, member, args });
         self.schedule(st);
     }
@@ -810,10 +854,13 @@ impl Library {
 
     fn run_pending(&self, st: &Rc<CtxState>, pending: Pending) {
         match pending {
-            Pending::Signal { obj, member, args } => self.deliver(st, obj, member, args),
+            Pending::Signal { obj, member, args } => {
+                self.deliver(st, obj, member, &args);
+                self.release_foreign(st, &args);
+            }
             Pending::Changed { obj, member } => {
                 if let Ok(value) = self.get(st.ctx, obj, member) {
-                    self.deliver(st, obj, member, vec![value.clone()]);
+                    self.deliver(st, obj, member, std::slice::from_ref(&value));
                     // The getter handed its objects out once; each listener took its own references.
                     self.release_all(st, &value);
                 }
@@ -830,7 +877,7 @@ impl Library {
         }
     }
 
-    fn deliver(&self, st: &Rc<CtxState>, obj: Obj, member: MemberId, args: Vec<Val>) {
+    fn deliver(&self, st: &Rc<CtxState>, obj: Obj, member: MemberId, args: &[Val]) {
         let heard = st.listeners.borrow().heard_by(obj, member);
         for listener in heard {
             // A listener an earlier one removed hears nothing.
@@ -838,11 +885,11 @@ impl Library {
                 continue;
             }
             // Each listener holds its own reference to every object it is handed; one that cannot be given them is not told.
-            if let Err(fail) = self.hand_out_all(st, &args) {
+            if let Err(fail) = self.hand_out_all(st, args) {
                 (self.hooks.log)(st.ctx, abi::LOG_WARN, &format!("a listener was not told: {fail}"));
                 continue;
             }
-            if let Err(fail) = listener.closure.call(member, &args) {
+            if let Err(fail) = listener.closure.call(member, args) {
                 (self.hooks.log)(st.ctx, abi::LOG_WARN, &format!("a listener failed: {fail}"));
             }
         }

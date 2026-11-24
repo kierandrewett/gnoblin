@@ -235,6 +235,14 @@ fn derived_catalog() -> &'static CatalogDef {
     let foreign = members.len();
     members.push(member("label", abi::MEMBER_PROPERTY, 0, text, vec![]));
     members.push(member("describe", abi::MEMBER_METHOD, 0, text, vec![]));
+    // A signal of the derived library whose field is an object of the base library.
+    members.push(member(
+        "poked",
+        abi::MEMBER_SIGNAL,
+        0,
+        ty(abi::VALUE_NONE, ""),
+        vec![("what", ty(abi::VALUE_OBJECT, "test.probe.probe"))],
+    ));
     let classes = vec![class("fancy", abi::CLASS_HANDLE, "test.probe.probe", foreign, members)];
     leak(CatalogDef {
         namespace: "test.derived",
@@ -924,6 +932,67 @@ fn each_listener_of_a_signal_gets_its_own_reference_to_a_foreign_object_or_is_no
     api.release(live).unwrap();
     assert!(api.class_of(live).is_err(), "nothing was left holding it");
     api.destroy(source).unwrap();
+}
+
+/// A derived object, a listener on its `poked` signal that counts what it hears and gives back each reference it is handed, and the
+/// signal emitted with `fields` from outside a call.
+fn poke(fields: Vec<Val>) -> (Api, u64, Rc<Cell<u32>>) {
+    let derived = Api::new(&DERIVED_API, CTX, last_error);
+    let fancy_class = derived.class("fancy").unwrap();
+    let fancy = derived.create(fancy_class, &[]).unwrap();
+    let poked = derived.member(fancy_class, abi::MEMBER_SIGNAL, "poked").unwrap();
+    let heard = Rc::new(Cell::new(0));
+    let count = Rc::clone(&heard);
+    derived
+        .listen(fancy, poked, move |_, args| {
+            if let Val::Foreign { obj, .. } = &args[0] {
+                probe().release(*obj).unwrap();
+            }
+            count.set(count.get() + 1);
+            Ok(Val::None)
+        })
+        .unwrap();
+    DERIVED
+        .with(|lib| lib.with_cx(CTX, fancy, |cx| cx.emit("poked", fields)))
+        .unwrap();
+    (derived, fancy, heard)
+}
+
+#[test]
+fn a_queued_signal_keeps_a_foreign_object_alive_until_it_is_delivered() {
+    let base = probe();
+    let obj = base.create(base.class("probe").unwrap(), &[]).unwrap();
+    let (_derived, _fancy, heard) = poke(vec![Val::Foreign {
+        namespace: "test.probe".into(),
+        obj,
+    }]);
+    // What made the value lets the object go before the turn: the queued signal still holds it.
+    base.release(obj).unwrap();
+    assert!(base.class_of(obj).is_ok(), "the queued signal holds the object");
+    DERIVED.with(|lib| lib.flush(CTX));
+    assert_eq!(heard.get(), 1, "the listener is told");
+    assert!(
+        base.class_of(obj).is_err(),
+        "once the listener gave back its reference and the signal its own, nothing holds it"
+    );
+}
+
+#[test]
+fn a_generation_that_retires_with_a_signal_queued_gives_back_its_foreign_objects() {
+    let base = probe();
+    let obj = base.create(base.class("probe").unwrap(), &[]).unwrap();
+    let (_derived, _fancy, heard) = poke(vec![Val::Foreign {
+        namespace: "test.probe".into(),
+        obj,
+    }]);
+    // The derived library's generation ends before its turn; the base library's lives on.
+    DERIVED.with(|lib| lib.retire(CTX));
+    assert_eq!(heard.get(), 0, "nobody is told");
+    base.release(obj).unwrap();
+    assert!(
+        base.class_of(obj).is_err(),
+        "the reference from `create` was the last one: the queued signal gave its own back"
+    );
 }
 
 #[test]
