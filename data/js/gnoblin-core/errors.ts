@@ -22,11 +22,9 @@ export type ErrorCode =
     | "internal"
     | "config_rejected";
 
-/**
- * What a failed operation on a native object throws. `code` says why and `target` names the object and member, as in
- * `Client#7.x`; the message begins with the target.
- */
-export class GnoblinError extends Error {
+// A class expression, so that the class is named `GnoblinError` (`error.constructor.name`) while the module's own
+// `GnoblinError` binding is the shared class below.
+const ownClass = class GnoblinError extends Error {
     /** Stable reason code for this failure. */
     readonly code: ErrorCode;
     /** Object and member named by the failed call. */
@@ -38,7 +36,22 @@ export class GnoblinError extends Error {
         this.code = code;
         this.target = target;
     }
-}
+};
+
+/** The slot of the symbol registry the class is kept in, which the generated `object_base` module reads too. */
+const shared = globalThis as unknown as Record<symbol, typeof ownClass | undefined>;
+const key = Symbol.for("gnoblin.GnoblinError");
+
+/**
+ * What a failed operation on a native object throws. `code` says why and `target` names the object and member, as in
+ * `Client#7.x`; the message begins with the target.
+ *
+ * The generated object classes (`gnoblin-core/generated/object_base`) throw the same class: the module that loads first
+ * makes it under a key of the symbol registry and the other takes that one, so `instanceof` holds for either import.
+ */
+export const GnoblinError: typeof ownClass = (shared[key] ??= ownClass);
+/** An error of the class `GnoblinError`. */
+export type GnoblinError = InstanceType<typeof ownClass>;
 
 /**
  * The `ErrorCode` for a word the host's tree gives when it refuses a write or a call: `unknown-node` is a node that is

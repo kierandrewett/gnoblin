@@ -42,15 +42,19 @@ const classes = new Map();
  * What a failed call on a library object throws: `code` says why (`not_found`, `read_only`, ...) and `target` names the object and
  * member, as in `Client#7.x`. The message begins with the target. A bad argument is not one of these: it is a `TypeError` or a
  * `RangeError`, because it is the script's own mistake and no state is involved.
+ *
+ * It is one class with the `GnoblinError` of the TypeScript library (`gnoblin-core/errors`), which a shell that imports both has: the
+ * module that loads first makes it under a key of the symbol registry and the other takes that one, so `instanceof` holds whichever
+ * module the shell imported it from.
  */
-export class GnoblinError extends Error {
+export const GnoblinError = (globalThis[Symbol.for("gnoblin.GnoblinError")] ??= class GnoblinError extends Error {
   constructor(code, target, message) {
     super(`${target}: ${message}`);
     this.name = "GnoblinError";
     this.code = code;
     this.target = target;
   }
-}
+});
 
 let naming = false;
 

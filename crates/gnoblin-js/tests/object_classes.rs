@@ -176,6 +176,32 @@ fn a_value_the_catalog_does_not_take_is_an_exception_that_names_it() {
 }
 
 #[test]
+fn a_failure_of_a_generated_class_is_the_gnoblin_error_of_the_package_too() {
+    // A shell that imports the package entry and the generated classes runs on the TypeScript library, with both modules. The
+    // failure of a generated member is one `GnoblinError`, whichever module the shell took the class from.
+    let mut rig = rig_with(
+        r#"
+import { GnoblinError as PackageError } from "gnoblin-core";
+import { GnoblinError as ObjectsError } from "gnoblin-std/generated/objects";
+import { EntryModel } from "gnoblin-std/generated/objects";
+(globalThis as any).PackageError = PackageError;
+(globalThis as any).ObjectsError = ObjectsError;
+(globalThis as any).entry = new EntryModel("abc");
+"#,
+        "",
+    );
+    rig.settle();
+    assert!(rig.load_diagnostics.is_empty(), "{:?}", rig.load_diagnostics);
+    run(&mut rig, "entry.destroy()");
+    let caught = rig.eval(
+        "(() => { try { entry.text; return 'none'; } catch (e) { \
+         return [e instanceof PackageError, e instanceof ObjectsError, e.code].join(' '); } })()",
+    );
+    assert_eq!(caught, "true true not_found");
+    assert_eq!(rig.eval("PackageError === ObjectsError"), "true");
+}
+
+#[test]
 fn a_listener_that_raises_does_not_stop_the_listeners_after_it() {
     let mut rig = rig_with(
         IMPORTS,
