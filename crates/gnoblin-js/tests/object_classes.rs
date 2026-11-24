@@ -105,6 +105,28 @@ fn the_core_serves_its_own_namespace_through_its_own_module() {
 }
 
 #[test]
+fn a_library_object_handed_to_the_script_twice_is_one_script_object() {
+    let mut rig = rig_with(IMPORTS, "");
+    rig.settle();
+    assert!(rig.load_diagnostics.is_empty(), "{:?}", rig.load_diagnostics);
+    // Each read hands out a new reference to the same object: the script sees one object, so `===`, `indexOf` and a `Map` key work.
+    assert_eq!(rig.eval("String(model.Gnoblin.get() === model.Gnoblin.get())"), "true");
+    assert_eq!(
+        rig.eval("String(model.gnoblin.clients === model.gnoblin.clients)"),
+        "true"
+    );
+    assert_eq!(
+        rig.eval("String(new Map([[model.gnoblin.clients, 1]]).get(model.gnoblin.clients))"),
+        "1"
+    );
+    // Two objects stay two.
+    assert_eq!(
+        rig.eval("String(model.gnoblin.clients === model.gnoblin.outputs)"),
+        "false"
+    );
+}
+
+#[test]
 fn the_focus_policy_takes_records_and_enums_by_name_and_answers_a_record() {
     let mut rig = rig_with(IMPORTS, "");
     rig.settle();

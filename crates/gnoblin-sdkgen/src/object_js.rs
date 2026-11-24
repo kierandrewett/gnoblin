@@ -33,8 +33,46 @@ export const HANDLE = Symbol("gnoblin.handle");
 
 // A script's reference to a library object is dropped when the script's object is collected. The call is queued by the engine, so it
 // runs between the script's own turns.
+//
+// One library object is one script object: `live` maps the identity of each object the script holds (`native.key`) to its script object,
+// so an object handed over twice is the same script object both times and `===`, `indexOf` and a `Map` key work on it. The second
+// delivery's reference is released at once, since the script object already holds one. An engine without weak references gets a new
+// script object each time.
 const finalizer =
-  typeof FinalizationRegistry === "function" ? new FinalizationRegistry((slot) => native.release(slot)) : undefined;
+  typeof FinalizationRegistry === "function"
+    ? new FinalizationRegistry(({ slot, key }) => {
+        native.release(slot);
+        if (key !== undefined && live.get(key)?.deref() === undefined) {
+          live.delete(key);
+        }
+      })
+    : undefined;
+const live = finalizer !== undefined && typeof WeakRef === "function" ? new Map() : undefined;
+
+/** The script object that already holds the object of `slot`, which then lets `slot` go; or none, with the key to file it under. */
+function held(slot) {
+  if (live === undefined) {
+    return { key: undefined };
+  }
+  const key = native.key(slot);
+  const found = live.get(key)?.deref();
+  if (found !== undefined) {
+    native.release(slot);
+  }
+  return { found, key };
+}
+
+/** Makes `instance` hold `slot` filed under `key`, and drop it when the instance is collected. */
+function hold(instance, slot, key) {
+  if (key !== undefined) {
+    live.set(key, new WeakRef(instance));
+  }
+  instance[HANDLE] = slot;
+  if (finalizer !== undefined) {
+    finalizer.register(instance, { slot, key });
+  }
+  return instance;
+}
 
 const classes = new Map();
 
@@ -107,13 +145,13 @@ export function ids(namespace, name, names) {
   return () => (found ??= native.ids(namespace, name, names));
 }
 
-/** Makes `instance` hold `slot`, and drop it when the instance is collected. */
+/**
+ * Makes `instance` hold `slot`, and drop it when the instance is collected. When a script object holds that library object already, that
+ * one is answered and `slot` is let go.
+ */
 export function adopt(instance, slot) {
-  instance[HANDLE] = slot;
-  if (finalizer !== undefined) {
-    finalizer.register(instance, slot);
-  }
-  return instance;
+  const { found, key } = held(slot);
+  return found ?? hold(instance, slot, key);
 }
 
 /** Remembers the class a library object of the name `name` is read as. */
@@ -123,6 +161,10 @@ export function register(namespace, name, constructor) {
 
 /** An instance of the class the library says `slot` is, or of `fallback` when the script has no such class. */
 export function wrap(namespace, slot, fallback) {
+  const { found, key } = held(slot);
+  if (found !== undefined) {
+    return found;
+  }
   let name;
   try {
     name = native.classOf(slot);
@@ -130,7 +172,7 @@ export function wrap(namespace, slot, fallback) {
     throw raise(error, undefined, fallback.name, "classOf");
   }
   const constructor = classes.get(`${namespace}/${name}`) ?? fallback;
-  return adopt(Object.create(constructor.prototype), slot);
+  return hold(Object.create(constructor.prototype), slot, key);
 }
 
 export const same = (value) => value;

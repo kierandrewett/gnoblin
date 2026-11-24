@@ -757,6 +757,23 @@ fn an_object_value_that_names_no_class_is_adopted_as_its_most_derived_class() {
 }
 
 #[test]
+fn two_holds_of_one_object_are_equal_and_hash_alike() {
+    use std::collections::HashSet;
+    let api = probe();
+    let class = api.class("probe").unwrap();
+    let obj = api.create(class, &[]).unwrap();
+    let other = Object::create(api, class, &[]).unwrap();
+    api.retain(obj).unwrap();
+    // Two references to one object, as two deliveries of it give: one object to the shell.
+    let first = Object::adopt(api, class, obj);
+    let second = Object::from_val(api, &Val::Object { class: 0, obj }).unwrap();
+    assert_eq!(first, second);
+    assert_ne!(first, other);
+    let set: HashSet<&Object> = [&first, &second, &other].into_iter().collect();
+    assert_eq!(set.len(), 2);
+}
+
+#[test]
 fn a_foreign_object_value_crosses_the_wire_naming_the_library_that_serves_it() {
     let value = Val::Foreign {
         namespace: "test.probe".into(),

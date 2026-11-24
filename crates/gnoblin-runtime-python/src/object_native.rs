@@ -424,6 +424,12 @@ impl ObjectHandle {
             .map_err(|fail| failure(&fail))
     }
 
+    /// The identity of the object: its namespace, its generation and its handle. Two handles of one object have the same key.
+    #[getter]
+    fn key(&self) -> (String, u64, Obj) {
+        (self.cx.namespace.get().name.clone(), self.cx.api.ctx(), self.obj)
+    }
+
     /// The value of the property `member`.
     fn get<'py>(&self, py: Python<'py>, member: MemberId) -> PyResult<Bound<'py, PyAny>> {
         enter()?;

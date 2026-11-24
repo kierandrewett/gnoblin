@@ -578,6 +578,25 @@ impl Drop for Object {
     }
 }
 
+// Identity: two holds are one object when they name the same handle of the same library's table in the same generation, whatever
+// class each was adopted as and however many references they stand for. A handle is a slot and a generation, so a handle of an object
+// that ended never equals one of a new object.
+impl PartialEq for Object {
+    fn eq(&self, other: &Object) -> bool {
+        core::ptr::eq(self.api.raw, other.api.raw) && self.api.ctx == other.api.ctx && self.obj == other.obj
+    }
+}
+
+impl Eq for Object {}
+
+impl std::hash::Hash for Object {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        core::ptr::from_ref(self.api.raw).hash(state);
+        self.api.ctx.hash(state);
+        self.obj.hash(state);
+    }
+}
+
 /// What a tracker does with a read.
 type Observe = Box<dyn FnMut(Obj, ClassId, MemberId)>;
 

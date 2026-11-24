@@ -330,6 +330,8 @@ const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", he
 - `on(event, handler)` returns a `Listener` with `stop()`. It lasts until stopped or the generation ends, not until the object is
   collected; the library's object itself lives until `destroy()` or the generation's end, and the script's reference is dropped when the
   object is collected.
+- One library object is one script object. Two reads of it, or two events that carry it, give the same object, so `===`, `indexOf` and a
+  `Map` key work: `gnoblin.clients === gnoblin.clients` is `true`.
 - An **interface** is an abstract class a shell extends: the methods it defines are the ones the library calls, and the rest run natively.
 - A failure is an `Error` with the library's text and its ABI code in `code`, a value of the wrong type is a `TypeError` that names it, and
   an exception a listener throws is logged with its stack and does not stop the listeners after it.

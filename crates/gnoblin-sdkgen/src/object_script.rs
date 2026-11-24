@@ -441,6 +441,7 @@ globalThis.__gnoblinObjects = {
   create: (ns, cls, inits) => { (globalThis.__created ??= []).push(inits); return 7; },
   release: () => {},
   classOf: () => "",
+  key: (() => { let n = 0; return () => String(++n); })(),
   call: (slot, id, args) => (globalThis.__answer ?? lib(args[0])),
 };
 const std = await import("./std.mjs");
@@ -1258,7 +1259,8 @@ print("ok")
         fs::write(
             dir.path().join("check.mjs"),
             r##"
-globalThis.__gnoblinObjects = {};
+// Each adoption is a distinct object to the base: the check adopts one slot number twice as two classes.
+globalThis.__gnoblinObjects = { key: (() => { let n = 0; return () => String(++n); })(), release: () => {} };
 const B = await import("./object_base.mjs");
 class Client {}
 class Other {}

@@ -901,6 +901,21 @@ impl go::typed::ToVal for @Name@ {
     }
 }
 
+/// One object, whichever value holds it: two deliveries of it are equal.
+impl PartialEq for @Name@ {
+    fn eq(&self, other: &@Name@) -> bool {
+        self.object == other.object
+    }
+}
+
+impl Eq for @Name@ {}
+
+impl ::std::hash::Hash for @Name@ {
+    fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
+        self.object.hash(state);
+    }
+}
+
 impl go::typed::FromVal<Objects> for @Name@ {
     fn from_val(cx: &Objects, value: &go::Val) -> go::Res<@Name@> {
         Ok(@Name@ { object: go::client::Object::from_val(cx.api, value)?, objects: cx.clone() })
@@ -1371,6 +1386,21 @@ impl @Name@ {
 impl go::typed::ToVal for @Name@ {
     fn to_val(&self) -> go::Val {
         self.object.val()
+    }
+}
+
+/// One object, whichever value holds it: two deliveries of it are equal.
+impl PartialEq for @Name@ {
+    fn eq(&self, other: &@Name@) -> bool {
+        self.object == other.object
+    }
+}
+
+impl Eq for @Name@ {}
+
+impl ::std::hash::Hash for @Name@ {
+    fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
+        self.object.hash(state);
     }
 }
 

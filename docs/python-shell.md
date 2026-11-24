@@ -351,6 +351,8 @@ action = FocusPolicy.focus_decision(           # a function of a service: record
 - An **enum** is an `IntEnum` (a method also takes its name, `"follow-mouse"`), and a list a `list`.
 - `on(event, handler)` returns a `Listener` with `stop()`; without a handler it is a decorator. It lasts until stopped or the
   generation ends, not until the object is collected.
+- One library object is one Python object. Two reads of it, or two events that carry it, give the same object, so `is`, `==`, `in` and a
+  dict key work: `Gnoblin.get().clients is Gnoblin.get().clients` is `True`.
 - An **interface** (`gnoblin.objects.std.<Name>` of kind `interface`) is a base class: a subclass defines the methods it wants to answer
   and passes an instance to the library; a method it does not define runs natively.
 - `.destroy()` ends the object and its children whoever else holds them. A reference the script drops is released on the shell thread, so a

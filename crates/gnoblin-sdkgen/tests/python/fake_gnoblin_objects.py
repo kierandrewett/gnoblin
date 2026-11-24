@@ -67,6 +67,10 @@ class Handle:
         self.obj = obj
 
     @property
+    def key(self):
+        return (self.namespace.name, 0, self.obj)
+
+    @property
     def class_name(self):
         return next(name for name, class_id in self.namespace.classes.items() if class_id == self.class_id)
 

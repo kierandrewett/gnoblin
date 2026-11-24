@@ -205,6 +205,16 @@ try:
 except TypeError as error:
     check("a bad argument has no code", getattr(error, "code", None), None)
 
+# One library object is one Python object: a second handle of an object wraps to the script object that holds it.
+again = type(probe._h)(ns, probe._h.class_id, probe._h.obj)
+check("a second handle of an object is its script object", p._B.wrap(p._NS_NAME, again, p.Probe) is probe, True)
+other = p.Probe(1)
+check(
+    "two objects stay two",
+    p._B.wrap(p._NS_NAME, type(other._h)(ns, other._h.class_id, other._h.obj), p.Probe) is probe,
+    False,
+)
+
 # A reference is ended by destroy.
 probe.destroy()
 check("destroy reaches the library", ("destroy", probe._h.obj) in ns.calls, True)

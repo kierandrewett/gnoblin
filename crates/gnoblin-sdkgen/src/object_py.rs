@@ -56,6 +56,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import functools
+import weakref
 from typing import Any, Callable
 
 import _gnoblin_objects as native
@@ -198,10 +199,29 @@ def register(namespace: str, name: str, cls: type) -> None:
     _classes[(namespace, name)] = cls
 
 
+# One library object is one script object: each object the script holds is filed under the identity of its handle (`handle.key`, the
+# namespace and the handle), so an object handed over twice is the same Python object both times and `is`, `==`, `in` and a dict key work
+# on it. The second delivery's handle is dropped, which releases its reference, since the script object holds one already.
+_live: weakref.WeakValueDictionary[Any, Any] = weakref.WeakValueDictionary()
+
+
+def _remember(handle: Any, instance: Any) -> Any:
+    try:
+        _live[handle.key] = instance
+    except TypeError:
+        # A class with no weak reference slot (an implemented interface) is not filed: the script made it and holds it already.
+        pass
+    return instance
+
+
 def wrap(namespace: str, handle: Any, fallback: type) -> Any:
-    """An instance of the class the library says `handle` is, or of `fallback` when the script has no such class."""
+    """The script object that holds the library object of `handle`: the one there is, or a new instance of the class the library says it
+    is (of `fallback` when the script has no such class)."""
+    found = _live.get(handle.key)
+    if found is not None:
+        return found
     cls = _classes.get((namespace, handle.class_name), fallback)
-    return cls._wrap(handle)
+    return _remember(handle, cls._wrap(handle))
 
 
 class _Held:
@@ -281,6 +301,7 @@ class Object(_Held):
 
     def __init__(self, handle: Any) -> None:
         self._h = handle
+        _remember(handle, self)
 
     @named(None, "destroy")
     def destroy(self) -> None:
@@ -1186,7 +1207,7 @@ impl<'a> Py<'a> {
                 "The service.",
                 &[
                     format!("i = _ids_{snake_name}()"),
-                    "return cls(_NS.create(i[0], []))".to_owned(),
+                    "return _B.wrap(_NS_NAME, _NS.create(i[0], []), cls)".to_owned(),
                 ],
             );
             return Ok(());

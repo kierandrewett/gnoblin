@@ -791,6 +791,20 @@ fn install<'js>(ctx: &Ctx<'js>, ids: &ScriptIds) -> rquickjs::Result<()> {
         )?,
     )?;
 
+    // The identity of the object a slot holds, as text: two slots of one object of one library have the same key. The handle is text
+    // because a number of the script holds 53 bits and a handle may use 64.
+    let state = Rc::clone(&table);
+    native.set(
+        "key",
+        Function::new(
+            ctx.clone(),
+            move |ctx: Ctx<'js>, slot: f64| -> rquickjs::Result<String> {
+                let slot = state.slot(slot).map_err(|fail| throw(&ctx, &fail))?;
+                Ok(format!("{}:{}", slot.namespace, slot.obj))
+            },
+        )?,
+    )?;
+
     ctx.globals().set("__gnoblinObjects", native)?;
     Ok(())
 }
