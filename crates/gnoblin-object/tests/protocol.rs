@@ -787,6 +787,7 @@ fn a_foreign_object_handed_out_takes_a_reference_in_the_library_that_serves_it()
     // Two receivers, as two listeners of one signal: each holds its own reference, in the library that serves the object.
     DERIVED
         .with(|lib| lib.with_cx(CTX, fancy, |cx| cx.hand_out(&Val::List(vec![foreign(), foreign()]))))
+        .unwrap()
         .unwrap();
     base.release(obj).unwrap();
     base.release(obj).unwrap();
@@ -794,6 +795,90 @@ fn a_foreign_object_handed_out_takes_a_reference_in_the_library_that_serves_it()
     base.release(obj).unwrap();
     assert!(base.class_of(obj).is_err(), "every reference was given back");
     derived.release(fancy).unwrap();
+}
+
+#[test]
+fn a_hand_out_that_cannot_retain_every_foreign_object_takes_no_reference_at_all() {
+    let base = probe();
+    let class = base.class("probe").unwrap();
+    let live = base.create(class, &[]).unwrap();
+    let gone = base.create(class, &[]).unwrap();
+    base.release(gone).unwrap();
+    let derived = Api::new(&DERIVED_API, CTX, last_error);
+    let fancy = derived.create(derived.class("fancy").unwrap(), &[]).unwrap();
+    let foreign = |obj| Val::Foreign {
+        namespace: "test.probe".into(),
+        obj,
+    };
+    let handed = DERIVED
+        .with(|lib| lib.with_cx(CTX, fancy, |cx| cx.hand_out_args(&[foreign(live), foreign(gone)])))
+        .unwrap();
+    assert!(
+        handed.is_err(),
+        "a receiver must not be handed a reference it was not given"
+    );
+    // The reference taken for `live` before `gone` failed was given back: the one from `create` is the only one left.
+    base.release(live).unwrap();
+    assert!(base.class_of(live).is_err());
+    // An unknown library is refused the same way.
+    let unknown = Val::Foreign {
+        namespace: "test.nowhere".into(),
+        obj: 1,
+    };
+    let handed = DERIVED
+        .with(|lib| lib.with_cx(CTX, fancy, |cx| cx.hand_out(&unknown)))
+        .unwrap();
+    assert!(handed.is_err());
+    derived.release(fancy).unwrap();
+}
+
+#[test]
+fn each_listener_of_a_signal_gets_its_own_reference_to_a_foreign_object_or_is_not_told() {
+    let api = probe();
+    let class = api.class("probe").unwrap();
+    let ticked = api.member(class, abi::MEMBER_SIGNAL, "ticked").unwrap();
+    let source = api.create(class, &[]).unwrap();
+    let live = api.create(class, &[]).unwrap();
+    let gone = api.create(class, &[]).unwrap();
+    api.release(gone).unwrap();
+    let foreign = |obj| Val::Foreign {
+        namespace: "test.probe".into(),
+        obj,
+    };
+    let heard = Rc::new(Cell::new(0));
+    for _ in 0..3 {
+        let heard = Rc::clone(&heard);
+        api.listen(source, ticked, move |_, args| {
+            assert!(
+                matches!(&args[0], Val::Foreign { obj, .. } if *obj == live),
+                "got {args:?}"
+            );
+            heard.set(heard.get() + 1);
+            Ok(Val::None)
+        })
+        .unwrap();
+    }
+    let emit = |fields: Vec<Val>| {
+        PROBE
+            .with(|lib| lib.with_cx(CTX, source, |cx| cx.emit("ticked", fields)))
+            .unwrap();
+        flush_probe();
+    };
+
+    emit(vec![foreign(live)]);
+    assert_eq!(heard.get(), 3, "every listener is told");
+    // Three receivers, three references, beside the one from `create`.
+    for _ in 0..3 {
+        api.release(live).unwrap();
+    }
+    assert!(api.class_of(live).is_ok(), "the reference from `create` is left");
+
+    // A field that cannot be retained: no listener is told, and none holds a reference it was not given.
+    emit(vec![foreign(live), foreign(gone)]);
+    assert_eq!(heard.get(), 3, "no listener is told");
+    api.release(live).unwrap();
+    assert!(api.class_of(live).is_err(), "nothing was left holding it");
+    api.destroy(source).unwrap();
 }
 
 #[test]

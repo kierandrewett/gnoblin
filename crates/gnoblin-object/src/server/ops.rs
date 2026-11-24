@@ -238,21 +238,56 @@ impl Library {
         })
     }
 
-    /// Adds a reference for every object a value hands to a receiver. An object another library serves takes its reference there.
-    pub(crate) fn hand_out_all(&self, st: &CtxState, value: &Val) {
-        match value {
-            Val::Object { obj, .. } => {
-                let _ = self.add_ref(st, *obj);
-            }
-            Val::Foreign { namespace, obj } => {
-                if let Ok(api) = (self.hooks.foreign)(st.ctx, namespace) {
-                    let _ = api.retain(*obj);
+    /// Adds a reference for every object `values` hand to one receiver. An object another library serves takes its reference there,
+    /// through that library's `retain`.
+    ///
+    /// It is all or nothing for the objects of other libraries: when one of them cannot be retained (its library is not reachable,
+    /// its table has no `retain`, or the object is gone), every reference taken here is given back and the values must not be
+    /// delivered, because the receiver would release a reference it was never given. A handle of this library that is gone is
+    /// handed out as it was before, with no reference: its release is refused as stale and harms nothing.
+    pub(crate) fn hand_out_all(&self, st: &CtxState, values: &[Val]) -> Res<()> {
+        let mut taken = Vec::new();
+        let outcome = values
+            .iter()
+            .try_for_each(|value| self.take_refs(st, value, &mut taken));
+        if outcome.is_err() {
+            for held in taken.into_iter().rev() {
+                match held {
+                    Taken::Own(obj) => {
+                        // Back to what it was: the object neither ends nor lives longer because of this attempt.
+                        if let Some(entry) = st.objects.borrow_mut().get_mut(obj) {
+                            entry.refs = entry.refs.saturating_sub(1);
+                        }
+                    }
+                    Taken::Foreign(api, obj) => {
+                        let _ = api.release(obj);
+                    }
                 }
             }
-            Val::List(items) => items.iter().for_each(|item| self.hand_out_all(st, item)),
-            Val::Record { fields, .. } => fields.iter().for_each(|field| self.hand_out_all(st, field)),
+        }
+        outcome
+    }
+
+    fn take_refs(&self, st: &CtxState, value: &Val, taken: &mut Vec<Taken>) -> Res<()> {
+        match value {
+            Val::Object { obj, .. } => {
+                if self.add_ref(st, *obj).is_ok() {
+                    taken.push(Taken::Own(*obj));
+                }
+            }
+            Val::Foreign { namespace, obj } => {
+                let api = (self.hooks.foreign)(st.ctx, namespace)?;
+                api.retain(*obj)?;
+                taken.push(Taken::Foreign(api, *obj));
+            }
+            Val::List(items) | Val::Record { fields: items, .. } => {
+                for item in items {
+                    self.take_refs(st, item, taken)?;
+                }
+            }
             _ => {}
         }
+        Ok(())
     }
 
     /// Removes `obj` and its descendants. What they held is dropped after every borrow is released, because dropping a closure runs
@@ -609,7 +644,10 @@ impl Library {
                             return;
                         }
                         for args in calls {
-                            args.iter().for_each(|arg| cx.hand_out(arg));
+                            if let Err(fail) = cx.hand_out_args(&args) {
+                                cx.log(abi::LOG_WARN, &format!("a listener was not told: {fail}"));
+                                continue;
+                            }
                             if let Err(fail) = closure.call(member, &args) {
                                 cx.log(abi::LOG_WARN, &format!("a listener failed: {fail}"));
                             }
@@ -799,8 +837,11 @@ impl Library {
             if !st.listeners.borrow().by_reg.contains_key(&listener.reg) {
                 continue;
             }
-            // Each listener holds its own reference to every object it is handed.
-            args.iter().for_each(|arg| self.hand_out_all(st, arg));
+            // Each listener holds its own reference to every object it is handed; one that cannot be given them is not told.
+            if let Err(fail) = self.hand_out_all(st, &args) {
+                (self.hooks.log)(st.ctx, abi::LOG_WARN, &format!("a listener was not told: {fail}"));
+                continue;
+            }
             if let Err(fail) = listener.closure.call(member, &args) {
                 (self.hooks.log)(st.ctx, abi::LOG_WARN, &format!("a listener failed: {fail}"));
             }
@@ -821,6 +862,14 @@ impl Library {
             _ => {}
         }
     }
+}
+
+/// A reference [`Library::hand_out_all`] took, to give back when the hand-out fails part way.
+enum Taken {
+    /// A reference to an object of this library.
+    Own(Obj),
+    /// A reference to an object of the library `Api` serves.
+    Foreign(Api, Obj),
 }
 
 /// Refuses a none answer from a method that is not `optional` and promises an object or a record: the generated SDKs decode such a

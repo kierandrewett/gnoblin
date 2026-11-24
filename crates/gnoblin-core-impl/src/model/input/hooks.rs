@@ -206,7 +206,7 @@ fn call_method(cx: &Cx<'_>, object: Obj, member: &str, event: Val) -> Res<Option
     if !shell.has(method) {
         return Ok(None);
     }
-    cx.hand_out(&event);
+    cx.hand_out(&event)?;
     shell.call(method, &[event]).map(Some)
 }
 

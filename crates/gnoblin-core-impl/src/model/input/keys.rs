@@ -55,7 +55,7 @@ fn press(cx: &Cx<'_>, context: Obj, claim: &ClaimEntry) {
 
 /// Calls a closure with `args`, each object in them handed out as a listener's is.
 pub(super) fn call_closure(cx: &Cx<'_>, closure: &Closure, args: Vec<Val>) -> Res<Val> {
-    args.iter().for_each(|arg| cx.hand_out(arg));
+    cx.hand_out_args(&args)?;
     closure.call(0, &args)
 }
 
@@ -229,6 +229,6 @@ fn call_handler(
         return Err(Fail::type_error("the handler does not implement `on_press`"));
     }
     let event = event_of(cx, context, registration, client)?;
-    cx.hand_out(&event);
+    cx.hand_out(&event)?;
     shell.call(method, &[event])
 }

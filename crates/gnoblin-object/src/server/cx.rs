@@ -207,8 +207,22 @@ impl<'a> Cx<'a> {
     }
 
     /// Takes a reference for every object in `value`, as a listener is given its own: a value the library keeps to hand over later.
-    pub fn hand_out(&self, value: &Val) {
-        self.lib.hand_out_all(self.st, value);
+    ///
+    /// # Errors
+    ///
+    /// An object of another library in it could not be retained (see `Library::hand_out_all`): nothing was taken, and the value must
+    /// not be handed over.
+    pub fn hand_out(&self, value: &Val) -> Res<()> {
+        self.lib.hand_out_all(self.st, std::slice::from_ref(value))
+    }
+
+    /// [`Cx::hand_out`] for the arguments of one call, all or nothing.
+    ///
+    /// # Errors
+    ///
+    /// As [`Cx::hand_out`].
+    pub fn hand_out_args(&self, args: &[Val]) -> Res<()> {
+        self.lib.hand_out_all(self.st, args)
     }
 
     /// Ends a listener made with [`Cx::listen`]. A listener that is gone already is ignored.

@@ -53,7 +53,10 @@ impl Replay {
         }
         cx.later(move |cx| {
             for args in calls {
-                args.iter().for_each(|arg| cx.hand_out(arg));
+                if let Err(fail) = cx.hand_out_args(&args) {
+                    cx.log(abi::LOG_WARN, &format!("a listener was not told: {fail}"));
+                    continue;
+                }
                 if let Err(fail) = self.closure.call(0, &args) {
                     cx.log(abi::LOG_WARN, &format!("a listener failed: {fail}"));
                 }
