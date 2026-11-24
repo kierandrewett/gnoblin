@@ -464,13 +464,15 @@ impl Object {
         Object { api, class, obj }
     }
 
-    /// Takes over the reference an object value carries, as a call's result or a callback's argument hands it out.
+    /// Takes over the reference an object value carries, as a call's result or a callback's argument hands it out. A value that
+    /// names no class (class zero) is adopted as the most derived class the library that serves it reports.
     ///
     /// # Errors
     ///
-    /// The value is not an object.
+    /// The value is not an object, or it names no class and the object is gone.
     pub fn from_val(api: Api, value: &Val) -> Res<Object> {
         match value {
+            Val::Object { class: 0, obj } => Ok(Object::adopt(api, api.class_of(*obj)?, *obj)),
             Val::Object { class, obj } => Ok(Object::adopt(api, *class, *obj)),
             other => Err(Fail::type_error(format!(
                 "expected an object, got {}",

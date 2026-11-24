@@ -25,7 +25,7 @@ use std::sync::LazyLock;
 
 use gnoblin_core_abi::{self as abi, GnoblinObjectApi};
 use gnoblin_object::catalog::{ArgDef, CatalogDef, ClassDef, DefaultDef, MemberDef, TypeDef};
-use gnoblin_object::client::{Api, closure};
+use gnoblin_object::client::{Api, Object, closure};
 use gnoblin_object::server::{Builder, Cx, Hooks, Library, Provider, api_table};
 use gnoblin_object::{Callable, ErrorCode, Fail, Val};
 
@@ -738,6 +738,21 @@ fn a_retained_object_ends_once_it_is_unpinned_and_nobody_holds_it() {
     assert!(api.class_of(held).is_ok());
     api.release(held).unwrap();
     assert!(api.class_of(held).is_err());
+}
+
+#[test]
+fn an_object_value_that_names_no_class_is_adopted_as_its_most_derived_class() {
+    let api = probe();
+    let class = api.class("probe").unwrap();
+    let obj = api.create(class, &[]).unwrap();
+    let held = Object::from_val(api, &Val::Object { class: 0, obj }).unwrap();
+    assert_eq!(
+        held.class(),
+        class,
+        "a sender that names no class leaves the class to the library that serves it"
+    );
+    drop(held);
+    assert!(api.class_of(obj).is_err(), "the adopted reference was the only one");
 }
 
 #[test]
