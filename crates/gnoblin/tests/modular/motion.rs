@@ -32,8 +32,15 @@ fn how_long_a_closed_window_stays(shell_name: &str, source: &str, stock: Option<
     // The window's own open fade runs out first (it is real time), so the only motion left is the close.
     std::thread::sleep(Duration::from_millis(600));
     let ipc = session.ipc();
-    mapper.close_window(0);
+    // The compositor's loop advances its animations by the time since its previous turn, and a loop that sat idle through the sleep
+    // above (it wakes every 100 ms) hands that stretch to the fade a close starts: a window closed late in an idle wait lost up to that
+    // much of its 200 ms and left the tree after about 120 ms. A round trip is a turn, so a close that follows one finds the clock
+    // current and the fade has its full length.
+    mapper.roundtrip();
+    // Timed from the request: the compositor handles the close before `close_window`'s round trip returns, so a clock started after
+    // that round trip can only read short.
     let closed = Instant::now();
+    mapper.close_window(0);
     let deadline = closed + Duration::from_secs(10);
     loop {
         if !scene(&ipc).iter().any(|window| window.app_id == "a") {
