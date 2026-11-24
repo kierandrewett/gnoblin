@@ -448,7 +448,7 @@ impl<'a> Py<'a> {
                 let class = pascal(&self.view.enum_decl(name)?.name);
                 if input { format!("{class} | str") } else { class }
             }
-            Type::ObjectRef(name) if input && name.contains('.') => self.view.foreign(name)?.alias_py(),
+            Type::ObjectRef(name) if name.contains('.') => self.view.foreign(name)?.alias_py(),
             Type::ObjectRef(name) => class_name(self.view.class(name)?),
             Type::List(inner) => format!("list[{}]", self.ty(inner, input)?),
             Type::Callback(name) => {
@@ -515,6 +515,19 @@ impl<'a> Py<'a> {
         Ok(match ty {
             Type::Bool | Type::Int | Type::Uint | Type::Double | Type::Text | Type::Bytes => e.to_owned(),
             Type::Enum(name) => format!("_dec_enum_{}({e})", snake(&self.view.enum_decl(name)?.name)),
+            // An object of another library is read in that library's namespace, as an instance of its class there.
+            Type::ObjectRef(name) if name.contains('.') => {
+                let foreign = self.view.foreign(name)?;
+                let home = quote(&foreign.namespace);
+                if absent {
+                    format!(
+                        "_B.opt({e}, lambda handle: _B.wrap({home}, handle, {}))",
+                        foreign.alias_py()
+                    )
+                } else {
+                    format!("_B.wrap({home}, {e}, {})", foreign.alias_py())
+                }
+            }
             Type::ObjectRef(name) => {
                 let class = self.view.class(name)?;
                 let (function, call) = match class.kind {

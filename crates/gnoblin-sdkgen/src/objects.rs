@@ -53,11 +53,12 @@ pub(super) fn crate_path_of(namespace: &Namespace) -> Result<&'static str, Strin
     }
 }
 
-/// The handle class of another namespace that a parameter names (`object:gnoblin.model.client`): its namespace and its declaration.
+/// The handle class of another namespace that a type names (`object:gnoblin.model.client`): its namespace and its declaration.
 ///
-/// A parameter may name a handle of another library's catalog; the wire value carries no namespace, so the library that takes it checks it
-/// against its own table. A result, a property or a signal field of such a class is not rendered (it needs the other library's wrapper
-/// registry), and neither is a class that is not a handle (a record is a value, a service has no instance, an interface a script implements).
+/// A parameter, a result, a property, a record field, a signal field or a callback's argument may name a handle of another library's
+/// catalog. Going in, the value is that library's handle and the library that takes it checks it against its own table; coming out, it is
+/// a `VALUE_FOREIGN_OBJECT` the generated code reads through the other library's classes. A class that is not a handle is refused (a record
+/// is a value, a service has no instance, an interface a script implements).
 pub(super) fn foreign_handle<'a>(catalog: &'a Catalog, reference: &str) -> Result<(Namespace, &'a ObjectType), String> {
     let (home, bare) = reference
         .rsplit_once('.')
@@ -72,7 +73,7 @@ pub(super) fn foreign_handle<'a>(catalog: &'a Catalog, reference: &str) -> Resul
         .ok_or_else(|| format!("`{reference}`: namespace `{home}` has no class `{bare}`"))?;
     if class.kind != ObjectKind::Handle {
         return Err(format!(
-            "`{reference}` is a {} of another namespace: only a handle of another library can be passed as a parameter",
+            "`{reference}` is a {} of another namespace: only a handle of another library can be named by a type of this one",
             class.kind.as_str()
         ));
     }

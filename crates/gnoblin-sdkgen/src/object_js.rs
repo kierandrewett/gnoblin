@@ -514,6 +514,16 @@ impl<'a> Js<'a> {
         Ok(match ty {
             Type::Bool | Type::Int | Type::Uint | Type::Double | Type::Text | Type::Bytes => e.to_owned(),
             Type::Enum(name) => format!("dec_enum_{}({e})", snake(&self.view.enum_decl(name)?.name)),
+            // An object of another library is read in that library's namespace, as an instance of its class there.
+            Type::ObjectRef(name) if name.contains('.') => {
+                let foreign = self.view.foreign(name)?;
+                let home = quote(&foreign.namespace);
+                if absent {
+                    format!("B.opt({e}, (slot) => B.wrap({home}, slot, {}))", foreign.alias)
+                } else {
+                    format!("B.wrap({home}, {e}, {})", foreign.alias)
+                }
+            }
             Type::ObjectRef(name) => {
                 let class = self.view.class(name)?;
                 let (function, call) = match class.kind {
@@ -1442,7 +1452,7 @@ impl Js<'_> {
             Type::Text => "string".to_owned(),
             Type::Bytes => "Uint8Array".to_owned(),
             Type::Enum(name) => pascal(&self.view.enum_decl(name)?.name),
-            Type::ObjectRef(name) if input && name.contains('.') => self.view.foreign(name)?.alias,
+            Type::ObjectRef(name) if name.contains('.') => self.view.foreign(name)?.alias,
             Type::ObjectRef(name) => {
                 let class = self.view.class(name)?;
                 let base = class_name(class);

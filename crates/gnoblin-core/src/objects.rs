@@ -63,3 +63,15 @@ impl Gnoblin {
         Ok(objects)
     }
 }
+
+/// The typed model of the generation `ctx`: what another library's typed API reads a `Client` (or any class of the model) it hands out
+/// with, since that value names the core's table and not its own. It is [`Gnoblin::objects`] of that generation.
+///
+/// # Errors
+///
+/// The installed core is not usable by this SDK, or the generation has retired.
+#[doc(hidden)]
+pub fn for_generation(ctx: GnoblinCtx) -> gnoblin_object::Res<Objects> {
+    let fail = |error: CoreError| Fail::new(error.kind().code(), error.to_string());
+    crate::private::gnoblin_for(ctx).and_then(|g| g.objects()).map_err(fail)
+}

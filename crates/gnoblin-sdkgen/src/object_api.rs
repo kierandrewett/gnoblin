@@ -32,8 +32,8 @@ use gnoblin_schema::{
 };
 
 use super::objects::{
-    Member, augments_of, check_foreign, crate_path_of, ctor_properties, finds_of, foreign_handle, options_type_name,
-    slots_of, stem_of,
+    Member, augments_of, check_foreign, crate_path_of, ctor_properties, finds_of, foreign_handle, foreign_handles,
+    options_type_name, slots_of, stem_of,
 };
 use super::text::{pascal, rust_ident, snake};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family};
@@ -138,12 +138,13 @@ impl<'a> Renderer<'a> {
         Ok(gen_)
     }
 
-    /// The class `name` names, or an error saying why the typed API cannot render a reference to it.
+    /// The class `name` names in this namespace, or an error saying why there is none. A class of another namespace is reached through
+    /// [`Self::foreign_path`] instead.
     fn class(&self, name: &str) -> Result<&'a ObjectType, String> {
         if name.contains('.') {
             return Err(format!(
-                "`{name}` is a class of another namespace: a typed reference across two libraries is rendered for a parameter only, because a \
-                 result, a property or a signal field of it needs both libraries' `Objects`"
+                "`{name}` is a class of another namespace: it has no declaration in `{}`",
+                self.namespace
             ));
         }
         self.objects
@@ -174,6 +175,7 @@ impl<'a> Renderer<'a> {
             Type::Double => "f64".to_owned(),
             Type::Text => "String".to_owned(),
             Type::Bytes => "go::typed::Octets".to_owned(),
+            Type::ObjectRef(name) if name.contains('.') => self.foreign_path(name)?,
             Type::ObjectRef(name) => class_name(self.class(name)?),
             Type::Enum(name) => self.enum_name(name)?,
             Type::List(inner) => format!("Vec<{}>", self.owned(inner)?),
@@ -1508,6 +1510,16 @@ pub(super) fn render(catalog: &Catalog, namespace: &Namespace) -> Result<String,
     }
     for (class, target) in augments_of(catalog, &gen_.objects)? {
         body.push_str(&gen_.augment_source(class, target)?);
+    }
+    // A class of another library that this one hands out is read through that library's typed API, for the generation of the value.
+    for (home, class) in foreign_handles(catalog, namespace)? {
+        let path = format!("{}::{}", crate_path_of(&home)?, class_name(class));
+        let _ = write!(
+            body,
+            "impl go::typed::FromVal<Objects> for {path} {{\n    fn from_val(cx: &Objects, value: &go::Val) -> go::Res<{path}> {{\n        let home = {}::for_generation(cx.api.ctx())?;\n        go::typed::FromVal::from_val(&home, &go::typed::foreign_in(value, {:?})?)\n    }}\n}}\n\n",
+            crate_path_of(&home)?,
+            home.as_str()
+        );
     }
     let ids_fields: Vec<String> = fields
         .iter()

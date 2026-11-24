@@ -189,6 +189,25 @@ pub fn field<C, T: FromVal<C>>(cx: &C, fields: &[Val], index: usize, default: im
     }
 }
 
+/// An object of the library that serves `namespace`, which another library handed out (`Val::Foreign`), as a value of that library's
+/// own protocol: its handle, and a class that library is asked for. What the typed API of `namespace` reads it with.
+///
+/// # Errors
+///
+/// The value is not an object of another library, or that library is not the one that serves `namespace`.
+pub fn foreign_in(value: &Val, namespace: &str) -> Res<Val> {
+    match value {
+        Val::Foreign { namespace: home, obj } if home == namespace => Ok(Val::Object { class: 0, obj: *obj }),
+        Val::Foreign { namespace: home, .. } => Err(Fail::type_error(format!(
+            "expected an object of `{namespace}`, got one of `{home}`"
+        ))),
+        other => Err(Fail::type_error(format!(
+            "expected an object of `{namespace}`, got {}",
+            other.kind_name()
+        ))),
+    }
+}
+
 /// `fail` as a failure of the call `Class.member` that has no object: a function of the class, or the making of one.
 #[must_use]
 pub fn at_class(fail: Fail, class: &str, member: &str) -> Fail {

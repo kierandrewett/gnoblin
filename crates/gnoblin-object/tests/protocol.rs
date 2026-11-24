@@ -774,6 +774,34 @@ fn two_holds_of_one_object_are_equal_and_hash_alike() {
 }
 
 #[test]
+fn a_typed_api_reads_an_object_of_another_library_only_as_that_librarys_foreign_value() {
+    use gnoblin_object::typed::foreign_in;
+    let api = probe();
+    let class = api.class("probe").unwrap();
+    let obj = api.create(class, &[]).unwrap();
+    // A value another library handed out, naming this one: read in this library's own protocol, its class asked of it.
+    let value = foreign_in(
+        &Val::Foreign {
+            namespace: "test.probe".into(),
+            obj,
+        },
+        "test.probe",
+    )
+    .unwrap();
+    let held = Object::from_val(api, &value).unwrap();
+    assert_eq!(held.class(), class);
+    assert_eq!(held.handle(), obj);
+    // Another library's object, or a plain object value, which the delivering library serves itself, is never read in this one's table.
+    let other = Val::Foreign {
+        namespace: "test.other".into(),
+        obj,
+    };
+    assert_eq!(foreign_in(&other, "test.probe").unwrap_err().code, abi::E_TYPE);
+    let plain = Val::Object { class, obj };
+    assert_eq!(foreign_in(&plain, "test.probe").unwrap_err().code, abi::E_TYPE);
+}
+
+#[test]
 fn a_foreign_object_value_crosses_the_wire_naming_the_library_that_serves_it() {
     let value = Val::Foreign {
         namespace: "test.probe".into(),
