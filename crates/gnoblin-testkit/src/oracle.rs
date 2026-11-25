@@ -207,13 +207,17 @@ fn same_json_but_rounding(file: &str, expected: &[u8], actual: &[u8]) -> bool {
     nearly_equal(&expected, &actual)
 }
 
-/// [`same_json_but_rounding`] for one value: equal, with a number allowed to differ by at most four units in the last
-/// place (a relative bound, so `0` and `1e-13` still differ).
+/// [`same_json_but_rounding`] for one value: equal, with a floating-point number allowed to differ by at most four units
+/// in the last place (a relative bound, so `0.0` and `1e-13` still differ). An integer is compared exactly: two above
+/// 2^53 can be the same `f64` and still differ.
 fn nearly_equal(left: &Value, right: &Value) -> bool {
     match (left, right) {
         (Value::Number(left_number), Value::Number(right_number)) => {
-            match (left_number.as_f64(), right_number.as_f64()) {
-                (Some(l), Some(r)) => within_ulps(l, r, 4),
+            match (left_number.is_f64(), right_number.is_f64()) {
+                (true, true) => match (left_number.as_f64(), right_number.as_f64()) {
+                    (Some(l), Some(r)) => within_ulps(l, r, 4),
+                    _ => false,
+                },
                 _ => left_number == right_number,
             }
         }
