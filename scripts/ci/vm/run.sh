@@ -59,13 +59,14 @@ case "$distro" in
         image_url=https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2
         sums_url=https://cloud.debian.org/images/cloud/trixie/latest/SHA512SUMS
         seat_group=video
-        install="sudo DEBIAN_FRONTEND=noninteractive apt-get -qq update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y -qq install --no-install-recommends seatd libgl1-mesa-dri libegl-mesa0 libgbm1 mesa-utils libinput10 libxkbcommon0 libpipewire-0.3-0t64 libwacom9 libgudev-1.0-0 libpixman-1-0 dbus-daemon foot gtk-4-examples gtk-3-examples firefox-esr xwayland xterm x11-apps x11-utils wev fonts-dejavu-core"
+        install="sudo DEBIAN_FRONTEND=noninteractive apt-get -qq update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y -qq install --no-install-recommends seatd libseat1 libgl1-mesa-dri libegl-mesa0 libgbm1 mesa-utils libinput10 libxkbcommon0 libpipewire-0.3-0t64 libwacom9 libgudev-1.0-0 libpixman-1-0 dbus-daemon foot gtk-4-examples gtk-3-examples firefox-esr xwayland xterm x11-apps x11-utils wev fonts-dejavu-core"
         ;;
     opensuse-tumbleweed)
         image_url=https://download.opensuse.org/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2
         sums_url=$image_url.sha256
         seat_group=seat
-        install="sudo zypper --non-interactive --gpg-auto-import-keys install --no-recommends seatd libseat1 Mesa-dri Mesa-libEGL1 libgbm1 Mesa-demo-egl libinput10 libxkbcommon0 libpipewire-0_3-0 libwacom-data libgudev-1_0-0 libpixman-1-0 dbus-1-daemon foot gtk4-tools gtk3-tools MozillaFirefox xwayland xterm xeyes xwininfo wev dejavu-fonts"
+        # seatd-systemd carries seatd.service and the sysusers entry for the seat group; --no-recommends skips it.
+        install="sudo zypper --non-interactive --gpg-auto-import-keys install --no-recommends seatd seatd-systemd libseat1 Mesa-dri Mesa-libEGL1 libgbm1 Mesa-demo-egl libinput10 libxkbcommon0 libpipewire-0_3-0 libwacom-data libgudev-1_0-0 libpixman-1-0 dbus-1-daemon foot gtk4-tools gtk3-tools MozillaFirefox xwayland xterm xeyes xwininfo wev dejavu-fonts"
         ;;
     *)
         echo "[vm] unknown distribution '$distro' (fedora-43, arch, debian-13, opensuse-tumbleweed)" >&2
