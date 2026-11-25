@@ -54,7 +54,7 @@
         "<Super>Button3"
       ],
       "diagnostics": [
-        "Node#N.vignette threw: /home/node/work/crates/gnoblin-js/../../data/js/gnoblin-core/properties.ts:251:36: vignette is not a writable property"
+        "Node#N.vignette threw: data/js/gnoblin-core/properties.ts:251:36: vignette is not a writable property"
       ],
       "log": [],
       "step": "bound",
@@ -159,7 +159,7 @@
         "<Super>Button3"
       ],
       "diagnostics": [
-        "Node#N.x threw: /home/node/work/crates/gnoblin-js/../../data/js/gnoblin-core/properties.ts:287:25: still changing after 8 passes in one frame (it reads #N.x); a binding that writes what another reads, which writes what it reads, never settles"
+        "Node#N.x threw: data/js/gnoblin-core/properties.ts:287:25: still changing after 8 passes in one frame (it reads #N.x); a binding that writes what another reads, which writes what it reads, never settles"
       ],
       "log": [],
       "step": "feed_each_other",

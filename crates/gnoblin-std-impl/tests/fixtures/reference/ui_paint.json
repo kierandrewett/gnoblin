@@ -23,8 +23,8 @@
         "<Super>Button3"
       ],
       "diagnostics": [
-        "Bad.draw threw: /home/node/work/crates/gnoblin-js/../../data/js/gnoblin-std/ui/paint.ts:225:102: draw op 1: a colour is #Nrgb, #Nrgba, #Nrrggbb or #Nrrggbbaa, not red",
-        "Nan.draw threw: /home/node/work/crates/gnoblin-js/../../data/js/gnoblin-std/ui/paint.ts:225:102: draw op 1: expected a finite number, not NaN"
+        "Bad.draw threw: data/js/gnoblin-std/ui/paint.ts:225:102: draw op 1: a colour is #Nrgb, #Nrgba, #Nrrggbb or #Nrrggbbaa, not red",
+        "Nan.draw threw: data/js/gnoblin-std/ui/paint.ts:225:102: draw op 1: expected a finite number, not NaN"
       ],
       "log": [],
       "paints": [

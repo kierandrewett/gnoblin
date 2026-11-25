@@ -3064,7 +3064,7 @@
         "<Super>Button3"
       ],
       "diagnostics": [
-        "Titlebar.onPress threw: /home/node/work/crates/gnoblin-js/../../data/js/gnoblin-std/frame/actions.ts:167:81: double_click must name a titlebar action, got bogus"
+        "Titlebar.onPress threw: data/js/gnoblin-std/frame/actions.ts:167:81: double_click must name a titlebar action, got bogus"
       ],
       "log": [],
       "step": "bad_action",

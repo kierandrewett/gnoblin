@@ -322,9 +322,11 @@ pub struct Scn {
     boot: Vec<String>,
 }
 
-/// Replaces the scratch directory a shell ran in (`/tmp/.tmpAbC123/shell.ts`) with `<root>`, which differs on every run.
+/// Replaces the scratch directory a shell ran in (`/tmp/.tmpAbC123/shell.ts`) with `<root>`, which differs on every run, and
+/// drops the checkout's own path from the library's module paths (`/work/crates/gnoblin-js/../../data/js/...` becomes
+/// `data/js/...`), which differs on every machine.
 fn unroot(line: &str) -> String {
-    let mut text = line.to_owned();
+    let mut text = line.replace(concat!(env!("CARGO_MANIFEST_DIR"), "/../../"), "");
     while let Some(at) = text.find("/.tmp") {
         let start = text[..at]
             .rfind(|c: char| c.is_whitespace() || "\"'(:".contains(c))
