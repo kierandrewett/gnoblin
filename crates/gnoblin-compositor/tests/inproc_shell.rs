@@ -588,7 +588,16 @@ fn a_shell_that_will_not_stop_does_not_hold_the_compositors_exit_hostage() {
         .expect("the shell is running");
 
     let started = Instant::now();
-    session.stop().expect("the session stops cleanly");
+    // Bounded on a thread of its own: in CI the openSUSE container job (139021923468) never got past this test, which
+    // passes in seconds on the a37 box, and was cancelled after two hours. A stop that waits now fails here and says so.
+    let (stopped_tx, stopped_rx) = channel();
+    std::thread::spawn(move || {
+        let _ = stopped_tx.send(session.stop());
+    });
+    stopped_rx
+        .recv_timeout(Duration::from_secs(20))
+        .expect("the stop returned within twenty seconds")
+        .expect("the session stops cleanly");
     assert!(
         started.elapsed() < Duration::from_secs(5),
         "the compositor waited for a shell that will not end: {:?}",
