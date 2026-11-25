@@ -22,6 +22,8 @@
 //! display the caller holds.
 #![allow(unsafe_code)]
 
+use std::sync::Mutex;
+
 use smithay::backend::allocator::gbm::GbmDevice;
 use smithay::backend::drm::DrmDeviceFd;
 use smithay::backend::egl::context::{GlAttributes, PixelFormatRequirements};
@@ -33,6 +35,18 @@ use gnoblin_render_frame::error::RenderError;
 
 use crate::log;
 
+/// The surfaceless display, made once and never dropped.
+///
+/// Smithay terminates a display when the last handle to it drops, and Mesa hands every
+/// caller the same surfaceless display. Two renderers made on different threads therefore
+/// share one display, and one dropping its handle while the other is still in
+/// `EGLDisplay::new` makes Smithay panic (its registry entry is dead before it can be
+/// upgraded) or terminates the display under the other renderer's context, which is a
+/// segmentation fault. Keeping one handle for the life of the process means the display
+/// is never terminated, so neither can happen. The mutex also makes creation itself
+/// serial; a failure is not cached, so a later call tries again.
+static SURFACELESS: Mutex<Option<EGLDisplay>> = Mutex::new(None);
+
 /// A GLES 3 context on a surfaceless EGL display, wrapped in Smithay's Glow renderer.
 ///
 /// # Errors
@@ -41,16 +55,25 @@ use crate::log;
 /// context is available. The reason is logged where it happened, which is what a caller
 /// reporting "this machine cannot run the GLES path" needs.
 pub(super) fn context() -> Result<GlowRenderer, RenderError> {
-    // SAFETY: Smithay's `EGLDisplay::new` is unsafe for two reasons, and neither applies
-    // here. It cannot check the native display it is given, and `EGLSurfacelessDisplay`
-    // names no pointer at all: it asks the driver for its own surfaceless platform
-    // display. Its other caveat is a process that mixes this with its own
-    // `eglGetPlatformDisplay`/`eglTerminate` on the same display — this process reaches
-    // EGL through Smithay alone, so the display's lifetime is Smithay's to track.
-    let display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay) }.map_err(|error| {
-        log::debug!(area = "render", ?error, "no surfaceless EGL display");
-        RenderError::Unavailable
-    })?;
+    let display = {
+        let mut held = SURFACELESS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(display) = held.as_ref() {
+            display.clone()
+        } else {
+            // SAFETY: Smithay's `EGLDisplay::new` is unsafe for two reasons, and neither
+            // applies here. It cannot check the native display it is given, and
+            // `EGLSurfacelessDisplay` names no pointer at all: it asks the driver for its own
+            // surfaceless platform display. Its other caveat is a process that mixes this
+            // with its own `eglGetPlatformDisplay`/`eglTerminate` on the same display — this
+            // process reaches EGL through Smithay alone, so the display's lifetime is
+            // Smithay's to track.
+            let display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay) }.map_err(|error| {
+                log::debug!(area = "render", ?error, "no surfaceless EGL display");
+                RenderError::Unavailable
+            })?;
+            held.insert(display).clone()
+        }
+    };
     context_on(&display)
 }
 
