@@ -373,7 +373,11 @@ async fn eventually(mut condition: impl FnMut() -> bool) {
 }
 
 /// A `polkit-agent-helper-1` for these tests: the `fake_polkit_helper` example behind a script that points it at the
-/// private bus, as the real helper finds polkitd on the system bus. `cargo test` builds the example with this test.
+/// private bus, as the real helper finds polkitd on the system bus.
+///
+/// The example must be built as a program: `cargo build --example fake_polkit_helper` and a plain `cargo test -p
+/// gnoblin-service-polkit` do that. `cargo test --all-targets` does not: it builds every example as a test harness
+/// (`examples/fake_polkit_helper-<hash>`, which prints "running 0 tests"), so `just test` builds it first.
 fn fake_helper(address: &str, directory: &Path) -> PathBuf {
     let binary = std::env::current_exe()
         .expect("the test knows its own path")
@@ -384,7 +388,8 @@ fn fake_helper(address: &str, directory: &Path) -> PathBuf {
         .join("fake_polkit_helper");
     assert!(
         binary.is_file(),
-        "the fake helper example is not built; run `cargo test -p gnoblin-service-polkit` ({})",
+        "the fake helper example is not built; run `cargo build -p gnoblin-service-polkit --example \
+         fake_polkit_helper` ({})",
         binary.display()
     );
     let script = directory.join("polkit-agent-helper-1");

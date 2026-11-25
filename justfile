@@ -30,8 +30,11 @@ clippy:
 # builds `gnoblin-core-impl` in test mode and does not write `libgnoblin_core_impl.so`, so in a fresh tree the
 # `libgnoblin-core.so.1` link its build script makes points at nothing and every test binary that links the core stops
 # with exit 127 (the unit tests of `gnoblin` are the first). `cargo xtask stage` builds the library and its links.
+# `--all-targets` builds every example as a test harness, so the polkit service's D-Bus tests, which run the
+# `fake_polkit_helper` example as a program, have it built as one first.
 test:
     cargo xtask stage
+    cargo build -p gnoblin-service-polkit --example fake_polkit_helper
     cargo test --workspace --all-targets
 
 # The tests that start a private `pipewire` daemon and read the frames a stream carries: the export crate's own
