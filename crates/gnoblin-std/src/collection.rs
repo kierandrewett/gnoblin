@@ -834,7 +834,7 @@ impl Collection<Client> {
     ) -> Result<Subscription> {
         let object = self.clients()?;
         let here = Rc::new(RefCell::new(Here {
-            members: client_keys(&object)?.into_iter().collect(),
+            members: client_keys(object)?.into_iter().collect(),
             gone: HashSet::new(),
         }));
         let (added, left) = (Rc::clone(&here), Rc::clone(&here));
