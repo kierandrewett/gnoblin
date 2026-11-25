@@ -527,6 +527,34 @@ pub fn check_runs(launcher: &Path) -> Vec<String> {
     problems
 }
 
+/// Loads `shell` with the installed launcher as a session would (`gnoblin --role check SHELL`), with the loader's own environment
+/// and `GNOBLIN_STD_DIR` cleared, and returns what went wrong. A shell has no run path of its own, so this is what proves the
+/// install finds the libraries a shell needs (the core, and std for a std shell) from wherever the tree was installed.
+pub fn check_shell_loads(launcher: &Path, shell: &Path) -> Vec<String> {
+    let output = Command::new(launcher)
+        .args(["--role", "check"])
+        .arg(shell)
+        .env_remove("LD_LIBRARY_PATH")
+        .env_remove("LD_PRELOAD")
+        .env_remove("GNOBLIN_STD_DIR")
+        .output();
+    match output {
+        Ok(output) if output.status.success() && output.stdout.starts_with(b"ok") => Vec::new(),
+        Ok(output) => vec![format!(
+            "`{} --role check {}` exited with {}: {}",
+            launcher.display(),
+            shell.display(),
+            output.status,
+            String::from_utf8_lossy(&output.stdout).trim()
+        )],
+        Err(error) => vec![format!(
+            "cannot run `{} --role check {}`: {error}",
+            launcher.display(),
+            shell.display()
+        )],
+    }
+}
+
 /// The symlink chain of a versioned library: `<stem>.so.<major>.<minor>.<patch>` is the file, `<stem>.so.<major>` points at
 /// it, and `<stem>.so` points at that, all relative links in one directory.
 pub fn check_links(dir: &Path, stem: &str, major: u32, minor: u32, patch: u32) -> Vec<String> {
@@ -988,6 +1016,12 @@ fn run_checks(options: &CheckOptions) -> Result<usize, String> {
         }
         if options.run {
             outcome.report(&format!("{} runs from its own tree", path.display()), &check_runs(path));
+            for shell in options.shells.iter().chain(&options.std_shells) {
+                outcome.report(
+                    &format!("{} loads {}", path.display(), shell.display()),
+                    &check_shell_loads(path, shell),
+                );
+            }
         }
     }
 

@@ -489,23 +489,19 @@ readelf -d target/debug/libmyshell.so | grep NEEDED
 A core-only shell lists `libgnoblin-core.so.1` and no other Gnoblin library. A shell that uses `gnoblin-std` lists
 `libgnoblin-std.so.1` and `libgnoblin-core.so.1`.
 
-When Gnoblin is installed in a prefix the dynamic loader does not search, such as `$HOME/gnoblin`, `gnoblin` itself still
-finds its libraries. A shell that uses `gnoblin-std` also needs to find `libgnoblin-std.so.1`. Do one of these:
+`gnoblin` finds both libraries wherever Gnoblin is installed, including a prefix the dynamic loader does not search, such
+as `/usr/local` on some distributions or `$HOME/gnoblin`. You do not need to set `LD_LIBRARY_PATH` or build the shell with
+a run path.
 
-- Set the library path when you start it:
+- The launcher finds the core through its own run path.
+- When a shell needs `libgnoblin-std.so.1` and the loader cannot find it, `gnoblin` loads the one beside the core and
+  loads the shell again. A core-only shell never causes `libgnoblin-std.so.1` to load.
 
-    ```sh
-    LD_LIBRARY_PATH=$HOME/gnoblin/lib gnoblin ./target/debug/libmyshell.so
-    ```
+Check that the installed `gnoblin` loads your shell, without starting a session:
 
-- Or build the shell with a run path, so it carries the location:
-
-    ```sh
-    RUSTFLAGS="-C link-arg=-Wl,-rpath,$HOME/gnoblin/lib" cargo build
-    ```
-
-A core-only shell needs neither. Without one of them, a std shell fails to load and the log says
-`libgnoblin-std.so.1: cannot open shared object file`.
+```sh
+gnoblinctl check ./target/debug/libmyshell.so    # ok, or error and the loader's message
+```
 
 To find the compile and link flags, use pkg-config. The [install layout](install-layout.md) lists every installed file,
 including `gnoblin-core.pc`:

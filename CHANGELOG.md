@@ -379,6 +379,7 @@
 
 #### Windows, workspaces and shell
 
+- A native shell that uses `gnoblin-std` now loads when Gnoblin is installed under a prefix the dynamic loader does not search, such as `/usr/local` on Fedora or `$HOME/gnoblin`. The shell has no run path, so the loader could not find `libgnoblin-std.so.1` and the shell failed to start, even as the user's `~/.config/gnoblin/shell.so`. `gnoblin` now loads the std library beside the core when a shell needs it and the loader cannot find it, and loads the shell again; a core-only shell still never loads std, and `LD_LIBRARY_PATH` or a run path is no longer needed. `just dist-check` starts the installed launcher with each shell it is given to prove it.
 - Fixed windows drawn outside their window geometry, such as foot's title bar or GTK shadows, being held too small and drawn in the wrong place: a window's `x`, `y`, `width` and `height` now match its window geometry, so sizes written back are the sizes clients receive and maximised or fullscreen windows fill the output.
 - Fixed tiled layouts leaving a black column at the screen's far edge, so master-stack, grid, dwindle and strip tiles now reach the edges of the area.
 - Fixed floating windows that were too big for a free spot being placed on top of each other, so a later window could completely hide an earlier one.

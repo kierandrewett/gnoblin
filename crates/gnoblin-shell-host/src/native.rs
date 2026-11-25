@@ -543,10 +543,23 @@ impl<E: 'static> NativeLoader<E> {
         let mapped_bytes = fs::metadata(&target).map_or(0, |meta| meta.len());
         let c_path = CString::new(target.as_os_str().as_bytes())
             .map_err(|_| LoadError::Copy(format!("{}: the path contains a NUL byte", target.display())))?;
-        // SAFETY: `c_path` is a valid NUL-terminated string for the call. `dlopen` runs the library's constructors, which
-        // is what loading a shell means.
-        let handle = unsafe { dlopen(c_path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
-        let opened = if handle.is_null() { Err(dl_error()) } else { Ok(handle) };
+        let open = || {
+            // SAFETY: `c_path` is a valid NUL-terminated string for the call. `dlopen` runs the library's constructors,
+            // which is what loading a shell means.
+            let handle = unsafe { dlopen(c_path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
+            if handle.is_null() { Err(dl_error()) } else { Ok(handle) }
+        };
+        let mut opened = open();
+        // A std shell names `libgnoblin-std.so.1` and has no run path, so the loader looks for it only on its own default
+        // path. Installed under another prefix (/usr/local, /opt), std is beside the core: load that one, and open the shell
+        // again; the loader resolves the shell's DT_NEEDED to the library in memory, by its SONAME. A shell that needs only
+        // the core never fails this way, so std is not loaded for it.
+        if let Err(message) = &opened
+            && message.contains(STD_SONAME)
+            && load_std_beside_core()
+        {
+            opened = open();
+        }
         if copying == Copying::Unique {
             // The mapping keeps the inode alive; the name is no longer needed.
             let _ = fs::remove_file(&target);
@@ -989,6 +1002,44 @@ pub(crate) fn dl_error() -> String {
             CStr::from_ptr(text).to_string_lossy().into_owned()
         }
     }
+}
+
+/// The std library's SONAME, which a std shell names in its DT_NEEDED.
+const STD_SONAME: &str = "libgnoblin-std.so.1";
+
+/// Loads `libgnoblin-std.so.1` from the directory of the library this code runs in (the core's, in a shipped build), and
+/// keeps it loaded for the life of the process, as a std shell's own dependency would be. False when there is no such file
+/// or it does not load; the shell's load then fails with the loader's first message.
+fn load_std_beside_core() -> bool {
+    let Some(core) = runtime::library_containing(load_std_beside_core as fn() -> bool as *const ()) else {
+        return false;
+    };
+    let Some(std_path) = core
+        .parent()
+        .map(|dir| dir.join(STD_SONAME))
+        .filter(|path| path.exists())
+    else {
+        return false;
+    };
+    let Ok(c_path) = CString::new(std_path.as_os_str().as_bytes()) else {
+        return false;
+    };
+    // SAFETY: `c_path` is a valid NUL-terminated string for the call. The handle is never closed: std stays loaded for as
+    // long as a shell that links it may run, which is the process.
+    let handle = unsafe { dlopen(c_path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
+    if handle.is_null() {
+        log::warn!(
+            "{}: the std library beside the core does not load: {}",
+            std_path.display(),
+            dl_error()
+        );
+        return false;
+    }
+    log::info!(
+        "{}: loaded for a shell that needs it, which the dynamic loader's own path does not reach",
+        std_path.display()
+    );
+    true
 }
 
 /// Turns the dynamic loader's complaint about the module into the error that tells the user what to do. A symbol the core
