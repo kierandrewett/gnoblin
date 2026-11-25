@@ -1132,13 +1132,15 @@ fn assert_fade(session: &Handle, clock: &ManualClock, at: gnoblin_types::Point, 
             assert!(
                 0 < red && red < previous,
                 "{elapsed} ms into a {FADE_MS} ms fade out the window is still drawn and fainter than before: \
-                 red {red} after {previous}"
+                 red {red} after {previous} at {at:?}; {}",
+                red_report(session)
             );
         } else {
             assert!(
                 previous < red && red < 255,
                 "{elapsed} ms into a {FADE_MS} ms fade in the window is stronger than before and not yet opaque: \
-                 red {red} after {previous}"
+                 red {red} after {previous} at {at:?}; {}",
+                red_report(session)
             );
         }
         previous = red;
@@ -1166,12 +1168,40 @@ fn map_opaque(session: &Handle, clock: &ManualClock, title: &str) -> (Client, Wi
     let window = client.create_window(title);
     client.attach_solid(&window, 100, 100, RED);
     let at = red_window_centre(session);
+    let probed = session.probe_after(clock, 2 * FADE_MS, at);
     assert_eq!(
-        session.probe_after(clock, 2 * FADE_MS, at),
+        probed,
         RED,
-        "the open fade has run out, so the window is opaque before anything else happens to it"
+        "the open fade has run out, so the window is opaque before anything else happens to it (probed at {at:?}; {})",
+        red_report(session)
     );
     (client, window, at)
+}
+
+/// What a failed probe of the red window saw: where the output shows any red now, and the windows the session
+/// publishes, so a window drawn elsewhere and a window not drawn at all read differently.
+fn red_report(session: &Handle) -> String {
+    let shot = session.screenshot();
+    let size = shot.size();
+    let (width, height) = (
+        i32::try_from(size.width).unwrap_or(0),
+        i32::try_from(size.height).unwrap_or(0),
+    );
+    let mut found: Option<(i32, i32, i32, i32)> = None;
+    for y in 0..height {
+        for x in 0..width {
+            if shot.colour_at(x, y).is_some_and(|colour| colour[0] > 0) {
+                found = Some(found.map_or((x, y, x, y), |(x0, y0, x1, y1)| {
+                    (x0.min(x), y0.min(y), x1.max(x), y1.max(y))
+                }));
+            }
+        }
+    }
+    let red = found.map_or_else(
+        || "no red pixel on the output".to_owned(),
+        |(x0, y0, x1, y1)| format!("red from ({x0}, {y0}) to ({x1}, {y1})"),
+    );
+    format!("{red}; windows {:?}", session.windows())
 }
 
 /// A mapped window fades in over the open duration: the first frame it is in does not show it, and the frames after
