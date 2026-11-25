@@ -204,3 +204,31 @@ fn a_start_that_cannot_resolve_a_socket_names_both_variables() {
     assert!(message.contains("GNOBLIN_IPC_SOCKET"), "{message}");
     assert!(message.contains("XDG_RUNTIME_DIR"), "{message}");
 }
+
+#[test]
+fn an_inherited_journal_stream_that_is_not_stderr_leaves_the_console_on_stderr() {
+    // systemd's JOURNAL_STREAM names the journal stream a service's stderr was connected to, and a child whose stderr
+    // was redirected still inherits it (a CI runner or a test harness started as a service). It describes stderr only
+    // when its device and inode are stderr's, so a refusal here is printed as ordinary lines a reader of stderr sees,
+    // not sent to the journal and not in the journal's `<N>` stream format.
+    let directory = private_directory();
+    let output = Command::new(BIN)
+        .args(["--role", "compositor"])
+        .env("GNOBLIN_IPC_SOCKET", "")
+        .env("XDG_RUNTIME_DIR", "")
+        .env("HOME", directory.path())
+        .env("JOURNAL_STREAM", "1:1")
+        .env_remove("GNOBLIN_LOG_FORMAT")
+        .output()
+        .expect("the binary runs");
+    assert_eq!(code(&output), 1, "{}", stderr(&output));
+    let message = stderr(&output);
+    assert!(
+        message.contains("GNOBLIN_IPC_SOCKET"),
+        "the refusal reaches stderr: {message:?}"
+    );
+    assert!(
+        message.lines().all(|line| !line.starts_with('<')),
+        "stderr is not the journal stream, so no line carries a `<N>` priority prefix: {message:?}"
+    );
+}

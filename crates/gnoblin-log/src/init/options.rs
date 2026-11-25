@@ -16,7 +16,7 @@ pub const FILTER_VARIABLE: &str = "GNOBLIN_LOG";
 /// The environment variable that names the console output, one of the [`Console`] names.
 pub const FORMAT_VARIABLE: &str = "GNOBLIN_LOG_FORMAT";
 
-/// The variable systemd sets when a service's stderr goes to the journal.
+/// The variable systemd sets when a service's stderr goes to the journal: `DEV:INO` of that stream.
 const JOURNAL_STREAM_VARIABLE: &str = "JOURNAL_STREAM";
 
 /// The filter used when neither `GNOBLIN_LOG` nor the configured level names one.
@@ -92,13 +92,38 @@ pub struct Probe {
 
 impl Probe {
     /// What the real process can see.
+    ///
+    /// `JOURNAL_STREAM` is inherited by every child of a service, including one whose stderr was redirected to a pipe or
+    /// a file (a test harness, a CI runner that runs as a service). systemd's documented check applies: the variable
+    /// describes stderr only when its device and inode are stderr's own.
     pub fn current() -> Self {
         Self {
-            journal_stream: std::env::var_os(JOURNAL_STREAM_VARIABLE).is_some_and(|value| !value.is_empty()),
+            journal_stream: std::env::var_os(JOURNAL_STREAM_VARIABLE)
+                .is_some_and(|value| names_stream(&value.to_string_lossy(), stderr_identity())),
             journal_socket: Path::new(SOCKET_PATH).exists(),
             terminal: std::io::stderr().is_terminal(),
         }
     }
+}
+
+/// The device and inode of this process's stderr, or [`None`] when it is closed or cannot be read.
+fn stderr_identity() -> Option<(u64, u64)> {
+    use std::os::fd::AsFd as _;
+    use std::os::unix::fs::MetadataExt as _;
+    let file = std::fs::File::from(std::io::stderr().as_fd().try_clone_to_owned().ok()?);
+    let metadata = file.metadata().ok()?;
+    Some((metadata.dev(), metadata.ino()))
+}
+
+/// Whether `value`, a `JOURNAL_STREAM` value (`DEV:INO` in decimal), names the stream `stderr` is.
+fn names_stream(value: &str, stderr: Option<(u64, u64)>) -> bool {
+    let Some((device, inode)) = value.split_once(':') else {
+        return false;
+    };
+    let (Ok(device), Ok(inode)) = (device.trim().parse::<u64>(), inode.trim().parse::<u64>()) else {
+        return false;
+    };
+    stderr == Some((device, inode))
 }
 
 /// The logging settings the configuration supplies. The default is what a process logs with no
@@ -215,6 +240,29 @@ mod tests {
             settings,
             probe,
         )
+    }
+
+    #[test]
+    fn a_journal_stream_value_names_stderr_only_when_device_and_inode_match() {
+        let stderr = Some((64769, 1_234_567));
+        assert!(
+            names_stream("64769:1234567", stderr),
+            "the stream systemd connected is stderr"
+        );
+        assert!(
+            !names_stream("64769:7654321", stderr),
+            "another stream on the same device is not"
+        );
+        assert!(
+            !names_stream("1:1", stderr),
+            "an inherited value from another process is not"
+        );
+        assert!(!names_stream("64769:1234567", None), "a closed stderr is no stream");
+        assert!(
+            !names_stream("not-a-stream", stderr),
+            "a value with no DEV:INO is refused"
+        );
+        assert!(!names_stream("", stderr));
     }
 
     #[test]

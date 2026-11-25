@@ -414,6 +414,7 @@
 - Session lock password checks now answer `denied` for wrong passwords, `rate-limited` after three failures, and `failed` when the check cannot run, keeping the session locked and logging a single warning without the password.
 - After a shell restart, windows are placed again and stay mapped, keeping their client size.
 - Fixes a bug where an attaching shell received the compositor's seat and screen node changes twice, once in the attach snapshot and again as `changes` events.
+- A gnoblin started by a systemd service whose stderr was then redirected (a test harness, a CI runner, a wrapper that pipes the log) now prints its log on stderr. It trusted an inherited `JOURNAL_STREAM` as proof that stderr was the journal and sent every line there, so a refusal at start showed nothing on stderr. The variable now counts only when its device and inode are stderr's own, as systemd documents.
 
 #### Configuration
 
