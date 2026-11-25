@@ -131,7 +131,8 @@ fn example_17_a_python_shell_that_imports_gnoblin_std_is_told_why_and_the_rest_o
 try:
     from gnoblin.std import Workspace
 except ImportError as error:
-    gnoblin.spawn(["sh", "-c", "echo '%s' > \"$GNOBLIN_FIXTURE_DIR/std-error\"" % error])
+    # Written beside the note and renamed into place: the test reads the note as soon as it exists, and `>` creates it empty first.
+    gnoblin.spawn(["sh", "-c", "echo '%s' > \"$GNOBLIN_FIXTURE_DIR/std-error.part\" && mv \"$GNOBLIN_FIXTURE_DIR/std-error.part\" \"$GNOBLIN_FIXTURE_DIR/std-error\"" % error])
 
 
 @gnoblin.on_client_created
