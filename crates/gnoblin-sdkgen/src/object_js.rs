@@ -41,9 +41,13 @@ export const HANDLE = Symbol("gnoblin.handle");
 const finalizer =
   typeof FinalizationRegistry === "function"
     ? new FinalizationRegistry(({ slot, key }) => {
-        native.release(slot);
-        if (key !== undefined && live.get(key)?.deref() === undefined) {
-          live.delete(key);
+        try {
+          native.release(slot);
+        } finally {
+          // A slot whose object ended already still leaves the registry; a newer script object filed under the key stays.
+          if (key !== undefined && live.get(key)?.deref() === undefined) {
+            live.delete(key);
+          }
         }
       })
     : undefined;
