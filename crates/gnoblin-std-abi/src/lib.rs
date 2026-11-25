@@ -59,6 +59,10 @@ pub const LIB_DIR_VAR: &str = "GNOBLIN_STD_LIB_DIR";
 /// The direct exports of the std library, one per line. The stub library, `dist-check` and the header read this.
 pub const EXPORTS_TEXT: &str = include_str!("../exports.txt");
 
+/// The absolute path of the `gnoblin.std` catalog (`schema/`) this crate was compiled from: in the workspace, or in cargo's registry
+/// cache when the crate came from crates.io. The SDK's build scripts render the typed API from it.
+pub const SCHEMA_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/schema");
+
 /// The symbols in [`EXPORTS_TEXT`].
 pub fn export_names() -> impl Iterator<Item = &'static str> {
     EXPORTS_TEXT.lines().map(str::trim).filter(|line| !line.is_empty())

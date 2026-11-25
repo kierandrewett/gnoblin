@@ -257,18 +257,10 @@ pub fn write_files(dir: &Path, files: &[(String, String)]) -> Result<Vec<String>
     Ok(written)
 }
 
-/// The paths a build script has to watch besides the crates it links: the schema directory, whose files the ABI crates do not
-/// carry. Relative to the workspace root.
-pub fn data_inputs() -> Vec<&'static str> {
-    let mut inputs = vec![model::SCHEMA_DIR];
-    inputs.extend(model::MODEL_DIRS);
-    inputs
-}
-
-/// What a `build.rs` calls: renders the targets named in `wanted` (names of [`targets`]) for the workspace the crate sits in
-/// and writes them under `OUT_DIR`, then tells cargo to rerun when the schema changes. The crate must be a direct child of
-/// `crates/`. Returns the logical path of every file the targets render, sorted, so a script that embeds them lists exactly
-/// these and not what an earlier build left in `OUT_DIR`.
+/// What a `build.rs` calls: renders the targets named in `wanted` (names of [`targets`]) from the schema files of the crates this
+/// generator was compiled with ([`SdkSpec::load_packaged`]) and writes them under `OUT_DIR`, then tells cargo to rerun when those
+/// files change. It works the same in the workspace and in a crate from crates.io. Returns the logical path of every file the targets
+/// render, sorted, so a script that embeds them lists exactly these and not what an earlier build left in `OUT_DIR`.
 ///
 /// The files keep their logical paths, so a build script that embeds one reads `OUT_DIR/js/gnoblin-core/generated/abi.ts`. A
 /// failure ends the script with a message, which is what a build script's failure looks like.
@@ -333,13 +325,13 @@ fn emit_catalog(dirs: &[&str], stem: &str) -> Result<(), String> {
 }
 
 fn emit(wanted: &[&str]) -> Result<Vec<String>, String> {
-    let manifest = std::env::var("CARGO_MANIFEST_DIR").map_err(|_| "CARGO_MANIFEST_DIR is not set".to_owned())?;
     let out = std::env::var("OUT_DIR").map_err(|_| "OUT_DIR is not set".to_owned())?;
-    let root = Path::new(&manifest).join("../..");
-    for input in data_inputs() {
-        println!("cargo:rerun-if-changed={}", root.join(input).display());
+    // The schema files of the crates this generator was compiled with: the workspace's in the workspace, the packaged ones in a
+    // crate from crates.io. Never a path relative to the crate being built, which a packaged crate does not have.
+    for dir in SdkSpec::packaged_dirs() {
+        println!("cargo:rerun-if-changed={dir}");
     }
-    let spec = SdkSpec::load(&root)?;
+    let spec = SdkSpec::load_packaged()?;
     let mut paths = Vec::new();
     for name in wanted {
         let files = files_of(&render(&spec, Some(name))?);

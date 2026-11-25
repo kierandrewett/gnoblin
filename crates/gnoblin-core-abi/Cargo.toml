@@ -5,7 +5,9 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish.workspace = true
+repository.workspace = true
+# Part of the Rust shell SDK on crates.io (the workspace's `publish = false` is for the rest).
+publish = true
 
 [features]
 # The link-stub helpers a `build.rs` calls (`build_support`). A crate that links the core turns this on for its

@@ -41,27 +41,52 @@ pub struct SdkSpec {
     pub objects: Catalog,
     /// The libraries' ABIs, core first.
     pub libraries: Vec<Library>,
-    /// The workspace root the specification was loaded from: the tools a target runs find their configuration there.
-    pub root: std::path::PathBuf,
+    /// The workspace root the specification was loaded from, where the locks of the namespaces are (`surface::module_units`). `None`
+    /// for a specification loaded from the packaged crates ([`SdkSpec::load_packaged`]), which have no workspace.
+    pub root: Option<std::path::PathBuf>,
 }
 
 impl SdkSpec {
     /// Loads the catalog from `root` (the workspace root) and reflects both ABIs.
     pub fn load(root: &Path) -> Result<SdkSpec, String> {
-        let catalog = Catalog::load_dir(&root.join(SCHEMA_DIR))
-            .map_err(|error| format!("the schema catalog does not load: {error}"))?;
+        let model_dirs = MODEL_DIRS.map(|dir| root.join(dir));
+        SdkSpec::load_from(&root.join(SCHEMA_DIR), &model_dirs, Some(root))
+    }
+
+    /// Loads the catalog from the schema files the crates this generator was compiled with carry (`gnoblin_schema::proto::SCHEMA_PATH`,
+    /// `gnoblin_core_abi::SCHEMA_PATH`, `gnoblin_std_abi::SCHEMA_PATH`), and reflects both ABIs. A build script uses it: in the
+    /// workspace those are the workspace's own files, and in a crate from crates.io they are the files the packaged crates ship.
+    pub fn load_packaged() -> Result<SdkSpec, String> {
+        let model_dirs = [
+            std::path::PathBuf::from(gnoblin_core_abi::SCHEMA_PATH),
+            std::path::PathBuf::from(gnoblin_std_abi::SCHEMA_PATH),
+        ];
+        SdkSpec::load_from(Path::new(gnoblin_schema::proto::SCHEMA_PATH), &model_dirs, None)
+    }
+
+    /// The directories every specification reads, in the order of [`SdkSpec::load_packaged`]: what a build script reruns on.
+    pub fn packaged_dirs() -> [&'static str; 3] {
+        [
+            gnoblin_schema::proto::SCHEMA_PATH,
+            gnoblin_core_abi::SCHEMA_PATH,
+            gnoblin_std_abi::SCHEMA_PATH,
+        ]
+    }
+
+    /// Loads the schema catalog from `schema`, the catalogs of the libraries from `model_dirs` (core, then std), and reflects both ABIs.
+    fn load_from(schema: &Path, model_dirs: &[std::path::PathBuf; 2], root: Option<&Path>) -> Result<SdkSpec, String> {
+        let catalog =
+            Catalog::load_dir(schema).map_err(|error| format!("the schema catalog does not load: {error}"))?;
         let catalog_hash = catalog.fingerprint();
-        let model_dirs: Vec<std::path::PathBuf> = MODEL_DIRS.iter().map(|dir| root.join(dir)).collect();
-        let model_dirs: Vec<&Path> = model_dirs.iter().map(std::path::PathBuf::as_path).collect();
+        let dirs: Vec<&Path> = model_dirs.iter().map(std::path::PathBuf::as_path).collect();
         // The built-in layouts are the std catalog's file `layouts.toml`, written from `gnoblin_std_abi::layouts::LAYOUT_KINDS`
         // (`layout_schema.rs`) and never on disk.
-        let layouts_origin = root
-            .join(MODEL_DIRS[1])
+        let layouts_origin = model_dirs[1]
             .join(crate::layout_schema::ORIGIN_FILE)
             .display()
             .to_string();
         let layouts = crate::layout_schema::schema_text();
-        let objects = Catalog::load_dirs_with(&model_dirs, &[], &[(layouts_origin.as_str(), layouts.as_str())])
+        let objects = Catalog::load_dirs_with(&dirs, &[], &[(layouts_origin.as_str(), layouts.as_str())])
             .map_err(|error| format!("the catalogs of the libraries do not load: {error}"))?;
         let mut libraries: Vec<Library> = Vec::new();
         for (name, reflection) in [
@@ -76,7 +101,7 @@ impl SdkSpec {
             catalog_hash,
             objects,
             libraries,
-            root: root.to_path_buf(),
+            root: root.map(Path::to_path_buf),
         })
     }
 

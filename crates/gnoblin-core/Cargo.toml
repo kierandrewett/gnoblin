@@ -5,7 +5,9 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish.workspace = true
+repository.workspace = true
+# Part of the Rust shell SDK on crates.io (the workspace's `publish = false` is for the rest).
+publish = true
 build = "build.rs"
 
 [features]
@@ -15,16 +17,16 @@ next-minor = ["gnoblin-core-abi/next-minor"]
 next-major = ["gnoblin-core-abi/next-major"]
 
 [dependencies]
-gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+gnoblin-core-abi.workspace = true
 # The client half of the object protocol, which the typed classes of `gnoblin.model` are written over.
-gnoblin-object = { path = "../gnoblin-object" }
-gnoblin-macros = { path = "../gnoblin-macros" }
+gnoblin-object.workspace = true
+gnoblin-macros.workspace = true
 
 [build-dependencies]
 # The link stub and the `panic = "abort"` check run in build.rs, so the helper code is a build dependency only.
-gnoblin-core-abi = { path = "../gnoblin-core-abi", features = ["build-support"] }
+gnoblin-core-abi = { workspace = true, features = ["build-support"] }
 # The schema's names, the typed node classes and the error kinds are generated at build time and never committed.
-gnoblin-sdkgen = { path = "../gnoblin-sdkgen" }
+gnoblin-sdkgen.workspace = true
 
 # The workspace table forbids unsafe code; the SDK's FFI modules need it. Only the modules that open with
 # `#![allow(unsafe_code)]` and a SAFETY note use it.

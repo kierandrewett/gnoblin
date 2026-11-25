@@ -5,7 +5,9 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish.workspace = true
+repository.workspace = true
+# Part of the Rust shell SDK on crates.io (the workspace's `publish = false` is for the rest).
+publish = true
 
 [features]
 # The link-stub helper a `build.rs` calls (`build_support`). The std SDK turns it on for its build dependency only, so no
@@ -20,7 +22,7 @@ next-major = []
 
 [dependencies]
 # The handle types, the string and error conventions and the declaration macros the std table is written with.
-gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+gnoblin-core-abi.workspace = true
 
 # The table is only declarations: function-pointer types and `repr(C)` structs. No unsafe code is written here.
 [lints]

@@ -5,11 +5,13 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish.workspace = true
+repository.workspace = true
+# Part of the Rust shell SDK on crates.io (the workspace's `publish = false` is for the rest).
+publish = true
 
 [dependencies]
 # The value, the handles and the function table of the object protocol.
-gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+gnoblin-core-abi.workspace = true
 
 # The conversion to and from the C ABI and the calls through its function table need `unsafe`, confined to the modules that say so.
 [lints.rust]

@@ -289,12 +289,15 @@ fn augment_entries(augment: &Augment, entries: &mut Vec<SurfaceEntry>) {
 }
 
 /// The locks of the namespaces a library serves: one per module (a file of the catalog directory), so two lanes that add classes
-/// to different modules edit different locks.
+/// to different modules edit different locks. A specification with no workspace root has no locks.
 pub fn module_units(spec: &SdkSpec) -> Vec<LockUnit> {
     let mut units: BTreeMap<String, LockUnit> = BTreeMap::new();
+    let Some(root) = &spec.root else {
+        return Vec::new();
+    };
     for schema in spec.objects.schemas() {
         let origin = Path::new(&schema.origin);
-        let Some(dir) = MODEL_DIRS.iter().find(|dir| origin.starts_with(spec.root.join(dir))) else {
+        let Some(dir) = MODEL_DIRS.iter().find(|dir| origin.starts_with(root.join(dir))) else {
             continue;
         };
         let Some(stem) = origin.file_stem().and_then(|stem| stem.to_str()) else {

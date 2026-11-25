@@ -150,14 +150,16 @@ exclude = ["extensions"]
 [workspace.package]
 # The rewrite ships as 0.2.0 and the IPC version is exactly the Gnoblin version,
 # so candidate builds are `0.2.0-alpha.N`. The release workflow, tracked in issue #379, sets the released
-# version; do not edit this by hand.
+# version; do not edit this by hand. The entries of the published SDK crates in `[workspace.dependencies]`
+# carry the same version and change with it.
 version = "0.2.0-alpha.0"
 edition = "2024"
 rust-version = "1.97.0"
 license = "GPL-2.0-or-later"
 repository = "https://github.com/kierandrewett/gnoblin"
 # Workspace crates are built from the tree and packaged by the distribution
-# packaging, never uploaded to crates.io.
+# packaging, never uploaded to crates.io. The Rust shell SDK is the exception: its
+# nine crates (listed in `[workspace.dependencies]`) set `publish = true`.
 publish = false
 # `rust-version` is the measured MSRV: the newest `rust-version` among the exact
 # pinned dependencies (`cranelift-*` 0.137.1 needs 1.97.0; 1.96.0 fails). `just msrv`
@@ -353,7 +355,7 @@ rustix = { version = "1.1.6", features = ["process"] }
 # The shared primitives: geometry, transform, scale, identities, ticks and error
 # codes. Every crate that names a rectangle or an output uses this crate instead
 # of declaring its own.
-gnoblin-types = { path = "crates/gnoblin-types" }
+gnoblin-types = { path = "crates/gnoblin-types", version = "0.2.0-alpha.0" }
 # Text that must not leak: a redacted `Debug` and bytes wiped on drop (the password of a `call`).
 gnoblin-secret = { path = "crates/gnoblin-secret" }
 # The client side of the tree protocol: the mirror, its transaction builder and the socket link. Runtimes build on it.
@@ -362,7 +364,18 @@ gnoblin-tree-client = { path = "crates/gnoblin-tree-client" }
 gnoblin-paint = { path = "crates/gnoblin-paint" }
 # The JavaScript shell runtime: TypeScript stripping, the module loader, and one QuickJS generation with its budgets.
 gnoblin-js = { path = "crates/gnoblin-js" }
-gnoblin-schema = { path = "crates/gnoblin-schema" }
+# The Rust shell SDK, published to crates.io so a shell builds outside this repository. Each entry carries the
+# workspace version, which a published crate needs for its dependencies on the others. In release order (each
+# depends only on crates above it): gnoblin-types, gnoblin-schema, gnoblin-core-abi, gnoblin-std-abi,
+# gnoblin-object, gnoblin-macros, gnoblin-sdkgen, gnoblin-core, gnoblin-std.
+gnoblin-schema = { path = "crates/gnoblin-schema", version = "0.2.0-alpha.0" }
+gnoblin-core-abi = { path = "crates/gnoblin-core-abi", version = "0.2.0-alpha.0" }
+gnoblin-std-abi = { path = "crates/gnoblin-std-abi", version = "0.2.0-alpha.0" }
+gnoblin-object = { path = "crates/gnoblin-object", version = "0.2.0-alpha.0" }
+gnoblin-macros = { path = "crates/gnoblin-macros", version = "0.2.0-alpha.0" }
+gnoblin-sdkgen = { path = "crates/gnoblin-sdkgen", version = "0.2.0-alpha.0" }
+gnoblin-core = { path = "crates/gnoblin-core", version = "0.2.0-alpha.0" }
+gnoblin-std = { path = "crates/gnoblin-std", version = "0.2.0-alpha.0" }
 # The portal dialog models, the payload and result types the compositor negotiates with.
 gnoblin-portal-core = { path = "crates/gnoblin-portal-core" }
 gnoblin-portal-consent = { path = "crates/gnoblin-portal-consent" }

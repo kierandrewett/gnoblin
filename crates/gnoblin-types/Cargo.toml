@@ -5,7 +5,9 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish.workspace = true
+repository.workspace = true
+# Part of the Rust shell SDK on crates.io (the workspace's `publish = false` is for the rest).
+publish = true
 
 # Deliberately empty. These are the values every other crate passes around, so
 # the crate must stay usable from the policy core, the engine crates, the client

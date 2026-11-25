@@ -34,6 +34,12 @@ use gnoblin_types::Version;
 /// workspace root.
 pub const SCHEMA_DIR: &str = "crates/gnoblin-schema/schema";
 
+/// The absolute path of the schema files this crate was compiled from: in the
+/// workspace, or in cargo's registry cache when the crate came from crates.io.
+/// A build script of a dependent crate reads the files there, so a packaged SDK
+/// renders from the schema it ships and never from a repository path.
+pub const SCHEMA_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/schema");
+
 /// One generated `.proto` document: its file name and its text.
 ///
 /// The name is relative, because a build script writes it under `OUT_DIR` and
