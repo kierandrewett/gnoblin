@@ -27,7 +27,9 @@ writes to a scratch tree laid out like the workspace; `check` uses it. The share
 The layout of a file is in the `README.md` of each directory. Three rules keep a recording stable: time is the injected `ManualClock`;
 text is measured by a fixed rule (`answer_measures`), never a font; and a node the shell made is named by the order it was made in, so a
 native shell that numbers its nodes differently compares equal. The lock screen's clock and a scenario's scratch directory are fixed or
-replaced (`<root>`), and `xtask oracle` runs every producer with `TZ=UTC` and `Date.now` fixed, so the clocks the toolkit draws read the same everywhere.
+replaced (`<root>`), a module path of the library is written from `data/js` on (the checkout's own path is dropped), and `xtask oracle`
+runs every producer with `TZ=UTC` and `Date.now` fixed, so the clocks the toolkit draws read the same everywhere. A JSON fixture that
+differs only in the last bits of a number (`0.5` against `0.5000000000000001`, the floating point of another machine) still checks equal.
 
 `tests/{tiling,examples,anim_style}.rs` of `gnoblin-std-impl` still run the TypeScript beside the native std. In `record` mode they
 only run the TypeScript side. In `check` mode they compare the TypeScript run with the fixture, then the native run with the TypeScript

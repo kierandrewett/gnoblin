@@ -150,7 +150,7 @@ impl Fixtures {
                         path.display()
                     )
                 });
-                if expected != actual {
+                if expected != actual && !same_json_but_rounding(file, &expected, &actual) {
                     panic!(
                         "fixture {} differs from what the TypeScript std did:\n{}",
                         path.display(),
@@ -189,6 +189,57 @@ fn difference(expected: &[u8], actual: &[u8]) -> String {
         out.push_str("the files differ in bytes that are not text lines\n");
     }
     out
+}
+
+/// Whether two JSON fixtures hold the same document, numbers equal to their last bits. The TypeScript std computes in
+/// floating point, and the same script gave `0.5` on the a37 box and `0.5000000000000001` on GitHub's runner (CI job
+/// 138939487689, `scene_nodes.json`). That difference is not behaviour, so a check accepts it; anything else differs.
+fn same_json_but_rounding(file: &str, expected: &[u8], actual: &[u8]) -> bool {
+    if !file.ends_with(".json") {
+        return false;
+    }
+    let (Ok(expected), Ok(actual)) = (
+        serde_json::from_slice::<Value>(expected),
+        serde_json::from_slice::<Value>(actual),
+    ) else {
+        return false;
+    };
+    nearly_equal(&expected, &actual)
+}
+
+/// [`same_json_but_rounding`] for one value: equal, with a number allowed to differ by at most four units in the last
+/// place (a relative bound, so `0` and `1e-13` still differ).
+fn nearly_equal(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::Number(left_number), Value::Number(right_number)) => {
+            match (left_number.as_f64(), right_number.as_f64()) {
+                (Some(l), Some(r)) => within_ulps(l, r, 4),
+                _ => left_number == right_number,
+            }
+        }
+        (Value::Array(left), Value::Array(right)) => {
+            left.len() == right.len() && left.iter().zip(right).all(|(l, r)| nearly_equal(l, r))
+        }
+        (Value::Object(left), Value::Object(right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .all(|(key, value)| right.get(key).is_some_and(|other| nearly_equal(value, other)))
+        }
+        _ => left == right,
+    }
+}
+
+/// Whether `left` and `right` are the same number or at most `ulps` representable doubles apart. Numbers of opposite sign
+/// are apart unless both are zero; a NaN is never within.
+fn within_ulps(left: f64, right: f64, ulps: u64) -> bool {
+    if left == right {
+        return true;
+    }
+    if left.is_nan() || right.is_nan() || left.is_sign_negative() != right.is_sign_negative() {
+        return false;
+    }
+    left.to_bits().abs_diff(right.to_bits()) <= ulps
 }
 
 // ---- writes, as JSON -----------------------------------------------------------------------------------------------
