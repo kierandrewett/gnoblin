@@ -159,6 +159,24 @@ impl Handle {
         self.imports.lock().expect("the import log").seen.clone()
     }
 
+    /// Waits until the importer has been asked `count` times and returns what it saw. The import runs on a loop turn
+    /// of its own, so a window can be published as mapped a moment before its buffer reaches the importer.
+    fn wait_seen(&self, count: usize) -> Vec<(i32, i32, Fourcc)> {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let seen = self.seen();
+            if seen.len() >= count {
+                return seen;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the importer was asked {} times, not {count}: {seen:?}",
+                seen.len()
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     fn refuse_imports(&self, refuse: bool) {
         self.imports.lock().expect("the import log").refuse = refuse;
     }
@@ -681,7 +699,7 @@ fn a_dmabuf_window_maps_releases_and_unmaps() {
             "the window is as large as its dmabuf, which Smithay sizes from the buffer alone"
         );
         assert_eq!(
-            handle.seen(),
+            handle.wait_seen(1),
             vec![(64, 48, Fourcc::Argb8888)],
             "the importer saw the buffer once, before the client used it"
         );
