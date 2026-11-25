@@ -46,3 +46,27 @@ impl Drop for Bus {
         let _ = self.child.wait();
     }
 }
+
+/// Runs `step` on a thread of its own and fails the test, naming `what`, if it has not returned within `limit`.
+///
+/// Two service tests never returned in CI over a private bus (the screensaver's GNOME SetActive test in workspace job
+/// 139021815236, the session idle's `changes_to_other_objects_are_ignored` in the Arch container job 139077575145); the
+/// screensaver's passes in about 0.3 s on the a37 box. A bus step bounded with this fails the test and says which step
+/// waited, instead of holding the job until it is cancelled.
+///
+/// # Panics
+///
+/// When `step` has not returned within `limit`, or panicked.
+pub fn within<T: Send + 'static>(
+    what: &str,
+    limit: std::time::Duration,
+    step: impl FnOnce() -> T + Send + 'static,
+) -> T {
+    let (sender, answer) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = sender.send(step());
+    });
+    answer
+        .recv_timeout(limit)
+        .unwrap_or_else(|_| panic!("{what} did not return within {limit:?}"))
+}

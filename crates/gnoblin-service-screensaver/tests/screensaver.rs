@@ -101,18 +101,10 @@ fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
     }
 }
 
-/// Runs `step` on a thread of its own and fails the test, naming `what`, if it has not returned within [`TIMEOUT`].
-///
-/// The test below never returned in CI workspace job 139021815236 (cancelled at the job's two hours) and returns in a
-/// fraction of a second everywhere else, so each of its bus steps is bounded to say which one waits.
+/// [`gnoblin_service_testkit::within`] with this file's [`TIMEOUT`]: the GNOME SetActive test below bounds each of its
+/// bus steps with it.
 fn within<T: Send + 'static>(what: &str, step: impl FnOnce() -> T + Send + 'static) -> T {
-    let (sender, answer) = std::sync::mpsc::channel();
-    thread::spawn(move || {
-        let _ = sender.send(step());
-    });
-    answer
-        .recv_timeout(TIMEOUT)
-        .unwrap_or_else(|_| panic!("{what} did not return within {TIMEOUT:?}"))
+    gnoblin_service_testkit::within(what, TIMEOUT, step)
 }
 
 /// A change of the lock node's `state`, as the services role delivers it.

@@ -9,7 +9,7 @@
 use futures_lite::StreamExt;
 use gnoblin_model::{Fields, ObjectId, ObjectView, Observation, Revision, TypeKey, Value};
 use gnoblin_service_sessionidle::{ActivityState, Compositor, PATH, Reading, SessionIdle, THRESHOLD_MS, serve};
-use gnoblin_service_testkit::Bus;
+use gnoblin_service_testkit::{Bus, within};
 use zbus::connection::Builder;
 use zbus::{Connection, Proxy};
 
@@ -35,18 +35,23 @@ async fn connect(address: &str) -> Connection {
     Builder::address(address).build().await.expect("the private bus is up")
 }
 
+/// How long one bus step may take before the test fails naming it; see [`within`].
+const STEP: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Serve the interface on a server connection, seeded from `reading`, and connect a client.
 fn served(reading: Option<Reading>) -> Fixture {
-    let bus = Bus::start();
-    let server = zbus::block_on(connect(bus.address()));
-    let client = zbus::block_on(connect(bus.address()));
-    let service = serve(&Fake(Ok(reading)), &server).expect("the service is served");
-    Fixture {
-        _bus: bus,
-        server,
-        client,
-        service,
-    }
+    within("starting the bus and serving SessionIdle", STEP, move || {
+        let bus = Bus::start();
+        let server = zbus::block_on(connect(bus.address()));
+        let client = zbus::block_on(connect(bus.address()));
+        let service = serve(&Fake(Ok(reading)), &server).expect("the service is served");
+        Fixture {
+            _bus: bus,
+            server,
+            client,
+            service,
+        }
+    })
 }
 
 fn reading(object: u64, idle_ms: u64) -> Reading {
@@ -87,17 +92,20 @@ fn activity_via(caller: &Connection, server: &Connection) -> (bool, bool, u64, u
         .unique_name()
         .expect("a connected server has a unique name")
         .to_string();
-    zbus::block_on(async {
-        let proxy = Proxy::new(caller, destination.as_str(), PATH, INTERFACE)
-            .await
-            .expect("the proxy is built");
-        proxy
-            .call_method("GetActivity", &())
-            .await
-            .expect("GetActivity answers")
-            .body()
-            .deserialize()
-            .expect("GetActivity returns four values")
+    let caller = caller.clone();
+    within("GetActivity", STEP, move || {
+        zbus::block_on(async {
+            let proxy = Proxy::new(&caller, destination.as_str(), PATH, INTERFACE)
+                .await
+                .expect("the proxy is built");
+            proxy
+                .call_method("GetActivity", &())
+                .await
+                .expect("GetActivity answers")
+                .body()
+                .deserialize()
+                .expect("GetActivity returns four values")
+        })
     })
 }
 
