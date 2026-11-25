@@ -12,9 +12,19 @@ shell=${1:?usage: guest-session.sh SHELL [CLIENT_COMMAND]}
 client=${2:-}
 logs=$HOME/session
 
+# The previous client is stopped by the process group it was started in (recorded below), never by matching command
+# lines: a pattern such as `/firefox` also matches this script's own arguments when the next client is Firefox.
+client_group=$HOME/.gnoblin-ci-client.pgid
+if [ -s "$client_group" ]; then
+    kill -TERM -- "-$(cat "$client_group")" 2>/dev/null || true
+    rm -f "$client_group"
+fi
 pkill -x gnoblin 2>/dev/null || true
-pkill -f "^(foot|gtk4-widget-factory|gtk3-widget-factory|xterm|xeyes|wev)( |$)|/firefox" 2>/dev/null || true
-pkill -f "dbus-daemon --session --address=unix:path=$logs/" 2>/dev/null || true
+bus_pid=$HOME/.gnoblin-ci-bus.pid
+if [ -s "$bus_pid" ]; then
+    kill -TERM "$(cat "$bus_pid")" 2>/dev/null || true
+    rm -f "$bus_pid"
+fi
 sleep 1
 sudo systemctl stop getty@tty1 2>/dev/null || true
 rm -rf "$logs"
@@ -24,7 +34,7 @@ XDG_RUNTIME_DIR=/run/user/$(id -u)
 export XDG_RUNTIME_DIR
 export LIBSEAT_BACKEND=seatd SEATD_SOCK=/run/seatd.sock
 export GNOBLIN_LOG="${GNOBLIN_LOG:-info}" GNOBLIN_LOG_FORMAT=plain
-dbus-daemon --session --address="unix:path=$logs/bus" --fork >/dev/null
+dbus-daemon --session --address="unix:path=$logs/bus" --fork --print-pid >"$bus_pid"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$logs/bus"
 rm -f "$XDG_RUNTIME_DIR"/gnoblin-wayland*.sock*
 GNOBLIN_BACKEND=drm setsid gnoblin "$shell" >"$logs/gnoblin.log" 2>&1 </dev/null &
@@ -41,6 +51,8 @@ if ! kill -0 "$started" 2>/dev/null; then
 fi
 echo "[guest] gnoblin is serving"
 if [ -n "$client" ]; then
+    # setsid makes the client the leader of a session and a process group of its own, whose id is its pid.
     WAYLAND_DISPLAY=gnoblin-wayland.sock DISPLAY=:0 setsid bash -c "$client" >"$logs/client.log" 2>&1 </dev/null &
+    echo $! >"$client_group"
     echo "[guest] client started: $client"
 fi
