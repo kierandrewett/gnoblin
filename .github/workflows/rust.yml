@@ -21,6 +21,7 @@ on:
       - "tests/parity/**"
       - "tests/modular/**"
       - "scripts/ci-install-system-libraries.sh"
+      - "scripts/ci/**"
       - ".github/workflows/rust.yml"
   pull_request:
     paths:
@@ -42,6 +43,7 @@ on:
       - "tests/parity/**"
       - "tests/modular/**"
       - "scripts/ci-install-system-libraries.sh"
+      - "scripts/ci/**"
       - ".github/workflows/rust.yml"
   workflow_dispatch:
 
@@ -53,12 +55,19 @@ jobs:
   workspace:
     name: Build, lint, test, dependency rules, duplicate types, documented names, licences
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
+    # Debug info is most of what a debug build writes, and no gate here reads it: without it the build fits the runner.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - name: Check out the tree without submodules
         uses: actions/checkout@v4
         with:
           submodules: false
+      # The runner starts with about 14 GB free; the workspace's debug build and test targets need more, and the job
+      # died with "No space left on device" before its tests ran. The script removes toolchains no job here uses.
+      - name: Make room on the runner
+        run: scripts/ci/free-disk-space.sh
       - name: Install just and cargo-deny
         uses: taiki-e/install-action@v2
         with:
