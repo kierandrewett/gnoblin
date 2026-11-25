@@ -272,13 +272,16 @@ impl Screenshots {
         Some(slot)
     }
 
-    /// Answers every queued request from the backend's readback. `covered` is the lock's answer now: a guarded
-    /// request is refused without reading anything while it holds.
+    /// Answers the requests that were queued when this call started, from the backend's readback. `covered` is the
+    /// lock's answer now: a guarded request is refused without reading anything while it holds.
+    ///
+    /// A request queued while these are answered waits for the next iteration, which its ping wakes. Reading the queue
+    /// until it was empty let a caller that asked again as soon as it was answered be served from the frame drawn
+    /// before its request: under load a test advanced its clock, asked twice, and got both pictures from the frame
+    /// before the clock moved (gnoblin-0kpw).
     fn serve(&self, backend: &mut dyn Backend<State>, covered: bool) {
-        loop {
-            let Some(shot) = self.queue.lock().unwrap_or_else(PoisonError::into_inner).pop_front() else {
-                return;
-            };
+        let shots = std::mem::take(&mut *self.queue.lock().unwrap_or_else(PoisonError::into_inner));
+        for shot in shots {
             if shot.guarded && covered {
                 shot.slot.serve_covered();
                 continue;
