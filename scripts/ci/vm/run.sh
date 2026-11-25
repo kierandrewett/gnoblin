@@ -214,12 +214,20 @@ guest 'ldd /opt/gnoblin/bin/gnoblin | grep "not found"' >"$out/ldd-missing.txt" 
 }
 shell_path=/opt/gnoblin/share/gnoblin-ci/$(basename "$shell_lib")
 
+# capture NAME: the display as OUTDIR/NAME.png, in software mode, where QEMU can read the scan-out. A capture is the visual
+# evidence of a check, so one that fails is recorded as a failing check of its own; the run goes on with the next check.
+capture() {
+    [ "$mode" = software ] || return 0
+    "$here/qmp.py" "$qmp" screendump "$out/$1.png" 2>"$out/$1.capture.err" && [ -s "$out/$1.png" ] && return 0
+    record "$1-capture" fail "QEMU could not capture the display (see $1.capture.err)"
+}
+
 # check_client NAME PROCESS WAIT COMMAND: one session with one client, its logs and (software mode) a capture.
 check_client() {
     local name=$1 process=$2 wait=$3 command=$4 state renderer
     guest "./guest-session.sh $shell_path $(printf %q "$command")" >"$out/$name.session.txt" 2>&1 || true
     sleep "$wait"
-    [ "$mode" != software ] || "$here/qmp.py" "$qmp" screendump "$out/$name.png" 2>/dev/null || true
+    capture "$name"
     guest 'cat ~/session/gnoblin.log' >"$out/$name.gnoblin.log" 2>&1 || true
     guest 'cat ~/session/client.log' >"$out/$name.client.log" 2>&1 || true
     state=$(guest "pgrep -x gnoblin >/dev/null && echo serving || echo stopped; pgrep -x $process >/dev/null && echo running || echo exited" 2>/dev/null | tr '\n' ' ')
@@ -263,7 +271,7 @@ sleep 1
 "$here/qmp.py" "$qmp" type ab
 sleep 2
 guest 'cat ~/session/client.log' >"$out/input.wev.log" 2>&1 || true
-[ "$mode" != software ] || "$here/qmp.py" "$qmp" screendump "$out/input.png" 2>/dev/null || true
+capture input
 if grep -q 'wl_pointer\] enter' "$out/input.wev.log" && grep -q 'wl_pointer\] button' "$out/input.wev.log"; then
     record pointer pass "wev got pointer enter and the click"
 else
