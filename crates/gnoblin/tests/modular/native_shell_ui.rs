@@ -52,6 +52,21 @@ fn paints(ipc: &Path, text: &str) -> bool {
     })
 }
 
+/// The node the seat's keyboard focus is on, and whether that node is a canvas.
+fn keyboard_focus(ipc: &Path) -> Option<(u64, bool)> {
+    let nodes = snapshot(ipc);
+    let focused = nodes
+        .iter()
+        .filter(|node| node.class == "seat")
+        .flat_map(|node| node.props.iter())
+        .find(|prop| prop.key == "focus")
+        .map(|prop| prop.value_node)?;
+    Some((
+        focused,
+        nodes.iter().any(|node| node.id == focused && node.class == "canvas"),
+    ))
+}
+
 #[track_caller]
 fn the_shell_ui_works(session: &mut Gnoblin) {
     session.wait_log("the shell started", |line| line.contains("shell-ui: running"));
@@ -117,10 +132,17 @@ fn the_shell_ui_works(session: &mut Gnoblin) {
     // The client answers again.
     mapper.roundtrip();
 
-    // The launcher: a chord opens it, what is typed is painted, Return runs it.
+    // The launcher: a chord opens it, what is typed is painted, Return runs it. The shell logs that the launcher is open
+    // when its entry asks for the keyboard, and the compositor applies that a frame later; keys typed before then go to
+    // what held it, as the TypeScript shell's launcher showed in CI (Fedora 43 job 138995588463). So the test waits for
+    // the focus to move off what held it before the chord and onto a canvas.
+    let before = keyboard_focus(&ipc).map(|(node, _)| node);
     typist.super_plus(KEY_SPACE);
     session.wait_log("the launcher opened", |line| {
         line.contains("shell-ui: the launcher is open")
+    });
+    session.wait_for("the launcher's entry holds the keyboard", |_| {
+        keyboard_focus(&ipc).is_some_and(|(node, canvas)| canvas && Some(node) != before)
     });
     typist.tap(KEY_A);
     typist.tap(KEY_B);
