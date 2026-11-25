@@ -26,12 +26,13 @@ fmt-check:
 clippy:
     cargo clippy --workspace --all-targets -- --deny warnings
 
-# Run unit tests, including the dependency-rule checker's own tests. A test binary is written to `<profile>/deps/`,
-# where `$ORIGIN` does not reach the core the workspace build links as `<profile>/libgnoblin-core.so.1`, and the
-# launcher's run path is given to the `gnoblin` binary only, not to its unit-test binary; so the profile directory
-# goes on the loader's path for the tests.
+# Run unit tests, including the dependency-rule checker's own tests. The core library is staged first: `cargo test`
+# builds `gnoblin-core-impl` in test mode and does not write `libgnoblin_core_impl.so`, so in a fresh tree the
+# `libgnoblin-core.so.1` link its build script makes points at nothing and every test binary that links the core stops
+# with exit 127 (the unit tests of `gnoblin` are the first). `cargo xtask stage` builds the library and its links.
 test:
-    LD_LIBRARY_PATH="$(realpath -m "${CARGO_TARGET_DIR:-target}")/debug${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" cargo test --workspace --all-targets
+    cargo xtask stage
+    cargo test --workspace --all-targets
 
 # The tests that start a private `pipewire` daemon and read the frames a stream carries: the export crate's own
 # failure-mode tests and the compositor-side capture end-to-end tests. `just test` runs them too; this recipe is the
