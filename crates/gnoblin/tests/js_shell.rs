@@ -1944,32 +1944,57 @@ fn a_master_stack_workspace_configures_three_real_clients_to_their_tiles_with_ti
     for app in apps {
         mapper.map_window(app, app);
     }
-    // The master is the tile that fills the height; the other two share it.
+    // The master is the tile that fills the height; the other two share it. Until the layout has placed all three, the
+    // master fills the screen and the others have no size, which also has one full-height window, so every tile must
+    // have a size and none may span the width.
     let tiles = |ipc: &Path| -> Option<Vec<(i32, i32)>> {
         let rects: Vec<(f64, f64, f64, f64)> = apps.iter().map(|app| rect_of(ipc, app)).collect::<Option<_>>()?;
+        let placed = rects.iter().all(|rect| rect.2 > 0.0 && rect.3 > 0.0 && rect.2 < width);
         let full = rects.iter().filter(|rect| rect.3 >= height).count();
-        (full == 1).then(|| rects.iter().map(|rect| (rect.2 as i32, rect.3 as i32)).collect())
+        (placed && full == 1).then(|| rects.iter().map(|rect| (rect.2 as i32, rect.3 as i32)).collect())
     };
     wait_for("three windows tiled", &session, &mut mapper, &shell, || {
         tiles(&ipc).is_some()
     });
     let sizes = tiles(&ipc).expect("the tiles");
-    wait_client("each client was configured to its tile", &mut mapper, |client| {
-        (0..apps.len()).all(|window| client.configured(window) == Some(sizes[window]))
-    });
-    for window in 0..apps.len() {
-        let states = mapper.states(window);
-        for edge in [
-            support::STATE_TILED_LEFT,
-            support::STATE_TILED_RIGHT,
-            support::STATE_TILED_TOP,
-            support::STATE_TILED_BOTTOM,
-        ] {
-            assert!(
-                states.contains(&edge),
-                "tiled window {window} is told edge {edge}: {states:?}"
+    // The client may be told its tile in more than one configure; wait until it has the size and all four edges.
+    let edges = [
+        support::STATE_TILED_LEFT,
+        support::STATE_TILED_RIGHT,
+        support::STATE_TILED_TOP,
+        support::STATE_TILED_BOTTOM,
+    ];
+    let told = |client: &Mapper, window: usize| {
+        client.configured(window) == Some(sizes[window])
+            && edges.iter().all(|edge| client.states(window).contains(edge))
+    };
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        mapper.roundtrip();
+        if (0..apps.len()).all(|window| told(&mapper, window)) {
+            break;
+        }
+        if Instant::now() >= deadline {
+            let seen: Vec<String> = (0..apps.len())
+                .map(|window| {
+                    format!(
+                        "window {window} ({}): wanted {:?}, told size {:?} states {:?}, compositor rect {:?}",
+                        apps[window],
+                        sizes[window],
+                        mapper.configured(window),
+                        mapper.states(window),
+                        rect_of(&ipc, apps[window]),
+                    )
+                })
+                .collect();
+            panic!(
+                "each client was not configured to its tile, tiled on every edge:\n{}",
+                seen.join("\n")
             );
         }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    for window in 0..apps.len() {
         let bounds = mapper.bounds(window).expect("a tiled window is sent bounds");
         assert!(
             bounds.0 > 0 && bounds.1 > 0 && f64::from(bounds.0) <= width && f64::from(bounds.1) <= height,
