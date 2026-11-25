@@ -459,6 +459,8 @@ impl<'a> Py<'a> {
                     .map(|field| self.ty(&field.ty, false))
                     .collect::<Result<_, _>>()?;
                 let returns = match &declared.returns {
+                    // A function may answer nothing, which the library reads as the answer its declaration documents.
+                    Some(ty) if declared.optional => format!("{} | None", self.ty(ty, true)?),
                     Some(ty) => self.ty(ty, true)?,
                     None => "None".to_owned(),
                 };
@@ -1425,6 +1427,8 @@ impl<'a> Py<'a> {
                 format!("self, {params}")
             };
             let returns = match &method.returns {
+                // The script's method may answer nothing, which the library reads as the method's comment says.
+                Some(ty) if method.optional => format!("{} | None", self.ty(ty, true)?),
                 Some(ty) => self.ty(ty, true)?,
                 None => "None".to_owned(),
             };

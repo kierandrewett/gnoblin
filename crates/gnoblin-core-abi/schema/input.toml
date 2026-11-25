@@ -38,11 +38,13 @@ name = "acceleration_profile"
 since = "0.2.0"
 values = ["default", "flat", "adaptive"]
 
-# A binding's function: it handles the press and answers `true`, or declines it with `false`, which gives the press to the next candidate.
+# A binding's function: it handles the press, or declines it by answering `false`, which gives the press to the next candidate. Any other
+# answer, nothing included, is handled.
 [[callback]]
 name = "key_action"
 since = "0.2.0"
 returns = "bool"
+optional = true
 
 [[callback.param]]
 name = "event"
@@ -403,12 +405,14 @@ name = "key_binding"
 since = "0.2.0"
 kind = "interface"
 
-# A press of the trigger. Answer `false` to decline, which gives the press to the next candidate; any other answer handles it.
+# A press of the trigger. Answer `false` to decline, which gives the press to the next candidate; any other answer, nothing included,
+# handles it.
 [[object.method]]
 name = "on_press"
 since = "0.2.0"
 returns = "bool"
 required = true
+optional = true
 
 [[object.method.param]]
 name = "event"
@@ -423,12 +427,14 @@ name = "pointer_drag_binding"
 since = "0.2.0"
 kind = "interface"
 
-# The pointer has gone far enough. `position` is where the press was. Answer `false` to decline the drag.
+# The pointer has gone far enough. `position` is where the press was. Answer `false` to decline the drag; any other answer, nothing
+# included, takes it.
 [[object.method]]
 name = "on_start"
 since = "0.2.0"
 returns = "bool"
 required = true
+optional = true
 
 [[object.method.param]]
 name = "event"
@@ -470,12 +476,13 @@ name = "gesture_binding"
 since = "0.2.0"
 kind = "interface"
 
-# The gesture is decided. Answer `false` to decline it.
+# The gesture is decided. Answer `false` to decline it; any other answer, nothing included, takes it.
 [[object.method]]
 name = "on_begin"
 since = "0.2.0"
 returns = "bool"
 required = true
+optional = true
 
 [[object.method.param]]
 name = "event"

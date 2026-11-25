@@ -253,6 +253,8 @@ pub struct CallbackDecl {
     pub params: Vec<Field>,
     /// What the closure answers, when it does.
     pub returns: Option<Type>,
+    /// The closure may answer nothing, which the library reads as the answer the callback's comment says (`key_action`: handled).
+    pub optional: bool,
 }
 
 /// The namespace a `[[augment]]` names with `core.`: the core library's catalog. A library above the core (std) adds members to its
@@ -1100,6 +1102,9 @@ impl Catalog {
                     .as_ref()
                     .map_or_else(|| "-".to_owned(), ToString::to_string)
             );
+            if declared.optional {
+                text.push_str(" optional");
+            }
             for param in &declared.params {
                 let _ = write!(text, " {}:{}", param.name, param.ty);
             }

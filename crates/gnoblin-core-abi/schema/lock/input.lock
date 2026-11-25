@@ -93,7 +93,7 @@ member | device.context | property object:input_context rw | 0.2.0
 member | device.enabled | property bool rw | 0.2.0
 member | device.id | property string ro | 0.2.0
 member | device.name | property string ro | 0.2.0
-member | gesture_binding.on_begin | method (event:object:binding_event) -> bool required | 0.2.0
+member | gesture_binding.on_begin | method (event:object:binding_event) -> bool? required | 0.2.0
 member | gesture_binding.on_cancel | method (event:object:binding_event) | 0.2.0
 member | gesture_binding.on_end | method (event:object:binding_event) | 0.2.0
 member | gesture_binding.on_update | method (event:object:binding_event) | 0.2.0
@@ -137,7 +137,7 @@ member | input_manager.primary | property object:input_context ro | 0.2.0
 member | input_manager.remove_context | method (context:object:input_context) -> bool | 0.2.0
 member | input_point.x | property double rw | 0.2.0
 member | input_point.y | property double rw | 0.2.0
-member | key_binding.on_press | method (event:object:binding_event) -> bool required | 0.2.0
+member | key_binding.on_press | method (event:object:binding_event) -> bool? required | 0.2.0
 member | keyboard.alive | property bool ro | 0.2.0
 member | keyboard.bind | method (trigger:string, action?:callback:key_action, options?:object:binding_options) -> object:binding | 0.2.0
 member | keyboard.bind_binding | method (trigger:string, handler:object:key_binding, options?:object:binding_options) -> object:binding | 0.2.0
@@ -171,7 +171,7 @@ member | mouse.reset | method (name:string) | 0.2.0
 member | mouse.sensitivity | property double rw,optional | 0.2.0
 member | pointer_drag_binding.on_cancel | method (event:object:binding_event) | 0.2.0
 member | pointer_drag_binding.on_end | method (event:object:binding_event) | 0.2.0
-member | pointer_drag_binding.on_start | method (event:object:binding_event) -> bool required | 0.2.0
+member | pointer_drag_binding.on_start | method (event:object:binding_event) -> bool? required | 0.2.0
 member | pointer_drag_binding.on_update | method (event:object:binding_event) | 0.2.0
 member | seat_settings.auto_raise | property bool rw | 0.2.0
 member | seat_settings.auto_raise_delay | property double rw | 0.2.0

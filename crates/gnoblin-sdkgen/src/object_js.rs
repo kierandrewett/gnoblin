@@ -1489,6 +1489,8 @@ impl Js<'_> {
                     })
                     .collect::<Result<_, String>>()?;
                 let returns = match &declared.returns {
+                    // A function may answer nothing, which the library reads as the answer its declaration documents.
+                    Some(ty) if declared.optional => format!("{} | void", self.ts(ty, true)?),
                     Some(ty) => self.ts(ty, true)?,
                     None => "void".to_owned(),
                 };
@@ -1807,6 +1809,8 @@ impl Js<'_> {
         for method in &object.methods {
             let ident = member_name(&method.name, &method.extras.export.js);
             let returns = match &method.returns {
+                // The script's method may answer nothing, which the library reads as the method's comment says.
+                Some(ty) if method.optional => format!("{} | void", self.ts(ty, true)?),
                 Some(ty) => self.ts(ty, true)?,
                 None => "void".to_owned(),
             };

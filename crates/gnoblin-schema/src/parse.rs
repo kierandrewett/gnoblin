@@ -59,7 +59,8 @@
 //! - `retained = true` on an object: an instance stays until it is destroyed, whatever the shell releases.
 //! - `export = { js = "..", py = "..", rust = ".." }` on an object or a member: a name that differs from the mechanical conversion.
 //! - `[[enum]]` with `values = [..]`, and `[[callback]]` with `[[callback.param]]` and `returns`: the types `enum:<name>` and
-//!   `callback:<name>`.
+//!   `callback:<name>`. `optional = true` on a callback: the function may answer nothing (a TypeScript `void`, a Python `None`), which
+//!   the library reads as the answer the callback's comment gives.
 //! - `returns = "<type>"` on a method, `required = true` and `default = "native"` on a method of an interface.
 //! - `optional = true` on a method: its result (an `object:` type) may be none, as `undefined` in TypeScript, `None` in Python and
 //!   `Option::None` in Rust. The library answers a nothing value; without the key a missing member is an error.
@@ -307,6 +308,8 @@ struct RawCallback {
     params: Vec<RawField>,
     #[serde(default)]
     returns: Option<String>,
+    #[serde(default)]
+    optional: bool,
 }
 
 /// Parse and validate one schema file.
@@ -497,11 +500,17 @@ fn parse_callbacks(raw_callbacks: &[RawCallback], scope: Scope, problems: &mut V
             .returns
             .as_deref()
             .and_then(|text| type_of(problems, Some(text), &format!("{owner}: `returns`")));
+        if raw_callback.optional && returns.is_none() {
+            problems.push(format!(
+                "{owner}: `optional` lets a function answer nothing, so it needs a `returns`"
+            ));
+        }
         callbacks.push(CallbackDecl {
             name: raw_callback.name.clone(),
             since,
             params,
             returns,
+            optional: raw_callback.optional,
         });
     }
     callbacks
@@ -888,13 +897,16 @@ fn parse_methods(
             .returns
             .as_deref()
             .and_then(|text| type_of(problems, Some(text), &format!("{owner}: `returns`")));
-        if raw_method.optional && !matches!(returns, Some(Type::ObjectRef(_))) {
+        if kind == ObjectKind::Interface {
+            // The shell answers an interface's method: `optional` lets it answer nothing, which the library reads as the method's
+            // comment says (a binding's `on_press` that answers nothing handled the press).
+            if raw_method.optional && returns.is_none() {
+                problems.push(format!(
+                    "{owner}: `optional` lets the shell's method answer nothing, so it needs a `returns`"
+                ));
+            }
+        } else if raw_method.optional && !matches!(returns, Some(Type::ObjectRef(_))) {
             problems.push(format!("{owner}: `optional` needs `returns` to be an `object:` type"));
-        }
-        if raw_method.optional && kind == ObjectKind::Interface {
-            problems.push(format!(
-                "{owner}: `optional` belongs to a method a library serves, not to an interface"
-            ));
         }
         if let Some(found) = &raw_method.find {
             if !is_kind_name(found) {
@@ -1427,9 +1439,17 @@ mod tests {
                 .any(|problem| problem.contains("`optional` needs `returns`")),
             "{found:?}"
         );
-        let found = refused(&local_find("object:thing", "optional = true\n", "interface"));
+        // On an interface the shell answers, and `optional` lets its method answer nothing, of any type the method returns.
+        let schema = parse_schema("test.toml", &local_find("bool", "optional = true\n", "interface")).expect("schema");
+        assert!(schema.objects[0].methods[0].optional);
+        let found = refused(&format!(
+            "{}\n[[object.method]]\nname = \"silent\"\nsince = \"0.2.0\"\noptional = true\n",
+            local_find("bool", "", "interface")
+        ));
         assert!(
-            found.iter().any(|problem| problem.contains("not to an interface")),
+            found
+                .iter()
+                .any(|problem| problem.contains("answer nothing, so it needs a `returns`")),
             "{found:?}"
         );
         let found = problems("\n[[object.method]]\nname = \"find\"\nsince = \"0.2.0\"\noptional = true\n");
