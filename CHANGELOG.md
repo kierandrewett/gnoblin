@@ -344,6 +344,7 @@
 - Adds the `gnoblin-xr` extension, an out-of-process program that shows the session's Views in an OpenXR headset.
 - Gnoblin now ships `.deb` packages for Debian testing, `.apk` packages for Alpine edge (release assets only), and arm64 builds of every package.
 - Signed package repositories are now published for Fedora, openSUSE Tumbleweed, Debian testing and Arch, each with a `stable` channel (from release tags) and a `nightly` channel (from daily main builds).
+- `pkgrepo pull --restore-from DIR` restores a package file that the repository host lost from a copy in `DIR`, such as the repository artifact of an earlier run. A file is used only when its sha256 equals the manifest's, every restored file is printed, and any other missing file still fails the pull.
 
 #### Documentation and tests
 
@@ -454,6 +455,10 @@
 
 - `cargo xtask deps` passes its own test again, now correctly asserting that `gnoblin-std-portal` is refused access to egui.
 - `just core-only` passes again: it refused the core because `gnoblin-std-abi` appeared in its build tree. That crate is reached only at build time, through `gnoblin-sdkgen` rendering the core's `gnoblin.model` catalog, and is never linked. The rule now refuses any std crate the core links, and any std crate its build reaches other than that one, by that one path.
+
+#### Packaging and install
+
+- The `s3` back end of `pkgrepo publish` no longer uses `aws s3 sync`, which uploaded and then deleted every arch package that has a `.sig` beside it in one nightly run. It now lists the bucket once, uploads what the manifest or the listing shows has changed, and deletes keys that are not in the tree only after every upload.
 
 #### Documentation and tests
 

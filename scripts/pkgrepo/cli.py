@@ -105,7 +105,13 @@ def cmd_needs_build(args: argparse.Namespace) -> int:
 
 def cmd_pull(args: argparse.Namespace) -> int:
     count = tree.pull(
-        args.url, args.project, args.channel, Path(args.output), args.allow_missing, args.allow_unreachable
+        args.url,
+        args.project,
+        args.channel,
+        Path(args.output),
+        args.allow_missing,
+        args.allow_unreachable,
+        Path(args.restore_from) if args.restore_from else None,
     )
     print(f"pulled {count} packages of {args.project}/{args.channel}")
     return 0
@@ -275,6 +281,14 @@ def parser() -> argparse.ArgumentParser:
         action="store_true",
         help="a host that cannot be reached is not an error either. Only for runs that publish nothing: "
         "a publication built without the published packages would remove them",
+    )
+    p.add_argument(
+        "--restore-from",
+        metavar="DIR",
+        help="a channel tree laid out like the published one (DIR/arch/aarch64/...), such as the repository artifact of "
+        "an earlier run. A listed file that the host lost is taken from DIR when its sha256 equals the manifest's; a "
+        "signature, which the manifest has no digest for, only together with its restored package file. Every "
+        "restored file is printed. Anything else that is missing is still an error",
     )
     p.set_defaults(run=cmd_pull)
 

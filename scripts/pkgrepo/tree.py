@@ -332,13 +332,54 @@ def _fetch(url: str, destination: Path | None = None) -> bytes | None:
     return data
 
 
+def _restore(source: Path | None, relative: str, item: dict, root: Path, base: str) -> bool:
+    """Take a file that the host lost from the restore tree, when it is the package file with the manifest's sha256, or
+    the signature of a package file that the pull has already got (the manifest has no digest for a signature)."""
+    if source is None or not (source / relative).is_file():
+        return False
+    data = (source / relative).read_bytes()
+    digest = hashlib.sha256(data).hexdigest()
+    if relative == item["path"]:
+        if digest != item["sha256"]:
+            print(
+                f"pkgrepo: {source / relative} has sha256 {digest}, not the {item['sha256']} of the manifest; "
+                "not restoring it",
+                file=sys.stderr,
+            )
+            return False
+        note = "sha256 equals the manifest's"
+    else:
+        note = "the manifest has no signature digest; its package file is available"
+    (root / relative).parent.mkdir(parents=True, exist_ok=True)
+    (root / relative).write_bytes(data)
+    print(
+        f"pkgrepo: {base}/{relative} is listed but missing; restored from {source / relative} (sha256 {digest}; {note})",
+        file=sys.stderr,
+    )
+    return True
+
+
 def pull(
-    url: str, project: str, channel: str, output: Path, allow_missing: bool, allow_unreachable: bool = False
+    url: str,
+    project: str,
+    channel: str,
+    output: Path,
+    allow_missing: bool,
+    allow_unreachable: bool = False,
+    restore_from: Path | None = None,
 ) -> int:
     """Download the manifest and the package files of a published channel, so a build can merge with them.
 
     Only the manifest and the files it lists are fetched. Metadata is rebuilt on every run, so it is not.
     Returns the number of packages pulled; a channel that is not published yet is an error unless allow_missing.
+
+    restore_from is a channel tree laid out like the published one (restore_from/arch/aarch64/...), for example the
+    repository artifact of an earlier run. A listed file that is unavailable at the URL, and has no copy in another
+    architecture directory, is taken from the same relative path there, only when its sha256 equals the manifest's.
+    The manifest records no digest for a signature, so a missing signature is taken from there when its package file
+    is available (the package file is handled first, so it is already fetched or restored); the build checks it
+    against the key like every signature. Each restored file is printed.
+    Nothing is dropped: a file that is not restorable is an error as without the option.
     """
     base = f"{url.rstrip('/')}/{project}/{channel}"
     root = channel_root(output, project, channel)
@@ -383,6 +424,8 @@ def pull(
                     (root / relative).write_bytes(data)
                     break
             else:
+                if _restore(restore_from, relative, item, root, base):
+                    continue
                 raise TreeError(f"{base}/{relative} is listed in the manifest but does not exist")
         if sha256_of(root / item["path"]) != item["sha256"]:
             raise TreeError(f"{item['path']} does not match the sha256 in the published manifest")

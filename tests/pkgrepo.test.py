@@ -15,6 +15,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -323,6 +324,112 @@ def build_tree(directory: Path, project="bingux", channel="nightly", packages=No
     return scope
 
 
+FAKE_AWS = r"""#!/usr/bin/env python3
+# A bucket in a directory ($FAKE_S3). `s3 sync` follows the algorithm of aws-cli's Comparator (two sorted listings,
+# walked in step), and the bucket lists `name.sig` before `name`, which is how the real bucket's listing disagrees with
+# the CLI's own order. $FAKE_S3_SEED lists the keys in a random order instead, $FAKE_S3_ETAG=none leaves the ETag out of
+# the listing, and every upload and delete is appended to $FAKE_S3_LOG.
+import fnmatch, hashlib, json, os, random, sys
+from pathlib import Path
+
+store = Path(os.environ["FAKE_S3"])
+args = sys.argv[1:]
+
+
+def split(url):
+    bucket, _, key = url[len("s3://"):].partition("/")
+    return bucket, key
+
+
+def bucket_keys(bucket, prefix):
+    root = store / bucket
+    keys = [str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()] if root.exists() else []
+    if "FAKE_S3_SEED" in os.environ:
+        keys = sorted(k for k in keys if k.startswith(prefix))
+        random.Random(os.environ["FAKE_S3_SEED"]).shuffle(keys)
+        return keys
+    return sorted((k for k in keys if k.startswith(prefix)), key=lambda k: (k[:-4], 0) if k.endswith(".sig") else (k, 1))
+
+
+def log(action, bucket, key):
+    if "FAKE_S3_LOG" in os.environ:
+        with open(os.environ["FAKE_S3_LOG"], "a") as handle:
+            handle.write(f"{action} {key}\n")
+
+
+def put(src, url):
+    bucket, key = split(url)
+    target = store / bucket / key
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(Path(src).read_bytes())
+    log("upload", bucket, key)
+    print(f"upload: {src} to {url}")
+
+
+def delete(url):
+    bucket, key = split(url)
+    (store / bucket / key).unlink(missing_ok=True)
+    log("delete", bucket, key)
+    print(f"delete: {url}")
+
+
+def included(path, filters):
+    result = True
+    for kind, pattern in filters:
+        if fnmatch.fnmatch(path, pattern):
+            result = kind == "include"
+    return result
+
+
+if args[:2] == ["s3api", "list-objects-v2"]:
+    options = dict(zip(args[2::2], args[3::2]))
+    bucket, prefix = options["--bucket"], options["--prefix"]
+    sizes = []
+    for k in bucket_keys(bucket, prefix):
+        data = (store / bucket / k).read_bytes()
+        item = {"Key": k, "Size": len(data)}
+        if os.environ.get("FAKE_S3_ETAG") != "none":
+            item["ETag"] = '"' + hashlib.md5(data).hexdigest() + '"'
+        sizes.append(item)
+    print(json.dumps({"Contents": sizes}) if sizes else "")
+elif args[:2] == ["s3", "cp"]:
+    put([a for a in args[2:] if not a.startswith("--")][0], args[-1])
+elif args[:2] == ["s3", "rm"]:
+    delete(args[-1])
+elif args[:2] == ["s3", "sync"]:
+    flags = [a for a in args[2:] if a.startswith("--")]
+    positional = [a for a in args[2:] if not a.startswith("--") or a in ()]
+    filters, rest, i = [], [], 2
+    while i < len(args):
+        if args[i] in ("--exclude", "--include"):
+            filters.append((args[i][2:], "*" + args[i + 1] if args[i + 1] != "*" else "*")); i += 2
+        elif args[i].startswith("--"):
+            i += 1
+        else:
+            rest.append(args[i]); i += 1
+    src, dest = Path(rest[0]), rest[1]
+    bucket, prefix = split(dest)
+    local = sorted(str(p.relative_to(src)) for p in src.rglob("*") if p.is_file() and included(str(p), filters))
+    remote = [k[len(prefix) + 1:] for k in bucket_keys(bucket, prefix + "/") if included("/" + k, filters)]
+    delete_flag, size_only = "--delete" in flags, "--size-only" in flags
+    a = b = 0
+    while a < len(local) or b < len(remote):
+        if b >= len(remote) or (a < len(local) and local[a] < remote[b]):
+            put(src / local[a], f"s3://{bucket}/{prefix}/{local[a]}"); a += 1
+        elif a >= len(local) or local[a] > remote[b]:
+            if delete_flag:
+                delete(f"s3://{bucket}/{prefix}/{remote[b]}")
+            b += 1
+        else:
+            same = (src / local[a]).stat().st_size == (store / bucket / prefix / remote[b]).stat().st_size
+            if not (size_only and same):
+                put(src / local[a], f"s3://{bucket}/{prefix}/{local[a]}")
+            a += 1; b += 1
+else:
+    sys.exit("fake aws: " + " ".join(args))
+"""
+
+
 class PublishPlans(unittest.TestCase):
     def setUp(self):
         self.directory = Path(tempfile.mkdtemp(prefix="pkgrepo-test-"))
@@ -434,6 +541,118 @@ class PublishPlans(unittest.TestCase):
         self.assertEqual(removals, [["aws", "s3", "rm", "--only-show-errors", "s3://bucket/prefix/index.html"]])
         with self.assertRaises(ValueError):
             publish.plan_s3(self.directory / "tree", "bingux/nightly", "bucket/prefix", [], env={})
+
+    def fake_bucket(self, files: dict[str, bytes], **environment: str):
+        """A tree of signed packages and a bucket (the fake aws) that holds the same files. Returns (tree, scope, bucket)."""
+        bin_dir = self.directory / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        (bin_dir / "aws").write_text(FAKE_AWS)
+        (bin_dir / "aws").chmod(0o755)
+        bucket = self.directory / "bucket" / "bucket" / "prefix"
+        tree_root = self.directory / "s3tree"
+        scope = build_tree(tree_root, packages=files)
+        for relative in files:
+            (scope / (relative + ".sig")).write_bytes(b"signature")
+        (scope / "arch" / "x86_64" / "bingux-nightly.db.tar.zst").write_bytes(b"database")
+        (scope / "arch" / "x86_64" / "bingux-nightly.db.tar.zst.sig").write_bytes(b"signature")
+        for path in scope.rglob("*"):
+            if path.is_file():
+                target = bucket / path.relative_to(tree_root)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(path.read_bytes())
+        environment = {
+            "FAKE_S3": str(self.directory / "bucket"),
+            "FAKE_S3_LOG": str(self.directory / "s3.log"),
+            **environment,
+        }
+        patched = {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", **environment}
+        for name, value in patched.items():
+            self.addCleanup(
+                os.environ.__setitem__ if name == "PATH" else os.environ.pop,
+                *((name, os.environ[name]) if name == "PATH" else (name, None)),
+            )
+            os.environ[name] = value
+        return tree_root, scope, bucket
+
+    def s3_log(self) -> list[str]:
+        """Every upload and delete of the channel, in order, as `action key` with the key relative to the bucket prefix."""
+        log = self.directory / "s3.log"
+        lines = log.read_text().splitlines() if log.exists() else []
+        return [line.replace(" prefix/", " ", 1) for line in lines if " prefix/bingux/nightly/" in line]
+
+    def held(self, bucket: Path) -> list[str]:
+        return sorted(str(p.relative_to(bucket)) for p in (bucket / "bingux" / "nightly").rglob("*") if p.is_file())
+
+    def wanted(self, tree_root: Path, scope: Path) -> list[str]:
+        return sorted(str(p.relative_to(tree_root)) for p in scope.rglob("*") if p.is_file())
+
+    def test_s3_publish_keeps_every_package_that_has_a_signature_when_the_bucket_lists_signatures_first(self):
+        """`aws s3 sync` saw `name` as new and as gone in one run, and the delete could land after the upload."""
+        files = {f"arch/x86_64/pkg-{n}-any.pkg.tar.zst": f"package {n}".encode() for n in range(6)}
+        tree_root, scope, bucket = self.fake_bucket(files)
+        # What the bucket holds from an earlier run: one package of another size and one stale file.
+        (bucket / "bingux/nightly/arch/x86_64/pkg-0-any.pkg.tar.zst").write_bytes(b"short")
+        (bucket / "bingux/nightly/arch/x86_64/old-any.pkg.tar.zst").write_bytes(b"old")
+        publish.plan_s3(tree_root, "bingux/nightly", "s3://bucket/prefix", [], env={}).execute()
+        self.assertEqual(self.held(bucket), self.wanted(tree_root, scope))
+        self.assertEqual((bucket / "bingux/nightly/arch/x86_64/pkg-0-any.pkg.tar.zst").read_bytes(), b"package 0")
+
+    def test_s3_publish_never_deletes_a_key_of_the_tree_whatever_order_the_bucket_lists_its_keys_in(self):
+        files = {f"arch/x86_64/pkg-{n}-any.pkg.tar.zst": f"package {n}".encode() for n in range(8)}
+        for seed in range(8):
+            with self.subTest(seed=seed):
+                shutil.rmtree(self.directory / "s3tree", ignore_errors=True)
+                shutil.rmtree(self.directory / "bucket", ignore_errors=True)
+                (self.directory / "s3.log").unlink(missing_ok=True)
+                tree_root, scope, bucket = self.fake_bucket(files, FAKE_S3_SEED=str(seed))
+                (bucket / "bingux/nightly/arch/x86_64/old-any.pkg.tar.zst").write_bytes(b"old")
+                (bucket / "bingux/nightly/arch/x86_64/old-any.pkg.tar.zst.sig").write_bytes(b"old")
+                (bucket / "bingux/nightly/arch/x86_64/pkg-3-any.pkg.tar.zst").unlink()
+                publish.plan_s3(tree_root, "bingux/nightly", "s3://bucket/prefix", [], env={}).execute()
+                keys = {"bingux/nightly/" + str(p.relative_to(scope)) for p in scope.rglob("*") if p.is_file()}
+                deleted = [line.split(" ", 1)[1] for line in self.s3_log() if line.startswith("delete ")]
+                self.assertEqual(
+                    sorted(deleted),
+                    [
+                        "bingux/nightly/arch/x86_64/old-any.pkg.tar.zst",
+                        "bingux/nightly/arch/x86_64/old-any.pkg.tar.zst.sig",
+                    ],
+                )
+                self.assertFalse(set(deleted) & keys)
+                actions = [line.split(" ", 1)[0] for line in self.s3_log()]
+                self.assertEqual(
+                    actions, sorted(actions, key=lambda action: action == "delete"), "a delete before an upload"
+                )
+                self.assertEqual(self.held(bucket), self.wanted(tree_root, scope))
+
+    def test_s3_publish_uploads_a_replaced_package_of_the_same_size_and_leaves_an_unchanged_one_alone(self):
+        old = {"arch/x86_64/replaced-any.pkg.tar.zst": b"old bytes", "arch/x86_64/same-any.pkg.tar.zst": b"same bytes"}
+        new = {"arch/x86_64/replaced-any.pkg.tar.zst": b"new bytes", "arch/x86_64/same-any.pkg.tar.zst": b"same bytes"}
+        # The listing has no ETag here, so the size is all the bucket can say: the manifest decides.
+        tree_root, scope, bucket = self.fake_bucket(new, FAKE_S3_ETAG="none")
+        (bucket / "bingux/nightly/arch/x86_64/replaced-any.pkg.tar.zst").write_bytes(
+            old["arch/x86_64/replaced-any.pkg.tar.zst"]
+        )
+        previous = {Path(path).name: hashlib.sha256(data).hexdigest() for path, data in old.items()}
+        changed = publish.changed_packages(tree_root, "bingux/nightly", previous)
+        replaced = "bingux/nightly/arch/x86_64/replaced-any.pkg.tar.zst"
+        self.assertEqual(changed, [replaced, replaced + ".sig"])
+        publish.plan_s3(tree_root, "bingux/nightly", "s3://bucket/prefix", changed, env={}).execute()
+        uploads = [line for line in self.s3_log() if line.startswith("upload ") and ".pkg.tar.zst" in line]
+        self.assertEqual(sorted(uploads), [f"upload {replaced}", f"upload {replaced}.sig"])
+        self.assertEqual((bucket / "bingux/nightly/arch/x86_64/replaced-any.pkg.tar.zst").read_bytes(), b"new bytes")
+
+    def test_s3_publish_uploads_an_unchanged_package_whose_object_has_other_bytes_of_the_same_size(self):
+        files = {"arch/x86_64/pkg-any.pkg.tar.zst": b"package bytes"}
+        tree_root, scope, bucket = self.fake_bucket(files)
+        (bucket / "bingux/nightly/arch/x86_64/pkg-any.pkg.tar.zst").write_bytes(
+            b"corrupt bytes"
+        )  # the md5 ETag differs
+        previous = {"pkg-any.pkg.tar.zst": hashlib.sha256(b"package bytes").hexdigest()}
+        changed = publish.changed_packages(tree_root, "bingux/nightly", previous)
+        self.assertEqual(changed, [])
+        publish.plan_s3(tree_root, "bingux/nightly", "s3://bucket/prefix", changed, env={}).execute()
+        self.assertEqual((bucket / "bingux/nightly/arch/x86_64/pkg-any.pkg.tar.zst").read_bytes(), b"package bytes")
 
     def test_unknown_backend_and_unbuilt_channel(self):
         with self.assertRaises(ValueError):
@@ -1007,6 +1226,7 @@ class PublishedChannel(unittest.TestCase):
       - a file of a package that has an architecture is missing (error, nothing to restore it from),
       - the signature of a package is missing (error),
       - the listed copy is present but does not match the manifest sha256 (error).
+    --restore-from DIR takes a file that no copy can replace from a channel tree, when its sha256 is the manifest's.
     """
 
     PAYLOAD = b"architecture independent package"
@@ -1100,8 +1320,23 @@ class PublishedChannel(unittest.TestCase):
             text=True,
         )
 
-    def pull(self):
-        return self.run_command("pull", "--output", str(self.output))
+    def pull(self, *extra: str):
+        return self.run_command("pull", "--output", str(self.output), *extra)
+
+    def restore_tree(self, files: dict[str, bytes]) -> str:
+        """A channel tree like the published one, as the repository artifact of an earlier run has it."""
+        directory = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, directory, True)
+        for relative, data in files.items():
+            (directory / relative).parent.mkdir(parents=True, exist_ok=True)
+            (directory / relative).write_bytes(data)
+        return str(directory)
+
+    def lost(self) -> str:
+        return f"arch/aarch64/{self.independent.filename}"
+
+    def pulled(self, relative: str) -> Path:
+        return self.output / "gnoblin" / "nightly" / relative
 
     def verify(self):
         return self.run_command("verify-published")
@@ -1191,6 +1426,64 @@ class PublishedChannel(unittest.TestCase):
         done = self.pull()
         self.assertNotEqual(done.returncode, 0)
         self.assertIn("does not match the sha256", done.stderr)
+
+    def test_a_lost_file_is_restored_from_a_tree_with_the_same_sha256(self):
+        self.publish(independent=None)
+        tree = self.restore_tree({self.lost(): self.PAYLOAD})
+        done = self.pull("--restore-from", tree)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        digest = hashlib.sha256(self.PAYLOAD).hexdigest()
+        self.assertIn(f"restored from {tree}/{self.lost()} (sha256 {digest}", done.stderr)
+        self.assertEqual(self.pulled(self.lost()).read_bytes(), self.PAYLOAD)
+        self.assertIn("pulled 3 packages", done.stdout)
+
+    def test_a_file_with_another_sha256_is_not_restored(self):
+        self.publish(independent=None)
+        done = self.pull("--restore-from", self.restore_tree({self.lost(): b"other bytes"}))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("not restoring it", done.stderr)
+        self.assertIn(self.MISSING, done.stderr)
+
+    def test_a_file_that_the_tree_does_not_have_is_an_error_as_before(self):
+        self.publish(independent=None)
+        done = self.pull("--restore-from", self.restore_tree({"arch/aarch64/unrelated.pkg.tar.zst": b"x"}))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(self.MISSING, done.stderr)
+
+    def test_a_missing_file_is_still_an_error_when_another_one_is_restorable(self):
+        self.publish(independent=None, native=False)
+        done = self.pull("--restore-from", self.restore_tree({self.lost(): self.PAYLOAD}))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(f"arch/aarch64/{self.native.filename} is " + self.MISSING, done.stderr)
+
+    def test_the_copy_fallback_comes_before_the_restore_tree(self):
+        self.publish(independent=None, copy=self.PAYLOAD)
+        done = self.pull("--restore-from", self.restore_tree({self.lost(): self.PAYLOAD}))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("using the copy at arch/x86_64/", done.stderr)
+        self.assertNotIn("restored from", done.stderr)
+
+    def test_a_lost_signature_is_restored_with_an_available_package_file(self):
+        self.publish(signatures=True, copy=self.PAYLOAD)
+        (self.site / "gnoblin" / "nightly" / (self.lost() + ".sig")).unlink()
+        tree = self.restore_tree({self.lost() + ".sig": b"signature"})
+        done = self.pull("--restore-from", tree)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("the manifest has no signature digest", done.stderr)
+        self.assertEqual(self.pulled(self.lost() + ".sig").read_bytes(), b"signature")
+
+    def test_a_lost_signature_is_not_restored_when_its_package_file_is_lost_and_not_restorable(self):
+        self.publish(signatures=True, independent=None)
+        done = self.pull("--restore-from", self.restore_tree({self.lost() + ".sig": b"signature"}))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(self.MISSING, done.stderr)
+
+    def test_a_lost_signature_is_an_error_without_the_tree(self):
+        self.publish(signatures=True, copy=self.PAYLOAD)
+        (self.site / "gnoblin" / "nightly" / (self.lost() + ".sig")).unlink()
+        done = self.pull()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(".sig is " + self.MISSING, done.stderr)
 
 
 if __name__ == "__main__":

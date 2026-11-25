@@ -35,7 +35,7 @@ repo.gnoblin.org/
       manifest.json                            every package, its sha256, the commit it was built from
       fedora/
         gnoblin-stable.repo                    ready-made dnf repository file ($releasever, $basearch)
-        <release>/<arch>/                      45/x86_64/: RPMs, repodata/, repodata/repomd.xml.asc
+        <release>/<arch>/                      43/x86_64/: RPMs, repodata/, repodata/repomd.xml.asc
       opensuse/
         <release>/gnoblin-stable.repo
         <release>/<arch>/                      tumbleweed/x86_64/
@@ -55,7 +55,7 @@ repo.gnoblin.org/
 Details that matter:
 
 - `<release>` of RPM trees is what the package manager substitutes: Fedora's
-  `$releasever` is `45`, so `fedora/$releasever/$basearch` resolves. openSUSE
+  `$releasever` is `43`, `44` or `45`, so `fedora/$releasever/$basearch` resolves; each release has its own tree. openSUSE
   Tumbleweed has no number, so its `.repo` file names `tumbleweed`.
 - Architecture-independent packages (`noarch`, `all`, `any`) are copied into
   every architecture directory of their release, so a client never needs a
@@ -290,6 +290,23 @@ file:
 3. removal of files the new tree no longer has, and of the retired `index.html` at the site root (an earlier version
    of the tool wrote index pages; none are written now).
 
+The `s3` back end does not use `aws s3 sync` for package files or removals. The cause of the loss it replaces is
+inferred. Nightly 41984281147 uploaded and deleted the same key in one sync for every arch package and pacman database
+file that has a `.sig` beside it (and not for the `.sig` files), and two copies of an architecture-independent package
+were left deleted. `aws s3 sync` walks the local tree and the bucket listing in step, so it does that when the bucket
+lists `name.sig` before `name`. Against a local S3 server patched to list keys in that order, the pinned
+`aws-cli/2.23.6` reproduces it: it uploads and deletes every package that has a signature, in every run, and the bucket
+loses files. Against an unmodified server (keys in byte order) it does nothing. It has not been reproduced against the
+real bucket, so that the bucket lists in that order is an inference from the logs.
+
+The replacement is safe whatever the cause, because it does not depend on the order of the listing. It lists the bucket
+once, as a dictionary. It uploads every package file whose sha256 differs from the published manifest (or that the
+manifest does not list) without asking the bucket. It uploads each other package file that is missing, whose size
+differs, or, when the object's ETag is a plain md5 (a single-part upload), whose md5 differs. Only after every upload
+does it delete, and only keys that are not in the tree. Every upload and delete is printed. A copy that an earlier
+publication lost is uploaded again by the next publication, because every architecture directory of the tree has its
+copy.
+
 `--dry-run` is the default: the tool prints the plan, and only `--apply` uploads.
 
 A build merges with the packages that are already published, so a build made
@@ -305,6 +322,21 @@ without them would remove them on upload. Two checks guard against it:
   sha256 equals the manifest's, and says so on stderr. The next publication
   uploads the file again. Every other missing file, and a copy with other bytes,
   stays an error.
+- `pkgrepo pull --restore-from DIR` repairs a manifest that lists a file the host
+  lost, when another copy of it exists. `DIR` is a channel tree laid out like the
+  published one (`DIR/arch/aarch64/...`), usually the `repository-<project>-<channel>-*`
+  artifact of the run that built the file. A listed file that is unavailable at
+  the URL, and has no copy in another architecture directory, is taken from the
+  same relative path in `DIR`, only when its sha256 equals the manifest's; a
+  file with other bytes is not used. The manifest records no digest for a
+  signature, so a missing signature is taken from `DIR` when its package file is
+  available (it is handled first, so already fetched or restored), and the build
+  and `verify` check it against the key like every signature. Every restored file
+  is printed to stderr with its path, sha256 and source. Nothing is dropped, so
+  the package list does not change, and any file that cannot be restored still
+  fails the pull. An orphan signature that the host kept is not a problem: the
+  publish step uploads the restored package file and overwrites it. No workflow
+  passes `--restore-from` yet: run the pull by hand with it once, then without it.
 - `pkgrepo publish` refuses a first publication when the destination already
   has a `manifest.json` for the channel. That is the sign that `REPO_URL` and
   `REPO_DESTINATION` name different places, or that the pull saw nothing.
@@ -371,7 +403,7 @@ Gnoblin (`.github/workflows`):
   `nightly/manifest.json` differs from the commit of the run. A push to `main`, a pull request or a
   manual dry run builds and verifies the tree with a throw-away key and publishes nothing.
 - `package-repository.yml` is the reusable stage. It takes one concurrency group
-  per channel, so two publications never interleave. It sorts the packages into `fedora/45`,
+  per channel, so two publications never interleave. It sorts the packages into one `fedora/<release>` tree per Fedora release,
   `opensuse/tumbleweed`, `deb/forky`, `arch` and `alpine/edge/<arch>`.
 
 Bingux has its own workflows with the same stages and its own pkgsmith definitions.
