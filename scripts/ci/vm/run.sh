@@ -66,7 +66,8 @@ case "$distro" in
         sums_url=$image_url.sha256
         seat_group=seat
         # seatd-systemd carries seatd.service and the sysusers entry for the seat group; --no-recommends skips it.
-        install="sudo zypper --non-interactive --gpg-auto-import-keys install --no-recommends seatd seatd-systemd libseat1 Mesa-dri Mesa-libEGL1 libgbm1 Mesa-demo-egl libinput10 libxkbcommon0 libpipewire-0_3-0 libwacom-data libgudev-1_0-0 libpixman-1-0 dbus-1-daemon foot gtk4-tools gtk3-tools MozillaFirefox xwayland xterm xeyes xwininfo wev dejavu-fonts"
+        # The widget factories are in gtk4-devel-tools and gtk3-devel, not in gtk4-tools and gtk3-tools.
+        install="sudo zypper --non-interactive --gpg-auto-import-keys install --no-recommends seatd seatd-systemd libseat1 Mesa-dri Mesa-libEGL1 libgbm1 Mesa-demo-egl libinput10 libxkbcommon0 libpipewire-0_3-0 libwacom-data libgudev-1_0-0 libpixman-1-0 dbus-1-daemon foot gtk4-devel-tools gtk3-devel MozillaFirefox xwayland xterm xeyes xwininfo wev dejavu-fonts"
         ;;
     *)
         echo "[vm] unknown distribution '$distro' (fedora-43, arch, debian-13, opensuse-tumbleweed)" >&2
@@ -195,7 +196,8 @@ guest "$install" >"$out/install.log" 2>&1 || {
     tail -20 "$out/install.log"
     exit 1
 }
-guest "sudo usermod -aG $seat_group ci && sudo systemctl enable --now seatd && ls /dev/dri/card0" >>"$out/install.log" 2>&1 ||
+# Any card node will do: on openSUSE Tumbleweed the virtio_gpu device is /dev/dri/card1 and there is no card0.
+guest "sudo usermod -aG $seat_group ci && sudo systemctl enable --now seatd && ls /dev/dri/card[0-9]*" >>"$out/install.log" 2>&1 ||
     {
         log "no seat or no DRM device"
         tail -20 "$out/install.log"
@@ -253,7 +255,9 @@ check_client foot foot 6 'foot sh -c "while true; do date +%T; sleep 1; done"'
 check_client gtk4 gtk4-widget-fac 12 'gtk4-widget-factory'
 check_client gtk3 gtk3-widget-fac 12 'gtk3-widget-factory'
 guest 'printf "<!doctype html><title>Gnoblin CI</title><h1>Gnoblin CI</h1><p>A local page, default Firefox settings.</p>" > ~/page.html; rm -rf ~/firefox-profile; mkdir -p ~/firefox-profile'
-firefox=$(guest 'command -v firefox || command -v firefox-esr' | head -1)
+# firefox-esr first: Debian's /usr/bin/firefox is a script that execs firefox-esr, so the process the check looks for
+# would not be named firefox.
+firefox=$(guest 'command -v firefox-esr || command -v firefox' | head -1)
 check_client firefox "$(basename "$firefox")" 30 "$firefox --no-remote --profile \$HOME/firefox-profile --new-instance file://\$HOME/page.html"
 check_client xeyes xeyes 8 'xeyes -geometry 300x200'
 
