@@ -1435,12 +1435,12 @@ print("ok")
             }
         }
         assert!(missing.is_empty(), "members missing:\n{}", missing.join("\n"));
-        // The members a library calls on the shell (an interface method, a callback, a signal) still hand the client over as text: a value
-        // the library makes for a class of the core's needs the core's registry of wrappers.
+        // The members a library calls on the shell (an interface method, a signal) hand the client over as the core's class too: the library
+        // sends the core's object, and the shell's runtime reads it in the core's namespace.
         assert!(
             dts.lines()
-                .any(|line| line.contains("clientAdded(") && line.contains("client: string")),
-            "the layout interface still hears the client as text"
+                .any(|line| line.contains("clientAdded(") && line.contains("client: ModelClient")),
+            "the layout interface hears the client as the core's `Client`"
         );
     }
 }

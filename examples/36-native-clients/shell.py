@@ -29,18 +29,16 @@ main = Workspace("main")
 Workspaces.get().add(main)
 
 
-# The library puts a window on the workspace as it appears and tells the shell its id as text. ``clients.get(id)`` is the ``Client`` of it,
-# which ``add`` and ``contains`` take.
+# The library puts a window on the workspace as it appears and tells the shell of it with the core's ``Client``: the same object the core's
+# own collections give, which ``add`` and ``contains`` take as it is.
 members = main.clients
 
 
 @members.on("added")
-def joined(id):
-    client = gnoblin.clients.get(id)
-    if client is None:
-        return
+def joined(client):
     members.add(client)
     say(f"{client.title}: it is in main: {str(members.contains(client)).lower()}")
+    say(f"{client.title}: the library's client is the core's: {str(client is gnoblin.clients.get(client.id)).lower()}")
 
 
 @gnoblin.clients.on("added")

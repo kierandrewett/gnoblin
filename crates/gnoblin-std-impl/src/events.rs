@@ -107,6 +107,7 @@ impl State {
                 ..ClientRec::default()
             },
         );
+        crate::object::client::client_arrived(self.ctx, id);
     }
 
     /// A window the library did not know came into the tree: the listeners hear it, and the window gets a workspace.
@@ -163,6 +164,7 @@ impl State {
         let root = self.roots[0];
         self.notify_one(abi::STD_EVENT_REMOVED, id, root);
         self.rec.remove(&id);
+        crate::object::client::forget_client(self.ctx, id);
         self.recompute(abi::STD_COLLECTION_CLIENTS, id);
     }
 
@@ -359,6 +361,9 @@ pub(crate) fn open_model(ctx: GnoblinCtx) -> Res<Rc<Std>> {
         state::remove(ctx);
         return Err(fail);
     }
+    // The windows already open have their `Client`s looked up now: the library runs no turn until something changes, and a window
+    // that closes first must still be told of as the core's object.
+    crate::object::client::look_up_arrivals(ctx);
     Ok(std)
 }
 

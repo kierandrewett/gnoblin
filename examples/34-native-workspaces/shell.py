@@ -83,8 +83,8 @@ say(f"the list holds {workspaces.length} workspaces: {main.id} at {main.index}, 
 clients = main.clients
 
 
-def joined(node):
-    say(f"client {node} joined {main.id}, {clients.length} windows")
+def joined(client):
+    say(f"client {client.id} joined {main.id}, {clients.length} windows")
 
 
 clients.on("added", joined)
@@ -128,7 +128,7 @@ def drag(event):
         hit = context.hit_test(event.position)
         # The window under the press; a layout whose divider does not depend on the point is asked about the first window.
         members = clients.members
-        client = hit.client if hit is not None else (Gnoblin.get().clients.get(members[0]) if members else None)
+        client = hit.client if hit is not None else (members[0] if members else None)
         split = main.find_split(client, x, y) if client is not None else None
         if split is None:
             say("the press is on no divider")

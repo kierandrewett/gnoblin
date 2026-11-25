@@ -75,14 +75,21 @@ pub(crate) fn announce(std: &Std, notice: &Notice) {
         let Some(obj) = obj else { continue };
         let _ = with_lib(|lib| {
             lib.with_cx(ctx, obj, |cx| {
-                let fields = fields
+                let fields: Res<Vec<_>> = fields
                     .into_iter()
                     .map(|field| match field {
-                        values::SignalField::Plain(value) => value,
-                        values::SignalField::Workspace(id) => workspaces::plain_workspace(cx, id),
+                        values::SignalField::Plain(value) => Ok(value),
+                        values::SignalField::Client(node) => values::client_val(ctx, node),
+                        values::SignalField::Workspace(id) => Ok(workspaces::plain_workspace(cx, id)),
                     })
                     .collect();
-                cx.emit(signal, fields);
+                match fields {
+                    Ok(fields) => cx.emit(signal, fields),
+                    Err(fail) => cx.log(
+                        gnoblin_core_abi::LOG_WARN,
+                        &format!("the signal `{signal}` was not told: {fail}"),
+                    ),
+                }
             })
         });
     }

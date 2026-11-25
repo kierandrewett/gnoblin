@@ -20,16 +20,13 @@ menus.start();
 const main = new Workspace("main");
 Workspaces.get().add(main);
 
-// The library puts a window on the workspace as it appears and tells the shell its id as text. `clients.get(id)` is the `Client` of it,
-// which `add` and `contains` take.
+// The library puts a window on the workspace as it appears and tells the shell of it with the core's `Client`: the same object the core's own
+// collections give, which `add` and `contains` take as it is.
 const members = main.clients!;
-members.on("added", (id: string) => {
-    const client = gnoblin.clients.get(id);
-    if (client === undefined) {
-        return;
-    }
+members.on("added", (client) => {
     members.add(client);
     say(`${client.title}: it is in main: ${members.contains(client)}`);
+    say(`${client.title}: the library's client is the core's: ${client === gnoblin.clients.get(client.id)}`);
 });
 
 gnoblin.clients.on("added", (client) => {

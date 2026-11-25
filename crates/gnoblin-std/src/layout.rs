@@ -26,10 +26,12 @@
 //! call back into the SDK (to ask for another pass with [`Workspace::invalidate`], say).
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
 use gnoblin_core::Rect;
+use gnoblin_core::objects as model;
 use gnoblin_object as go;
 
 use crate::api::Std;
@@ -354,8 +356,9 @@ fn rect_out(rect: Rect) -> classes::LayoutRect {
     }
 }
 
-/// The client a text id names.
-fn client_of(std: &Std, id: &str) -> go::Res<Client> {
+/// The shell's client of a core `Client` the library passed.
+fn client_of(std: &Std, client: &model::Client) -> go::Res<Client> {
+    let id = client.id()?;
     id.parse()
         .ok()
         .and_then(|raw| Client::from_raw_id(std, raw))
@@ -369,19 +372,31 @@ fn context(std: &Std, cx: &classes::LayoutContext) -> go::Res<LayoutContext> {
         children: cx
             .children
             .iter()
-            .map(|id| client_of(std, id))
+            .map(|client| client_of(std, client))
             .collect::<go::Res<Vec<_>>>()?,
         area: rect_of(&cx.area),
         gap_inner: cx.inner_gap,
         gap_outer: cx.outer_gap,
-        focused: cx.focused.as_deref().map(|id| client_of(std, id)).transpose()?,
+        focused: cx.focused.as_ref().map(|client| client_of(std, client)).transpose()?,
     })
 }
 
-/// A placement as the class's record.
-fn placement_out(placement: &Placement) -> classes::LayoutPlacement {
-    classes::LayoutPlacement {
-        node: placement.client.window().id().0.to_string(),
+/// A placement as the class's record. The core `Client` it names is taken from `children`, the ones the library passed, or asked of the
+/// core for a client the layout placed that was not among them (which the library then refuses by name).
+fn placement_out(
+    std: &Std,
+    children: &mut HashMap<u64, model::Client>,
+    placement: &Placement,
+) -> go::Res<classes::LayoutPlacement> {
+    let node = placement.client.window().id();
+    let client = match children.remove(&node.0) {
+        Some(client) => client,
+        None => std
+            .core_client(node)
+            .map_err(|error| go::Fail::err(error.to_string()))?,
+    };
+    Ok(classes::LayoutPlacement {
+        node: client,
         bounds: placement.bounds.map(rect_out),
         visible: placement.visible,
         tiled: placement.tiled,
@@ -390,7 +405,7 @@ fn placement_out(placement: &Placement) -> classes::LayoutPlacement {
         scale: Some(placement.scale.to_vec()),
         offset_x: placement.offset.map(|(x, _)| x),
         offset_y: placement.offset.map(|(_, y)| y),
-    }
+    })
 }
 
 /// Runs a hook of the shell's layout. A panic in it is the library's error, not the process's.
@@ -407,22 +422,30 @@ fn handlers(std: &Std, layout: Box<dyn Layout>, removal: bool) -> classes::Layou
         Box::new(move |cx: classes::LayoutContext| {
             let context = context(&std, &cx)?;
             let placements = guarded(|| layout.borrow_mut().compute(&context))?;
-            Ok(placements.iter().map(placement_out).collect())
+            let mut children: HashMap<u64, model::Client> = cx
+                .children
+                .into_iter()
+                .filter_map(|client| Some((client.id().ok()?.parse().ok()?, client)))
+                .collect();
+            placements
+                .iter()
+                .map(|placement| placement_out(&std, &mut children, placement))
+                .collect()
         })
     };
     let client_added = {
         let (layout, std) = (Rc::clone(&shared), std.clone());
-        Box::new(move |cx: classes::LayoutContext, id: String| {
-            let (context, client) = (context(&std, &cx)?, client_of(&std, &id)?);
+        Box::new(move |cx: classes::LayoutContext, client: model::Client| {
+            let (context, client) = (context(&std, &cx)?, client_of(&std, &client)?);
             guarded(|| layout.borrow_mut().client_added(&client, &context))
-        }) as Box<dyn FnMut(classes::LayoutContext, String) -> go::Res<()>>
+        }) as Box<dyn FnMut(classes::LayoutContext, model::Client) -> go::Res<()>>
     };
     let client_removed = removal.then(|| {
         let (layout, std) = (Rc::clone(&shared), std.clone());
-        Box::new(move |cx: classes::LayoutContext, id: String| {
-            let (context, client) = (context(&std, &cx)?, client_of(&std, &id)?);
+        Box::new(move |cx: classes::LayoutContext, client: model::Client| {
+            let (context, client) = (context(&std, &cx)?, client_of(&std, &client)?);
             guarded(|| layout.borrow_mut().client_removed(&client, &context))
-        }) as Box<dyn FnMut(classes::LayoutContext, String) -> go::Res<()>>
+        }) as Box<dyn FnMut(classes::LayoutContext, model::Client) -> go::Res<()>>
     });
     let area_changed = {
         let layout = Rc::clone(&shared);
@@ -432,7 +455,7 @@ fn handlers(std: &Std, layout: Box<dyn Layout>, removal: bool) -> classes::Layou
     };
     let clients_swapped = {
         let (layout, std) = (Rc::clone(&shared), std.clone());
-        Box::new(move |a: String, b: String| {
+        Box::new(move |a: model::Client, b: model::Client| {
             let (a, b) = (client_of(&std, &a)?, client_of(&std, &b)?);
             guarded(|| layout.borrow_mut().clients_swapped(&a, &b))
         })
@@ -443,8 +466,8 @@ fn handlers(std: &Std, layout: Box<dyn Layout>, removal: bool) -> classes::Layou
     };
     let find_split = {
         let (layout, std) = (Rc::clone(&shared), std.clone());
-        Box::new(move |id: String, x: f64, y: f64| {
-            let client = client_of(&std, &id)?;
+        Box::new(move |client: model::Client, x: f64, y: f64| {
+            let client = client_of(&std, &client)?;
             let found = guarded(|| layout.borrow_mut().find_split(&client, Point { x, y }))?;
             Ok(found.map(|split| split.to_class()).into_iter().collect())
         })

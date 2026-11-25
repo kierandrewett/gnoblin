@@ -416,6 +416,7 @@ pub(crate) fn retire(ctx: GnoblinCtx) {
         crate::bindings::retire(&std);
         crate::workspace_objects::retired(std.st.borrow().ctx);
         crate::display_objects::retired(std.st.borrow().ctx);
+        crate::object::client::retired(std.st.borrow().ctx);
         let (regs, workspaces, graveyard) = {
             let mut st = std.st.borrow_mut();
             // The generation ends its hold on the compositor: the `tween` nodes of the transitions still running go.

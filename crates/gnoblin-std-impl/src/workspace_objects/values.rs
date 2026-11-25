@@ -2,6 +2,7 @@
 //! the objects (`announce`).
 
 use gnoblin_core::Rect;
+use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::{Fail, Res, Val};
 use gnoblin_std_abi as abi;
 
@@ -14,17 +15,24 @@ pub(crate) const NOTICE_SHOWN: u32 = 0x100;
 /// A notice that no listener of the table hears: the workspace `member` stopped being shown on the output `output`.
 pub(crate) const NOTICE_HIDDEN: u32 = 0x101;
 
-/// A client as the value it has in the catalog: its node number as text, as the core's `client.id` is. A node number has the top bit set
-/// and a script's number (a double in JavaScript) holds 53 bits, so a number would round it.
-pub(super) fn client_val(node: NodeId) -> Val {
-    Val::Text(node.to_string())
+/// A client as the value it has in the catalog: the core's `Client` of the window (`object:gnoblin.model.client`). The value holds no
+/// reference: an answer must go through `Cx::hand_out` before it is returned, and a signal takes its own.
+pub(super) fn client_val(ctx: GnoblinCtx, node: NodeId) -> Res<Val> {
+    crate::object::client::client_value(ctx, node)
 }
 
-/// The node a client value names.
-pub(super) fn client_of(value: &Val) -> Res<NodeId> {
-    let text = value.text()?;
-    text.parse::<NodeId>()
-        .map_err(|_| Fail::type_error(format!("a client is the number of its node as text, got `{text}`")))
+/// The node of the window a client value is: the core's `Client`, as the shell passes it.
+pub(super) fn client_of(ctx: GnoblinCtx, member: &str, value: &Val) -> Res<NodeId> {
+    crate::object::client::client_node(ctx, member, value)
+}
+
+/// Each node of `nodes` as a client value, in a list.
+pub(super) fn clients_val(ctx: GnoblinCtx, nodes: impl IntoIterator<Item = NodeId>) -> Res<Val> {
+    nodes
+        .into_iter()
+        .map(|node| client_val(ctx, node))
+        .collect::<Res<Vec<Val>>>()
+        .map(Val::List)
 }
 
 /// A `layout_rect` as a value.
@@ -116,6 +124,8 @@ pub(super) enum SignalHome {
 /// One field of a signal's payload.
 pub(super) enum SignalField {
     Plain(Val),
+    /// The core's `Client` of a window, looked up only when the signal has an object to be told on.
+    Client(NodeId),
     /// The object of a workspace, made when a shell has none yet.
     Workspace(Id),
 }
@@ -132,7 +142,7 @@ pub(super) fn told_by(st: &State, notice: &Notice) -> Vec<(SignalHome, &'static 
                     told.push((
                         SignalHome::Collection(*holder),
                         if added { "added" } else { "removed" },
-                        vec![SignalField::Plain(client_val(notice.member))],
+                        vec![SignalField::Client(notice.member)],
                     ));
                     if let Some(workspace) = st
                         .ws
@@ -142,7 +152,7 @@ pub(super) fn told_by(st: &State, notice: &Notice) -> Vec<(SignalHome, &'static 
                         told.push((
                             SignalHome::Workspace(workspace),
                             if added { "client_added" } else { "client_removed" },
-                            vec![SignalField::Plain(client_val(notice.member))],
+                            vec![SignalField::Client(notice.member)],
                         ));
                     }
                 } else if coll.kind == abi::STD_COLLECTION_WORKSPACES && *holder == st.roots[2] {

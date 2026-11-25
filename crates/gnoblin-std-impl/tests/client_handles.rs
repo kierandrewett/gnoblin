@@ -397,6 +397,119 @@ fn an_object_of_another_class_is_a_type_error_everywhere() {
     every_member_refuses(&world, &claims, abi::E_TYPE, &["Client", "another class"]);
 }
 
+/// The library tells a shell of a window with the core's own `Client` (`VALUE_FOREIGN_OBJECT`), and each read hands out a reference of its
+/// own: giving it back leaves the library's, so the next read is the same object. When the window closes, a listener is told with the core's
+/// object, frozen with its last values; once the library's turn is over it lets its own reference go, and the core ends the client when
+/// nobody else holds it.
+#[test]
+fn a_client_the_library_tells_of_is_the_cores_object_with_a_reference_of_its_own() {
+    let mut world = World::new();
+    let core = world.rig.core;
+    let Val::Object { class, obj } = world.rig.function("client_collection", "all", &[]) else {
+        panic!("`all` answers a list of clients");
+    };
+    let all = W {
+        api: world.rig.api,
+        class,
+        obj,
+    };
+    let first = || match all.get("members").list().expect("members is a list").first() {
+        Some(Val::Foreign { namespace, obj }) if namespace == "gnoblin.model" => *obj,
+        other => panic!("a client the library tells of is the core's object: {other:?}"),
+    };
+    let read = |obj: u64, name: &str| {
+        core.class_of(obj)
+            .and_then(|class| core.member(class, abi::MEMBER_PROPERTY, name))
+            .and_then(|member| core.get(obj, member))
+    };
+    let client = first();
+    let node: u64 = read(client, "id").unwrap().text().unwrap().parse().unwrap();
+    let title = read(client, "title")
+        .expect("the core reads its own client")
+        .text()
+        .unwrap()
+        .to_owned();
+    core.release(client).unwrap();
+    assert_eq!(
+        first(),
+        client,
+        "the library's own reference kept the client, and it is the same object"
+    );
+    core.release(client).unwrap();
+
+    let told = Rc::new(Cell::new(false));
+    let heard = Rc::clone(&told);
+    let removed = world.rig.api.member(class, abi::MEMBER_SIGNAL, "removed").unwrap();
+    let expected = title.clone();
+    world
+        .rig
+        .api
+        .listen(all.obj, removed, move |_, args| {
+            let Some(Val::Foreign { obj, .. }) = args.first() else {
+                panic!("the client that left is the core's object: {args:?}");
+            };
+            if *obj == client {
+                let class = core
+                    .class_of(*obj)
+                    .expect("the closed window's client is held for the listener");
+                let title = core
+                    .member(class, abi::MEMBER_PROPERTY, "title")
+                    .and_then(|member| core.get(*obj, member))
+                    .expect("its last values are readable");
+                assert_eq!(title.text().unwrap(), expected);
+                heard.set(true);
+            }
+            core.release(*obj).unwrap();
+            Ok(Val::None)
+        })
+        .unwrap();
+    world.rig.external_destroy(node);
+    world.rig.settle();
+    assert!(told.get(), "the listener was told of the closed window");
+    assert!(
+        core.class_of(client).is_err(),
+        "after its turn the library let the closed window's client go, and nothing else holds it"
+    );
+}
+
+/// A shell that listens only for a window leaving, from after the windows came, and never read one: the library has never handed that
+/// window's `Client` out when it closes, and it still tells the listener with the core's object, frozen with its last values. The rig is
+/// bare (no workspace, menu, frame or policy object), so nothing of the library has looked the window up before it closes.
+#[test]
+fn a_window_the_shell_never_read_is_told_closing_as_the_cores_object() {
+    let mut rig = Rig::scratch_with_windows(1000.0, 800.0, 2);
+    rig.settle();
+    let core = rig.core;
+    let Val::Object { class, obj } = rig.function("client_collection", "all", &[]) else {
+        panic!("`all` answers a list of clients");
+    };
+    let removed = rig.api.member(class, abi::MEMBER_SIGNAL, "removed").unwrap();
+    let told = Rc::new(Cell::new(None));
+    let heard = Rc::clone(&told);
+    rig.api
+        .listen(obj, removed, move |_, args| {
+            let Some(Val::Foreign { obj, .. }) = args.first() else {
+                panic!("the client that left is the core's object: {args:?}");
+            };
+            let id = core
+                .class_of(*obj)
+                .and_then(|class| core.member(class, abi::MEMBER_PROPERTY, "id"))
+                .and_then(|member| core.get(*obj, member))
+                .expect("the closed window's client can be read");
+            heard.set(id.text().ok().and_then(|id| id.parse::<u64>().ok()));
+            core.release(*obj).unwrap();
+            Ok(Val::None)
+        })
+        .unwrap();
+    rig.external_destroy(4);
+    rig.settle();
+    assert_eq!(
+        told.get(),
+        Some(4),
+        "the listener was told of the closed window, as its client"
+    );
+}
+
 #[test]
 fn a_destroyed_client_is_gone_everywhere() {
     let mut world = World::new();
@@ -590,8 +703,9 @@ fn an_optional_client_left_out_is_not_a_bad_one() {
     assert_eq!(bad.expect_err("text is not a client").code, abi::E_TYPE);
 }
 
-/// The members of the schema files that take a client from the shell, as `class.member`: read from the text of the files, so a member
-/// added with the type and left out of [`members`] fails here and is not left untested.
+/// The members of the schema files that take a client from the shell (a parameter of a method or a function), as `class.member`: read from
+/// the text of the files, so a member added with the type and left out of [`members`] fails here and is not left untested. A result, a
+/// property, a record field or a signal field that names a client is what the library gives, not what it takes.
 fn catalog_members() -> Vec<String> {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../gnoblin-std-abi/schema");
     let mut found = Vec::new();
@@ -609,6 +723,8 @@ fn catalog_members() -> Vec<String> {
                     "object"
                 } else if line == "[[object.method]]" {
                     "method"
+                } else if line == "[[object.method.param]]" {
+                    "param"
                 } else {
                     ""
                 };
@@ -627,7 +743,7 @@ fn catalog_members() -> Vec<String> {
                 ("method", "name") => method = value.to_owned(),
                 _ => {}
             }
-            if key == "type" && value == "object:gnoblin.model.client" && !interface {
+            if last == "param" && key == "type" && value == "object:gnoblin.model.client" && !interface {
                 let label = format!("{class}.{method}");
                 if !found.contains(&label) {
                     found.push(label);

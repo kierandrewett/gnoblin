@@ -292,7 +292,9 @@ itself (`clients()`, `tile`, `createWorkspace`).
     - `workspace.clients.add(client)`
 - An id as text is a `TypeError`, and so is an object of another class. A member called with a window that has closed fails with
   `the client is gone`.
-- A window the library tells the shell of (an event, `members`) is still its id as text. `gnoblin.clients.get(id)` gives its `Client`.
+- A window the workspace classes tell the shell of is the core's `Client` too: `members`, the `added` and `removed` events, and a layout's
+  `children`, `focused` and `node`. It is the same object `gnoblin.clients.get(id)` gives. A window the frame, menu, policy and shell
+  classes tell the shell of is still its id as text.
 
 ```ts
 import { EntryModel, FocusPolicy } from "gnoblin-std/generated/objects";

@@ -60,6 +60,8 @@ fn the_shell_passes_a_client(language: Language, session: &mut Gnoblin) {
     // Each member takes the window the core made, and the library resolves it to the right one.
     logged(session, "clients: Terminal: the frame takes 0 0 0 0");
     logged(session, "clients: Terminal: it is in main: true");
+    // The workspace told the shell of the window with the core's `Client`: the very object the core's own collection gives.
+    logged(session, "clients: Terminal: the library's client is the core's: true");
     logged(session, "clients: Terminal: the menu is for the window: true");
 
     match language {

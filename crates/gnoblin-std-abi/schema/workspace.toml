@@ -3,8 +3,8 @@
 #
 # A workspace is a place windows are laid out in. The compositor does not know it: the library makes it, keeps its clients as a collection
 # the shell may change, and asks its layout where they go. Removing a workspace, or a window from one, never closes the window. A shell
-# passes a client to a member as the core's `Client`; a client the library tells the shell of is its node number as text (the `id` of the
-# core's client), and `gnoblin.clients.get(id)` is the `Client` of it.
+# passes a client to a member, and the library tells the shell of one, as the core's `Client` (`object:gnoblin.model.client`), the same
+# object the core's own collections give.
 #
 # The built-in layouts (master and stack, grid, monocle, dwindle, strip, arc, carousel) are classes of this module that `gnoblin-sdkgen`
 # writes from `gnoblin_std_abi::layouts::LAYOUT_KINDS`, the one table of their options and actions (`crates/gnoblin-sdkgen/src/layouts.rs`),
@@ -148,7 +148,7 @@ since = "0.2.0"
 # place).
 [[object.property]]
 name = "children"
-type = "list<string>"
+type = "list<object:gnoblin.model.client>"
 since = "0.2.0"
 
 # The workspace's rectangle. A tiling layout insets it by `outer_gap` itself.
@@ -174,7 +174,7 @@ default = 0.0
 # The child that has the keyboard; left out when none has.
 [[object.property]]
 name = "focused"
-type = "string"
+type = "object:gnoblin.model.client"
 since = "0.2.0"
 optional = true
 
@@ -189,7 +189,7 @@ kind = "record"
 # The client this placement is for.
 [[object.property]]
 name = "node"
-type = "string"
+type = "object:gnoblin.model.client"
 since = "0.2.0"
 
 # The client's rectangle; left out, the client stays where it is.
@@ -682,7 +682,7 @@ type = "object:layout_context"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # A client left the workspace.
 [[object.method]]
@@ -696,7 +696,7 @@ type = "object:layout_context"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # The workspace's rectangle changed.
 [[object.method]]
@@ -720,11 +720,11 @@ default = "native"
 
 [[object.method.param]]
 name = "a"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "b"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # A number that changes when one of the layout's own options does, so the workspace computes again. Absent, the layout never changes by
 # itself and the shell calls `invalidate`.
@@ -744,7 +744,7 @@ default = "native"
 
 [[object.method.param]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 [[object.method.param]]
 name = "x"
@@ -821,7 +821,7 @@ type = "object:floating_query"
 
 # A live list of clients, in order. A workspace's clients are one the shell changes (`add`, `remove`, `swap`, `clear`); the list of every
 # client and a selection of one (`where`) follow what the library tracks and refuse a change. `add`, `remove`, `contains` and `swap` take the
-# core's `Client`; a member listed in `members` is a client's node number as text.
+# core's `Client`, and `members` lists the core's `Client`s.
 [[object]]
 name = "client_collection"
 since = "0.2.0"
@@ -836,7 +836,7 @@ readonly = true
 # The clients, in order.
 [[object.property]]
 name = "members"
-type = "list<string>"
+type = "list<object:gnoblin.model.client>"
 since = "0.2.0"
 readonly = true
 
@@ -912,7 +912,7 @@ since = "0.2.0"
 
 [[object.signal.field]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # A client left the collection (it moved, was removed, closed, or stopped matching the selection).
 [[object.signal]]
@@ -921,7 +921,7 @@ since = "0.2.0"
 
 [[object.signal.field]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # What the library remembers about one client beyond the tree: its workspace, whether the shell floated it, the room its frame takes, the
 # sizes it allows itself, the rectangle it floats at and the zone it is snapped to.
@@ -929,10 +929,10 @@ type = "string"
 name = "client_state"
 since = "0.2.0"
 
-# The client's node number.
+# The client: the core's `Client` of the window.
 [[object.property]]
 name = "node"
-type = "string"
+type = "object:gnoblin.model.client"
 since = "0.2.0"
 readonly = true
 
@@ -1206,7 +1206,7 @@ since = "0.2.0"
 
 [[object.signal.field]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # A client left the workspace.
 [[object.signal]]
@@ -1215,7 +1215,7 @@ since = "0.2.0"
 
 [[object.signal.field]]
 name = "client"
-type = "string"
+type = "object:gnoblin.model.client"
 
 # `gnoblin.workspaces`: the list of workspaces. Adding one gives it the windows that wait for a workspace; removing one moves its windows
 # to the neighbour before it (the one after it, for the first), which is shown where the removed one was. The last workspace stays.

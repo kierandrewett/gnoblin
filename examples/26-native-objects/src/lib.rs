@@ -8,7 +8,6 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_std::objects::{
     Desks, Gaps, Layout, LayoutHandlers, LayoutPlacement, LayoutRect, MasterStackLayout, Workspace, Workspaces,
 };
@@ -19,19 +18,20 @@ fn columns() -> LayoutHandlers {
     LayoutHandlers {
         compute: Box::new(|context| {
             let area = context.area.clone();
+            let gap = context.outer_gap;
             let count = context.children.len().max(1) as f64;
-            let width = ((area.width - 2.0 * context.outer_gap) / count).floor();
+            let width = ((area.width - 2.0 * gap) / count).floor();
             Ok(context
                 .children
-                .iter()
+                .into_iter()
                 .enumerate()
                 .map(|(at, node)| {
-                    let mut placement = LayoutPlacement::new(node.clone());
+                    let mut placement = LayoutPlacement::new(node);
                     placement.bounds = Some(LayoutRect {
-                        x: area.x + context.outer_gap + width * at as f64,
-                        y: area.y + context.outer_gap,
+                        x: area.x + gap + width * at as f64,
+                        y: area.y + gap,
                         width,
-                        height: area.height - 2.0 * context.outer_gap,
+                        height: area.height - 2.0 * gap,
                     });
                     placement.tiled = true;
                     placement
@@ -72,13 +72,13 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         return Ok(());
     };
     let desks = Desks::get(&objects)?;
-    let model = ModelRoot::get(&g.objects()?)?;
     let held: Rc<RefCell<Option<Layout>>> = Rc::new(RefCell::new(None));
     let (workspace, shell) = (main, g.clone());
     clients
-        .on_added(move |node| {
+        .on_added(move |client| {
             let count = counted.length().unwrap_or(0);
-            shell.log(&format!("objects: client {node} joined main, {count} windows"));
+            let id = client.id().unwrap_or_default();
+            shell.log(&format!("objects: client {id} joined main, {count} windows"));
             if count >= 3 && phase.get() == 0 {
                 phase.set(1);
                 match columns().implement(&objects) {
@@ -105,13 +105,9 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             } else if count >= 5 && phase.get() == 2 {
                 // The library has laid the four windows out by now, so the divider is there to be found.
                 phase.set(3);
-                // The divider is asked of a window: the `Client` of the first member, which the core looks up by its id.
+                // The divider is asked of a window: the first member, the core's `Client` of it.
                 let area = desks.areas(None).ok().and_then(|areas| areas.area);
-                let first = counted
-                    .members()
-                    .ok()
-                    .and_then(|members| members.first().cloned())
-                    .and_then(|id| model.clients().ok().flatten()?.get_by_id(&id).ok().flatten());
+                let first = counted.members().ok().and_then(|members| members.into_iter().next());
                 let (Some(area), Some(first)) = (area.clone(), first.as_ref()) else {
                     shell.log(&format!("objects: cannot find the divider: area {area:?}"));
                     return;

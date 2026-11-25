@@ -10,6 +10,7 @@
 use std::rc::Rc;
 
 use gnoblin_core::Rect;
+use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::{Builder, ClassBuilder, Cx, Inits};
 use gnoblin_object::{ErrorCode, Fail, Res, Val};
 use gnoblin_std_abi::layouts::{ActionDesc, LAYOUT_KINDS, LayoutKindDesc, OptionDesc, ValueDesc, ValueShape};
@@ -24,21 +25,29 @@ use crate::nodes;
 use crate::object::record::enumeration;
 use crate::state::Id;
 
-/// An option or an answer of the table as the value of a property or a result.
-fn object_val(desc: &ValueDesc, value: &Value) -> Val {
-    match (value, desc.ty) {
+/// An option or an answer of the table as the value of a property or a result. A node is the core's `Client` of the window, which the
+/// caller hands out with the answer.
+fn object_val(ctx: GnoblinCtx, desc: &ValueDesc, value: &Value) -> Res<Val> {
+    Ok(match (value, desc.ty) {
         (Value::None, _) => Val::None,
         (Value::Bool(flag), _) => Val::Bool(*flag),
         (Value::Num(number), ValueShape::Enum(_)) => enumeration(*number as u32 + 1),
         (Value::Num(number), ValueShape::Int) => Val::Int(*number as i64),
         (Value::Num(number), _) => Val::Double(*number),
-        (Value::Node(node), _) => client_val(*node),
+        (Value::Node(node), _) => client_val(ctx, *node)?,
         (Value::Text(text), _) => Val::Text(text.clone()),
-    }
+    })
+}
+
+/// An answer of the table as the value a call returns, handed out.
+fn answer_val(cx: &Cx<'_>, desc: &ValueDesc, value: &Value) -> Res<Val> {
+    let answer = object_val(cx.ctx(), desc, value)?;
+    cx.hand_out(&answer)?;
+    Ok(answer)
 }
 
 /// A value a shell gave as the table's value, before the table checks it.
-fn table_val(desc: &ValueDesc, value: &Val) -> Res<Value> {
+fn table_val(ctx: GnoblinCtx, name: &str, desc: &ValueDesc, value: &Val) -> Res<Value> {
     if value.is_none() {
         return Ok(Value::None);
     }
@@ -47,15 +56,15 @@ fn table_val(desc: &ValueDesc, value: &Val) -> Res<Value> {
         ValueShape::Number => Value::Num(value.double()?),
         ValueShape::Int => Value::Num(value.int()? as f64),
         ValueShape::Enum(_) => Value::Num(f64::from(value.enum_value()?.wrapping_sub(1))),
-        ValueShape::Node => Value::Node(client_of(value)?),
+        ValueShape::Node => Value::Node(client_of(ctx, name, value)?),
         ValueShape::Text => Value::Text(value.text()?.to_owned()),
     })
 }
 
 /// A value of the option, argument or answer `name` of `owner`, checked against its declaration as the C table's functions check it:
 /// a number in range, a member of its enumeration, present when it has to be.
-fn checked(owner: &str, name: &str, desc: &ValueDesc, value: &Val) -> Res<Value> {
-    let raw = encode_value(&table_val(desc, value)?, Some(desc));
+fn checked(ctx: GnoblinCtx, owner: &str, name: &str, desc: &ValueDesc, value: &Val) -> Res<Value> {
+    let raw = encode_value(&table_val(ctx, name, desc, value)?, Some(desc));
     decode_value(owner, name, desc, &raw).map_err(Fail::from)
 }
 
@@ -103,7 +112,7 @@ fn act(
         values.push(if value.is_none() && desc.value.optional {
             Value::None
         } else {
-            checked(&owner, desc.name, &desc.value, value)?
+            checked(cx.ctx(), &owner, desc.name, &desc.value, value)?
         });
     }
     let Some(workspace) = held.on else {
@@ -138,8 +147,8 @@ fn register_kind<'a>(builder: &'a mut Builder, kind: &'static LayoutKindDesc) ->
         .ctor(move |cx, inits| make(cx, kind, inits));
     for option in kind.options {
         class = class
-            .get(option.name, move |held, _| {
-                Ok(object_val(&option.value, &builtin_of(held).option(option.name)))
+            .get(option.name, move |held, cx| {
+                answer_val(cx, &option.value, &builtin_of(held).option(option.name))
             })
             .set(option.name, move |held, cx, value| {
                 set_option(cx, kind, option, held, &value)
@@ -149,15 +158,16 @@ fn register_kind<'a>(builder: &'a mut Builder, kind: &'static LayoutKindDesc) ->
         class = if action.is_reading() {
             let returns = action.returns.unwrap_or_else(|| unreachable!("a reading answers"));
             class.get(action.name, move |held, cx| {
-                act(cx, kind, action, held, &[]).map(|answer| object_val(&returns, &answer))
+                let answer = act(cx, kind, action, held, &[])?;
+                answer_val(cx, &returns, &answer)
             })
         } else {
             class.method(action.name, move |held, cx, args| {
                 let answer = act(cx, kind, action, held, args)?;
-                Ok(match &action.returns {
-                    Some(returns) => object_val(returns, &answer),
-                    None => Val::None,
-                })
+                match &action.returns {
+                    Some(returns) => answer_val(cx, returns, &answer),
+                    None => Ok(Val::None),
+                }
             })
         };
     }
@@ -169,7 +179,10 @@ fn make(cx: &mut Cx<'_>, kind: &'static LayoutKindDesc, inits: &mut Inits) -> Re
     let mut options = OptionSet::of(kind.name, kind.options);
     for option in kind.options {
         if let Some(value) = inits.take(option.name) {
-            options.put(option.name, checked(kind.name, option.name, &option.value, &value)?);
+            options.put(
+                option.name,
+                checked(cx.ctx(), kind.name, option.name, &option.value, &value)?,
+            );
         }
     }
     let layout: Rc<LayoutObj> = LayoutObj::builtin(Builtin::new(kind, options));
@@ -185,7 +198,7 @@ fn set_option(
     held: &OwnedLayout,
     value: &Val,
 ) -> Res<()> {
-    let checked = checked(kind.name, option.name, &option.value, value)?;
+    let checked = checked(cx.ctx(), kind.name, option.name, &option.value, value)?;
     builtin_of(held).set_option(option.name, checked);
     if let Some(workspace) = held.on {
         edit(cx.ctx(), |st| {

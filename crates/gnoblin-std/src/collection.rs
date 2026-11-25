@@ -175,6 +175,11 @@ impl<T: Member> std::fmt::Debug for Collection<T> {
     }
 }
 
+/// The keys of the clients of `object`: the `id` of each core `Client` it lists, which the core keeps readable after the window closes.
+fn client_keys(object: &classes::ClientCollection) -> Result<Vec<String>> {
+    object.members()?.into_iter().map(|client| Ok(client.id()?)).collect()
+}
+
 fn kind_error(what: &str) -> Error {
     Error::new(
         ErrorKind::Unsupported,
@@ -215,7 +220,7 @@ impl<T: Member> Collection<T> {
     /// The members' keys, in order.
     fn keys(&self) -> Result<Vec<String>> {
         match &self.source {
-            Source::Clients(object, _) => Ok(object.members()?),
+            Source::Clients(object, _) => client_keys(object),
             Source::Workspaces(list) => list
                 .list()?
                 .into_iter()
@@ -474,9 +479,10 @@ impl<T: Member> Collection<T> {
                 let skip: Rc<RefCell<HashSet<String>>> = Rc::new(RefCell::new(if replay || left {
                     HashSet::new()
                 } else {
-                    object.members()?.into_iter().collect()
+                    client_keys(object)?.into_iter().collect()
                 }));
-                let run = move |key: String| {
+                let run = move |client: model::Client| {
+                    let Ok(key) = client.id() else { return };
                     if !left && skip.borrow_mut().remove(&key) {
                         return;
                     }
@@ -828,16 +834,18 @@ impl Collection<Client> {
     ) -> Result<Subscription> {
         let object = self.clients()?;
         let here = Rc::new(RefCell::new(Here {
-            members: object.members()?.into_iter().collect(),
+            members: client_keys(&object)?.into_iter().collect(),
             gone: HashSet::new(),
         }));
         let (added, left) = (Rc::clone(&here), Rc::clone(&here));
-        let joined = object.on_added(move |id| {
+        let joined = object.on_added(move |client: model::Client| {
+            let Ok(id) = client.id() else { return };
             let mut here = added.borrow_mut();
             here.gone.remove(&id);
             here.members.insert(id);
         })?;
-        let parted = object.on_removed(move |id| {
+        let parted = object.on_removed(move |client: model::Client| {
+            let Ok(id) = client.id() else { return };
             let mut here = left.borrow_mut();
             if here.members.remove(&id) {
                 here.gone.insert(id);

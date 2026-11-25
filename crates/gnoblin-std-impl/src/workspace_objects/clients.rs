@@ -1,7 +1,7 @@
 //! `client_collection` and `client_state`: a live list of clients, and what the library remembers about one client.
 //!
 //! A collection is a name for one of the library's own (`collection.rs`): a workspace's clients, which the shell changes, the list of every
-//! client, or a selection of one (`where`), which follows its parent as clients come, go and change. A client is a node number. What the
+//! client, or a selection of one (`where`), which follows its parent as clients come, go and change. A client is the core's `Client`. What the
 //! TypeScript library kept as properties of its `Client` (`frameInset`, `minSize`, `maxSize`, `floatingBounds`, the snap record of
 //! `gnoblin-std/snap`, `moveToWorkspace`) is the library's record here (`client_state.rs`), so a shell of any language reads and writes the
 //! one, and the library's refit of a window to a new work area honours it.
@@ -12,7 +12,7 @@ use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{ErrorCode, Fail, Res, Val};
 use gnoblin_std_abi as sabi;
 
-use super::values::{checked_rect, client_val, member_val, rect_of, rect_val, wire_of};
+use super::values::{checked_rect, client_val, clients_val, member_val, rect_of, rect_val, wire_of};
 use super::workspaces::{WorkspaceRef, workspace_val};
 use super::{COLLECTION_OBJECTS, edit, look};
 use crate::collection::{Source, Want};
@@ -115,8 +115,10 @@ fn register_collection(builder: &mut Builder) {
         .get("length", |held, _| {
             members(held).map(|list| Val::Uint(list.len() as u64))
         })
-        .get("members", |held, _| {
-            members(held).map(|list| Val::List(list.into_iter().map(client_val).collect()))
+        .get("members", |held, cx| {
+            let list = clients_val(held.ctx, members(held)?)?;
+            cx.hand_out(&list)?;
+            Ok(list)
         })
         .method("contains", |held, _, args| {
             let client = client_node(held.ctx, "contains", &args[0])?;
@@ -165,7 +167,12 @@ fn register_collection(builder: &mut Builder) {
                 st.track(id);
                 Ok(st.items(id))
             })
-            .map(|list| list.into_iter().map(|client| vec![client_val(client)]).collect())
+            .map(|list| {
+                list.into_iter()
+                    .filter_map(|client| client_val(ctx, client).ok())
+                    .map(|client| vec![client])
+                    .collect()
+            })
             .unwrap_or_default()
         })
         .replay("removed", |cx| {
@@ -243,7 +250,11 @@ fn register_state(builder: &mut Builder) {
                 "the state of a client is the one `of` gives for its node",
             ))
         })
-        .get("node", |held, _| Ok(client_val(held.node)))
+        .get("node", |held, cx| {
+            let client = client_val(held.ctx, held.node)?;
+            cx.hand_out(&client)?;
+            Ok(client)
+        })
         .get("workspace", |held, cx| {
             let workspace = look(held.ctx, |st| {
                 st.rec

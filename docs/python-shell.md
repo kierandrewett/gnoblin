@@ -347,7 +347,9 @@ action = FocusPolicy.focus_decision(           # a function of a service: record
     - `menus.show(client, x, y)`
     - `workspace.clients.add(client)`
 - An id as text, or an object of another class, is a `TypeError`. A window that has closed raises `NodeGoneError`.
-- A window the library tells the shell of is still its id as text. `Gnoblin.get().clients.get(id)` gives its `Client`.
+- A window the workspace classes tell the shell of is the core's `Client` too: `members`, the `added` and `removed` events, and a layout's
+  `children`, `focused` and `node`. It is the same object `Gnoblin.get().clients.get(id)` gives. A window the frame, menu, policy and shell
+  classes tell the shell of is still its id as text.
 - An **enum** is an `IntEnum` (a method also takes its name, `"follow-mouse"`), and a list a `list`.
 - `on(event, handler)` returns a `Listener` with `stop()`; without a handler it is a decorator. It lasts until stopped or the
   generation ends, not until the object is collected.

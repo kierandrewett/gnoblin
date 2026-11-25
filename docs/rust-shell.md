@@ -438,8 +438,12 @@ menus.show(&client, Some(10.0), Some(10.0))?;
 workspace.clients()?.add(&client)?;
 ```
 
-A window that has closed is still a `Client`, and the member fails with `the client is gone`. A window the library tells the shell of is
-still its id as text. `ModelRoot::clients()` and `get_by_id` give its `Client`.
+How the library passes a window back to your shell:
+
+- A window that has closed is still a `Client`, and a member called with it fails with `the client is gone`.
+- The workspace classes give the core's `Client`: `members`, `on_added` and a layout's `children`. It is equal to the one
+  `ModelRoot::clients()` and `get_by_id` give.
+- The frame, menu, policy and shell classes still give a window's id as text.
 
 The library lays out, measures text, encodes the paint list and delivers pointer events and keys. You set properties and hear
 signals:

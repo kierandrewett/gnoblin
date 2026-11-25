@@ -143,14 +143,21 @@ pub(super) fn released(cx: &Cx<'_>, obj: Obj) {
 /// hand, so the layout answers what it would answer a workspace with those clients and that area.
 pub(super) fn layout_members<'a>(class: ClassBuilder<'a, OwnedLayout>) -> ClassBuilder<'a, OwnedLayout> {
     class
-        .method("compute", |held, _, args| {
-            let cx = shell_layout::context_of(&args[0])?;
-            let placements = held.layout.compute(&cx).map_err(Fail::from)?;
-            Ok(Val::List(placements.iter().map(shell_layout::placement_val).collect()))
+        .method("compute", |held, cx, args| {
+            let ctx = cx.ctx();
+            let context = shell_layout::context_of(ctx, &args[0])?;
+            let placements = held.layout.compute(&context).map_err(Fail::from)?;
+            let answer = placements
+                .iter()
+                .map(|placement| shell_layout::placement_val(ctx, placement))
+                .collect::<Res<Vec<Val>>>()
+                .map(Val::List)?;
+            cx.hand_out(&answer)?;
+            Ok(answer)
         })
         .method("client_added", |held, cx, args| {
-            let context = shell_layout::context_of(&args[0])?;
-            let client = client_of(&args[1])?;
+            let context = shell_layout::context_of(cx.ctx(), &args[0])?;
+            let client = client_of(cx.ctx(), "client_added", &args[1])?;
             let g = gnoblin_core::private::gnoblin_for(cx.ctx()).map_err(|error| Fail::err(error.to_string()))?;
             let none = HashMap::new();
             let floated = std::collections::HashSet::new();
@@ -166,8 +173,8 @@ pub(super) fn layout_members<'a>(class: ClassBuilder<'a, OwnedLayout>) -> ClassB
             Ok(Val::None)
         })
         .method("client_removed", |held, cx, args| {
-            let context = shell_layout::context_of(&args[0])?;
-            let client = client_of(&args[1])?;
+            let context = shell_layout::context_of(cx.ctx(), &args[0])?;
+            let client = client_of(cx.ctx(), "client_removed", &args[1])?;
             if let Some(next) = held.layout.client_removed(&context, client)
                 && let Ok(g) = gnoblin_core::private::gnoblin_for(cx.ctx())
             {
@@ -179,19 +186,22 @@ pub(super) fn layout_members<'a>(class: ClassBuilder<'a, OwnedLayout>) -> ClassB
             held.layout.area_changed(&rect_of(&args[0])?, &rect_of(&args[1])?);
             Ok(Val::None)
         })
-        .method("clients_swapped", |held, _, args| {
-            held.layout.clients_swapped(client_of(&args[0])?, client_of(&args[1])?);
+        .method("clients_swapped", |held, cx, args| {
+            held.layout.clients_swapped(
+                client_of(cx.ctx(), "clients_swapped", &args[0])?,
+                client_of(cx.ctx(), "clients_swapped", &args[1])?,
+            );
             Ok(Val::None)
         })
         .method("revision", |held, _, _| Ok(Val::Uint(held.layout.revision())))
-        .method("find_split", |held, _, args| {
+        .method("find_split", |held, cx, args| {
             let (x, y) = (args[1].double()?, args[2].double()?);
             if !x.is_finite() || !y.is_finite() {
                 return Err(Fail::type_error("a drag's point must be two finite numbers"));
             }
             Ok(Val::List(
                 held.layout
-                    .find_split(client_of(&args[0])?, x, y)
+                    .find_split(client_of(cx.ctx(), "find_split", &args[0])?, x, y)
                     .iter()
                     .map(shell_layout::split_val)
                     .collect(),

@@ -46,25 +46,29 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 
     let model = ModelRoot::get(&g.objects()?)?;
 
-    // The library puts a window on the workspace as it appears and tells the shell its id as text. `get_by_id` is the `Client` of it, which
-    // `add` and `contains` take.
+    // The library puts a window on the workspace as it appears and tells the shell of it with the core's `Client`, which `add` and
+    // `contains` take as they are.
     let (Some(members), Some(counted)) = (main.clients()?, main.clients()?) else {
         g.log("clients: the workspace has no clients");
         return Ok(());
     };
     let finder = ModelRoot::get(&g.objects()?)?;
     members
-        .on_added(move |id| {
-            let Ok(Some(clients)) = finder.clients() else { return };
-            let Ok(Some(client)) = clients.get_by_id(&id) else {
-                return;
-            };
+        .on_added(move |client: Client| {
             let title = client.title().unwrap_or_default();
             let in_main = counted.add(&client).and_then(|()| counted.contains(&client));
             g.log(&format!(
                 "clients: {title}: it is in main: {}",
                 in_main.unwrap_or(false)
             ));
+            // Two values of one object are equal: the library's `Client` is the one the core's own collection gives.
+            let same = finder
+                .clients()
+                .ok()
+                .flatten()
+                .and_then(|clients| clients.get_by_id(&client.id().ok()?).ok().flatten())
+                .is_some_and(|core| core == client);
+            g.log(&format!("clients: {title}: the library's client is the core's: {same}"));
         })?
         .keep();
     model

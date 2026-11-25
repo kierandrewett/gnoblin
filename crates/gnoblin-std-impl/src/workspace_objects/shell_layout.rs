@@ -14,7 +14,7 @@ use gnoblin_object::server::{Cx, ShellImpl};
 use gnoblin_object::{Fail, MemberId, Res, Val};
 use gnoblin_std_abi::{GnoblinStdSplit, STD_AXIS_X, STD_AXIS_Y, STD_SPLIT_CROSS};
 
-use super::values::{client_of, client_val, member_val, rect_field, rect_of, rect_val, wire_of};
+use super::values::{client_of, client_val, clients_val, member_val, rect_field, rect_of, rect_val, wire_of};
 use crate::error::{Fail as StdFail, Res as StdRes};
 use crate::layout::{LayoutContext, Placement};
 use crate::object::record::{field, flag_field, number_field, record};
@@ -74,13 +74,20 @@ impl ObjectLayout {
         self.shell.has(member)
     }
 
+    /// Calls `member` with `args`: each object in them handed out first, as a listener's are, since the shell takes the references it is
+    /// given. Arguments that cannot be handed out are not passed.
+    fn call(&self, member: MemberId, args: &[Val]) -> Res<Val> {
+        crate::object::with_lib(|lib| lib.hand_out(self.ctx, args))?;
+        self.shell.call(member, args)
+    }
+
     /// Calls a hook the shell implemented. A hook that fails is the log's business: the layout pass goes on, as it does for a layout of
     /// the C table.
-    fn hook(&self, member: MemberId, what: &str, args: &[Val]) {
+    fn hook(&self, member: MemberId, what: &str, args: Res<Vec<Val>>) {
         if !self.has(member) {
             return;
         }
-        if let Err(fail) = self.shell.call(member, args)
+        if let Err(fail) = args.and_then(|args| self.call(member, &args))
             && let Ok(g) = gnoblin_core::private::gnoblin_for(self.ctx)
         {
             g.log_at(
@@ -91,35 +98,32 @@ impl ObjectLayout {
     }
 
     /// What the layout is told, as a `layout_context` value.
-    fn context(&self, cx: &LayoutContext) -> Val {
+    fn context(&self, cx: &LayoutContext) -> Res<Val> {
         context_val(self.ctx, cx)
     }
 
     /// Where the tiled clients go: the shell's `compute`.
     pub(crate) fn compute(&self, cx: &LayoutContext) -> StdRes<Vec<Placement>> {
-        let answer = self.shell.call(self.ids.compute, &[self.context(cx)]).map_err(|fail| {
-            let message = format!("the layout's compute failed: {}", fail.message);
-            StdFail::from(fail).with_message(message)
-        })?;
-        placements_of(&answer, &cx.children).map_err(failed)
+        let answer = self
+            .context(cx)
+            .and_then(|context| self.call(self.ids.compute, &[context]))
+            .map_err(|fail| {
+                let message = format!("the layout's compute failed: {}", fail.message);
+                StdFail::from(fail).with_message(message)
+            })?;
+        placements_of(self.ctx, &answer, &cx.children).map_err(failed)
     }
 
     /// A client joined the workspace.
     pub(crate) fn client_added(&self, cx: &LayoutContext, client: NodeId) {
-        self.hook(
-            self.ids.client_added,
-            "client_added",
-            &[self.context(cx), client_val(client)],
-        );
+        let args = (|| Ok(vec![self.context(cx)?, client_val(self.ctx, client)?]))();
+        self.hook(self.ids.client_added, "client_added", args);
     }
 
     /// A client left the workspace.
     pub(crate) fn client_removed(&self, cx: &LayoutContext, client: NodeId) {
-        self.hook(
-            self.ids.client_removed,
-            "client_removed",
-            &[self.context(cx), client_val(client)],
-        );
+        let args = (|| Ok(vec![self.context(cx)?, client_val(self.ctx, client)?]))();
+        self.hook(self.ids.client_removed, "client_removed", args);
     }
 
     /// The workspace's rectangle changed.
@@ -127,17 +131,14 @@ impl ObjectLayout {
         self.hook(
             self.ids.area_changed,
             "area_changed",
-            &[rect_val(before), rect_val(now)],
+            Ok(vec![rect_val(before), rect_val(now)]),
         );
     }
 
     /// Two clients traded places in the workspace's order.
     pub(crate) fn clients_swapped(&self, a: NodeId, b: NodeId) {
-        self.hook(
-            self.ids.clients_swapped,
-            "clients_swapped",
-            &[client_val(a), client_val(b)],
-        );
+        let args = (|| Ok(vec![client_val(self.ctx, a)?, client_val(self.ctx, b)?]))();
+        self.hook(self.ids.clients_swapped, "clients_swapped", args);
     }
 
     /// The number that changes when the layout's own options do. A layout with no `revision` never changes by itself.
@@ -161,13 +162,8 @@ impl ObjectLayout {
         if !self.has(self.ids.find_split) {
             return None;
         }
-        let answer = self
-            .shell
-            .call(
-                self.ids.find_split,
-                &[client_val(client), Val::Double(x), Val::Double(y)],
-            )
-            .ok()?;
+        let args = client_val(self.ctx, client).map(|client| vec![client, Val::Double(x), Val::Double(y)]);
+        let answer = args.and_then(|args| self.call(self.ids.find_split, &args)).ok()?;
         // The answer is a list of one divider, or an empty list when the point has none.
         split_raw(answer.list().ok()?.first()?).ok()
     }
@@ -177,7 +173,7 @@ impl ObjectLayout {
         self.hook(
             self.ids.set_split,
             "set_split",
-            &[
+            Ok(vec![
                 Val::Uint(token),
                 Val::Double(ratio),
                 if cross_ratio.is_nan() {
@@ -185,13 +181,13 @@ impl ObjectLayout {
                 } else {
                     Val::Double(cross_ratio)
                 },
-            ],
+            ]),
         );
     }
 
     /// Puts the dividers `find_split` returned back as they were.
     pub(crate) fn reset_split(&self, token: u64) {
-        self.hook(self.ids.reset_split, "reset_split", &[Val::Uint(token)]);
+        self.hook(self.ids.reset_split, "reset_split", Ok(vec![Val::Uint(token)]));
     }
 }
 
@@ -210,25 +206,28 @@ fn workspace_text(ctx: GnoblinCtx, id: crate::state::Id) -> String {
 }
 
 /// What a layout is told, as a `layout_context` value.
-pub(super) fn context_val(ctx: GnoblinCtx, cx: &LayoutContext) -> Val {
-    record(vec![
+pub(super) fn context_val(ctx: GnoblinCtx, cx: &LayoutContext) -> Res<Val> {
+    Ok(record(vec![
         Val::Text(workspace_text(ctx, cx.workspace)),
-        Val::List(cx.children.iter().map(|child| client_val(*child)).collect()),
+        clients_val(ctx, cx.children.iter().copied())?,
         rect_val(&cx.area),
         Val::Double(cx.gap_inner),
         Val::Double(cx.gap_outer),
-        cx.focused.map_or(Val::None, client_val),
-    ])
+        cx.focused
+            .map(|focused| client_val(ctx, focused))
+            .transpose()?
+            .unwrap_or(Val::None),
+    ]))
 }
 
 /// What a `layout_context` value says, for a call that gives a layout a context by hand.
-pub(super) fn context_of(value: &Val) -> Res<LayoutContext> {
+pub(super) fn context_of(ctx: GnoblinCtx, value: &Val) -> Res<LayoutContext> {
     let fields = value.record()?;
     let children = field(fields, 1)
         .ok_or_else(|| Fail::type_error("a layout context needs its `children`"))?
         .list()?
         .iter()
-        .map(client_of)
+        .map(|child| client_of(ctx, "children", child))
         .collect::<Res<Vec<_>>>()?;
     let area = field(fields, 2).ok_or_else(|| Fail::type_error("a layout context needs its `area`"))?;
     Ok(LayoutContext {
@@ -237,15 +236,17 @@ pub(super) fn context_of(value: &Val) -> Res<LayoutContext> {
         area: rect_of(area)?,
         gap_inner: number_field(fields, 3, 0.0)?,
         gap_outer: number_field(fields, 4, 0.0)?,
-        focused: field(fields, 5).map(client_of).transpose()?,
+        focused: field(fields, 5)
+            .map(|focused| client_of(ctx, "focused", focused))
+            .transpose()?,
         pointer: None,
     })
 }
 
 /// A placement as a `layout_placement` value.
-pub(super) fn placement_val(placement: &Placement) -> Val {
-    record(vec![
-        client_val(placement.node),
+pub(super) fn placement_val(ctx: GnoblinCtx, placement: &Placement) -> Res<Val> {
+    Ok(record(vec![
+        client_val(ctx, placement.node)?,
         placement.bounds.as_ref().map_or(Val::None, rect_val),
         Val::Bool(placement.visible),
         Val::Bool(placement.tiled),
@@ -254,7 +255,7 @@ pub(super) fn placement_val(placement: &Placement) -> Val {
         Val::List(placement.scale.iter().map(|scale| Val::Double(*scale)).collect()),
         placement.offset.map_or(Val::None, |(x, _)| Val::Double(x)),
         placement.offset.map_or(Val::None, |(_, y)| Val::Double(y)),
-    ])
+    ]))
 }
 
 fn triple(value: Option<&Val>, default: [f64; 3], node: NodeId, what: &str) -> Res<[f64; 3]> {
@@ -275,7 +276,7 @@ fn triple(value: Option<&Val>, default: [f64; 3], node: NodeId, what: &str) -> R
 }
 
 /// The placements a layout answered, each checked against the clients it was asked about.
-pub(super) fn placements_of(answer: &Val, children: &[NodeId]) -> Res<Vec<Placement>> {
+pub(super) fn placements_of(ctx: GnoblinCtx, answer: &Val, children: &[NodeId]) -> Res<Vec<Placement>> {
     let items = answer.list().map_err(|_| {
         Fail::type_error(format!(
             "compute must answer a list of placements, got {}",
@@ -285,8 +286,11 @@ pub(super) fn placements_of(answer: &Val, children: &[NodeId]) -> Res<Vec<Placem
     let mut placements = Vec::with_capacity(items.len());
     for item in items {
         let fields = item.record()?;
-        let node =
-            client_of(field(fields, 0).ok_or_else(|| Fail::type_error("a placement needs the `node` it is for"))?)?;
+        let node = client_of(
+            ctx,
+            "node",
+            field(fields, 0).ok_or_else(|| Fail::type_error("a placement needs the `node` it is for"))?,
+        )?;
         if !children.contains(&node) {
             return Err(Fail::type_error(format!(
                 "placement for node {node}, which is not one of the workspace's clients"

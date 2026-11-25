@@ -107,6 +107,8 @@ pub(crate) fn turn(std: &Rc<Std>) {
     if !settled.is_empty() {
         crate::animation::objects::announce(ctx, settled);
     }
+    // The layout pass and the drains told of closed windows, and what is queued holds what it names: their `Client`s go now.
+    crate::object::client::turn_ended(ctx);
 }
 
 /// The passes of a turn that a staged transition runs against its staged state, so what they write is staged with the callback's:
