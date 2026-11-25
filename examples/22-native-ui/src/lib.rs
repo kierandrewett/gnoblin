@@ -31,16 +31,22 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     entry.set_height(36.0)?;
     entry.set_fill("#313244")?;
     entry.mount_top()?;
+    // `focus` asks for the keyboard; the compositor gives it in a later frame, and `focus_changed` says when it did. Keys typed
+    // before that go to whatever held the keyboard, so the shell says it holds the keyboard only then.
+    let node = entry.node()?;
+    entry
+        .on_focus_changed(move |focused| {
+            if focused {
+                g.log(&format!("ui: the entry is node {node} and holds the keyboard"));
+            }
+        })?
+        .keep();
     entry.focus()?;
     entry.set_on_submit(move |text| {
         g.log(&format!("ui: submitted {text:?}"));
         Ok(())
     })?;
 
-    g.log(&format!(
-        "ui: the entry is node {} and holds the keyboard",
-        entry.node()?
-    ));
     // The canvases are retained: they stay on screen when the shell lets go of its references.
     Ok(())
 }
