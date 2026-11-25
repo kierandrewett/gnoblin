@@ -45,7 +45,7 @@ pictures of the shipped shell on a real compositor. These sessions are not a log
 
 ## Test compositor changes
 
-Run `cargo test --workspace --no-fail-fast --locked` for the whole suite, and the crate's own tests while you work. The
+Run `just test` for the whole suite, and the crate's own tests while you work. The
 tests that need a render node print `skipping` and pass on a machine without one, so use
 [hardware verification](real-hardware-verification.md) to check a fresh login, display configuration, input, lock and
 logout on a supported machine.
