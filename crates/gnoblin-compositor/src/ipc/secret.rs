@@ -728,6 +728,8 @@ mod tests {
     // --- polkit authentication ------------------------------------------------------------------------------------
 
     /// Pumps the service until `ready` holds or a prompt ended, and returns how prompts ended, ten seconds at most.
+    /// A time-out names the test line that waited, so it says which step never came.
+    #[track_caller]
     fn pump_for(service: &mut SecretService, mut ready: impl FnMut(&SecretService) -> bool) -> Vec<SecretAction> {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         let mut actions = Vec::new();
