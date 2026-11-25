@@ -288,9 +288,12 @@ fn a_secure_window_is_redacted_in_a_views_capture_whatever_holds_its_pixels() {
                         all_are(&capture, redaction(treatment)),
                         "{label}: every pixel of a capture is the redaction, and none is the window's"
                     );
-                    // The screen is what the user sees: the window is there.
-                    if let Some(display) = displayed(&composer, &mut gles)
-                        && !(gpu && buffer == Buffer::Dmabuf)
+                    // The screen is what the user sees: the window is there. The GPU path's display variant samples the
+                    // buffer itself, and the stand-in DMA-BUF (a descriptor on /dev/null) is not one a driver can draw:
+                    // with no DRM device, llvmpipe prints "dmabuf import failed: fd has no data" and the process then
+                    // dies of SIGSEGV in an llvmpipe thread. The guard comes first so that case is never drawn.
+                    if !(gpu && buffer == Buffer::Dmabuf)
+                        && let Some(display) = displayed(&composer, &mut gles)
                     {
                         let expected = if buffer == Buffer::Shm { RED } else { GREEN };
                         assert!(
