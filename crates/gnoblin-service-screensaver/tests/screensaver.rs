@@ -101,6 +101,20 @@ fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
     }
 }
 
+/// Runs `step` on a thread of its own and fails the test, naming `what`, if it has not returned within [`TIMEOUT`].
+///
+/// The test below never returned in CI workspace job 139021815236 (cancelled at the job's two hours) and returns in a
+/// fraction of a second everywhere else, so each of its bus steps is bounded to say which one waits.
+fn within<T: Send + 'static>(what: &str, step: impl FnOnce() -> T + Send + 'static) -> T {
+    let (sender, answer) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let _ = sender.send(step());
+    });
+    answer
+        .recv_timeout(TIMEOUT)
+        .unwrap_or_else(|_| panic!("{what} did not return within {TIMEOUT:?}"))
+}
+
 /// A change of the lock node's `state`, as the services role delivers it.
 fn lock_changed(locked: bool) -> SessionLock {
     if locked {
@@ -329,17 +343,26 @@ fn gnome_set_active_true_requests_a_lock_and_false_is_refused() {
     // The failure mode: SetActive(false) from a GNOME client is accepted as an unlock, or
     // SetActive(true) is dropped. True asks for a lock; false is refused as the freedesktop
     // name refuses it.
-    let bus = Bus::start();
+    let bus = within("starting the private bus", Bus::start);
     let recorder = Recorder::default();
-    let (_server, _service) = serve(bus.address(), recorder.clone());
-    let (client, _) = caller(bus.address());
-    let gnome =
-        zbus::block_on(zbus::Proxy::new(&client, GNOME_NAME, GNOME_PATH, GNOME_NAME)).expect("the proxy is built");
+    let (address, served) = (bus.address().to_owned(), recorder.clone());
+    let (_server, _service) = within("serving the ScreenSaver names", move || serve(&address, served));
+    let address = bus.address().to_owned();
+    let (client, _) = within("connecting the caller", move || caller(&address));
+    let gnome = within("building the GNOME proxy", move || {
+        zbus::block_on(zbus::Proxy::new(&client, GNOME_NAME, GNOME_PATH, GNOME_NAME)).expect("the proxy is built")
+    });
 
-    let (): () = zbus::block_on(gnome.call("SetActive", &true)).expect("SetActive(true) is accepted");
+    let proxy = gnome.clone();
+    let (): () = within("SetActive(true)", move || {
+        zbus::block_on(proxy.call("SetActive", &true))
+    })
+    .expect("SetActive(true) is accepted");
     assert_eq!(recorder.lock_count(), 1);
 
-    let refused: zbus::Result<()> = zbus::block_on(gnome.call("SetActive", &false));
+    let refused: zbus::Result<()> = within("SetActive(false)", move || {
+        zbus::block_on(gnome.call("SetActive", &false))
+    });
     let error = refused.expect_err("SetActive(false) is refused");
     assert!(error.to_string().contains("NotSupported"), "{error}");
     assert_eq!(recorder.lock_count(), 1);
