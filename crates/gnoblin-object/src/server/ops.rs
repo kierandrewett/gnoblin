@@ -292,13 +292,13 @@ impl Library {
         if outcome.is_err() {
             for held in taken.into_iter().rev() {
                 match held {
-                    Taken::Own(obj) => {
+                    TakenRef::Own(obj) => {
                         // Back to what it was: the object neither ends nor lives longer because of this attempt.
                         if let Some(entry) = st.objects.borrow_mut().get_mut(obj) {
                             entry.refs = entry.refs.saturating_sub(1);
                         }
                     }
-                    Taken::Foreign(api, obj) => {
+                    TakenRef::Foreign(api, obj) => {
                         let _ = api.release(obj);
                     }
                 }
@@ -307,17 +307,17 @@ impl Library {
         outcome
     }
 
-    fn take_refs(&self, st: &CtxState, value: &Val, own: bool, taken: &mut Vec<Taken>) -> Res<()> {
+    fn take_refs(&self, st: &CtxState, value: &Val, own: bool, taken: &mut Vec<TakenRef>) -> Res<()> {
         match value {
             Val::Object { obj, .. } if own => {
                 if self.add_ref(st, *obj).is_ok() {
-                    taken.push(Taken::Own(*obj));
+                    taken.push(TakenRef::Own(*obj));
                 }
             }
             Val::Foreign { namespace, obj } => {
                 let api = (self.hooks.foreign)(st.ctx, namespace)?;
                 api.retain(*obj)?;
-                taken.push(Taken::Foreign(api, *obj));
+                taken.push(TakenRef::Foreign(api, *obj));
             }
             Val::List(items) | Val::Record { fields: items, .. } => {
                 for item in items {
@@ -912,7 +912,7 @@ impl Library {
 }
 
 /// A reference [`Library::hand_out_all`] took, to give back when the hand-out fails part way.
-enum Taken {
+enum TakenRef {
     /// A reference to an object of this library.
     Own(Obj),
     /// A reference to an object of the library `Api` serves.

@@ -34,7 +34,7 @@ const ARRIVAL_TRIES: u8 = 3;
 
 /// The core's `Client` of each window the library tracks, for one generation.
 #[derive(Default)]
-struct Held {
+struct HeldClients {
     /// Each window's `Client`, by node, held by one reference of the library's: a value that names it carries no reference, and each
     /// receiver takes its own from the core when the value is handed out (a queued signal holds its own until it is delivered).
     clients: HashMap<u64, Obj>,
@@ -52,7 +52,7 @@ struct Held {
 }
 
 thread_local! {
-    static HELD: RefCell<HashMap<GnoblinCtx, Held>> = RefCell::new(HashMap::new());
+    static HELD: RefCell<HashMap<GnoblinCtx, HeldClients>> = RefCell::new(HashMap::new());
 }
 
 /// The core's `Client` of the window `node`, as the value that hands it to a shell (`VALUE_FOREIGN_OBJECT`): what every value of the library
