@@ -14,7 +14,7 @@
 //!   traceback.
 
 use crate::support::Mapper;
-use crate::support::native_shell::{Gnoblin, Home, Launch, Start, shells, start_script_in};
+use crate::support::native_shell::{Gnoblin, Home, Launch, Start, shells, start_script_in, wait_for_window};
 use crate::{copy_example, serving};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -98,9 +98,12 @@ fn the_failures_say_why(language: Language, session: &mut Gnoblin) {
         session.log_text()
     );
 
-    // A call on an object that is gone: the window closed, and its `Client` says it is gone.
+    // A call on an object that is gone: the window closed, and its `Client` says it is gone. The window is closed once
+    // the compositor has published it: closed at once, the shell logged no closed window (Fedora 43 job 139077575345),
+    // as a window can open and close before the shell's model hears of it.
     let mut mapper = Mapper::connect(&session.wayland());
     mapper.map_window("foot", "Terminal");
+    wait_for_window(session, "the compositor publishes the window", "foot", |_| true);
     mapper.close_window(0);
     let gone = logged(session, "errors: Terminal: a closed window is refused: ");
     assert!(
