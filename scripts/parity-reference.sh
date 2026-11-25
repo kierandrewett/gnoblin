@@ -56,13 +56,21 @@ cmd_mutter() {
 }
 
 cmd_gnoblin() {
+    local source="${GNOBLIN_PARITY_GNOBLIN_SOURCE:-}"
+    # The Mutter-based tree's own list of build requirements, the one its prefix build and its test jobs install from.
+    # A prefix restored from the CI cache needs them too: the first run that restored one without installing them had
+    # every mutter-gnoblin launch exit 127 before it served.
+    if [ -n "$source" ]; then
+        "$source/scripts/install-fedora-build-deps.sh" --with-test-tools
+    fi
     if [ -x "$gnoblin_prefix/bin/gnoblin" ]; then
         echo "parity-reference: keeping the Gnoblin in $gnoblin_prefix"
         return
     fi
-    local source="${GNOBLIN_PARITY_GNOBLIN_SOURCE:?set GNOBLIN_PARITY_GNOBLIN_SOURCE to a checkout of the Mutter-based main branch}"
-    # The Mutter-based tree's own list of build requirements, the one its prefix build and its test jobs install from.
-    "$source/scripts/install-fedora-build-deps.sh" --with-test-tools
+    [ -n "$source" ] || {
+        echo "parity-reference: set GNOBLIN_PARITY_GNOBLIN_SOURCE to a checkout of the Mutter-based main branch" >&2
+        exit 2
+    }
     # The pinned Mutter, the portal backend and imgui are submodules; a checkout that has them already keeps them.
     git -C "$source" submodule update --init --depth 1 --recommend-shallow
     # The portal backend is a GTK program of its own and nothing the parity scenarios touch.
