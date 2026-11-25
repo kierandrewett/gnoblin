@@ -219,7 +219,7 @@ check_client() {
     local name=$1 process=$2 wait=$3 command=$4 state renderer
     guest "./guest-session.sh $shell_path $(printf %q "$command")" >"$out/$name.session.txt" 2>&1 || true
     sleep "$wait"
-    [ "$mode" = software ] && "$here/qmp.py" "$qmp" screendump "$out/$name.png" 2>/dev/null
+    [ "$mode" != software ] || "$here/qmp.py" "$qmp" screendump "$out/$name.png" 2>/dev/null || true
     guest 'cat ~/session/gnoblin.log' >"$out/$name.gnoblin.log" 2>&1 || true
     guest 'cat ~/session/client.log' >"$out/$name.client.log" 2>&1 || true
     state=$(guest "pgrep -x gnoblin >/dev/null && echo serving || echo stopped; pgrep -x $process >/dev/null && echo running || echo exited" 2>/dev/null | tr '\n' ' ')
@@ -263,7 +263,7 @@ sleep 1
 "$here/qmp.py" "$qmp" type ab
 sleep 2
 guest 'cat ~/session/client.log' >"$out/input.wev.log" 2>&1 || true
-[ "$mode" = software ] && "$here/qmp.py" "$qmp" screendump "$out/input.png" 2>/dev/null
+[ "$mode" != software ] || "$here/qmp.py" "$qmp" screendump "$out/input.png" 2>/dev/null || true
 if grep -q 'wl_pointer\] enter' "$out/input.wev.log" && grep -q 'wl_pointer\] button' "$out/input.wev.log"; then
     record pointer pass "wev got pointer enter and the click"
 else
