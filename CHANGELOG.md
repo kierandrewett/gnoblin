@@ -452,6 +452,7 @@
 #### Command line and tooling
 
 - `cargo xtask deps` passes its own test again, now correctly asserting that `gnoblin-std-portal` is refused access to egui.
+- `just core-only` passes again: it refused the core because `gnoblin-std-abi` appeared in its build tree. That crate is reached only at build time, through `gnoblin-sdkgen` rendering the core's `gnoblin.model` catalog, and is never linked. The rule now refuses any std crate the core links, and any std crate its build reaches other than that one, by that one path.
 
 #### Documentation and tests
 

@@ -40,11 +40,16 @@ pipewire-test:
 
 # The core with no std code. The
 # stock providers are std's and reach the core through `provider_register`, so the core's own build holds none of them.
-# This builds the compositor and the core library, fails if a std crate is in their dependency tree, and runs the suites whose
+# This builds the compositor and the core library, fails if a std crate is linked into them, and runs the suites whose
 # subject is a session with no provider: `NullWm` places windows at the origin, and a portal request is refused `no-ui`.
+# The one std crate their build may read is `gnoblin-std-abi`, and only through `gnoblin-sdkgen`: the core's build script
+# renders its `gnoblin.model` catalog with the one SDK generator, which reads both ABIs' declarations. That is data read at
+# build time, never linked; any other std crate, or another way to reach one at build time, fails here.
 core-only:
     cargo build --locked -p gnoblin-compositor -p gnoblin-core-impl
-    ! cargo tree --locked -p gnoblin-compositor -p gnoblin-core-impl --edges normal,build --prefix none | grep -E '^gnoblin-(std|a11y)'
+    ! cargo tree --locked -p gnoblin-compositor -p gnoblin-core-impl --edges normal --prefix none | grep -E '^gnoblin-(std|a11y)'
+    test "$(cargo tree --locked -p gnoblin-compositor -p gnoblin-core-impl --edges normal,build --prefix none | grep -E '^gnoblin-(std|a11y)' | cut -d' ' -f1 | sort -u | tr '\n' ' ')" = "gnoblin-std-abi "
+    test "$(cargo tree --locked -p gnoblin-compositor -p gnoblin-core-impl --edges normal,build --invert gnoblin-std-abi --depth 1 --prefix none | grep -v '^gnoblin-std-abi ' | cut -d' ' -f1 | sort -u | tr '\n' ' ')" = "gnoblin-sdkgen "
     cargo test --locked -p gnoblin-wayland --test null_wm
     cargo test --locked -p gnoblin-compositor --test portal_no_ui
 
