@@ -543,7 +543,8 @@ fn an_opted_in_xr_extension_is_given_a_wayland_socket_no_other_child_has() {
     let host = session.pid("shell");
     let compositor = session.pid("compositor");
 
-    let number = inherited(xr, "WAYLAND_SOCKET").expect("the extension was given a Wayland socket");
+    let number = inherited(xr, "WAYLAND_SOCKET")
+        .unwrap_or_else(|| panic!("the extension was given a Wayland socket:\n{}", session.log()));
     let held = socket_at(xr, number).expect("the socket is a descriptor of the extension");
     assert!(held.starts_with("socket:["), "{held}");
     assert!(
