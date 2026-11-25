@@ -728,17 +728,31 @@ mod tests {
     // --- polkit authentication ------------------------------------------------------------------------------------
 
     /// Pumps the service until `ready` holds or a prompt ended, and returns how prompts ended, ten seconds at most.
-    /// A time-out names the test line that waited, so it says which step never came.
+    /// A time-out names the test line that waited, so it says which step never came, and the dialog's state: its
+    /// count of failed attempts says whether the helper answered FAILURE or nothing reached the dialog.
     #[track_caller]
     fn pump_for(service: &mut SecretService, mut ready: impl FnMut(&SecretService) -> bool) -> Vec<SecretAction> {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         let mut actions = Vec::new();
         while actions.is_empty() && !ready(service) {
             actions.extend(service.pump(output(), &mut []).actions);
-            assert!(std::time::Instant::now() < deadline, "the dialog did not get there");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the dialog did not get there: {}",
+                dialog_state(service)
+            );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         actions
+    }
+
+    /// The open dialog as its `Debug` shows it: no secret, only counts and flags.
+    fn dialog_state(service: &SecretService) -> String {
+        match service.active.as_ref().map(|active| &active.card) {
+            Some(Card::Polkit(dialog)) => format!("{dialog:?}"),
+            Some(Card::Secret(_)) => "a passphrase dialog is open".to_owned(),
+            None => "no dialog is open".to_owned(),
+        }
     }
 
     fn asking(service: &SecretService) -> bool {
