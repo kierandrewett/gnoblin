@@ -18,7 +18,8 @@ shell's behaviour over the compositor's own sockets; it does not prove a graphic
 | `just workspace-ci`                | The whole root gate: formatting, build, clippy, tests, the xtask rules, the ABI locks and the SDK generator                  | The libraries `scripts/ci-install-system-libraries.sh` lists |
 | `just ci`                          | `workspace-ci`, the extension workspace's gate and the core-only build                                                       | The same, and `cargo-deny`                                   |
 | `just test`                        | Every crate's unit and integration tests                                                                                     | The same                                                     |
-| `just core-only`                   | The core builds with no std crate in its tree, places windows at the origin and refuses portal requests `no-ui`              | The same                                                     |
+| `just core-only`                   | The core links no std crate, places windows at the origin and refuses portal requests `no-ui`                                | The same                                                     |
+| `just renderer-test RENDERER`      | One renderer's tests and a session drawing with it; RENDERER is `software`, `gles` or `vulkan`, and a missing device fails   | Mesa's llvmpipe and lavapipe, which the install script lists |
 | `just modular`                     | The shipped binary with shells of every language, reload, the failure modes and the ABI upgrade tests                        | The same                                                     |
 | `just pipewire-test`               | The PipeWire export and the compositor's capture end-to-end tests                                                            | A `pipewire` daemon on `PATH`                                |
 | `just abi-check`                   | The C ABI lock files and the golden shells of `tests/modular/golden`                                                         | None                                                         |
@@ -26,12 +27,15 @@ shell's behaviour over the compositor's own sockets; it does not prove a graphic
 | `just js-check`                    | Type-checks and lints the TypeScript shell sources and checks formatting                                                     | Node.js                                                      |
 | `just script-tests`                | Syntax of the scripts, and the tests of `pkgrepo`, the RPM target probe and the contract recording                           | Python 3                                                     |
 | `scripts/wlcs.sh`                  | Canonical's Wayland Conformance Suite against the compositor; `tests/wlcs/expected.toml` lists what must pass                | `scripts/ci-install-system-libraries.sh wlcs`                |
+| `scripts/ci/distro-test.sh IMAGE`  | `just test` and `just modular` in a container of one distribution, as an ordinary user                                       | docker or podman                                             |
+| `scripts/ci/vm/run.sh DISTRO ...`  | The installed gnoblin on the DRM backend of a distribution's own kernel, with real clients and input, in a virtual machine   | KVM and QEMU; `just vm-dist DIR` builds the tree it copies   |
 | `scripts/real-host-conformance.sh` | The nested backend against a real host compositor, Sway or Weston, headless                                                  | Sway or Weston                                               |
 | `scripts/xr-smoke.sh`              | The compositor, the stock shell, two clients, the XR extension and a simulated headset together                              | Monado and Vulkan; it installs its own packages              |
 | `cargo run -p gnoblin-parity`      | `run tests/parity/scenarios` against the Rust candidate; with the reference sessions, Mutter 51 and the Mutter-based Gnoblin | A Fedora machine; `scripts/parity-reference.sh`              |
 
-CI runs the Rust workflows in `rust.yml`, `wlcs.yml` and `parity-reference.yml`. A passing CI job does not prove behaviour
-on a real seat.
+CI runs `rust.yml`, `wlcs.yml` and `parity-reference.yml`, and `matrix.yml` across the Fedora, Arch, Debian and openSUSE
+releases in [platform support](platform-support.md), the three renderers and the DRM backend in a virtual machine of
+each distribution. A passing CI job does not prove behaviour on a real seat.
 
 ## Test a nested session
 

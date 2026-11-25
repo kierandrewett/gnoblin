@@ -112,6 +112,33 @@ modular:
     # `gnoblinctl check` is the launcher's `check` role over the staged libraries: the launcher the line above built.
     cargo test --locked -p gnoblinctl
 
+# One renderer, end to end: its crate's tests, then a one-minute soak of a compositor session drawing with it (windows
+# map, frames draw, the session locks and unlocks; see crates/gnoblin/tests/gpu_memory_soak.rs). RENDERER is software,
+# gles or vulkan; with no GPU, gles runs on Mesa's llvmpipe and vulkan on lavapipe, which
+# scripts/ci-install-system-libraries.sh installs. The renderer tests skip themselves on a machine with no device for
+# them; here a skip fails the recipe, so the renderer job of matrix.yml cannot pass without testing its renderer.
+renderer-test renderer:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{renderer}}" in software | gles | vulkan) ;; *) echo "renderer-test: RENDERER is software, gles or vulkan" >&2; exit 2 ;; esac
+    log="$(mktemp)"
+    trap 'rm -f "$log"' EXIT
+    cargo test --locked -p "gnoblin-render-{{renderer}}" -- --nocapture 2>&1 | tee "$log"
+    if grep -E "no surfaceless EGL context|no Vulkan device|no Vulkan loader" "$log"; then
+        echo "renderer-test: there is no {{renderer}} device here, so its tests skipped" >&2
+        exit 1
+    fi
+    GNOBLIN_SOAK_RENDERER="{{renderer}}" GNOBLIN_SOAK_SECONDS=60 \
+        cargo test --locked -p gnoblin --test gpu_memory_soak -- --ignored --nocapture
+
+# The installed tree the DRM VM checks copy into each guest (scripts/ci/vm/run.sh): a debug build installed under
+# DESTDIR with the run path that finds the core, and the example std shell beside it as DESTDIR/shell/libstd_prelude.so.
+vm-dist destdir:
+    cargo build --locked --workspace
+    cargo xtask dist install --prefix "{{destdir}}/prefix" --profile debug
+    mkdir -p "{{destdir}}/shell"
+    cp "${CARGO_TARGET_DIR:-target}/debug/libstd_prelude.so" "{{destdir}}/shell/"
+
 # Fail on a -sys crate whose system package the CI install list lacks (scripts/ci-install-system-libraries.sh).
 native-libs:
     cargo xtask native-libs

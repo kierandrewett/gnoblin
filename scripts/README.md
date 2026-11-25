@@ -6,14 +6,24 @@ says what each is for, so you can tell before you run it.
 
 ## Build inputs
 
-| Script                           | What it does                                                                                      | Run by                                             |
-| -------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `ci-install-system-libraries.sh` | Install the system packages the Rust workspaces need, on a hosted runner or in a Fedora container | `rust.yml`, `wlcs.yml`, `parity-reference.sh`, you |
-| `native-probe.sh`                | Probe one target image for the native libraries the workspace needs, and store the report         | by hand (`cargo xtask native-probe` documents it)  |
-| `oci-rootfs.py`                  | Unpack a container image from its registry into a plain directory, with no container runtime      | `native-probe.sh`                                  |
-| `probe-rpm-target.py`            | Record the library floor of a distribution image                                                  | `rpm-target-probes.yml`                            |
-| `check-packaging-targets.py`     | Validate the package target list in `packaging/targets.json`                                      | `packaging-targets.yml`                            |
-| `pkgrepo/`                       | Build, sign and upload the RPM, APT, pacman and Alpine repositories (`pkgrepo/README.md`)         | `package-repository.yml`                           |
+| Script                           | What it does                                                                                                                | Run by                                                           |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `ci-install-system-libraries.sh` | Install the system packages the Rust workspaces need, on a hosted runner or in a Debian, Fedora, Arch or openSUSE container | `rust.yml`, `matrix.yml`, `wlcs.yml`, `parity-reference.sh`, you |
+| `native-probe.sh`                | Probe one target image for the native libraries the workspace needs, and store the report                                   | by hand (`cargo xtask native-probe` documents it)                |
+| `oci-rootfs.py`                  | Unpack a container image from its registry into a plain directory, with no container runtime                                | `native-probe.sh`                                                |
+| `probe-rpm-target.py`            | Record the library floor of a distribution image                                                                            | `rpm-target-probes.yml`                                          |
+| `check-packaging-targets.py`     | Validate the package target list in `packaging/targets.json`                                                                | `packaging-targets.yml`                                          |
+| `pkgrepo/`                       | Build, sign and upload the RPM, APT, pacman and Alpine repositories (`pkgrepo/README.md`)                                   | `package-repository.yml`                                         |
+
+## CI matrix
+
+| Script                   | What it does                                                                                                     | Run by                               |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `ci/free-disk-space.sh`  | Remove the toolchains a hosted runner carries and no job uses; does nothing anywhere else                        | `rust.yml`, `matrix.yml`             |
+| `ci/distro-test.sh`      | Run `just` recipes in a container of one distribution, as an ordinary user                                       | `matrix.yml` `distro`, you           |
+| `ci/vm/run.sh`           | Boot a distribution's cloud image under KVM and check the installed gnoblin on its DRM backend with real clients | `matrix.yml` `drm-vm`, `gpu-vm`, you |
+| `ci/vm/guest-session.sh` | Start gnoblin on the DRM backend through seatd inside the guest, with one client                                 | `ci/vm/run.sh`                       |
+| `ci/vm/qmp.py`           | Capture the guest's display and send it keys, pointer motion and clicks through QEMU's QMP socket                | `ci/vm/run.sh`                       |
 
 ## Conformance and parity
 

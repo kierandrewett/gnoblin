@@ -1,0 +1,244 @@
+name: Test matrix
+
+# Gnoblin across the distributions it is packaged for, the renderers it draws with and its DRM backend on real kernels.
+# rust.yml is the quick gate on the hosted Ubuntu runner; this workflow is the breadth:
+#
+#   distro    every crate's tests and the shipped binary's sessions, built in a container of each distribution
+#   renderer  each renderer's tests and a compositor session drawing with it: software, GLES on Mesa's llvmpipe,
+#             Vulkan on lavapipe
+#   drm-vm    each distribution's cloud image under KVM: the installed gnoblin on its DRM backend with real clients
+#             (foot, GTK 4, GTK 3, Firefox, X11 through Xwayland) and real input, on a 2D virtual GPU with llvmpipe
+#   gpu-vm    the same checks with virgl on a real GPU, on a self-hosted runner (see docs/testing.md, "CI")
+#
+# Every job runs a script or a `just` recipe a developer can run the same way; the workflow only chooses where.
+
+on:
+  push:
+    paths:
+      - "crates/**"
+      - "examples/**"
+      - "xtask/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "justfile"
+      - ".cargo/**"
+      - "tests/modular/**"
+      - "scripts/ci-install-system-libraries.sh"
+      - "scripts/ci/**"
+      - ".github/workflows/matrix.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "examples/**"
+      - "xtask/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "justfile"
+      - ".cargo/**"
+      - "tests/modular/**"
+      - "scripts/ci-install-system-libraries.sh"
+      - "scripts/ci/**"
+      - ".github/workflows/matrix.yml"
+  # Arch and Tumbleweed move every day, so a nightly run catches a distribution change before a push does.
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  distro:
+    name: ${{ matrix.name }}, every test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Fedora 43
+            image: registry.fedoraproject.org/fedora:43
+          - name: Arch Linux
+            image: docker.io/library/archlinux:latest
+          - name: Debian 13
+            image: docker.io/library/debian:trixie
+          - name: openSUSE Tumbleweed
+            image: registry.opensuse.org/opensuse/tumbleweed:latest
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Make room on the runner
+        run: scripts/ci/free-disk-space.sh
+      - name: Build and run every test in the container
+        run: scripts/ci/distro-test.sh "${{ matrix.image }}" test modular
+
+  renderer:
+    name: Renderer ${{ matrix.renderer }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        renderer: [software, gles, vulkan]
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - name: Make room on the runner
+        run: scripts/ci/free-disk-space.sh
+      # The list includes Mesa's EGL (llvmpipe) and lavapipe, the devices the GLES and Vulkan runs draw on.
+      - name: Install system libraries
+        run: scripts/ci-install-system-libraries.sh
+      - name: Show the pinned toolchain
+        run: rustup show active-toolchain
+      - name: Test the renderer and draw a session with it
+        run: just renderer-test ${{ matrix.renderer }}
+
+  vm-dist:
+    name: Installed tree for the DRM checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - name: Make room on the runner
+        run: scripts/ci/free-disk-space.sh
+      - name: Install system libraries
+        run: scripts/ci-install-system-libraries.sh
+      - name: Build and install the tree
+        run: just vm-dist "$RUNNER_TEMP/vm-dist"
+      - name: Pack the tree
+        run: tar -C "$RUNNER_TEMP/vm-dist" -czf "$RUNNER_TEMP/vm-dist.tar.gz" .
+      - name: Keep the tree for the DRM jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-dist
+          path: ${{ runner.temp }}/vm-dist.tar.gz
+          retention-days: 7
+
+  drm-vm:
+    name: DRM on ${{ matrix.name }}
+    needs: vm-dist
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Fedora 43
+            distro: fedora-43
+          - name: Arch Linux
+            distro: arch
+          - name: Debian 13
+            distro: debian-13
+          - name: openSUSE Tumbleweed
+            distro: opensuse-tumbleweed
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      # Hosted Linux runners have KVM; the device belongs to root until a rule opens it to the runner's user.
+      - name: Open KVM to the runner
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: Install QEMU and the seed tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils genisoimage
+      - name: Fetch the installed tree
+        uses: actions/download-artifact@v4
+        with:
+          name: vm-dist
+          path: ${{ runner.temp }}
+      - name: Unpack the installed tree
+        run: mkdir -p "$RUNNER_TEMP/vm-dist" && tar -C "$RUNNER_TEMP/vm-dist" -xzf "$RUNNER_TEMP/vm-dist.tar.gz"
+      - name: Reuse the cloud image of this week
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gnoblin-ci-vm
+          key: vm-image-${{ matrix.distro }}-${{ github.run_id }}
+          restore-keys: vm-image-${{ matrix.distro }}-
+      - name: Boot the distribution and check gnoblin on DRM
+        run: >-
+          scripts/ci/vm/run.sh ${{ matrix.distro }}
+          "$RUNNER_TEMP/vm-dist/prefix" "$RUNNER_TEMP/vm-dist/shell/libstd_prelude.so"
+          "$RUNNER_TEMP/vm-out"
+      - name: Keep the captures and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drm-vm-${{ matrix.distro }}
+          path: ${{ runner.temp }}/vm-out
+          retention-days: 14
+
+  # The real-GPU lane runs on a self-hosted runner labelled `gnoblin-gpu` (docs/testing.md says how to add one). It runs
+  # only when the repository variable GNOBLIN_GPU_RUNNER is `true`, so no job waits for a runner that does not exist,
+  # and never for a pull request: a self-hosted runner must not run code from a fork.
+  gpu-vm:
+    name: DRM with virgl on a GPU, ${{ matrix.name }}
+    needs: vm-dist
+    if: vars.GNOBLIN_GPU_RUNNER == 'true' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, linux, x64, gnoblin-gpu]
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - name: Fedora 43
+            distro: fedora-43
+          - name: Arch Linux
+            distro: arch
+    env:
+      CI_VM_MODE: gpu
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Fetch the installed tree
+        uses: actions/download-artifact@v4
+        with:
+          name: vm-dist
+          path: ${{ runner.temp }}
+      - name: Unpack the installed tree
+        run: mkdir -p "$RUNNER_TEMP/vm-dist" && tar -C "$RUNNER_TEMP/vm-dist" -xzf "$RUNNER_TEMP/vm-dist.tar.gz"
+      - name: Boot the distribution and check gnoblin on DRM with virgl
+        run: >-
+          scripts/ci/vm/run.sh ${{ matrix.distro }}
+          "$RUNNER_TEMP/vm-dist/prefix" "$RUNNER_TEMP/vm-dist/shell/libstd_prelude.so"
+          "$RUNNER_TEMP/vm-out"
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-vm-${{ matrix.distro }}
+          path: ${{ runner.temp }}/vm-out
+          retention-days: 14

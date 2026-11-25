@@ -41,12 +41,14 @@ The Rust workspaces (the root workspace and `extensions/gnoblin-xr`) need the co
 none of the libraries, and the build stops on the first missing one (`libudev` is the first). Install them with
 
 ```sh
-scripts/ci-install-system-libraries.sh            # Ubuntu or Debian (apt-get) and Fedora (dnf); uses sudo when not root
+scripts/ci-install-system-libraries.sh            # apt-get (Ubuntu, Debian), dnf (Fedora), pacman (Arch), zypper (openSUSE); sudo when not root
+scripts/ci-install-system-libraries.sh toolchain  # also the compiler, pkg-config, git, just, Node.js and Python a bare container lacks
 scripts/ci-install-system-libraries.sh wlcs       # also what `scripts/wlcs.sh` builds wlcs with
 scripts/ci-install-system-libraries.sh list       # print the package names and install nothing
 ```
 
-The script is the only list of packages: the jobs in `rust.yml`, `wlcs.yml` and `parity-reference.yml` run it too. The
+The script is the only list of packages: the jobs in `rust.yml`, `matrix.yml`, `wlcs.yml` and `parity-reference.yml` run
+it too, and each entry names the package of every family. The
 Ubuntu names, the first column, are what `cargo build` and `cargo test --workspace` need, found by building both
 workspaces in a root file system that held only `build-essential`, `pkg-config`, `git`, `curl`, `python3` and `nodejs`:
 
@@ -127,6 +129,36 @@ product was. A longer deadline or a retry is not a fix. A flake the suite shows 
 reproduced by running several copies of the test binary at once (`js_shell` under eight workers and eight busy loops
 showed the shell reading a stale `decoration` about once in sixty runs).
 
+## CI
+
+Each workflow is a thin layer over a recipe or a script you can run yourself, so a red job is reproduced by its command:
+
+| Workflow and job                   | What it proves                                                                                      | Run it yourself                                      |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `rust.yml`                         | The root gate, the extension workspace, MSRV, core-only, ABI, modular sessions, on Ubuntu           | `just workspace-ci`, `just ext-ci`, `just core-only` |
+| `matrix.yml` `distro`              | Every test and the modular sessions, built in a Fedora 43, Arch, Debian 13 and Tumbleweed container | `scripts/ci/distro-test.sh IMAGE`                    |
+| `matrix.yml` `renderer`            | Each renderer's tests and a session drawing with it: software, GLES (llvmpipe), Vulkan (lavapipe)   | `just renderer-test gles`                            |
+| `matrix.yml` `drm-vm`              | The installed gnoblin on the DRM backend of each distribution's kernel, with real clients and input | `just vm-dist DIR`, then `scripts/ci/vm/run.sh`      |
+| `matrix.yml` `gpu-vm`              | The same on a real GPU through virgl, on a self-hosted runner                                       | `CI_VM_MODE=gpu scripts/ci/vm/run.sh`                |
+| `wlcs.yml`, `parity-reference.yml` | Wayland conformance, and parity with the Mutter-based reference sessions                            | `scripts/wlcs.sh`, `scripts/parity-reference.sh`     |
+
+`scripts/ci/distro-test.sh IMAGE [RECIPE ...]` runs the recipes (`test` and `modular` by default) in a container of
+IMAGE with docker or podman, as an ordinary user with your uid, and keeps the build in `target/distro/`.
+
+`scripts/ci/vm/run.sh DISTRO PREFIX SHELL OUTDIR` boots `fedora-43`, `arch`, `debian-13` or `opensuse-tumbleweed`
+under KVM, installs the clients, copies the tree `just vm-dist` installed to `/opt/gnoblin` and checks a session per
+client (foot, GTK 4, GTK 3, Firefox, xeyes and xterm through Xwayland) and the input `wev` receives. With no GPU it uses
+a 2D virtual GPU, so the guest draws with Mesa's llvmpipe and every check leaves a capture in OUTDIR. A known bug is an
+expected failure in the script, named by its bead; when the bug is fixed the check passes and the run fails until the
+entry is removed.
+
+### The GPU runner
+
+`gpu-vm` needs a machine with KVM, a GPU render node and QEMU built with virglrenderer. Register it as a self-hosted
+runner of the repository with the label `gnoblin-gpu`, then set the repository variable `GNOBLIN_GPU_RUNNER` to `true`.
+Until then the job is skipped. It never runs for a pull request, because a self-hosted runner must not run a fork's
+code; it runs on pushes to the repository, on the nightly schedule and by hand.
+
 ## Core and std: providers
 
 The compositor is split into core and std. Core is mechanism and a
@@ -145,12 +177,13 @@ vtable, and the core wraps a registered vtable as the trait the compositor drive
 the portal's request queue and reply validation stay in core.
 
 ```sh
-just core-only        # builds the core, fails if a std crate is in its tree, and runs the no-provider suites
+just core-only        # builds the core, fails if it links a std crate, and runs the no-provider suites
 ```
 
-`just core-only` is the CI job `core-only`: the compositor and the core library build with no std crate in their
-dependency tree, a session with no provider places windows at the origin (`crates/gnoblin-wayland/tests/null_wm.rs`) and
-refuses portal requests `no-ui` (`crates/gnoblin-compositor/tests/portal_no_ui.rs`).
+`just core-only` is the CI job `core-only`: the compositor and the core library link no std crate (their build reads
+`gnoblin-std-abi` only through `gnoblin-sdkgen`, which renders the core's catalog), a session with no provider places
+windows at the origin (`crates/gnoblin-wayland/tests/null_wm.rs`) and refuses portal requests `no-ui`
+(`crates/gnoblin-compositor/tests/portal_no_ui.rs`).
 
 When you add code or a test:
 
