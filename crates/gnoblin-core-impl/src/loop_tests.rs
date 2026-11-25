@@ -63,11 +63,16 @@ fn quiet() -> (Gen, OwnedFd) {
     let generation = Gen::active();
     let fd = wake_fd_of(&generation);
     // The set is the process's: what an earlier test left in it is drained by a dispatch, whose end disarms its timer.
-    dispatch(&generation);
-    assert!(
-        !readable(&fd, Duration::from_millis(20)),
-        "quiet before anything is queued"
-    );
+    // Something left to fall due a moment later wakes the descriptor again, so this dispatches until it stays quiet
+    // (one dispatch was not always enough in CI: Debian 13 job 138995587699).
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        dispatch(&generation);
+        if !readable(&fd, Duration::from_millis(20)) {
+            break;
+        }
+        assert!(Instant::now() < deadline, "quiet before anything is queued");
+    }
     (generation, fd)
 }
 
