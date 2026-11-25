@@ -755,6 +755,18 @@ mod tests {
         }
     }
 
+    /// How the prompt ended: the actions of the call that submitted the answer, or, when it returned none, what
+    /// pumping brings. A helper that answers at once does so within that call (it writes the password, then reads
+    /// the helper's reply), and the dialog is closed by then, so waiting for another action would wait for nothing.
+    #[track_caller]
+    fn until_ended(service: &mut SecretService, submitted: Vec<SecretAction>) -> Vec<SecretAction> {
+        if submitted.is_empty() {
+            pump_for(service, |_| false)
+        } else {
+            submitted
+        }
+    }
+
     fn asking(service: &SecretService) -> bool {
         matches!(service.active.as_ref().map(|active| &active.card), Some(Card::Polkit(dialog)) if dialog.is_asking())
     }
@@ -780,8 +792,8 @@ mod tests {
         // A key typed before PAM asks is nobody's answer, so the test waits for the prompt first.
         assert!(pump_for(&mut service, asking).is_empty());
         type_text(&mut service, "hunter2");
-        let mut actions = service.key(ScreenKey::Enter);
-        actions.extend(pump_for(&mut service, |_| false));
+        let submitted = service.key(ScreenKey::Enter);
+        let actions = until_ended(&mut service, submitted);
         assert_eq!(
             actions,
             vec![SecretAction::Authenticated {
@@ -805,8 +817,8 @@ mod tests {
         assert!(pump_for(&mut service, asking).is_empty());
         assert!(service.is_open(), "a failure is not an answer");
         type_text(&mut service, "hunter2");
-        let mut actions = service.key(ScreenKey::Enter);
-        actions.extend(pump_for(&mut service, |_| false));
+        let submitted = service.key(ScreenKey::Enter);
+        let actions = until_ended(&mut service, submitted);
         assert_eq!(
             actions,
             vec![SecretAction::Authenticated {
@@ -861,7 +873,7 @@ mod tests {
             let scene = service.pump(output(), &mut events);
             let shown = format!("{:?} {events:?}", scene.actions);
             assert!(!shown.contains("hunter2"), "{shown}");
-            let actions = pump_for(&mut service, |_| false);
+            let actions = until_ended(&mut service, scene.actions);
             assert_eq!(actions.len(), 1, "the password was accepted");
             assert!(!format!("{actions:?}").contains("hunter2"));
         });
