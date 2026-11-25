@@ -234,6 +234,9 @@ check_client() {
     renderer=$(grep -m1 -oE 'GL Renderer: "[^"]*"' "$out/$name.gnoblin.log" | cut -d'"' -f2 || true)
     if ! grep -q 'serving' <<<"$state"; then
         record "$name" fail "gnoblin stopped (see $name.gnoblin.log)"
+    elif ! grep -q 'the shell .* serves' "$out/$name.gnoblin.log"; then
+        # Without its shell the session runs the compositor's fallback window management, which is not what is tested.
+        record "$name" fail "the shell did not start (see $name.gnoblin.log)"
     elif ! grep -q 'the GLES context is ready' "$out/$name.gnoblin.log"; then
         record "$name" fail "no GLES context"
     elif grep -q 'frame was refused' "$out/$name.gnoblin.log"; then
@@ -271,7 +274,11 @@ sleep 1
 "$here/qmp.py" "$qmp" type ab
 sleep 2
 guest 'cat ~/session/client.log' >"$out/input.wev.log" 2>&1 || true
+guest 'cat ~/session/gnoblin.log' >"$out/input.gnoblin.log" 2>&1 || true
 capture input
+if ! grep -q 'the shell .* serves' "$out/input.gnoblin.log"; then
+    record input-shell fail "the shell did not start, so the input checks below test the fallback (see input.gnoblin.log)"
+fi
 if grep -q 'wl_pointer\] enter' "$out/input.wev.log" && grep -q 'wl_pointer\] button' "$out/input.wev.log"; then
     record pointer pass "wev got pointer enter and the click"
 else
