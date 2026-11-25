@@ -1087,8 +1087,13 @@ impl Gnoblin {
     }
 
     /// Tells the fixture shell to do `command` (`hang`, `panic`, `exit`, `fail-init`), with `text` in the file.
+    ///
+    /// The file is written beside its name and renamed into place: the fixture reads it as soon as it exists, and a file
+    /// it found still empty made `exit` run with its default code 1 instead of the one asked for (modular job 139021814940).
     pub fn command(&self, command: &str, text: &str) {
-        fs::write(self.fixture.join(command), text).expect("the command file");
+        let part = self.fixture.join(format!("{command}.part"));
+        fs::write(&part, text).expect("the command file");
+        fs::rename(&part, self.fixture.join(command)).expect("the command file is put in place");
     }
 
     /// The maps of the process, as `/proc/<pid>/maps` has them: the paths of the files mapped.
