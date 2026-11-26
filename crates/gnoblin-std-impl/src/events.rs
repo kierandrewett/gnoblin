@@ -97,6 +97,15 @@ impl State {
     /// Starts tracking a window.
     fn add_client(&mut self, id: NodeId, preexisting: bool) {
         let position = nodes::rect_of(&self.g, id);
+        // Only a window that was in the tree when this generation opened can carry the baseline an earlier generation fitted it at:
+        // a window that appears later is new, and a record under its id belongs to some other window of the thread's earlier trees
+        // (the oracle runs one scenario after another on a thread).
+        let carried = if preexisting {
+            crate::fit::carried_fit(id)
+        } else {
+            crate::fit::forget_fit(id);
+            None
+        };
         self.clients.push(id);
         self.rec.insert(
             id,
@@ -106,7 +115,7 @@ impl State {
                 parent: nodes::node_ref(&self.g, id, "parent_window"),
                 // A window an earlier generation fitted keeps that frame's room as its baseline, so this generation's frame (or
                 // none) moves the content by what the frame gained or lost.
-                fitted: crate::fit::carried_fit(id),
+                fitted: carried,
                 ..ClientRec::default()
             },
         );
