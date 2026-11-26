@@ -288,10 +288,11 @@ impl<'a> Renderer<'a> {
         })
     }
 
-    /// A property read back from the library: an object or a record may be absent.
-    fn getter_type(&self, ty: &Type) -> Result<String, String> {
+    /// A property read back from the library: an object may be absent, unless the catalog says the library `always` has one.
+    fn getter_type(&self, property: &Property) -> Result<String, String> {
+        let ty = &property.ty;
         let owned = self.owned(ty)?;
-        Ok(if matches!(ty, Type::ObjectRef(_)) {
+        Ok(if matches!(ty, Type::ObjectRef(_)) && !property.always {
             format!("Option<{owned}>")
         } else {
             owned
@@ -1157,7 +1158,7 @@ pub struct @Options@ {
             return Ok(());
         }
         claim(&ident)?;
-        let getter = self.getter_type(&property.ty)?;
+        let getter = self.getter_type(property)?;
         let _ = write!(
             out,
             "{doc_get}    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library cannot read it.\n    pub fn {ident}(&self) -> go::Res<{getter}> {{\n        let ids = {ids}::of(&self.objects)?;\n        let value = self.objects.api.get(self.object.handle(), {id}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(&self.objects, &value)\n    }}\n\n"

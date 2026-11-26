@@ -102,6 +102,10 @@ A local file may use keys a compositor file may not:
 - `kind` (`handle`, `record`, `interface`, `service`), `ctor`, `retained`, `[[enum]]` and `[[callback]]`.
 - `returns`, `required` and `default = "native"` on a method of an interface.
 - `optional` on a property: a record may leave the field out.
+- `always` on a property of an object type: the library always has an object to answer, so the read has no absent case. Rust and TypeScript
+  read `T` where they read `Option<T>` and `T | undefined` without it.
+    - It is a declaration for the SDKs, on no wire and in no catalog hash.
+    - The roots of `gnoblin` carry it, and so does `InputManager.primary`, whose read is refused when there is no seat.
 - `optional` on a method: its `object:` result may be none, as `Option<T>` in Rust, `T | undefined` in TypeScript and `T | None` in
   Python. The library flags the method `MEMBER_OPTIONAL` and refuses a none answer from a method that is not marked.
 - `optional` on a method of an interface, or on a `[[callback]]`: the shell's method or function may answer nothing (`T | void` in
@@ -210,7 +214,7 @@ Rust type for each catalog type:
   has `Default`. The record of a family (see [Value classes](#value-classes)) is an enum of structs, one for each variant;
 - a **handle** or a **service** is a struct that holds a reference and releases it when dropped. It has a constructor (`new`, or `get`
   for a service), a getter and a setter for each property, a method for each method, and an associated function for each `function`.
-  An object or a record reads as an `Option`, and so does the result of a method marked `optional`. A listener ends when the returned
+  An object or a record reads as an `Option` unless the property is marked `always`, and so does the result of a method marked `optional`. A listener ends when the returned
   guard is dropped; `keep` lets it last until the generation ends;
 - an **interface** is a struct of handlers, one boxed closure per method. A method the library has a native default for is an
   `Option` of one, and `implement` makes the object the library calls them through;

@@ -11,10 +11,7 @@ use gnoblin_core::objects::ModelRoot;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(compositor) = model.compositor()? else {
-        g.log("settings: the core has no settings object for the compositor");
-        return Ok(());
-    };
+    let compositor = model.compositor()?;
     g.log(&format!("settings: before = {}", compositor.user_shaders()?));
     compositor.set_user_shaders(false)?;
     g.log(&format!("settings: after = {}", compositor.user_shaders()?));

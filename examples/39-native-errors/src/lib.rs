@@ -20,7 +20,8 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = ModelRoot::get(&objects)?;
 
-    if let Some(input) = model.input()? {
+    {
+        let input = model.input()?;
         // The first context takes the name; a second with the same name is refused.
         let first = InputContext::new(&objects, "errors")?;
         input.add_context(&first)?;
@@ -47,8 +48,6 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         std::mem::forget(first);
         std::mem::forget(second);
         std::mem::forget(nameless);
-    } else {
-        g.log("errors: the compositor has no input");
     }
 
     // A window the shell has been told of is always told closed. The model reads the tree a batch at a time, so a window that opens

@@ -40,9 +40,7 @@ use gnoblin_core::objects::{IdleListenerHandlers, ModelRoot};
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = Rc::new(ModelRoot::get(&objects)?);
-    let Some(idle) = model.idle()? else {
-        return Ok(());
-    };
+    let idle = model.idle()?;
     let (locker, notifier) = (Rc::clone(&model), Rc::clone(&model));
     let listener = IdleListenerHandlers {
         on_idle: Some(Box::new(move |_watch| {
@@ -138,7 +136,8 @@ use gnoblin_core::{self as gnoblin, Gnoblin};
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    if let Some(idle) = model.idle()? {
+    {
+        let idle = model.idle()?;
         let hold = idle.inhibit("presentation")?;
         // Later:
         hold.release()?;

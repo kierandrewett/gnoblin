@@ -103,10 +103,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     })?;
 
     let objects = g.objects()?;
-    let Some(context) = ModelRoot::get(&objects)?
-        .input()?
-        .and_then(|input| input.primary().ok().flatten())
-    else {
+    let Some(context) = ModelRoot::get(&objects)?.input()?.primary().ok() else {
         g.log("workspaces: the compositor reports no seat");
         return Ok(());
     };
@@ -145,10 +142,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 
     // One function follows the drag from the press to the end. The press picks the window under the pointer.
     let held: Rc<RefCell<Option<Held>>> = Rc::new(RefCell::new(None));
-    let Some(seat) = ModelRoot::get(&objects)?
-        .input()?
-        .and_then(|input| input.primary().ok().flatten())
-    else {
+    let Some(seat) = ModelRoot::get(&objects)?.input()?.primary().ok() else {
         return Ok(());
     };
     let (workspace, shell) = (main.clone(), g.clone());

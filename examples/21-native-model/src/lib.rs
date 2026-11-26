@@ -20,10 +20,7 @@ use gnoblin_core::objects::{ClientQuery, ModelRoot};
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = ModelRoot::get(&objects)?;
-    let Some(clients) = model.clients()? else {
-        g.log("model: the core has no clients");
-        return Ok(());
-    };
+    let clients = model.clients()?;
     g.log(&format!("model: {} windows at the start", clients.length()?));
     // A lookup that finds nothing answers none, not an error.
     g.log(&format!(
@@ -43,9 +40,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         },
         None,
     )?;
-    let Some(root) = model.clients()? else {
-        return Ok(());
-    };
+    let root = model.clients()?;
     terminals
         .on_added(move |client, _| {
             g.log(&format!(

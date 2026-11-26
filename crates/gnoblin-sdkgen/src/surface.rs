@@ -82,6 +82,9 @@ fn property_detail(property: &Property) -> String {
     if property.optional {
         text.push_str(",optional");
     }
+    if property.always {
+        text.push_str(",always");
+    }
     if property.secret {
         text.push_str(",secret");
     }

@@ -40,10 +40,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
     let workspaces = Rc::new(model.workspaces()?);
     let displays = Rc::new(model.displays()?);
-    let Some(outputs) = model.outputs()? else {
-        g.log("stdroot: the core has no outputs");
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     let profiles = Rc::new(outputs.profiles()?);
 
     let main = Rc::new(Workspace::new(&objects, "main")?);
@@ -85,7 +82,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 
     // The style of a collection of windows: every window for the root's clients, and a scope of its own for a selection and for a
     // selection of it.
-    if let Some(clients) = model.clients()? {
+    {
+        let clients = model.clients()?;
         let style = clients.style()?;
         style.set_opacity(0.9)?;
         let opacity = clients.style()?.opacity()?;
@@ -169,8 +167,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
                 .objects()
                 .ok()
                 .and_then(|core| ModelRoot::get(&core).ok())
-                .and_then(|model| model.input().ok().flatten())
-                .and_then(|input| input.primary().ok().flatten())
+                .and_then(|model| model.input().ok())
+                .and_then(|input| input.primary().ok())
                 .and_then(|context| context.active_display().ok().flatten())
                 .and_then(|display| display.viewport().ok().flatten())
                 .and_then(|viewport| viewport.content().ok().flatten())

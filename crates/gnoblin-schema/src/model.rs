@@ -504,6 +504,9 @@ pub struct Property {
     /// True when a record may leave the field out because it has no value to say (a delay that is none, a flag an event of another kind
     /// does not use). A field with neither a default nor this is always there. Local namespaces only, and not with a default.
     pub optional: bool,
+    /// True when the read of an object-typed property always has an object (the roots of `gnoblin`), which the generated SDKs declare
+    /// without an absent case. A declaration for the SDKs only: it is on no wire and in no catalog hash.
+    pub always: bool,
     /// For a property of a variant: where the family record carries the value, as a field of the family (`amount`) or a field of a
     /// record that field holds (`shader.source`). The property's own name is what a script calls it, and may differ.
     pub field: Option<String>,

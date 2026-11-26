@@ -47,9 +47,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         .keep();
 
     // A launch that no window answers.
-    let Some(launches) = model.launches()? else {
-        return Ok(());
-    };
+    let launches = model.launches()?;
     let launch = launches.begin(
         "never",
         "org.example.Never",
@@ -68,9 +66,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         .keep();
 
     // An idle watch: idle after 300 ms without input, and resumed by the next key.
-    let Some(idle) = model.idle()? else {
-        return Ok(());
-    };
+    let idle = model.idle()?;
     let watch = idle.watch(300.0, None)?;
     watch.on_idle(move |_| g.log("services: the session is idle"))?.keep();
     watch
@@ -78,9 +74,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         .keep();
 
     // The session lock, asked for by a chord: the operation settles when the compositor answers.
-    let Some(session) = model.session()? else {
-        return Ok(());
-    };
+    let session = model.session()?;
     g.bind("<Super>e", move || match session.lock() {
         Ok(operation) => {
             let heard = operation.on_settled(move |settled| {

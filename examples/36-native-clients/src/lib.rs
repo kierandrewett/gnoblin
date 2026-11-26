@@ -74,7 +74,8 @@ fn check_members(g: &Gnoblin, workspaces: &Workspaces, client: &Client) -> gnobl
         client.style_warnings().is_ok()
     ));
     // A selection styles the windows it holds and no others, and a selection that can hold no window has no style.
-    if let Some(clients) = ModelRoot::get(&g.objects()?)?.clients()? {
+    {
+        let clients = ModelRoot::get(&g.objects()?)?.clients()?;
         let query = |app_id: Option<&str>, any: Option<&[&str]>, title: Option<&str>| ClientQuery {
             app_id: app_id.map(str::to_owned),
             any_app_id: any.map(|any| any.iter().map(|item| (*item).to_owned()).collect()),
@@ -117,7 +118,7 @@ fn check_members(g: &Gnoblin, workspaces: &Workspaces, client: &Client) -> gnobl
         client.move_with_keys()?
     ));
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(output) = model.outputs()?.and_then(|outputs| outputs.at(0).ok().flatten()) else {
+    let Some(output) = model.outputs()?.at(0).ok().flatten() else {
         say("there is no output".to_owned());
         return Ok(());
     };
@@ -203,7 +204,6 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             let same = finder
                 .clients()
                 .ok()
-                .flatten()
                 .and_then(|clients| clients.get_by_id(&client.id().ok()?).ok().flatten())
                 .is_some_and(|core| core == client);
             g.log(&format!("clients: {title}: the library's client is the core's: {same}"));

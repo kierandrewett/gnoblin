@@ -888,6 +888,7 @@ name = "clients"
 type = "object:client_collection"
 since = "0.2.0"
 readonly = true
+always = true
 
 # The connected outputs, live across hotplug: one is added when it is plugged in and removed when it goes.
 [[object.property]]
@@ -895,6 +896,7 @@ name = "outputs"
 type = "object:output_collection"
 since = "0.2.0"
 readonly = true
+always = true
 
 # The windows in the order they were last focused.
 [[object.property]]
@@ -902,6 +904,7 @@ name = "focus"
 type = "object:focus_history"
 since = "0.2.0"
 readonly = true
+always = true
 
 # The session: logout, power, suspend and lock (`session` module).
 [[object.property]]
@@ -909,6 +912,7 @@ name = "session"
 type = "object:session"
 since = "0.2.0"
 readonly = true
+always = true
 
 # The configuration reload (`session` module).
 [[object.property]]
@@ -916,6 +920,7 @@ name = "runtime"
 type = "object:runtime"
 since = "0.2.0"
 readonly = true
+always = true
 
 # The programs this generation started (`process` module): `gnoblin.process` of the TypeScript library.
 [[object.property]]
@@ -923,6 +928,7 @@ name = "process"
 type = "object:processes"
 since = "0.2.0"
 readonly = true
+always = true
 
 # Idle watches and holds on the session (`idle` module).
 [[object.property]]
@@ -930,6 +936,7 @@ name = "idle"
 type = "object:idle"
 since = "0.2.0"
 readonly = true
+always = true
 
 # Launch feedback (`launches` module).
 [[object.property]]
@@ -937,6 +944,7 @@ name = "launches"
 type = "object:launches"
 since = "0.2.0"
 readonly = true
+always = true
 
 # The input contexts of the seats and the bindings on them (`input` module).
 [[object.property]]
@@ -944,6 +952,7 @@ name = "input"
 type = "object:input_manager"
 since = "0.2.0"
 readonly = true
+always = true
 
 # Policy over the compositor's consent, passphrase and authentication dialogs (`dialogs` module).
 [[object.property]]
@@ -951,6 +960,7 @@ name = "dialogs"
 type = "object:dialogs"
 since = "0.2.0"
 readonly = true
+always = true
 
 # The session's polkit authentications (`dialogs` module).
 [[object.property]]
@@ -958,6 +968,7 @@ name = "authentication"
 type = "object:authentication"
 since = "0.2.0"
 readonly = true
+always = true
 
 # The session lock as a lock screen reads it (`lock` module).
 [[object.property]]
@@ -965,6 +976,7 @@ name = "lock"
 type = "object:session_lock"
 since = "0.2.0"
 readonly = true
+always = true
 
 # Calls that run later, and the monotonic clock (`timers` module): `gnoblin.timers`.
 [[object.property]]
@@ -972,6 +984,7 @@ name = "timers"
 type = "object:timers"
 since = "0.2.0"
 readonly = true
+always = true
 
 # The compositor's own settings, as it read them when it started (`session` module): `gnoblin.compositor`.
 [[object.property]]
@@ -979,6 +992,7 @@ name = "compositor"
 type = "object:compositor_settings"
 since = "0.2.0"
 readonly = true
+always = true
 
 # The build identity: Gnoblin, GNOME, Mutter, the script engine and the control API, and the commit and build that made this one.
 [[object.method]]

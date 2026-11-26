@@ -63,7 +63,7 @@ member | client.width | property double rw,animated | 0.2.0
 member | client.x | property double rw,animated | 0.2.0
 member | client.y | property double rw,animated | 0.2.0
 member | client.z | property double rw,animated | 0.2.0
-member | gnoblin.authentication | property object:authentication ro | 0.2.0
+member | gnoblin.authentication | property object:authentication ro,always | 0.2.0
 member | gnoblin.client_app_id_changed | signal (client:object:client, app_id:string) | 0.2.0
 member | gnoblin.client_closed | signal (client:object:client) | 0.2.0
 member | gnoblin.client_created | signal (client:object:client, collection:object:client_collection) | 0.2.0
@@ -77,16 +77,16 @@ member | gnoblin.client_pointer_press | signal (client:object:client, event:obje
 member | gnoblin.client_pointer_release | signal (client:object:client, event:object:pointer_event) | 0.2.0
 member | gnoblin.client_ready | signal (client:object:client) | 0.2.0
 member | gnoblin.client_title_changed | signal (client:object:client, title:string) | 0.2.0
-member | gnoblin.clients | property object:client_collection ro | 0.2.0
-member | gnoblin.compositor | property object:compositor_settings ro | 0.2.0
-member | gnoblin.dialogs | property object:dialogs ro | 0.2.0
+member | gnoblin.clients | property object:client_collection ro,always | 0.2.0
+member | gnoblin.compositor | property object:compositor_settings ro,always | 0.2.0
+member | gnoblin.dialogs | property object:dialogs ro,always | 0.2.0
 member | gnoblin.find_clients | method (query?:object:client_query) -> list<object:client> find=Window | 0.2.0
 member | gnoblin.find_outputs | method (query?:object:output_query) -> list<object:output> find=Output | 0.2.0
-member | gnoblin.focus | property object:focus_history ro | 0.2.0
-member | gnoblin.idle | property object:idle ro | 0.2.0
-member | gnoblin.input | property object:input_manager ro | 0.2.0
-member | gnoblin.launches | property object:launches ro | 0.2.0
-member | gnoblin.lock | property object:session_lock ro | 0.2.0
+member | gnoblin.focus | property object:focus_history ro,always | 0.2.0
+member | gnoblin.idle | property object:idle ro,always | 0.2.0
+member | gnoblin.input | property object:input_manager ro,always | 0.2.0
+member | gnoblin.launches | property object:launches ro,always | 0.2.0
+member | gnoblin.lock | property object:session_lock ro,always | 0.2.0
 member | gnoblin.motion | method (duration:double) -> double | 0.2.0
 member | gnoblin.output_added | signal (output:object:output, collection:object:output_collection) | 0.2.0
 member | gnoblin.output_applied | signal (output:object:output, error:string) | 0.2.0
@@ -96,13 +96,13 @@ member | gnoblin.output_geometry_changed | signal (output:object:output, geometr
 member | gnoblin.output_mode_changed | signal (output:object:output, mode:string) | 0.2.0
 member | gnoblin.output_removed | signal (output:object:output, collection:object:output_collection) | 0.2.0
 member | gnoblin.output_scale_changed | signal (output:object:output, scale:double) | 0.2.0
-member | gnoblin.outputs | property object:output_collection ro | 0.2.0
-member | gnoblin.process | property object:processes ro | 0.2.0
-member | gnoblin.runtime | property object:runtime ro | 0.2.0
-member | gnoblin.session | property object:session ro | 0.2.0
+member | gnoblin.outputs | property object:output_collection ro,always | 0.2.0
+member | gnoblin.process | property object:processes ro,always | 0.2.0
+member | gnoblin.runtime | property object:runtime ro,always | 0.2.0
+member | gnoblin.session | property object:session ro,always | 0.2.0
 member | gnoblin.shell | method (command:string, options?:object:spawn_options) -> object:process | 0.2.0
 member | gnoblin.spawn | method (argv:list<string>, options?:object:spawn_options) -> object:process | 0.2.0
-member | gnoblin.timers | property object:timers ro | 0.2.0
+member | gnoblin.timers | property object:timers ro,always | 0.2.0
 member | gnoblin.version | method () -> object:build_version | 0.2.0
 member | gpu_memory.budget | property double rw | 0.2.0
 member | gpu_memory.capture | property double rw | 0.2.0

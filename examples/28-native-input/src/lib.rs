@@ -22,13 +22,8 @@ const GENERATION: u32 = 1;
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = ModelRoot::get(&objects)?;
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(context) = input.primary()? else {
-        g.log("input: the compositor reports no seat");
-        return Ok(());
-    };
+    let input = model.input()?;
+    let context = input.primary()?;
 
     // A press runs the binding of the higher priority first. It declines, so the press goes on to the next.
     context.bind(

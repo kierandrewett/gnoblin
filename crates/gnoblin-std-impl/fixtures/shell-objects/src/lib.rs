@@ -224,7 +224,9 @@ impl ObjectsShell {
                 // The window is the core's `Client`, which the core looks up by its id.
                 let first = gnoblin_core::objects::ModelRoot::get(&self.core)?
                     .clients()?
-                    .and_then(|clients| clients.get_by_id(FIRST).ok().flatten());
+                    .get_by_id(FIRST)
+                    .ok()
+                    .flatten();
                 let Some(first) = first else {
                     return Ok(());
                 };

@@ -46,7 +46,12 @@
 //!   a missing one means. A required parameter after an optional one is refused, so the generated signatures can write
 //!   the optional ones as trailing parameters; a signal field is never optional.
 //!
-//! `readonly`, `animated` and `optional` are booleans and default to `false`. Every key a
+//! - `always = true` on a property of an object type: the library always has an object to answer (the roots of `gnoblin`:
+//!   `gnoblin.input`, `gnoblin.clients`), so a generated SDK declares the read without an absent case (no `| undefined`, no
+//!   `Option`). It is a declaration for the SDKs and changes nothing on the wire: the property is the same value, and no
+//!   hash of the catalog covers it.
+//!
+//! `readonly`, `animated`, `optional` and `always` are booleans and default to `false`. Every key a
 //! schema file has not declared is refused, so a misspelt key cannot pass silently.
 //!
 //! ## Keys of a local namespace
@@ -220,6 +225,8 @@ struct RawProperty {
     animated: bool,
     #[serde(default)]
     optional: bool,
+    #[serde(default)]
+    always: bool,
     default: Option<toml::Value>,
     #[serde(default)]
     field: Option<String>,
@@ -842,6 +849,16 @@ fn parse_properties(
         let Some(ty) = type_of(problems, raw_property.ty.as_deref(), &owner) else {
             continue;
         };
+        if raw_property.always && !matches!(ty, Type::ObjectRef(_)) {
+            problems.push(format!(
+                "{owner}: `always` is for a property of an object type, which a read may otherwise answer with none"
+            ));
+        }
+        if raw_property.always && (raw_property.optional || in_variant) {
+            problems.push(format!(
+                "{owner}: `always` says the read has an object, so it is not `optional` and not a field of a variant"
+            ));
+        }
         let Some(since) = member_since(
             problems,
             raw_property.since.as_deref(),
@@ -872,6 +889,7 @@ fn parse_properties(
             readonly: raw_property.readonly,
             animated: raw_property.animated,
             optional: raw_property.optional,
+            always: raw_property.always,
             field: raw_property.field.clone(),
             extras,
         });

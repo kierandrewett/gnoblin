@@ -133,7 +133,7 @@ member | input_manager.document_revision | property uint ro | 0.2.0
 member | input_manager.find_context | method (name:string) -> object:input_context? | 0.2.0
 member | input_manager.find_device | method (id:string) -> object:device? | 0.2.0
 member | input_manager.focused_client | property object:client ro | 0.2.0
-member | input_manager.primary | property object:input_context ro | 0.2.0
+member | input_manager.primary | property object:input_context ro,always | 0.2.0
 member | input_manager.remove_context | method (context:object:input_context) -> bool | 0.2.0
 member | input_point.x | property double rw | 0.2.0
 member | input_point.y | property double rw | 0.2.0

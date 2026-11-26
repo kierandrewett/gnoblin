@@ -1875,6 +1875,15 @@ impl Js<'_> {
         })
     }
 
+    /// The type `property` is read as: an object may be absent unless the catalog says the library `always` has one.
+    fn ts_read_property(&self, property: &Property) -> Result<String, String> {
+        if property.always {
+            self.ts(&property.ty, false)
+        } else {
+            self.ts_read(&property.ty)
+        }
+    }
+
     /// The type a property is read as: an object or a record may be absent.
     fn ts_read(&self, ty: &Type) -> Result<String, String> {
         let text = self.ts(ty, false)?;
@@ -2077,7 +2086,7 @@ impl Js<'_> {
                     Some(property) => vec![format!(
                         "{}: {}",
                         ts_ident(&camel(&property.name)),
-                        self.ts_read(&property.ty)?
+                        self.ts_read_property(property)?
                     )],
                     None => fields
                         .iter()
@@ -2203,7 +2212,7 @@ impl Js<'_> {
         let read = if callback {
             String::new()
         } else {
-            self.ts_read(&property.ty)?
+            self.ts_read_property(property)?
         };
         let write = self.ts(&property.ty, true)?;
         if property.readonly {

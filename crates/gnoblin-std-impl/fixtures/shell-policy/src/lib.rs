@@ -305,7 +305,9 @@ impl ObjectsShell {
                 // The window is the core's `Client`, which the core looks up by its id.
                 let first = gnoblin_core::objects::ModelRoot::get(&self.core)?
                     .clients()?
-                    .and_then(|clients| clients.get_by_id(FIRST).ok().flatten());
+                    .get_by_id(FIRST)
+                    .ok()
+                    .flatten();
                 let Some(first) = first else {
                     return Ok(());
                 };
@@ -412,7 +414,7 @@ fn probes(g: &Gnoblin, objects: &Objects) -> gnoblin_std::Result<()> {
     let core = g.objects()?;
     let _ = objects;
     let model = ModelRoot::get(&core)?;
-    let context = model.input()?.and_then(|input| input.primary().ok().flatten());
+    let context = model.input()?.primary().ok();
     let Some(context) = context else {
         return Ok(());
     };

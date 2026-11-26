@@ -39,10 +39,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
     let objects = g.std()?.objects()?;
     let workspaces = model.workspaces()?;
-    let Some(outputs) = model.outputs()? else {
-        g.log("ctoropts: the core has no outputs");
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     let profiles = outputs.profiles()?;
     let say = |text: String| g.log(&format!("ctoropts: {text}"));
     say("running".to_owned());

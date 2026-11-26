@@ -121,16 +121,13 @@ impl PolicyBinding {
 /// The input context named `name`, or the first seat's.
 fn context_in(objects: &Objects, name: Option<&str>) -> Res<InputContext> {
     let model = ModelRoot::get(objects)?;
-    let input = model
-        .input()?
-        .ok_or_else(|| Fail::refused(ErrorCode::Unavailable, "the compositor reports no input"))?;
+    let input = model.input()?;
     match name {
         Some(name) => input
             .find_context(name)?
             .ok_or_else(|| Fail::no_such(format!("there is no input context named `{name}`"))),
-        None => input
-            .primary()?
-            .ok_or_else(|| Fail::refused(ErrorCode::Unavailable, "the compositor reports no seat")),
+        // The library refuses the read when the compositor reports no seat.
+        None => input.primary(),
     }
 }
 

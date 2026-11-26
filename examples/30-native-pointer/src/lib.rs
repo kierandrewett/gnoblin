@@ -23,13 +23,8 @@ const GENERATION: u32 = 1;
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = ModelRoot::get(&objects)?;
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(context) = input.primary()? else {
-        g.log("pointer: the compositor reports no seat");
-        return Ok(());
-    };
+    let input = model.input()?;
+    let context = input.primary()?;
 
     // One function follows the drag from its start to its end. Any answer but `false` at the start takes the drag.
     context.bind(

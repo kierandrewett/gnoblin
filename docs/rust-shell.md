@@ -422,7 +422,7 @@ The typed object model of the core starts at `ModelRoot`. Its members are the on
 use gnoblin_core::objects::{Client, ClientQuery, Finds, ModelRoot, Output};
 
 let model = ModelRoot::get(&g.objects()?)?;
-let started = model.timers()?.expect("the core has timers").now()?;
+let started = model.timers()?.now()?;
 println!("gnoblin {}", model.version()?.gnoblin);
 let milliseconds = model.motion(200.0)?; // 0 while the seat asks for reduced motion
 let foot = model.find::<Client>(Some(&ClientQuery {
@@ -467,7 +467,7 @@ let main = Workspace::new(&objects, "main")?;
 workspaces.add(&main)?;
 workspaces.show(&main, None)?; // `show_by_id("main", None)` takes the id; `area()` is where windows are laid out
 let displays = model.displays()?; // `replace(&old, &new)` swaps a display of the shell's own for another
-let profiles = model.outputs()?.expect("the core has outputs").profiles()?;
+let profiles = model.outputs()?.profiles()?;
 ```
 
 A shell that does not use the std prelude has none of them, and a call of one does not compile: the trait is not in scope, and the

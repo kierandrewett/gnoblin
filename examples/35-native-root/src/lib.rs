@@ -33,10 +33,7 @@ fn report(g: &Gnoblin, root: &ModelRoot, client: &Client) -> gnoblin::Result<()>
         .count();
     let outputs = root.find::<Output>(None)?.len();
     let motion = root.motion(200.0)?;
-    let shaders = match root.compositor()? {
-        Some(compositor) => compositor.user_shaders()?,
-        None => true,
-    };
+    let shaders = root.compositor()?.user_shaders()?;
     g.log(&format!(
         "root: created {}: windows = {windows}, appId foot = {foot}, title starts with Term = {titled}, outputs listed = {}, \
          motion(200) = {motion}, userShaders = {shaders}",
@@ -54,10 +51,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let version = model.version()?;
     g.log(&format!("root: gnoblin {} speaks api {}", version.gnoblin, version.api));
 
-    let (Some(timers), Some(clock)) = (model.timers()?, model.timers()?) else {
-        g.log("root: the core has no timers");
-        return Ok(());
-    };
+    let (timers, clock) = (model.timers()?, model.timers()?);
     let started = clock.now()?;
     timers.after(40.0, move || {
         let moved = clock.now()? - started;

@@ -1466,6 +1466,7 @@ name = "primary"
 type = "object:input_context"
 since = "0.2.0"
 readonly = true
+always = true
 
 # Every context: the seats' first, then the shell's in the order it added them.
 [[object.property]]

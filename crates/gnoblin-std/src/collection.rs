@@ -739,9 +739,7 @@ fn listen_clients(
     install: impl FnOnce(&mut model::ClientCollectionListenerHandlers, Filter, Std),
 ) -> Result<Subscription> {
     let objects = std.gnoblin().objects()?;
-    let root = model::ModelRoot::get(&objects)?
-        .clients()?
-        .ok_or_else(|| Error::new(ErrorKind::Failed, "the core has no collection of clients"))?;
+    let root = model::ModelRoot::get(&objects)?.clients()?;
     let mut handlers = no_handlers();
     install(&mut handlers, filter, std.clone());
     let listener = handlers.implement(&objects)?;
