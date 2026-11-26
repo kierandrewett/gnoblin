@@ -20,6 +20,11 @@
 //! 3. **A buffer in an unadvertised format or modifier is imported.** [`DmabufSupport::offers`] is
 //!    the check every import runs first, because the protocol's own validation knows the format
 //!    code and not the modifier.
+//! 4. **A software rasteriser is asked to map a buffer it cannot.** Mesa's llvmpipe on a display with no render
+//!    node imports a plane that is no GPU memory and dies sampling it, so a renderer with no render node is not
+//!    offered to clients (`DmabufHub::query` in `gpu.rs`), and the GLES renderer refuses a plane that is not a
+//!    dma-buf of the size the buffer claims before the driver sees it
+//!    (`gnoblin_render_gles::dmabuf::unmappable`): `tests/dmabuf_attack.rs` in `gnoblin-wayland`.
 
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::format::FormatSet;
@@ -33,9 +38,10 @@ use gnoblin_types::{OutputId, Point, Rect};
 #[derive(Clone, Debug)]
 pub struct DmabufSupport {
     /// The `dev_t` of the render node the compositor draws with. With a device, clients get
-    /// version 4 feedback (`main_device` and a format table); without one (a software
-    /// rasteriser, a surfaceless context) the compositor serves version 3, which names formats and
-    /// no device.
+    /// version 4 feedback (`main_device` and a format table). A renderer with none (a software
+    /// rasteriser, a surfaceless context) is never offered to clients, so the session serves no
+    /// dmabuf; only a stand-in provider answers without a device, and then the compositor serves
+    /// version 3, which names formats and no device.
     pub main_device: Option<u64>,
     /// The pairs a client may allocate in.
     pub formats: FormatSet,

@@ -2034,6 +2034,7 @@ dependencies = [
  "gnoblin-render-software",
  "gnoblin-types",
  "naga",
+ "rustix 1.1.6",
  "smithay",
 ]
 

@@ -158,6 +158,11 @@ pub(crate) trait GpuTarget {
     }
 }
 
+/// Whether a renderer's answer names the device a client allocates its buffers on.
+fn has_device(support: &DmabufSupport) -> bool {
+    support.main_device.is_some()
+}
+
 /// What clients were offered, and the stand-in importer a test may install.
 ///
 /// The offer is remembered so each import and each copy is checked against the formats clients were told, before
@@ -182,11 +187,14 @@ impl DmabufHub {
     }
 
     /// What the session can import of a client's GPU buffers: the provider's answer, or the first output's
-    /// renderer's. `None` when nothing imports (the software renderer, or no output).
+    /// renderer's, when that renderer has a render node. `None` when nothing imports (the software renderer, or no
+    /// output) and when the renderer has no device a client could allocate on (Mesa's llvmpipe on a surfaceless
+    /// display): the protocol is not served there, so a client sends shared memory and no buffer of its own reaches
+    /// a software rasteriser that cannot map it.
     pub fn query<T: GpuTarget>(&mut self, first: Option<&mut T>) -> Option<DmabufSupport> {
         let support = match self.provider.as_mut() {
             Some(provider) => provider.support(),
-            None => first.and_then(GpuTarget::dmabuf_support),
+            None => first.and_then(GpuTarget::dmabuf_support).filter(has_device),
         };
         self.support.clone_from(&support);
         support
@@ -209,12 +217,13 @@ impl DmabufHub {
         }
     }
 
-    /// What a capture may be written into: the provider's answer, or the first output's renderer's. Remembered, so
-    /// each copy checks a buffer against the formats a capture client was told.
+    /// What a capture may be written into: the provider's answer, or the first output's renderer's, when that
+    /// renderer has a render node (see [`DmabufHub::query`]). Remembered, so each copy checks a buffer against the
+    /// formats a capture client was told.
     pub fn query_capture<T: GpuTarget>(&mut self, first: Option<&mut T>) -> Option<DmabufSupport> {
         let support = match self.provider.as_mut() {
             Some(provider) => provider.capture_support(),
-            None => first.and_then(GpuTarget::dmabuf_support),
+            None => first.and_then(GpuTarget::dmabuf_support).filter(has_device),
         };
         self.capture.clone_from(&support);
         support

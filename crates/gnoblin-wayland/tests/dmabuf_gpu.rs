@@ -202,9 +202,8 @@ fn a_gpu_buffer_is_drawn_from_the_texture_the_compositor_imports() {
             let qh = queue.handle();
             let mut app = App::default();
 
-            // Version 4 (default feedback) is served only with a DRM render node to name as the main device. A software
-            // rasteriser that does import dmabufs (Mesa's llvmpipe on a machine with no `/dev/dri`) passes the gate above
-            // and still serves version 3 only, which is a skip, not a failure.
+            // Version 4 (default feedback) names a DRM render node as the main device, and a renderer with none (Mesa's
+            // llvmpipe on a machine with no `/dev/dri`) is not offered to clients at all, which is a skip, not a failure.
             let global: dmabuf_global::ZwpLinuxDmabufV1 = match globals.bind(&qh, 4..=4, ()) {
                 Ok(global) => global,
                 Err(error) => {
