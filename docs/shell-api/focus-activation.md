@@ -12,9 +12,12 @@ API: see [Settings with no object](/js-settings). Read the order windows were fo
 
 A file that decides focus itself calls `FocusPolicy.get().stop()` before it does, so that the two never answer one click.
 
-`FocusPolicy.get().start()` starts the stock policy again, and does nothing while it runs. In Rust the call is
-`FocusPolicy::get(&objects)?.stop()?`, with the `objects` of `g.std()?.objects()?`. A shell that is not a desktop of the
-library, one written on the core alone, has no focus policy: nothing moves its keyboard until it calls `client.focus()`.
+`FocusPolicy.get().start()` starts the stock policy again, and does nothing while it runs.
+
+In Rust the call is `FocusPolicy::get(&objects)?.stop()?`, with the `objects` of `g.std()?.objects()?`.
+
+A shell that is not a desktop of the library, one written on the core alone, has no focus policy: nothing moves its keyboard
+until it calls `client.focus()`.
 
 ## Give a window the focus
 

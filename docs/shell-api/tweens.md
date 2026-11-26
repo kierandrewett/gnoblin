@@ -121,7 +121,7 @@ nothing is written.
 
 What the callback may write:
 
-- A property of a `Client` (`opacity`, `x`, `rotation`: `client.opacity = 0.5` in TypeScript and Python, `client.set_opacity(0.5)` in Rust) is staged with the other writes, and reading it inside the callback gives the staged value.
+- A property of a `Client` (`opacity`, `x`, `rotation`: `client.opacity = 0.5` in TypeScript and Python, a setter method in Rust) is staged with the other writes, and reading it inside the callback gives the staged value.
   A timed write of a window (`setOpacityTimed` in TypeScript, `set_opacity_timed` in Python and Rust) is not staged: it plays by the timing it is given.
 - A property of a workspace, a layout or the styles is staged by the library and tweens through the windows it moves.
 - Staging a window's property needs a core that has the write stage (`set_write_stage`, see [ABI compatibility](/abi-compatibility)).
