@@ -547,6 +547,39 @@ fn a_listener_of_created_is_told_of_the_windows_there() {
     rig.finish();
 }
 
+/// The shell reads the tree a batch at a time: a window that opens and closes inside one batch is gone by the time the batch is read, so
+/// the shell is told of neither (`created` and `closed` are a pair, and a shell that hears the first hears the second). A window that
+/// a batch of its own told of closes in a later batch and is told closed. A shell that wants to close a window and see it close waits
+/// until it has been told the window exists.
+#[test]
+fn a_window_that_opens_and_closes_within_one_batch_is_told_of_to_nobody() {
+    let mut rig = Rig::new("model_created_replays", &[]);
+    let gnoblin = rig.gnoblin;
+    rig.hear(gnoblin, "client_created", "facade", "id");
+    rig.hear(gnoblin, "client_closed", "facade", "id");
+    // The windows there at the start are told of by `created`; what is under test is what comes after.
+    rig.settle();
+    rig.log.borrow_mut().clear();
+
+    // Both changes wait in the link until the shell's next turn, as they do for a shell that was slow to wake.
+    rig.comp.create_window(100, "flash", "app.flash");
+    rig.comp.destroy(100);
+    rig.settle();
+    assert_eq!(
+        *rig.log.borrow(),
+        Vec::<Value>::new(),
+        "a window that was open and closed within one batch is told of to nobody"
+    );
+
+    // The same window, told of before it closes, is told closed.
+    rig.open(101, "kept", "app.kept");
+    rig.destroy(101);
+    assert_eq!(
+        *rig.log.borrow(),
+        vec![json!("facade:onCreated:101"), json!("facade:onClosed:101")]
+    );
+}
+
 /// `at` and `get` answer none for a member that is not there (the catalog marks both `optional`), and the member itself, unchanged, for one
 /// that is: the generated SDKs read none as `None`, `undefined` and `Option::None`.
 #[test]

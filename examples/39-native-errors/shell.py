@@ -45,6 +45,13 @@ else:
         )
 
 
+# A window the shell has been told of is always told closed. The model reads the tree a batch at a time, so a window that opens and
+# closes within a single batch is told of neither way.
+@gnoblin.on("client_created")
+def created(client, collection):
+    say("a window appeared")
+
+
 # A window that has closed is still a ``Client``; a call on it says it is gone.
 @gnoblin.on("client_closed")
 def closed(client):

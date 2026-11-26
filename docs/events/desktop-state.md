@@ -103,6 +103,14 @@ gnoblin.onClientCreated((client) => {
 });
 ```
 
+The shell reads what the compositor published a batch at a time:
+
+- A window that opens and closes inside one batch is gone when the batch is read. The shell is told of it neither way: no
+  `onAdded` or `clientCreated`, and no `onClosed`.
+- A window the shell has been told of is always told closed later.
+- A script that acts on a window it has just opened, such as closing it, listens for the window to appear first and acts
+  from there.
+
 ## Listen to outputs
 
 An `OutputCollectionListener` attached to `gnoblin.outputs`, or an `OutputListener` attached to one output, has these

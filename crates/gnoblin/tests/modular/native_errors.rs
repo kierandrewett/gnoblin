@@ -7,14 +7,15 @@
 //! - a refused write: a second `InputContext` whose name is taken is refused with `already_exists`, and the target names the manager's
 //!   member that was called (`InputManager`, `add_context` or `addContext`, which has no id and so no `#`);
 //! - a call on an object that is gone: a window that has closed is still a `Client`, and `close()` on it is refused with `not_found` and
-//!   the target `Client#<id>.close`, the id being the window's own;
+//!   the target `Client#<id>.close`, the id being the window's own. The shell logs a line when it is told a window appeared, and the
+//!   window is closed after that line: a window that opens and closes within one batch of the tree is told of neither way;
 //! - a bad argument: a context with no name is `TypeError` in TypeScript and Python and has no code in Rust. It is not a `GnoblinError`, so a
 //!   script's `catch` for a refused call does not take it;
 //! - nothing is the wrong way round: the first context is accepted, a closed window is never answered, and the Python session has no
 //!   traceback.
 
 use crate::support::Mapper;
-use crate::support::native_shell::{Gnoblin, Home, Launch, Start, shells, start_script_in, wait_for_window};
+use crate::support::native_shell::{Gnoblin, Home, Launch, Start, shells, start_script_in};
 use crate::{copy_example, serving};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -99,11 +100,13 @@ fn the_failures_say_why(language: Language, session: &mut Gnoblin) {
     );
 
     // A call on an object that is gone: the window closed, and its `Client` says it is gone. The window is closed once
-    // the compositor has published it: closed at once, the shell logged no closed window (Fedora 43 job 139077575345),
-    // as a window can open and close before the shell's model hears of it.
+    // the shell has been told of it. The shell's model reads the tree a batch at a time, and a window that opens and
+    // closes inside one batch is gone when the batch is read, so the shell is told of it neither way: closed once the
+    // compositor had published it, the shell still logged no closed window (Fedora 43 job 139077575345, and a Python
+    // shell on a loaded box), because the open and the close reached it in one batch.
     let mut mapper = Mapper::connect(&session.wayland());
     mapper.map_window("foot", "Terminal");
-    wait_for_window(session, "the compositor publishes the window", "foot", |_| true);
+    logged(session, "errors: a window appeared");
     mapper.close_window(0);
     let gone = logged(session, "errors: Terminal: a closed window is refused: ");
     assert!(
