@@ -730,7 +730,6 @@ fn a_window_pressed_holds_hover_focus_until_the_button_is_released() {
 }
 
 #[test]
-#[ignore = "gnoblin-2ry9: on the native library nothing is raised after the auto-raise delay passes (`rig.advance(80)`), and a second frame does not help: the delayed raise never happens"]
 fn auto_raise_lifts_the_hovered_focused_window_after_the_delay_unless_the_pointer_left() {
     // Before: `Window:on_enter` starts the auto-raise timer and `Window:on_leave` cancels it. Window 3 has the focus.
     let comp = world(vec![
@@ -795,7 +794,6 @@ fn auto_raise_is_off_by_default_and_a_window_that_lost_focus_is_not_raised() {
 }
 
 #[test]
-#[ignore = "gnoblin-2ry9: on the native library the pointer rest does not focus after the rest time passes (`rig.advance(260)`), and a second frame does not help: the delayed focus never happens"]
 fn a_pointer_rest_focuses_after_the_rest_time_and_a_leave_cancels_it() {
     // Before: `rest_focus_later`; the rest is 0.2 s.
     let comp = world(vec![

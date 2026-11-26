@@ -395,6 +395,7 @@
 - Activation requests from `xdg_activation_v1` are now sent to the shell as an `activate` request, which focuses and raises the window only if it is on the active workspace.
 - Window rules now apply once a new window is on a desk, so a rule sending it to another workspace takes effect, and a rule that stops matching clears the field it set, such as `secure`.
 - `gnoblin.workspaces.create`, `next`, `previous`, `Workspace:activate` and `rename` now return the live `Workspace` that `gnoblin.workspaces.by_id` returns, with `window_count`, instead of a plain record with a `windows` key.
+- The native focus policy now measures its two delays, the pointer rest and auto raise, on the core's clock (`gnoblin.timers.now`) when the shell gives `focus_policy.now` no clock of its own. It measured them on a monotonic clock of the toolkit's own, while the toolkit wakes it by a core timer, so a shell whose core clock is moved by hand (a `ManualClock`) woke the policy at the right moment, found nothing due on its other clock, and went back to sleep: the delayed raise and the rest focus never ran. In a real session both are the same kind of monotonic clock and nothing changes (bead gnoblin-2ry9; `crates/gnoblin-std-impl/src/policy/focus.rs`, `crates/gnoblin-std-abi/schema/policy.toml`, `crates/gnoblin-js/tests/stock_focus.rs`, `crates/gnoblin-std-impl/tests/policy.rs`).
 
 #### Input, seats and accessibility
 

@@ -393,6 +393,40 @@ fn a_pointer_rest_focuses_after_the_rest_time_and_a_leave_cancels_it() {
     veq!(focus_of(&rig), 4, "the pointer left before it rested");
 }
 
+#[test]
+fn with_no_clock_given_the_delays_run_by_the_cores_clock_and_a_restart_keeps_it() {
+    // The shell gave `now` to no one: the delays are due on the clock that wakes the toolkit for them, which is the one `Rig::advance` moves.
+    let mut rig = Rig::scratch_policy(2);
+    seat(&mut rig, "focus_mode", text("hover"));
+    seat(&mut rig, "auto_raise", MirrorValue::Bool(true));
+    seat(&mut rig, "auto_raise_delay", MirrorValue::Double(40.0));
+    let focus = focus_policy(&rig);
+    focus.call("start", &[]);
+    edge(&mut rig, 3, "enter");
+    veq!(
+        order(&rig, &[3, 4]),
+        [3, 4],
+        "entering focuses at once; the raise waits"
+    );
+    rig.advance(30);
+    veq!(order(&rig, &[3, 4]), [3, 4], "the delay is not over");
+    rig.advance(50);
+    veq!(
+        order(&rig, &[3, 4]),
+        [4, 3],
+        "after the delay the focused window is raised"
+    );
+    focus.call("stop", &[]);
+    focus.call("start", &[]);
+    edge(&mut rig, 4, "enter");
+    rig.advance(80);
+    veq!(
+        order(&rig, &[3, 4]),
+        [3, 4],
+        "a policy started again measures its delays by the same clock"
+    );
+}
+
 // ---- the requests of windows ----------------------------------------------------------------------------------------------------------
 
 fn started_state(rig: &Rig) -> W {
