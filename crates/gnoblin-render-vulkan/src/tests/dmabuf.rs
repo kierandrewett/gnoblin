@@ -137,15 +137,22 @@ fn a_region_of_a_picture_lands_where_the_region_says() {
         Some([9, 9, 9, 255]),
         "the rest of the buffer is untouched"
     );
-    // A region that reaches past the picture writes only what the picture has.
+    // A region that reaches past the picture writes only what the picture has, each pixel at the offset it was asked at:
+    // buffer pixel x of this region is picture pixel 4 + x, so x = 2 and 3 are the picture's red, x = 4 to 11 its blue
+    // (the right half of the buffer held the background until now), and x = 12 and up are past the picture's edge.
     vulkan
-        .copy_image_region_into_dmabuf(&source, &buffer, Rect::new(8, 0, 8, 16), Point::new(12, 0))
+        .copy_image_region_into_dmabuf(&source, &buffer, Rect::new(2, 0, 14, 16), Point::new(4, 0))
         .expect("an overhanging region is copied in part");
     let read = read_image(&buffer).expect("read back");
     assert_eq!(
-        read.colour_at(8, 5),
+        read.colour_at(3, 5),
+        Some([255, 0, 0, 255]),
+        "a pixel keeps the offset it was asked at: buffer 3 is picture 7"
+    );
+    assert_eq!(
+        read.colour_at(11, 5),
         Some([0, 0, 255, 255]),
-        "the pixels the picture has are written"
+        "the picture's last column is written: buffer 11 is picture 15"
     );
     assert_eq!(
         read.colour_at(12, 5),
