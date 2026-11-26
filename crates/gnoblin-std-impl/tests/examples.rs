@@ -500,14 +500,18 @@ fn rects_json(rects: &[(u64, Option<[f64; 4]>)]) -> Value {
 fn floating_placement_matches_the_typescript_std() {
     let comp = reference_world();
     let seen = std::cell::RefCell::new(Vec::new());
-    reference_run(&comp, "import \"gnoblin-std\";\nexport {};\n", |comp, shell| {
-        settle(shell);
-        comp.create_window(41, "Files", "nautilus");
-        settle(shell);
-        comp.create_window(42, "Editor", "code");
-        settle(shell);
-        *seen.borrow_mut() = [40, 41, 42].map(|id| (id, rect_of(comp, id))).to_vec();
-    });
+    reference_run(
+        &comp,
+        "import \"gnoblin-std\";\nimport \"gnoblin-std/layout\";\nexport {};\n",
+        |comp, shell| {
+            settle(shell);
+            comp.create_window(41, "Files", "nautilus");
+            settle(shell);
+            comp.create_window(42, "Editor", "code");
+            settle(shell);
+            *seen.borrow_mut() = [40, 41, 42].map(|id| (id, rect_of(comp, id))).to_vec();
+        },
+    );
     let reference = seen.into_inner();
     reference::fixtures().json(
         "examples_floating_placement",
@@ -592,7 +596,10 @@ fn example_6_arranges_the_clients_of_a_workspace_in_columns_as_they_open_and_clo
 fn reference_layouts() -> Vec<(String, Rects)> {
     let comp = reference_world();
     let seen = std::cell::RefCell::new(Vec::new());
+    // `gnoblin-std/layout` is only in the TypeScript library, which is what picks it as the reference over the generated classes
+    // (`crates/gnoblin-js/src/choice.rs`).
     let source = "import \"gnoblin-std\";\n\
+        import \"gnoblin-std/layout\";\n\
         import { Workspace, MasterStackLayout, GridLayout, MonocleLayout } from \"gnoblin-std\";\n\
         const g = globalThis as any;\n\
         g.g = g;\n\

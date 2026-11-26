@@ -193,8 +193,13 @@ fn world() -> FakeCompositor {
 }
 
 /// The TypeScript shell with the chords of `shell-tiling`.
+///
+/// A shell runs on the native library unless its import graph reaches a module only the TypeScript library has
+/// (`crates/gnoblin-js/src/choice.rs`), so the reference imports `gnoblin-std/layout`: without it this would run the generated
+/// classes and compare the native std with itself.
 const SOURCE: &str = r#"
 import "gnoblin-std";
+import "gnoblin-std/layout";
 import { GestureBinding, PointerDragBinding } from "gnoblin-core";
 import {
     Workspace, MasterStackLayout, DwindleLayout, StripLayout, ArcLayout, Carousel3dLayout, FloatingLayout, GridLayout,
