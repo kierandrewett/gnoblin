@@ -1209,3 +1209,33 @@ fn a_window_the_library_has_not_heard_of_yet_is_moved_when_it_has() {
     rig.settle();
     assert_eq!(rig.eval("gnoblin.clients.get('4').workspace.id"), "b");
 }
+
+#[test]
+fn a_floating_workspace_leaves_a_window_where_the_shell_put_it_when_it_joined() {
+    // A listener that places every window at (300, 200) as it is added, and gives it floating bounds there: the floating layout
+    // places a window once, when it joins, and a window the shell already put somewhere is where the user wants it.
+    let comp = compositor(false);
+    let link = Script(comp.clone());
+    let mut rig = rig(
+        &comp,
+        &init(
+            "import { ClientState } from 'gnoblin-std';\n\
+             gnoblin.workspaces.add(new Workspace('desk', { layout: new FloatingLayout() }));\n\
+             gnoblin.clients.addListener({\n\
+                 onAdded(client: any): void {\n\
+                     client.x = 300; client.y = 200; client.width = 200; client.height = 150;\n\
+                     ClientState.of(client).floatingBounds = { x: 300, y: 200, width: 200, height: 150 };\n\
+                 },\n\
+             });\n",
+        ),
+    );
+    rig.settle();
+    link.create_window(10, "under");
+    link.create_window(11, "over");
+    rig.settle();
+    assert_eq!(
+        [10, 11].map(|id| rect(&comp, id)),
+        ["300,200,200,150", "300,200,200,150"],
+        "both windows sit where the listener put them, not in the first free space"
+    );
+}

@@ -312,6 +312,32 @@ fn handle(std: &Rc<Std>, f: impl FnOnce(&mut State)) {
     std.drain();
 }
 
+/// A shell handed this library a window it has not heard of yet: the core announced the window to the shell's listeners (its
+/// `onAdded`) as it read the tree, before this library's own subscription to the same tree change ran. The library takes the window
+/// in now, as that subscription would: it gets a record, a workspace and its notices, which are told with the next turn. The
+/// subscription's own call, when it comes, finds the window known and does nothing.
+///
+/// Without this a listener that gave a new window its floating bounds, size limits or frame room in `onAdded` was refused (the
+/// window "is not a client"), and the floating layout placed the window itself.
+pub(crate) fn hear_of_client(ctx: GnoblinCtx, node: NodeId) {
+    // A library with no model yet takes stock of every window when it opens.
+    let Some(std) = state::find(ctx) else {
+        return;
+    };
+    {
+        // The library calls into the shell only outside a borrow of its state, so it is not borrowed when a shell's member runs; were it,
+        // the subscription to the tree change takes the window in as it always did.
+        let Ok(mut st) = std.st.try_borrow_mut() else {
+            return;
+        };
+        if st.rec.contains_key(&node) {
+            return;
+        }
+        st.client_created(node);
+    }
+    schedule(&std);
+}
+
 /// Makes the library the generation's desktop, attaching it first when it is not: the default workspace, the adoption of windows
 /// and the window policy are the library's from here on.
 ///

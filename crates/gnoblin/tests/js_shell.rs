@@ -1482,7 +1482,7 @@ gnoblin.clients.addListener({
 }
 
 #[test]
-#[ignore = "vrnw: needs FloatingLayout to leave a window where a script put it: with client.x/y/width/height and ClientState.of(client).floatingBounds written the windows sit at (0, 0) and (208, 0), not (300, 200)"]
+#[ignore = "vrnw: needs a Super+MouseLeft+Drag on a real window to reach the library's drag binding: the windows now start at (300, 200) as the script put them, but after the press (which the client never hears) the window never moves, and a trace in the library's pointer_event saw no call"]
 fn a_super_drag_takes_the_window_on_top_where_two_overlap() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
@@ -1514,7 +1514,7 @@ fn a_super_drag_takes_the_window_on_top_where_two_overlap() {
 }
 
 #[test]
-#[ignore = "vrnw: needs FloatingLayout to leave a window where a script put it: with client.x/y/width/height and ClientState.of(client).floatingBounds written the window sits at (0, 0), not (300, 200)"]
+#[ignore = "vrnw: needs a Super+MouseLeft+Drag on a real window to reach the library's drag binding: the windows now start at (300, 200) as the script put them, but after the press (which the client never hears) the window never moves, and a trace in the library's pointer_event saw no call"]
 fn super_drags_move_and_resize_a_real_window_through_the_pointer_chord_stream() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
@@ -1621,7 +1621,6 @@ gnoblin.clients.addListener({
 /// A resize handle lies outside the window's geometry. The compositor hit-tests the shell's nodes outside the parent's
 /// rectangle, the pointer goes to the handle and not to the client, and dragging it resizes the real window.
 #[test]
-#[ignore = "vrnw: needs FloatingLayout to leave a window where a script put it: with client.x/y/width/height and ClientState.of(client).floatingBounds written the window is at x=0, not x=300"]
 fn a_resize_handle_outside_the_geometry_of_a_real_window_takes_the_pointer_and_a_drag_resizes_the_window() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
@@ -5748,10 +5747,7 @@ fn swipe(session: &Session, fingers: u8) {
 /// launcher, and the workspace keys and the slide would move the window the test drags, so a binding that was reached is
 /// the proof, and what it would have done is the stock library's own tests'. A key is bound through the seat's `bind`, which the
 /// prelude wraps, and the three-finger slide through a gesture binding that declines, which leaves the gesture unhandled.
-const COUNTING_PRELUDE: &str = r#"import { GestureBinding, gnoblin } from "gnoblin-core"; import { ClientState, FocusPolicy } from "gnoblin-std";
-
-// The starter starts no focus policy, and the window the test types into has to have the keyboard.
-FocusPolicy.get().start();
+const COUNTING_PRELUDE: &str = r#"import { GestureBinding, gnoblin } from "gnoblin-core"; import { ClientState } from "gnoblin-std";
 
 const fired: Record<string, number> = {};
 (globalThis as { probe?: () => string }).probe = () => JSON.stringify(fired);
@@ -5968,7 +5964,7 @@ fn check_claims_of_round(
 }
 
 #[test]
-#[ignore = "vrnw: needs FloatingLayout to leave a window where a script put it: with client.x/y/width/height and ClientState.of(client).floatingBounds written the window is at (0, 0), not (300, 200)"]
+#[ignore = "vrnw: needs a Super+MouseLeft+Drag on a real window to reach the library's drag binding: the windows now start at (300, 200) as the script put them, but after the press (which the client never hears) the window never moves, and a trace in the library's pointer_event saw no call"]
 fn a_reload_hands_every_seat_claim_over_so_each_shortcut_fires_once_and_a_removed_one_is_released() {
     // Six reloads in a row, each adding a key and taking away the last one's, and the sixth also taking `Super+y` away.
     const LAST: u32 = 6;

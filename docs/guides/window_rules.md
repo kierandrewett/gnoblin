@@ -34,6 +34,10 @@ gnoblin.clients.addListener(
 `onAdded` runs when a window opens, and once for each window that is already open when the file loads, so a save
 applies the rule to the windows on screen too. Run `gnoblinctl check --types shell.ts` before you save.
 
+The listener may use the window's members from `onAdded`, the library's too: a rule that writes `client.bounds` and
+`client.floatingBounds` puts a new window there, and a `FloatingLayout` leaves a window that has floating bounds where it
+is, instead of placing it in free space.
+
 ## Choose what to match
 
 A rule is an `if`. Test any property of the client:
