@@ -61,7 +61,8 @@ jobs:
   distro:
     name: ${{ matrix.name }}, every test
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    # A healthy run takes 60 to 90 minutes. A hung test used to hold the job for the whole four hours before it was cancelled.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
