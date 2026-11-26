@@ -69,7 +69,10 @@
 //!   tagged value (a filter that is a blur, a grade or a shader), and each variant is a value class of its own in every language.
 //!   A variant has a `name`, the `tag` value it stands for and `[[object.variant.property]]` entries, each with a `field` that says
 //!   where the family record carries it (`amount`, or `shader.source` for a field of the record a family field holds). The wire
-//!   carries the family's record, so a variant adds no class to the object table.
+//!   carries the family's record, so a variant adds no class to the object table. A script may also give a variant as an object with
+//!   one key, its tag: `{ blur: 24 }` for a variant of one property, `{ shader: { source, params } }` for the others.
+//! - `number = "<field>"` on a record that is not a family: a bare number stands for the record with only that field
+//!   (`corner_radius` says `all`, so `12` is every corner).
 //! - `optional = true` on a property: a record may leave the field out (the same key a method parameter has). A field with neither a
 //!   default nor this is always there.
 //! - `find = "Kind"` on a method of a service that returns a list of objects and takes one optional record, its filter: a shell reads the
@@ -160,6 +163,8 @@ struct RawObject {
     export: Option<RawExport>,
     #[serde(default)]
     tag: Option<String>,
+    #[serde(default)]
+    number: Option<String>,
     #[serde(default, rename = "variant")]
     variants: Vec<RawVariant>,
     #[serde(default, rename = "property")]
@@ -666,6 +671,18 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
             ));
         }
         let variants = parse_variants(&raw_object.variants, &owner, since, scope, problems);
+        local_only(scope, problems, &owner, "number", raw_object.number.is_some());
+        if let Some(field) = &raw_object.number {
+            let numeric = properties
+                .iter()
+                .find(|property| &property.name == field)
+                .is_some_and(|property| matches!(property.ty, Type::Int | Type::Uint | Type::Double));
+            if kind != ObjectKind::Record || raw_object.tag.is_some() || !numeric {
+                problems.push(format!(
+                    "{owner}: `number = \"{field}\"` names a number field of a record that is not a family of variants"
+                ));
+            }
+        }
         objects.push(ObjectType {
             name: raw_object.name.clone(),
             base: raw_object.base.clone(),
@@ -679,6 +696,7 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
             augment_getters: None,
             export: export_of(raw_object.export.as_ref()),
             tag: raw_object.tag.clone(),
+            number: raw_object.number.clone(),
             variants,
             properties,
             methods,

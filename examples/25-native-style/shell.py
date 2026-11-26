@@ -71,6 +71,18 @@ gnoblin.log(
 gnoblin.log("style: value classes backdrop filters " + " | ".join(describe(entry) for entry in style.backdrop_filter))
 gnoblin.log("style: value classes filters " + " | ".join(describe(entry) for entry in style.filter))
 
+# A bare number is the radius of every corner, and a filter may be written as a dict with one key, its kind.
+style.corner_radius = 12
+style.backdrop_filter = [{"blur": 24}, {"saturate": 1.35}]
+style.filter = [{"shader": {"source": SHADER, "params": [2]}}]
+gnoblin.log(
+    f"style: shorthands corner {style.corner_radius.all:g}, "
+    + "backdrop "
+    + " | ".join(describe(entry) for entry in style.backdrop_filter)
+    + ", filter "
+    + " | ".join(describe(entry) for entry in style.filter)
+)
+
 probe = SceneNode(id="probe")
 rolled = []
 Transition.begin(TransitionOptions(duration=200.0), lambda: rolled.append(1))

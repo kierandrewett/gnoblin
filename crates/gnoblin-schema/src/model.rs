@@ -345,6 +345,9 @@ pub struct ObjectType {
     pub export: Export,
     /// For a record that is the family of a tagged value: the enum property whose value says which variant a value is.
     pub tag: Option<String>,
+    /// For a record: the number field a bare number stands for (`all` of `corner_radius`). A script may give the number where the
+    /// record goes, and the SDK makes the record with only that field.
+    pub number: Option<String>,
     /// For a family: its variants, one for each value of the `tag` enum, in the enum's order. A variant is a value class of its own in
     /// each language, and the family is the type that holds any of them; on the wire a variant is the family's record.
     pub variants: Vec<TaggedVariant>,
@@ -387,6 +390,7 @@ impl ObjectType {
             augment_getters: self.augment_getters.clone(),
             export: self.export.clone(),
             tag: self.tag.clone(),
+            number: self.number.clone(),
             variants: self.variants.clone(),
             properties: self
                 .properties
@@ -1030,6 +1034,9 @@ impl Catalog {
             if let Some(getters) = &object.augment_getters {
                 let _ = writeln!(text, "augment_getters {getters:?}");
             }
+            if let Some(field) = &object.number {
+                let _ = writeln!(text, "number {field}");
+            }
             for property in &object.properties {
                 let _ = writeln!(
                     text,
@@ -1298,6 +1305,7 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
             augment_getters: getters,
             export: Export::default(),
             tag: None,
+            number: None,
             variants: Vec::new(),
             properties,
             methods,

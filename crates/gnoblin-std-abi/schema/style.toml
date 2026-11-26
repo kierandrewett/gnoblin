@@ -242,11 +242,12 @@ default = []
 field = "shader.params"
 
 # The radius of a window's corners in pixels, each 0 or more: one for all of them as `all`, or one for each corner as the four fields
-# (every one of them is then required). Giving `all` with a corner is refused.
+# (every one of them is then required). Giving `all` with a corner is refused. A bare number is `all`.
 [[object]]
 name = "corner_radius"
 since = "0.2.0"
 kind = "record"
+number = "all"
 
 # One radius for every corner.
 [[object.property]]

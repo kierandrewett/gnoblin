@@ -131,3 +131,31 @@ fn example_25_value_classes_with_defaults_read_back_from_a_python_shell() {
     assert_the_value_classes_read_back(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
 }
+
+/// A script may give a style value the short way it writes it by hand: a bare number for every corner, and a filter as an object (a
+/// Python dict) with one key, its kind, holding the variant's one property or its options. The library reads back the variants they
+/// stand for. Rust has no such form: a Rust shell names the record and the variant.
+#[track_caller]
+fn assert_the_shorthands_read_back(session: &mut Gnoblin) {
+    let line = session.wait_log("the shorthands", |line| line.contains("style: shorthands "));
+    assert!(
+        line.text
+            .contains("style: shorthands corner 12, backdrop blur 24 | saturate 1.35, filter shader 2"),
+        "{}",
+        line.text
+    );
+    assert!(session.exited().is_none(), "{}", session.log_text());
+}
+
+#[test]
+fn example_25_a_typescript_shell_writes_a_corner_radius_as_a_number_and_a_filter_by_its_kind() {
+    let (_dir, mut session) = script_session("25-native-style", "shell.ts");
+    assert_the_shorthands_read_back(&mut session);
+}
+
+#[test]
+fn example_25_a_python_shell_writes_a_corner_radius_as_a_number_and_a_filter_by_its_kind() {
+    let (_dir, mut session) = script_session("25-native-style", "shell.py");
+    assert_the_shorthands_read_back(&mut session);
+    assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
+}

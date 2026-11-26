@@ -449,7 +449,18 @@ impl<'a> Py<'a> {
                 if input { format!("{class} | str") } else { class }
             }
             Type::ObjectRef(name) if name.contains('.') => self.view.foreign(name)?.alias_py(),
-            Type::ObjectRef(name) => class_name(self.view.class(name)?),
+            Type::ObjectRef(name) => {
+                let class = self.view.class(name)?;
+                let base = class_name(class);
+                if input && class.number.is_some() {
+                    format!("{base} | float")
+                } else if input && class.tag.is_some() {
+                    // A variant may be given as a dict with one key, its tag.
+                    format!("{base} | dict[str, Any]")
+                } else {
+                    base
+                }
+            }
             Type::List(inner) => format!("list[{}]", self.ty(inner, input)?),
             Type::Callback(name) => {
                 let declared = self.view.callback(name)?;
@@ -792,6 +803,16 @@ impl<'a> Py<'a> {
             ));
         }
         c.line(format!("def _enc_rec_{helper}(record):"));
+        if let Some(field) = &object.number {
+            // A bare number stands for the record with only its `number` field.
+            let field = object
+                .properties
+                .iter()
+                .find(|property| &property.name == field)
+                .ok_or_else(|| format!("`{}` has no number field `{field}`", object.name))?;
+            c.line("    if isinstance(record, (int, float)) and not isinstance(record, bool):");
+            c.line(format!("        record = {name}({}=record)", py_field(field)));
+        }
         c.line(format!("    if not isinstance(record, {name}):"));
         c.line(format!(
             "        raise TypeError(f\"expected a {name}, got {{type(record).__name__}}\")"
@@ -909,6 +930,18 @@ impl<'a> Py<'a> {
         for (variant, class) in family.variants.iter().zip(&classes) {
             c.line(format!("    if isinstance(record, {class}):"));
             c.line(format!("        return _enc_var_{}(record)", snake(&variant.name)));
+        }
+        // A dict with one key, a variant's tag, is that variant: the key's value is the variant's one property, or its options.
+        c.line("    if isinstance(record, dict) and len(record) == 1:");
+        c.line("        ((key, value),) = record.items()");
+        for (variant, class) in family.variants.iter().zip(&classes) {
+            let key = snake(&variant.tag);
+            c.line(format!("        if key == {}:", quote(&key)));
+            let made = match variant.properties.as_slice() {
+                [only] => format!("{class}({}=value)", py_field(only)),
+                _ => format!("{class}(**value)"),
+            };
+            c.line(format!("            return _enc_var_{}({made})", snake(&variant.name)));
         }
         c.line(format!(
             "    raise TypeError(f\"expected a {name} (one of {}), got {{type(record).__name__}}\")",
@@ -1562,7 +1595,7 @@ pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String
         c.line("import builtins");
         c.line("import dataclasses");
         c.line("import enum");
-        c.line("from typing import Callable");
+        c.line("from typing import Any, Callable");
         c.blank();
         c.line("from gnoblin.objects import _base as _B");
         c.line("from gnoblin.objects._base import Timing");

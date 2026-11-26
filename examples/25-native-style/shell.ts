@@ -56,6 +56,14 @@ console.log(
 console.log(`style: value classes backdrop filters ${style.backdropFilter.map(describe).join(" | ")}`);
 console.log(`style: value classes filters ${style.filter.map(describe).join(" | ")}`);
 
+// A bare number is the radius of every corner, and a filter may be written as an object with one key, its kind.
+style.cornerRadius = 12;
+style.backdropFilter = [{ blur: 24 }, { saturate: 1.35 }];
+style.filter = [{ shader: { source: SHADER, params: [2] } }];
+const backdrop = style.backdropFilter.map(describe).join(" | ");
+const filters = style.filter.map(describe).join(" | ");
+console.log(`style: shorthands corner ${style.cornerRadius?.all}, backdrop ${backdrop}, filter ${filters}`);
+
 const probe = new SceneNode({ id: "probe" });
 let rolled = 0;
 Transition.begin({ duration: 200 }, () => {

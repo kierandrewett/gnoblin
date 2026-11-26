@@ -697,6 +697,13 @@ impl<'a> Js<'a> {
         }
         c.line(format!("function enc_rec_{name}(record) {{"));
         c.indent();
+        if let Some(field) = number_field(object)? {
+            // A bare number stands for the record with only its `number` field.
+            c.line(format!(
+                "if (typeof record === \"number\") record = new {class}({{ {}: record }});",
+                js_field(field)
+            ));
+        }
         c.line("if (record === null || typeof record !== \"object\") {");
         c.line(format!(
             "  throw new TypeError(`expected a {class} object, got ${{record === null ? \"null\" : typeof record}}`);"
@@ -805,6 +812,24 @@ impl<'a> Js<'a> {
                 snake(&variant.name)
             ));
         }
+        // A plain object with one key, a variant's tag, is that variant: the key's value is the variant's one property, or its options.
+        c.line("if (record !== null && typeof record === \"object\" && Object.getPrototypeOf(record) === Object.prototype) {");
+        c.line("  const keys = Object.keys(record);");
+        c.line("  if (keys.length === 1) switch (keys[0]) {");
+        for (variant, js_name) in family.variants.iter().zip(&classes) {
+            let key = literal_key(variant);
+            let init = match variant.properties.as_slice() {
+                [only] => format!("{{ {}: record.{key} }}", js_field(only)),
+                _ => format!("record.{key}"),
+            };
+            c.line(format!(
+                "    case {}: return enc_var_{}(new {js_name}({init}));",
+                quote(&key),
+                snake(&variant.name)
+            ));
+        }
+        c.line("  }");
+        c.line("}");
         c.line(format!(
             "throw new TypeError(`expected a {class} (one of {}), got ${{record === null ? \"null\" : typeof record === \"object\" ? record.constructor.name : typeof record}}`);",
             classes.join(", ")
@@ -1486,8 +1511,16 @@ impl Js<'_> {
             Type::ObjectRef(name) => {
                 let class = self.view.class(name)?;
                 let base = class_name(class);
-                if input && class.kind == ObjectKind::Record && has_init(class) {
-                    format!("{base}Init")
+                if input && class.kind == ObjectKind::Record && is_family(class) {
+                    format!("{base} | {base}Literal")
+                } else if input && class.kind == ObjectKind::Record && has_init(class) {
+                    if class.number.is_some() {
+                        format!("{base}Init | number")
+                    } else {
+                        format!("{base}Init")
+                    }
+                } else if input && class.number.is_some() {
+                    format!("{base} | number")
                 } else {
                     base
                 }
@@ -1550,6 +1583,26 @@ impl Js<'_> {
                 object.name
             ));
             c.line(format!("export type {} = {};", class_name(object), classes.join(" | ")));
+            let literals: Vec<String> = object
+                .variants
+                .iter()
+                .map(|variant| {
+                    let key = literal_key(variant);
+                    Ok(match variant.properties.as_slice() {
+                        [only] => format!("{{ {key}: {} }}", self.ts(&only.ty, true)?),
+                        _ => format!("{{ {key}: {}Init }}", values::js_class(&variant.name, &variant.export)),
+                    })
+                })
+                .collect::<Result<_, String>>()?;
+            c.line(format!(
+                "/** A variant of `{}` written as an object with one key, its tag. */",
+                object.name
+            ));
+            c.line(format!(
+                "export type {}Literal = {};",
+                class_name(object),
+                literals.join(" | ")
+            ));
             c.blank();
         }
         Ok(())
@@ -1859,6 +1912,26 @@ impl Js<'_> {
 /// Whether a record has a field with a default, so a parameter takes its `Init` form (an optional field is optional in both).
 fn has_init(object: &ObjectType) -> bool {
     !is_family(object) && object.properties.iter().any(|property| property.default.is_some())
+}
+
+/// The property a record's `number` names, which a bare number stands for.
+fn number_field(object: &ObjectType) -> Result<Option<&Property>, String> {
+    object
+        .number
+        .as_ref()
+        .map(|field| {
+            object
+                .properties
+                .iter()
+                .find(|property| &property.name == field)
+                .ok_or_else(|| format!("`{}` has no number field `{field}`", object.name))
+        })
+        .transpose()
+}
+
+/// The key a variant is written under as an object with one key: its tag, as a member name (`blur`, `dropShadow`).
+fn literal_key(variant: &gnoblin_schema::TaggedVariant) -> String {
+    member_name(&variant.tag, &None)
 }
 
 /// The declarations of `view`'s namespace.
