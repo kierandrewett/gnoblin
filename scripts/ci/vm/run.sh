@@ -37,7 +37,6 @@ mkdir -p "$cache" "$out/run"
 
 # Known bugs, as `check-name|bead`. A check listed here may fail; if it passes, the run fails until the entry goes.
 EXPECTED_FAILURES=(
-    "keyboard-focus|gnoblin-63i8"
     "xterm-size|gnoblin-99fu"
 )
 
@@ -99,21 +98,29 @@ record() {
 }
 
 # The image, verified against the published checksum: the line that names the file holds a SHA-256 or SHA-512 digest.
+# Arch, Debian and openSUSE publish their image under a name that never changes ("latest"), so the copy a cache keeps
+# goes stale when the distribution replaces the image. A cached copy that is not the published one is not an error: it is
+# replaced by a download. Only a download that is not the published image fails the run.
 image=$cache/$(basename "$image_url")
-if [ ! -f "$image" ]; then
-    log "downloading $image_url"
-    curl -fsSL --retry 3 -o "$image.part" "$image_url"
-    mv "$image.part" "$image"
-fi
 digest=$(curl -fsSL --retry 3 "$sums_url" | grep -F "$(basename "$image_url")" | grep -oE '\b[0-9a-f]{64}([0-9a-f]{64})?\b' | head -1)
 [ -n "$digest" ] || {
     log "no checksum for $(basename "$image_url") in $sums_url"
     exit 1
 }
 if [ ${#digest} -eq 64 ]; then sum=sha256sum; else sum=sha512sum; fi
-echo "$digest  $image" | $sum -c --quiet || {
+is_published() { echo "$digest  $image" | $sum -c --quiet; }
+if [ -f "$image" ] && ! is_published; then
+    log "the cached $(basename "$image_url") is not the published one: the distribution replaced it"
     rm -f "$image"
-    log "checksum mismatch: the image was removed"
+fi
+if [ ! -f "$image" ]; then
+    log "downloading $image_url"
+    curl -fsSL --retry 3 -o "$image.part" "$image_url"
+    mv "$image.part" "$image"
+fi
+is_published || {
+    rm -f "$image"
+    log "checksum mismatch: $(basename "$image_url") is not the image $sums_url publishes; the download was removed"
     exit 1
 }
 
