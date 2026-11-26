@@ -12,8 +12,10 @@ optional.
 ::: tabs
 
 ```typescript
-import { ClientCollectionListener, gnoblin } from "gnoblin-core";
-import type { Client } from "gnoblin-core";
+import { Gnoblin, ClientCollectionListener } from "gnoblin-core/generated/objects";
+import type { Client } from "gnoblin-core/generated/objects";
+
+const gnoblin = Gnoblin.get();
 
 class Titles extends ClientCollectionListener {
     onTitleChanged(client: Client, title: string) {
@@ -44,29 +46,23 @@ Gnoblin.get().clients.add_listener(Titles())
 ```
 
 ```rust
-use gnoblin_core::objects::{Client, ClientCollectionListenerHandlers};
 use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
 
 fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
-    let objects = g.objects()?;
-    let Some(clients) = g.clients()? else {
+    let Some(clients) = ModelRoot::get(&g.objects()?)?.clients()? else {
         return Ok(());
     };
-    let titles = ClientCollectionListenerHandlers {
-        on_title_changed: Some(Box::new(move |client: Client, title: String| {
-            println!("{}: {title}", client.app_id()?);
-            Ok(())
-        })),
-        on_closed: Some(Box::new(move |client: Client| {
-            println!("{} closed", client.app_id()?);
-            Ok(())
-        })),
-        ..Default::default()
-    }
-    .implement(&objects)?;
-    clients.add_listener(&titles)?;
-    // The core holds the listener from here on.
-    std::mem::forget(titles);
+    clients
+        .on_title_changed(|client, title| {
+            println!("{}: {title}", client.app_id().unwrap_or_default());
+        })?
+        .keep();
+    clients
+        .on_closed(|client| {
+            println!("{} closed", client.app_id().unwrap_or_default());
+        })?
+        .keep();
     Ok(())
 }
 ```
@@ -98,12 +94,16 @@ Each method is also available as a single subscription that returns a `Listener`
 
 - A window has them as `client.on("titleChanged", handler)`.
 - Every collection has them as `clients.on("titleChanged", handler)`, which hears every window.
-- `gnoblin` has them under a longer name, such as `gnoblin.onClientFocusChanged(handler)`.
+- Rust has them as `client.on_title_changed(handler)` and `clients.on_title_changed(handler)`.
 
 ::: tabs
 
 ```typescript
-const focus = gnoblin.onClientFocusChanged((client, focused) => {
+import { Gnoblin } from "gnoblin-core/generated/objects";
+
+const gnoblin = Gnoblin.get();
+
+const focus = gnoblin.clients.on("focusChanged", (client, focused) => {
     if (focused) {
         gnoblin.spawn(["logger", "-t", "focus", client.appId]);
     }
@@ -129,10 +129,10 @@ focus.stop()  # focus is not logged any more
 
 ```rust
 use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
 
 fn watch_focus(g: &Gnoblin) -> gnoblin_core::Result<()> {
-    let objects = g.objects()?;
-    let Some(clients) = g.clients()? else {
+    let Some(clients) = ModelRoot::get(&g.objects()?)?.clients()? else {
         return Ok(());
     };
     let focus = clients.on_focus_changed(|client, focused| {
@@ -140,8 +140,8 @@ fn watch_focus(g: &Gnoblin) -> gnoblin_core::Result<()> {
             println!("{}", client.app_id().unwrap_or_default());
         }
     })?;
-    // Dropping the Listener stops the subscription, so keep it while it is needed.
-    std::mem::forget(focus);
+    // Dropping the Listener stops the subscription.
+    drop(focus); // focus is not logged any more
     Ok(())
 }
 ```
@@ -167,9 +167,11 @@ The workspace collection has `added` and `removed` events of its own: `workspace
 ::: tabs
 
 ```typescript
-import { ClientCollectionListener, gnoblin } from "gnoblin-core";
-import { Toast } from "gnoblin-std";
-import type { Client } from "gnoblin-core";
+import { Gnoblin, ClientCollectionListener } from "gnoblin-core/generated/objects";
+import type { Client } from "gnoblin-core/generated/objects";
+import { Toast } from "gnoblin-std/generated/objects";
+
+const gnoblin = Gnoblin.get();
 
 class Count extends ClientCollectionListener {
     onAdded(client: Client) {
@@ -179,7 +181,7 @@ class Count extends ClientCollectionListener {
 
 gnoblin.clients.addListener(new Count());
 
-gnoblin.onClientCreated((client) => {
+gnoblin.clients.on("added", (client) => {
     gnoblin.spawn(["logger", "-t", "windows", `${client.appId} appeared`]);
 });
 ```
@@ -198,24 +200,18 @@ Gnoblin.get().clients.add_listener(Count())
 ```
 
 ```rust
-use gnoblin_core::objects::{Client, ClientCollection, ClientCollectionListenerHandlers};
 use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
 
 fn count(g: &Gnoblin) -> gnoblin_core::Result<()> {
-    let objects = g.objects()?;
-    let Some(clients) = g.clients()? else {
+    let Some(clients) = ModelRoot::get(&g.objects()?)?.clients()? else {
         return Ok(());
     };
-    let added = ClientCollectionListenerHandlers {
-        on_added: Some(Box::new(move |client: Client, _collection: ClientCollection| {
-            println!("{} opened", client.app_id()?);
-            Ok(())
-        })),
-        ..Default::default()
-    }
-    .implement(&objects)?;
-    clients.add_listener(&added)?;
-    std::mem::forget(added);
+    clients
+        .on_added(|client, _collection| {
+            println!("{} opened", client.app_id().unwrap_or_default());
+        })?
+        .keep();
     Ok(())
 }
 ```
@@ -248,9 +244,11 @@ A listener on the collection does not hear `onConnected` for an output that was 
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core";
+import { Gnoblin } from "gnoblin-core/generated/objects";
 
-gnoblin.onOutputConnected((output) => {
+const gnoblin = Gnoblin.get();
+
+gnoblin.outputs.on("connected", (output) => {
     gnoblin.spawn(["notify-send", `${output.connector} connected`]);
 });
 ```
@@ -268,15 +266,17 @@ gnoblin.outputs.on(
 
 ```rust
 use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
 
 fn watch_outputs(g: &Gnoblin) -> gnoblin_core::Result<()> {
-    let Some(outputs) = g.outputs()? else {
+    let Some(outputs) = ModelRoot::get(&g.objects()?)?.outputs()? else {
         return Ok(());
     };
-    let connected = outputs.on_connected(|output| {
-        println!("{} connected", output.connector().unwrap_or_default());
-    })?;
-    std::mem::forget(connected);
+    outputs
+        .on_connected(|output| {
+            println!("{} connected", output.connector().unwrap_or_default());
+        })?
+        .keep();
     Ok(())
 }
 ```

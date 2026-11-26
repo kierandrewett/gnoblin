@@ -43,9 +43,9 @@ The `state` argument of `onLockStateChanged` is one of these:
 ::: tabs
 
 ```typescript
-import { SessionListener } from "gnoblin-core";
-import type { LockState, Session } from "gnoblin-core";
-import { Toast } from "gnoblin-std";
+import { Gnoblin, SessionListener } from "gnoblin-core/generated/objects";
+import type { LockState, Session } from "gnoblin-core/generated/objects";
+import { Toast } from "gnoblin-std/generated/objects";
 
 class LockToast extends SessionListener {
     onLockStateChanged(_session: Session, state: LockState) {
@@ -55,7 +55,7 @@ class LockToast extends SessionListener {
     }
 }
 
-gnoblin.session.addListener(new LockToast());
+Gnoblin.get().session.addListener(new LockToast());
 ```
 
 ```python
@@ -73,26 +73,24 @@ Gnoblin.get().session.add_listener(LockToast())
 ```
 
 ```rust
-use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::LockState;
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::Toast;
+use gnoblin_core::objects::{LockState, ModelRoot};
+use gnoblin_std::objects::Toast;
+use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let objects = g.objects()?;
-    let Some(session) = ModelRoot::get(&objects)?.session()? else {
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let Some(session) = ModelRoot::get(&g.objects()?)?.session()? else {
         return Ok(());
     };
-    let toasts = objects.clone();
-    let _listener = session.on_lock_state_changed(move |_session, state, _revision| {
-        if matches!(state, LockState::Locked) {
-            Toast::show(&toasts, "Locked", None, None, None, None::<fn() -> gnoblin::Result<f64>>)?;
-        }
-        Ok(())
-    })?;
-    std::mem::forget(_listener);
+    let toasts = g.std()?.objects()?;
+    session
+        .on_lock_state_changed(move |_session, state, _revision| {
+            if matches!(state, LockState::Locked) {
+                let started = std::time::Instant::now();
+                let _ = Toast::show(&toasts, "Locked", None, None, None, Some(move || Ok(started.elapsed().as_secs_f64() * 1000.0)));
+            }
+        })?
+        .keep();
     Ok(())
 }
 ```

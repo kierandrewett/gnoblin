@@ -39,8 +39,11 @@ This fades each Text Editor window in when it opens:
 ::: tabs
 
 ```typescript
-import { ClientCollectionListener } from "gnoblin-core";
-import type { Client } from "gnoblin-core";
+import { Gnoblin, ClientCollectionListener } from "gnoblin-core/generated/objects";
+import type { Client } from "gnoblin-core/generated/objects";
+import "gnoblin-std/generated/objects";
+
+const gnoblin = Gnoblin.get();
 
 gnoblin.clients.addListener(
     new (class extends ClientCollectionListener {
@@ -60,9 +63,8 @@ gnoblin.clients.addListener(
 ```
 
 ```python
-import gnoblin.objects.std
 from gnoblin.objects.model import Client, Gnoblin
-from gnoblin.objects.std import TransitionOptions
+from gnoblin.objects.std import Easing, GnoblinAugment, TransitionOptions
 
 gnoblin = Gnoblin.get()
 
@@ -75,41 +77,43 @@ def fade_in(client: Client) -> None:
         def reveal() -> None:
             client.opacity = 1
 
-        gnoblin.request_transition(
+        GnoblinAugment.get().request_transition(
             reveal,
-            TransitionOptions(duration=gnoblin.motion(300), easing="ease-out"),
+            TransitionOptions(duration=gnoblin.motion(300), easing=Easing.EASE_OUT),
         )
 ```
 
 ```rust
-use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{Client, ModelRoot};
+use gnoblin_core::objects::ModelRoot;
 use gnoblin_std::objects::{Easing, TransitionOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    let Some(clients) = model.clients()? else {
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.objects()?;
+    let Some(clients) = ModelRoot::get(&objects)?.clients()? else {
         return Ok(());
     };
-    clients.on_added(move |client: Client, _| {
-        if client.app_id().unwrap_or_default() == "org.gnome.TextEditor" {
-            let _ = client.set_opacity(0.0);
-            let target = client.clone();
-            let _ = model.request_transition(
-                move || target.set_opacity(1.0),
-                Some(&TransitionOptions {
-                    duration: model.motion(300.0)?,
-                    easing: Easing::EaseOut,
-                    delay: 0.0,
-                    autoplay: true,
-                }),
-                None::<fn() -> gnoblin::Result<()>>,
-            );
-        }
-    })?;
+    clients
+        .on_added(move |client, _collection| {
+            if client.app_id().unwrap_or_default() == "org.gnome.TextEditor" {
+                let _ = client.set_opacity(0.0);
+                let Ok(model) = ModelRoot::get(&objects) else {
+                    return;
+                };
+                let _ = model.request_transition(
+                    move || client.set_opacity(1.0),
+                    Some(&TransitionOptions {
+                        duration: model.motion(300.0).unwrap_or(0.0),
+                        easing: Easing::EaseOut,
+                        ..TransitionOptions::default()
+                    }),
+                    Some(|| Ok(())),
+                );
+            }
+        })?
+        .keep();
     Ok(())
 }
 ```

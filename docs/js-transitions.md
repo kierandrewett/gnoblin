@@ -6,7 +6,7 @@ stages the changes; the compositor's tween player moves what is drawn from where
 The call is the same in the three languages a shell can be written in:
 
 - TypeScript has `gnoblin.requestTransition`.
-- Python has `gnoblin.request_transition`.
+- Python has `GnoblinAugment.get().request_transition`.
 - Rust has `model.request_transition(..)` on the `ModelRoot`.
 
 Each is also the static `Transition.request` of the std library.
@@ -14,7 +14,8 @@ Each is also the static `Transition.request` of the std library.
 ::: tabs
 
 ```typescript
-import { MasterStackLayout } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { MasterStackLayout } from "gnoblin-std/generated/objects";
 
 const workspace = gnoblin.workspaces.byId("dev");
 const client = gnoblin.input.primary.focusedClient;
@@ -33,21 +34,22 @@ if (workspace && client) {
 
 ```python
 from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Easing, MasterStackLayout, TransitionOptions
+from gnoblin.objects.std import Easing, GnoblinAugment, MasterStackLayout, TransitionOptions, Workspaces
 
 gnoblin = Gnoblin.get()
 
-workspace = gnoblin.workspaces.by_id("dev")
+workspace = Workspaces.get().by_id("dev")
 client = gnoblin.input.primary.focused_client
 
 if workspace is not None and client is not None:
+    target = workspace
 
     def stage() -> None:
         client.opacity = 0.85
         client.x = 120.0
-        workspace.layout = MasterStackLayout(ratio=0.7)
+        target.layout = MasterStackLayout(ratio=0.7)
 
-    gnoblin.request_transition(stage, TransitionOptions(duration=250.0, easing=Easing.EASE_OUT))
+    GnoblinAugment.get().request_transition(stage, TransitionOptions(duration=250.0, easing=Easing.EASE_OUT))
 ```
 
 ```rust
@@ -128,7 +130,7 @@ The callback has three limits, and each is an error that changes nothing:
 | `delay`    | Milliseconds, 0 or more. The compositor holds the start state this long before the animation begins. Default 0; none under reduced motion. |
 | `autoplay` | Default true. False holds the tracks at the start until `play()` or `reverse()`; `progress` scrubs them.                                   |
 
-TypeScript takes the easing as its name (`"ease-out"`), Python as `Easing.EASE_OUT` or its name, and Rust as
+TypeScript takes the easing as its name (`"ease-out"`), Python as `Easing.EASE_OUT`, and Rust as
 `Easing::EaseOut`. Any other easing name or option is refused with an error that names the known ones.
 
 ## The `Transition`
@@ -152,7 +154,8 @@ TypeScript takes the easing as its name (`"ease-out"`), Python as `Easing.EASE_O
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import "gnoblin-std/generated/objects";
 
 const client = gnoblin.input.primary.focusedClient;
 
@@ -171,7 +174,7 @@ if (client) {
 
 ```python
 from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import TransitionOptions
+from gnoblin.objects.std import GnoblinAugment, TransitionOptions
 
 gnoblin = Gnoblin.get()
 
@@ -182,7 +185,7 @@ if client is not None:
     def stage() -> None:
         client.opacity = 0.5
 
-    transition = gnoblin.request_transition(stage, TransitionOptions(duration=400.0, autoplay=False))
+    transition = GnoblinAugment.get().request_transition(stage, TransitionOptions(duration=400.0, autoplay=False))
     transition.on("finished", lambda cancelled: print(f"finished, cancelled: {cancelled}"))
     transition.progress = 0.25  # scrub to a quarter of the way
     transition.play()  # then let it run on
@@ -242,7 +245,8 @@ To animate one window or one workspace, write only its properties in the callbac
 ::: tabs
 
 ```typescript
-import { MasterStackLayout } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { MasterStackLayout } from "gnoblin-std/generated/objects";
 
 const client = gnoblin.input.primary.focusedClient;
 const workspace = gnoblin.workspaces.byId("dev");
@@ -263,12 +267,12 @@ gnoblin.requestTransition(
 
 ```python
 from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Easing, MasterStackLayout, TransitionOptions
+from gnoblin.objects.std import Easing, GnoblinAugment, MasterStackLayout, TransitionOptions, Workspaces
 
 gnoblin = Gnoblin.get()
 
 client = gnoblin.input.primary.focused_client
-workspace = gnoblin.workspaces.by_id("dev")
+workspace = Workspaces.get().by_id("dev")
 
 
 def stage() -> None:
@@ -279,7 +283,7 @@ def stage() -> None:
         workspace.layout = MasterStackLayout(ratio=0.7)
 
 
-gnoblin.request_transition(stage, TransitionOptions(duration=250.0, easing=Easing.EASE_OUT))
+GnoblinAugment.get().request_transition(stage, TransitionOptions(duration=250.0, easing=Easing.EASE_OUT))
 ```
 
 ```rust

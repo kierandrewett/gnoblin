@@ -16,8 +16,9 @@ A listener that counts terminal bells, in each language:
 ::: tabs
 
 ```typescript
-import { Session, SessionListener } from "gnoblin-core";
-import { Toast } from "gnoblin-std";
+import { Gnoblin, SessionListener } from "gnoblin-core/generated/objects";
+import type { Session } from "gnoblin-core/generated/objects";
+import { Toast } from "gnoblin-std/generated/objects";
 
 class Bell extends SessionListener {
     onBell(_session: Session, count: number) {
@@ -25,7 +26,7 @@ class Bell extends SessionListener {
     }
 }
 
-gnoblin.session.addListener(new Bell());
+Gnoblin.get().session.addListener(new Bell());
 ```
 
 ```python
@@ -42,34 +43,22 @@ Gnoblin.get().session.add_listener(Bell())
 ```
 
 ```rust
-use std::time::Instant;
-
-use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
 use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::Toast;
+use gnoblin_std::objects::Toast;
+use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let objects = g.objects()?;
-    let Some(session) = ModelRoot::get(&objects)?.session()? else {
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let Some(session) = ModelRoot::get(&g.objects()?)?.session()? else {
         return Ok(());
     };
-    let toasts = objects.clone();
-    let bell = session.on_bell(move |_session, count| {
-        let started = Instant::now();
-        let clock = move || Ok(started.elapsed().as_secs_f64() * 1000.0);
-        let _ = Toast::show(
-            &toasts,
-            &format!("Bell number {count}"),
-            Some(20.0),
-            Some(400.0),
-            Some(20.0),
-            Some(clock),
-        );
-    })?;
-    // Dropping the Listener stops the subscription, so the shell keeps it for as long as it runs.
-    std::mem::forget(bell);
+    let toasts = g.std()?.objects()?;
+    session
+        .on_bell(move |_session, count| {
+            let started = std::time::Instant::now();
+            let _ = Toast::show(&toasts, &format!("Bell number {count}"), None, None, None, Some(move || Ok(started.elapsed().as_secs_f64() * 1000.0)));
+        })?
+        .keep();
     Ok(())
 }
 ```
@@ -77,8 +66,10 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 :::
 
 The Rust example uses `on_bell`, a closure registered on the session. It returns a `Listener`, which stops listening when
-it is dropped, so the example keeps it. The Rust `SessionListenerHandlers` struct is the alternative when one listener
-must answer several events at once.
+it is dropped, so the example calls `keep()` to hold it for as long as the shell runs.
+
+The Rust `SessionListenerHandlers` struct is the alternative when one listener must answer several events at once: it
+has a field for every method, and `implement` turns it into a listener.
 
 Put the TypeScript file in `~/.config/gnoblin/shell.ts`, the Python file in `~/.config/gnoblin/shell.py`, and the Rust
 code in the `src/lib.rs` of a shell library. A reload removes every listener the old file attached, so the new file
@@ -112,7 +103,8 @@ attached. Its `on_added` method runs for each one, and `on_title_changed` runs w
 ::: tabs
 
 ```typescript
-import { Client, ClientCollection, ClientCollectionListener } from "gnoblin-core";
+import { Gnoblin, ClientCollectionListener } from "gnoblin-core/generated/objects";
+import type { Client, ClientCollection } from "gnoblin-core/generated/objects";
 
 class Titles extends ClientCollectionListener {
     onAdded(client: Client, _collection: ClientCollection) {
@@ -124,7 +116,7 @@ class Titles extends ClientCollectionListener {
     }
 }
 
-gnoblin.clients.addListener(new Titles());
+Gnoblin.get().clients.addListener(new Titles());
 ```
 
 ```python
@@ -143,29 +135,23 @@ Gnoblin.get().clients.add_listener(Titles())
 ```
 
 ```rust
-use gnoblin_core::objects::{Client, ClientCollection, ClientCollectionListenerHandlers};
 use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
 
 fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
-    let objects = g.objects()?;
-    let Some(clients) = g.clients()? else {
+    let Some(clients) = ModelRoot::get(&g.objects()?)?.clients()? else {
         return Ok(());
     };
-    let titles = ClientCollectionListenerHandlers {
-        on_added: Some(Box::new(move |client: Client, _collection: ClientCollection| {
-            println!("window {} opened", client.app_id()?);
-            Ok(())
-        })),
-        on_title_changed: Some(Box::new(move |client: Client, title: String| {
-            println!("window {} is now {title}", client.app_id()?);
-            Ok(())
-        })),
-        ..Default::default()
-    }
-    .implement(&objects)?;
-    clients.add_listener(&titles)?;
-    // The core holds the listener from here on.
-    std::mem::forget(titles);
+    clients
+        .on_added(|client, _collection| {
+            println!("window {} opened", client.app_id().unwrap_or_default());
+        })?
+        .keep();
+    clients
+        .on_title_changed(|client, title| {
+            println!("window {} is now {title}", client.app_id().unwrap_or_default());
+        })?
+        .keep();
     Ok(())
 }
 ```
@@ -180,35 +166,36 @@ also has a method that subscribes to that single event:
 ::: tabs
 
 ```typescript
-import { verbs } from "gnoblin-core/generated/verbs";
+import { Gnoblin } from "gnoblin-core/generated/objects";
 
-verbs.session.onBell((count) => {
+const gnoblin = Gnoblin.get();
+
+gnoblin.session.on("bell", (_session, count) => {
     gnoblin.spawn(["notify-send", `Bell number ${count}`]);
 });
-
-gnoblin.onClientCreated((client) => {});
 ```
 
 ```python
-from gnoblin import verbs
 from gnoblin.objects.model import Gnoblin
 
 gnoblin = Gnoblin.get()
 
-verbs.session.on_bell(lambda session, count: gnoblin.spawn(["notify-send", f"Bell number {count}"]))
+
+def on_bell(_session, count):
+    gnoblin.spawn(["notify-send", f"Bell number {count}"])
+
+
+gnoblin.session.on("bell", on_bell)
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
 
 fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
     let objects = g.objects()?;
     if let Some(session) = ModelRoot::get(&objects)?.session()? {
-        let bell = session.on_bell(|_session, count| {
-            println!("bell number {count}");
-        })?;
-        std::mem::forget(bell);
+        session.on_bell(|_session, count| println!("Bell number {count}"))?.keep();
     }
     Ok(())
 }
