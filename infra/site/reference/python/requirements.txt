@@ -2,8 +2,10 @@ accessible-pygments==0.0.5
     # via furo
 alabaster==1.0.0
     # via sphinx
-astroid==3.3.11
-    # via sphinx-autoapi
+astroid==3.3.11 ; python_version < "3.12"
+    # via sphinx-autoapi (astroid~=3.0 before Python 3.12)
+astroid==4.3.4 ; python_version >= "3.12"
+    # via sphinx-autoapi (astroid~=4.0 from Python 3.12)
 babel==2.19.0
     # via sphinx
 beautifulsoup4==4.15.0
