@@ -1560,17 +1560,16 @@ impl Painter<'_> {
         };
         device.begin(target)?;
         device.scissor(Some(*clip));
-        device.blend_group(opacity)?;
         // The group holds a blurred backdrop that fills its whole quad, so the corner is cut here, from the
-        // layer's own radius and silhouette, rather than leaving the blur square behind a rounded window.
-        let mut uniforms = Uniforms::surface(rect, flipped_mapping(rect, *physical), Color::WHITE, 1.0, radius);
+        // layer's own radius and silhouette, rather than leaving the blur square behind a rounded window. The group
+        // goes over the frame like any premultiplied pass, at the layer's opacity and the corner's coverage, so where the
+        // corner cuts it the frame shows as it was: a blend that ignored the coverage would darken or clear it.
+        let mut uniforms = Uniforms::surface(rect, flipped_mapping(rect, *physical), Color::WHITE, opacity, radius);
         if let Some(frame) = silhouette {
             uniforms.round_to(frame);
         }
         passes.surface.pack(&uniforms, bytes);
-        let drawn = device.draw(&passes.surface, bytes, rect, Some(group.texture()), QuadPlacement::FLAT);
-        device.blend_premultiplied()?;
-        drawn
+        device.draw(&passes.surface, bytes, rect, Some(group.texture()), QuadPlacement::FLAT)
     }
 
     /// The two scratch targets a blur needs, made on first use and after a resize.

@@ -784,27 +784,6 @@ impl GlContext {
             .map_err(context_lost)
     }
 
-    /// Blends the next pass as a layer group: its colour and alpha are summed with the
-    /// backdrop as `source * factor + destination * (1 - factor)`, so a composed group fades
-    /// over what is behind it by the layer's opacity, once, however many passes made it.
-    /// [`Self::blend_premultiplied`] restores the blend every pass expects.
-    pub(crate) fn blend_group(&mut self, factor: f32) -> Result<(), RenderError> {
-        let factor = factor.clamp(0.0, 1.0);
-        self.renderer
-            .with_context(|gl| unsafe {
-                // SAFETY: the blend state belongs to this context; the caller restores it with
-                // `blend_premultiplied` before the next frame.
-                gl.blend_color(0.0, 0.0, 0.0, factor);
-                gl.blend_func_separate(
-                    glow::CONSTANT_ALPHA,
-                    glow::ONE_MINUS_CONSTANT_ALPHA,
-                    glow::CONSTANT_ALPHA,
-                    glow::ONE_MINUS_CONSTANT_ALPHA,
-                );
-            })
-            .map_err(context_lost)
-    }
-
     /// Replaces the destination rather than blending over it: the next pass writes its colour and
     /// alpha as they are. [`Self::blend_premultiplied`] restores the blend every pass expects.
     pub(crate) fn blend_replace(&mut self) -> Result<(), RenderError> {
@@ -817,7 +796,7 @@ impl GlContext {
             .map_err(context_lost)
     }
 
-    /// Restores the premultiplied blend every pass expects after [`Self::blend_group`].
+    /// Restores the premultiplied blend every pass expects after [`Self::blend_replace`].
     pub(crate) fn blend_premultiplied(&mut self) -> Result<(), RenderError> {
         self.renderer
             .with_context(|gl| unsafe {
