@@ -44,10 +44,16 @@ fn example_5_a_ts_shell_of_three_files_tiles_columns_then_rows_and_reports_an_er
 
     // `Super+x` throws in `geometry.ts`: the report names that file and the line of the `throw`, not a line of stripped JavaScript.
     typist.super_plus(KEY_X);
-    let report = session.wait_log("the error is reported at the line of geometry.ts", |line| {
+    session.wait_log("the error is reported at the line of geometry.ts", |line| {
         line.contains(&format!("geometry.ts:{throw_line}:"))
     });
-    assert!(report.text.contains("example 5 stops here"), "{}", report.text);
+    // The library reports the message on one line and the frames under it, so the line that names the file is a frame and the message is
+    // in the report that line belongs to.
+    assert!(
+        session.log_text().contains("example 5 stops here"),
+        "{}",
+        session.log_text()
+    );
     // The shell goes on after the error: a window that opens is placed by it, in the third row.
     mapper.map_window("c", "C");
     let third = (height - 2.0 * gap) / 3.0;

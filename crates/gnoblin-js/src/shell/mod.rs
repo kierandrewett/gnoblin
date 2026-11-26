@@ -402,6 +402,13 @@ impl JsShell {
         self.generation.call_budgeted(self.entry_budget, f)
     }
 
+    /// `stack` with every frame of a module the running generation loaded rewritten to the file and position that wrote it (a
+    /// `.ts` file's own lines, not the stripped JavaScript's). A library that reports an exception it caught itself, such as one a
+    /// callback the core called threw, uses it so the report points where the author looks.
+    pub fn remap_stack(&self, stack: &str) -> String {
+        self.generation.remap_stack(stack)
+    }
+
     /// The name of every embedded module the running generation loaded, sorted: the import log of the stock library.
     /// A shell whose entry imports only `gnoblin-core` has no `gnoblin-std` module in it.
     pub fn embedded_modules(&self) -> Vec<String> {

@@ -107,4 +107,8 @@ impl Enter for ShellEnter<'_> {
     fn enter(&self, body: &mut dyn for<'js> FnMut(&Ctx<'js>) -> rquickjs::Result<()>) -> Result<(), String> {
         self.0.call_script(|ctx| body(ctx)).map_err(|error| error.to_string())
     }
+
+    fn remap(&self, stack: &str) -> String {
+        self.0.remap_stack(stack)
+    }
 }

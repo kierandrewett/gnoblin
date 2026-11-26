@@ -156,25 +156,29 @@ it evaluated cleanly, and logs `generation N active` as a native shell does.
   `gnoblinctl config reload` is answered by the generation the reload makes, with the revision it committed or the reason
   it was refused, and a refused reload leaves the revision in force. There is no separate `runtime` process any more.
 
-### The stock library is installed data, and its generated half is built in
+### The package entries are built in, and the TypeScript library is installed data
 
-`gnoblin-core` and `gnoblin-std` are TypeScript files, installed under `share/gnoblin/js/gnoblin-core/` and `share/gnoblin/js/gnoblin-std/`. The runtime reads them from there.
+The runtime library carries the package entries `gnoblin-core` and `gnoblin-std` and their `generated/` modules: the
+schema's classes, the ABI constants, the verbs, and the std classes and records. They are written when the runtime is
+built, so they always describe the libraries it was built with.
 
-The modules under `generated/` in each package (the schema's classes, the ABI constants, the verbs, and the std classes and records) are the exception: they are written from the schema and the ABI crates when the runtime is built, and the runtime library carries them, so they always describe the libraries it was built with.
+An installed copy of a generated module (`dist` writes them for editors) is never read in its place.
 
-An installed copy of one (`dist` writes them for editors) is never read in its place. The runtime looks for the rest, in order, in:
+The rest of the TypeScript library, the deep modules such as `gnoblin-std/layout` and the XR extension, are TypeScript
+files installed under `share/gnoblin/js/`. Only a shell that imports one of them reads them. The runtime looks for them, in
+order, in:
 
 1. the one directory `GNOBLIN_JS_STOCK_DIR` names, when it is set and not empty (to work on the stock library, point it at
    `data/js` of a source tree; a build tree's `cargo` environment does);
 2. `gnoblin/js` under `$XDG_DATA_HOME`, then under each directory of `$XDG_DATA_DIRS`;
 3. `share/gnoblin/js` (or `data/js` of a source tree) of the prefix the core library and the executable were installed in.
 
-A package is the one of the first directory that holds it. A prefix with no `gnoblin-std` directory runs a shell that
-imports only `gnoblin-core`, and refuses one that imports `gnoblin-std` with the text of the loader, which says where it
-looked:
+`gnoblin-std` calls the std library, `libgnoblin-std.so.1`. A prefix without it runs a shell that uses only
+`gnoblin-core`. A shell that uses `gnoblin-std` there fails with the text every runtime gives, which says where it looked:
+the loader's search path, then the directory the core library was loaded from. With the core in `/usr/lib64` it reads:
 
 ```text
-gnoblin-std is not installed (looked in: /home/you/.local/share/gnoblin/js, /usr/local/share/gnoblin/js, /usr/share/gnoblin/js)
+gnoblin-std is not installed (looked for libgnoblin-std.so.1 in the loader search path, /usr/lib64): libgnoblin-std.so.1: cannot open shared object file: No such file or directory
 ```
 
 The starter is the packaged default shell, `share/gnoblin/default-shell/shell.ts` (`shells/default/shell.ts` in a source tree): it is what `gnoblin` runs on a fresh

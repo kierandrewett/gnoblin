@@ -115,6 +115,12 @@ pub(crate) fn release_later(generation: u64, id: u64) {
 pub(crate) trait Enter {
     /// Runs `body` in it, under the listener budget.
     fn enter(&self, body: &mut dyn for<'js> FnMut(&Ctx<'js>) -> rquickjs::Result<()>) -> Result<(), String>;
+
+    /// `stack` with each frame of a module the generation loaded rewritten to the file and position that wrote it. A way in that
+    /// knows no generation (a script's own call into a library) leaves it as it is.
+    fn remap(&self, stack: &str) -> String {
+        stack.to_owned()
+    }
 }
 
 /// The way into the script from inside one of its own calls into the library: the call's context.
