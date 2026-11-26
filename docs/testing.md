@@ -38,6 +38,7 @@ run proves the shell's behaviour over the compositor's own sockets; it does not 
 | `scripts/ci/vm/run.sh DISTRO ...`  | The installed gnoblin on the DRM backend of a distribution's own kernel, with real clients and input, in a virtual machine   | KVM and QEMU; `just vm-dist DIR` builds the tree it copies   |
 | `scripts/real-host-conformance.sh` | The nested backend against a real host compositor, Sway or Weston, headless                                                  | Sway or Weston                                               |
 | `scripts/xr-smoke.sh`              | The compositor, the stock shell, two clients, the XR extension and a simulated headset together                              | Monado and Vulkan; it installs its own packages              |
+| `tests/x11-clients-e2e.sh`         | Real X11 clients (xterm, xeyes, xclock, xmessage) reach the size they ask for under the real session, with a screenshot      | Xwayland 24.1 or newer; xterm, x11-apps, grim, foot          |
 | `cargo run -p gnoblin-parity`      | `run tests/parity/scenarios` against the Rust candidate; with the reference sessions, Mutter 51 and the Mutter-based Gnoblin | A Fedora machine; `scripts/parity-reference.sh`              |
 
 CI runs `rust.yml`, `wlcs.yml` and `parity-reference.yml`, and `matrix.yml` across the Fedora, Arch, Debian and openSUSE
