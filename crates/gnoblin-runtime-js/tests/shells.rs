@@ -57,7 +57,7 @@ fn build_stage() -> Result<Stage, String> {
         &debug.join("libgnoblin_runtime_js.so"),
         &runtimes.join("libgnoblin-runtime-js.so"),
     );
-    // The same files with the std library beside the core, where `gnoblin-std/native` finds it.
+    // The same files with the std library beside the core, where `gnoblin-std/generated/objects` finds it.
     let with_std = base.join("core10-std");
     copy_to(&debug.join("libgnoblin_core_impl.so"), &with_std.join(CORE_FILE));
     copy_to(&debug.join(LAUNCHER), &with_std.join(LAUNCHER));
@@ -802,17 +802,27 @@ gnoblin.clients.addListener(new Tiler());
     assert!(run.stdout.contains("made_canvases=0"), "{}", run.dump());
 }
 
-// ---- example 3 in TypeScript: a shell on the generated std natives ----------------------------------------------------------------
+// ---- example 3 in TypeScript: a shell on the generated std objects ---------------------------------------------------------------
+//
+// Example 3 is written on the generated object API (`gnoblin-std/generated/objects`). `gnoblin-std/native`, the typed-table binding over
+// `__gnoblinStd`, still ships with the TypeScript library, so each proof runs a second time on the shells of `tests/fixtures/typed_table`:
+// example 3 as it was before it moved. They stay for as long as that binding does; each test of them says `typed_table` in its name.
 
-#[test]
-fn example_3_a_typescript_shell_on_the_generated_std_natives_arranges_the_clients_of_a_workspace_in_columns() {
+/// A shell of `tests/fixtures/typed_table`: the typed-table binding's own proof.
+fn typed_table(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/typed_table")
+        .join(name)
+}
+
+/// The scenario of example 6 over `script`, in the prefix that has the std library: what a shell that arranges the clients of one
+/// workspace in columns, and swaps the focused window with the first on `Super+Tab`, must do.
+fn columns_run(script: &Path) -> Run {
     let stage = stage();
-    let run = scenario_in(
-        &stage.with_std,
-        &stage.with_std_runtimes,
-        "example06",
-        &example("03-typescript-std/shell.ts"),
-    );
+    scenario_in(&stage.with_std, &stage.with_std_runtimes, "example06", script)
+}
+
+fn assert_columns(run: &Run) {
     assert_eq!(run.code, 0, "{}", run.dump());
     // The same rectangles the native Rust shell of example 6 and the Python shell of example 3 produce.
     assert_eq!(
@@ -866,14 +876,19 @@ fn example_3_a_typescript_shell_on_the_generated_std_natives_arranges_the_client
 }
 
 #[test]
-fn example_17_a_typescript_shell_that_imports_std_native_without_the_library_fails_naming_it() {
+fn example_3_a_typescript_shell_on_the_generated_std_objects_arranges_the_clients_of_a_workspace_in_columns() {
+    assert_columns(&columns_run(&example("03-typescript-std/shell.ts")));
+}
+
+#[test]
+fn typed_table_a_typescript_shell_on_gnoblin_std_native_arranges_the_clients_of_a_workspace_in_columns() {
+    assert_columns(&columns_run(&typed_table("shell.ts")));
+}
+
+/// Runs `script` in the prefix that has no std library: it must fail, and say which library it looked for.
+fn assert_fails_naming_the_library(script: &Path) {
     let stage = stage();
-    let run = scenario_in(
-        &stage.dir,
-        &stage.runtimes,
-        "example06",
-        &example("03-typescript-std/shell.ts"),
-    );
+    let run = scenario_in(&stage.dir, &stage.runtimes, "example06", script);
     assert_ne!(run.code, 0, "{}", run.dump());
     let text = format!("{}{}", run.stdout, run.stderr);
     assert!(
@@ -881,6 +896,16 @@ fn example_17_a_typescript_shell_that_imports_std_native_without_the_library_fai
         "{}",
         run.dump()
     );
+}
+
+#[test]
+fn example_17_a_typescript_shell_that_uses_the_std_objects_without_the_library_fails_naming_it() {
+    assert_fails_naming_the_library(&example("03-typescript-std/shell.ts"));
+}
+
+#[test]
+fn typed_table_example_17_a_typescript_shell_that_imports_std_native_without_the_library_fails_naming_it() {
+    assert_fails_naming_the_library(&typed_table("shell.ts"));
 }
 
 /// The native Rust shell of the layouts (`gnoblin-std-impl/fixtures/shell-layouts`) over the same scenario: the reference.
@@ -900,17 +925,12 @@ fn native_layouts() -> Run {
     }
 }
 
-#[test]
-fn the_built_in_layouts_from_typescript_give_the_rectangles_of_the_native_shell() {
+/// Runs the layouts shell `layouts` and holds every step of it to the native shell's.
+fn assert_layouts_match_the_native_shell(layouts: &Path) {
     let stage = stage();
     let native = native_layouts();
     assert_eq!(native.code, 0, "{}", native.dump());
-    let script = scenario_in(
-        &stage.with_std,
-        &stage.with_std_runtimes,
-        "std_layouts",
-        &example("03-typescript-std/layouts.ts"),
-    );
+    let script = scenario_in(&stage.with_std, &stage.with_std_runtimes, "std_layouts", layouts);
     assert_eq!(script.code, 0, "{}", script.dump());
     for name in [
         "Super+1",
@@ -935,16 +955,30 @@ fn the_built_in_layouts_from_typescript_give_the_rectangles_of_the_native_shell(
 }
 
 #[test]
-fn a_typescript_shell_on_the_std_natives_and_the_engine_share_one_tree_and_nothing_is_refused() {
-    let stage = stage();
-    let run = scenario_in(
-        &stage.with_std,
-        &stage.with_std_runtimes,
-        "example06",
-        &example("03-typescript-std/shell.ts"),
-    );
+fn the_built_in_layouts_from_typescript_give_the_rectangles_of_the_native_shell() {
+    assert_layouts_match_the_native_shell(&example("03-typescript-std/layouts.ts"));
+}
+
+#[test]
+fn typed_table_the_built_in_layouts_from_gnoblin_std_native_give_the_rectangles_of_the_native_shell() {
+    assert_layouts_match_the_native_shell(&typed_table("layouts.ts"));
+}
+
+/// The engine and the library write through one connection: nothing is refused as busy, and no second attach is made.
+fn assert_one_tree_nothing_refused(script: &Path) {
+    let run = columns_run(script);
     assert_eq!(run.code, 0, "{}", run.dump());
     let text = format!("{}{}", run.stdout, run.stderr);
     assert!(!text.contains("E_BUSY"), "{}", run.dump());
     assert!(!text.contains("tree_attach"), "{}", run.dump());
+}
+
+#[test]
+fn a_typescript_shell_on_the_std_objects_and_the_engine_share_one_tree_and_nothing_is_refused() {
+    assert_one_tree_nothing_refused(&example("03-typescript-std/shell.ts"));
+}
+
+#[test]
+fn typed_table_a_typescript_shell_on_gnoblin_std_native_and_the_engine_share_one_tree_and_nothing_is_refused() {
+    assert_one_tree_nothing_refused(&typed_table("shell.ts"));
 }

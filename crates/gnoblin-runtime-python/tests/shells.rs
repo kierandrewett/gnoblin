@@ -1249,9 +1249,20 @@ fn every_python_example_type_checks_clean_against_the_installed_stubs() {
     type_check(&project("examples-pyright"), &pyright, &examples);
 }
 
-// ---- example 3: a Python shell on gnoblin.std -------------------------------------------------------------------------------
+// ---- example 3: a Python shell on the generated std objects -----------------------------------------------------------------
+//
+// Example 3 is written on the generated object API (`gnoblin.objects.std`). `gnoblin.std`, the typed-table binding over `gnoblin._std_base`,
+// still ships in this runtime, so each proof runs a second time on the shells of `tests/fixtures/typed_table`: example 3 as it was before
+// it moved. They stay for as long as that binding does; each test of them says `typed_table` in its name.
 
-/// The scenario of example 6 over the Python shell of example 3: the same windows, the same chord, the same rectangles the native Rust
+/// A shell of `tests/fixtures/typed_table`: the typed-table binding's own proof.
+fn typed_table(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/typed_table")
+        .join(name)
+}
+
+/// The scenario of example 6 over the Python shell `script`: the same windows, the same chord, the same rectangles the native Rust
 /// shell of example 6 produces (`gnoblin-std-impl/tests/examples.rs`).
 fn std_scenario(script: &Path) -> Run {
     let stage = stage();
@@ -1260,7 +1271,15 @@ fn std_scenario(script: &Path) -> Run {
 
 #[test]
 fn example_3_a_python_shell_arranges_the_clients_of_a_workspace_in_columns_as_they_open_and_close() {
-    let run = std_scenario(&example("03-python-std/shell.py"));
+    assert_columns(&std_scenario(&example("03-python-std/shell.py")));
+}
+
+#[test]
+fn typed_table_a_python_shell_on_gnoblin_std_arranges_the_clients_of_a_workspace_in_columns_as_they_open_and_close() {
+    assert_columns(&std_scenario(&typed_table("shell.py")));
+}
+
+fn assert_columns(run: &Run) {
     assert_eq!(run.code, 0, "{}", run.dump());
     assert!(run.stderr.contains("python std shell is running"), "{}", run.dump());
 
@@ -1339,17 +1358,12 @@ fn native_layouts() -> Run {
     ))
 }
 
-#[test]
-fn the_built_in_layouts_from_python_give_the_rectangles_of_the_native_shell() {
+/// Runs the layouts shell `layouts` and holds every step of it to the native shell's.
+fn assert_layouts_match_the_native_shell(layouts: &Path) {
     let stage = stage();
     let native = native_layouts();
     assert_eq!(native.code, 0, "{}", native.dump());
-    let script = scenario_in(
-        &stage.with_std,
-        &stage.with_std_runtimes,
-        "std_layouts",
-        &example("03-python-std/layouts.py"),
-    );
+    let script = scenario_in(&stage.with_std, &stage.with_std_runtimes, "std_layouts", layouts);
     assert_eq!(script.code, 0, "{}", script.dump());
     assert!(script.stderr.contains("layouts shell is running"), "{}", script.dump());
     for name in [
@@ -1373,6 +1387,16 @@ fn the_built_in_layouts_from_python_give_the_rectangles_of_the_native_shell() {
     }
     assert!(!script.stderr.contains("Traceback"), "{}", script.dump());
     assert_eq!(num(&script.stdout, "core_stats", "panics"), 0, "{}", script.dump());
+}
+
+#[test]
+fn the_built_in_layouts_from_python_give_the_rectangles_of_the_native_shell() {
+    assert_layouts_match_the_native_shell(&example("03-python-std/layouts.py"));
+}
+
+#[test]
+fn typed_table_the_built_in_layouts_from_gnoblin_std_give_the_rectangles_of_the_native_shell() {
+    assert_layouts_match_the_native_shell(&typed_table("layouts.py"));
 }
 
 /// Starts the shell `script` in the prefix that has the std library beside the core, and ends it when it has evaluated: the scenario of a

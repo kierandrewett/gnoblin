@@ -1,4 +1,4 @@
-// The built-in layouts of `gnoblin-std/native` from TypeScript: one workspace and a chord for each tiling layout the library runs.
+// The built-in layouts of `gnoblin-std/generated/objects` from TypeScript: one workspace and a chord for each tiling layout the library runs.
 //
 //     gnoblin ./layouts.ts
 //
@@ -8,47 +8,39 @@
 //
 // Every class here is generated from the library's table of layout kinds (`gnoblin-std-abi`'s `LAYOUT_KINDS`): the options, their
 // defaults and their enumerations are the library's, and so is the algorithm. The shell only names a kind and its options.
-import { KeyBinding, gnoblin } from "gnoblin-core";
+import { Gnoblin } from "gnoblin-core/generated/objects";
 import {
-    GridFill,
     GridLayout,
     MasterStackLayout,
-    MasterStackOrientation,
     MonocleLayout,
     SwapBinding,
-    createWorkspace,
-} from "gnoblin-std/native";
-import type { BuiltinLayout } from "gnoblin-std/native";
+    Workspace,
+    Workspaces,
+} from "gnoblin-std/generated/objects";
+import type { Layout } from "gnoblin-std/generated/objects";
 
-const main = createWorkspace("main", { gaps: [6, 12] });
-new MasterStackLayout().attach(main);
+const context = Gnoblin.get().input?.primary;
+if (context === undefined) {
+    throw new Error("the core has no input");
+}
 
-const layouts: Record<string, () => BuiltinLayout> = {
+const main = new Workspace("main", { gaps: { inner: 6, outer: 12 }, layout: new MasterStackLayout() });
+Workspaces.get().add(main);
+
+const layouts: Record<string, () => Layout> = {
     "Super+1": () => new MasterStackLayout(),
-    "Super+2": () =>
-        new MasterStackLayout({ ratio: 0.6, masterCount: 2, gap: 4, orientation: MasterStackOrientation.RIGHT }),
+    "Super+2": () => new MasterStackLayout({ ratio: 0.6, masterCount: 2, gap: 4, orientation: "right" }),
     "Super+3": () => new GridLayout(),
-    "Super+4": () => new GridLayout({ columns: 3, fill: GridFill.COLUMN }),
+    "Super+4": () => new GridLayout({ columns: 3, fill: "column" }),
     "Super+5": () => new MonocleLayout(),
-    "Super+6": () => new MasterStackLayout({ orientation: MasterStackOrientation.TOP }),
+    "Super+6": () => new MasterStackLayout({ orientation: "top" }),
 };
 
-class Switch extends KeyBinding {
-    constructor(
-        trigger: string,
-        private readonly make: () => BuiltinLayout,
-    ) {
-        super({ id: `layout-${trigger}`, trigger });
-    }
-
-    override onPress(): void | false {
-        this.make().attach(main);
-    }
-}
-
 for (const [chord, make] of Object.entries(layouts)) {
-    gnoblin.input.primary.bind(chord, new Switch(chord, make));
+    context.bind(chord, () => {
+        main.layout = make();
+    });
 }
 
-new SwapBinding().start();
+new SwapBinding().install();
 console.log("layouts shell is running");
