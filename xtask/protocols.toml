@@ -308,6 +308,15 @@ deps = ["smithay", "gnoblin-log"]
 dev-deps = ["gnoblin-backend", "gnoblin-render-frame", "gnoblin-wayland", "gnoblin-wayland-testkit", "smithay", "tempfile", "wayland-client", "wayland-protocols"]
 
 [[crate]]
+name = "wp-linux-drm-syncobj-v1"
+description = "The wp_linux_drm_syncobj_manager_v1 Wayland protocol of gnoblin-wayland: explicit synchronisation of GPU buffers with DRM timeline points."
+kind = "protocol"
+interfaces = [["wp_linux_drm_syncobj_manager_v1", 1]]
+conditional = true
+deps = ["smithay", "gnoblin-log"]
+dev-deps = ["gnoblin-backend"]
+
+[[crate]]
 name = "zwp-tablet-v2"
 description = "The zwp_tablet_manager_v2 Wayland protocol of gnoblin-wayland: drawing tablets, their tools and pads."
 kind = "protocol"

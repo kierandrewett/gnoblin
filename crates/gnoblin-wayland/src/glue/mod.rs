@@ -27,6 +27,7 @@ mod wl_seat;
 mod wl_shm;
 mod wp_fifo_v1;
 mod wp_fractional_scale_v1;
+mod wp_linux_drm_syncobj_v1;
 mod wp_presentation_time;
 mod wp_security_context_v1;
 mod wp_tearing_control_v1;

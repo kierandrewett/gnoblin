@@ -481,6 +481,9 @@ impl Server {
         let dmabuf = backend.dmabuf();
         let display_handle = state.display_handle.clone();
         state.start_dmabuf(dmabuf.as_ref(), &display_handle);
+        // Explicit sync is offered only by a backend whose renderer says when the GPU has finished with a buffer, so a
+        // release point is never signalled under a draw.
+        state.start_syncobj(backend.explicit_sync(), &display_handle);
         // The same for a capture: a session offers `dma_buf` only when the backend can write into a client's GPU
         // buffer, which only the backend knows.
         state.refresh_dmabuf_capture(backend.as_mut());
@@ -937,6 +940,8 @@ impl Server {
                 // the next turn offers `dma_buf` exactly when the backend can fill one.
                 state.refresh_dmabuf_capture(backend.as_mut());
                 crate::frame::render(backend.as_mut(), state, &frames, &control.screenshots);
+                // What the GPU has finished with is released to the clients that named a release point for it.
+                state.retire_syncobj(backend.as_mut());
                 // The frame just drawn produced buffer releases and frame callbacks;
                 // flushing them now rather than on the next wake is the difference
                 // between a client drawing at once and drawing up to a timeout later.

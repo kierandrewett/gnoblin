@@ -83,6 +83,7 @@ use smithay::wayland::compositor::{
 use smithay::wayland::dmabuf::{
     DmabufFeedbackBuilder, DmabufGlobal, DmabufGlobalData, DmabufHandler, DmabufState, ImportNotifier, get_dmabuf,
 };
+use smithay::wayland::drm_syncobj::DrmSyncobjCachedState;
 
 use gnoblin_wayland_api::host::CoreHost;
 use gnoblin_wayland_api::{Privilege, ProtocolInfo, ServedInterface};
@@ -215,10 +216,23 @@ pub fn dmabuf_bytes(dmabuf: &Dmabuf) -> u64 {
 /// finishes. A commit applied early would show a half-drawn frame. The hook adds a blocker that
 /// clears when the buffer's fences signal, and the compositor keeps showing the previous frame
 /// until then. A buffer that is already ready adds nothing, and so does a surface whose client
-/// is gone or a session with no loop to wait on.
+/// is gone or a session with no loop to wait on. A commit with an explicit acquire point is not held here: the point is
+/// its wait.
 pub fn hold_commit_until_ready<D: Host>(surface: &WlSurface) {
     add_pre_commit_hook::<D, _>(surface, |state, _display, surface| {
         let attached = with_states(surface, |states| {
+            // A commit that names an acquire point waits on that point and not on the buffer's implicit fences
+            // (`gnoblin-wayland-wp-linux-drm-syncobj-v1`): the client may not attach any, and the protocol lets the
+            // compositor ignore them.
+            if states
+                .cached_state
+                .get::<DrmSyncobjCachedState>()
+                .pending()
+                .acquire_point
+                .is_some()
+            {
+                return None;
+            }
             let mut attributes = states.cached_state.get::<SurfaceAttributes>();
             match &attributes.pending().buffer {
                 Some(BufferAssignment::NewBuffer(buffer)) => get_dmabuf(buffer).ok().cloned(),

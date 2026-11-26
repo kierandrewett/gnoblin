@@ -314,9 +314,10 @@ use gnoblin_wayland_api::ProtocolInfo;\n\n",
     text.push_str(
         "\n/// What only some sessions advertise. A registry that lists one must list it at no higher version than it declares.\npub const CONDITIONAL: &[&ProtocolInfo] = &",
     );
-    // rustfmt keeps an array on one line while its items take at most `array_width` (60) columns, so the file is written that way.
+    // rustfmt keeps an array on one line while its items take at most `array_width` columns: 60% of the 120-column
+    // `max_width` of rustfmt.toml, 72, so the file is written that way.
     let joined = conditional.join(", ");
-    if joined.len() <= 60 {
+    if joined.len() <= 72 {
         let _ = writeln!(text, "[{joined}];");
     } else {
         text.push_str("[\n");

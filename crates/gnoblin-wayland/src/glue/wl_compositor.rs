@@ -35,6 +35,10 @@ impl CompositorHandler for State {
     fn new_surface(&mut self, surface: &WlSurface) {
         // A commit that attaches a dmabuf waits for the buffer's fences: see the protocol module.
         gnoblin_wayland_protocols::zwp_linux_dmabuf_v1::hold_commit_until_ready::<State>(surface);
+        // A commit with an acquire point waits for it instead, and one that breaks the protocol is refused.
+        if self.syncobj.served() {
+            gnoblin_wayland_protocols::wp_linux_drm_syncobj_v1::hold_commit_until_acquired::<State>(surface);
+        }
     }
 
     fn destroyed(&mut self, surface: &WlSurface) {
@@ -48,7 +52,15 @@ impl CompositorHandler for State {
         // Positions the surface's parents asked for land with the state that has just been applied, ahead of
         // everything below that reads where a subsurface is.
         crate::subsurface_position::applied(surface);
+        // A release point an explicit-sync client named is taken before Smithay's handler would own it: it is signalled
+        // when the GPU is done with the buffer, not when the next commit replaces it.
+        let released = if self.syncobj.served() {
+            gnoblin_wayland_protocols::wp_linux_drm_syncobj_v1::take_points(surface)
+        } else {
+            Vec::new()
+        };
         on_commit_buffer_handler::<Self>(surface);
+        self.syncobj.hold(released);
         // A buffer whose pool the client shrank is the client's error; so is a viewport source that reaches
         // past the buffer the commit left attached.
         gnoblin_wayland_protocols::wl_compositor::verify_buffer(surface);

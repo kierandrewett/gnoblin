@@ -51,6 +51,7 @@ gnoblin-wayland-zwlr-foreign-toplevel-management-v1 = { path = "../zwlr-foreign-
 gnoblin-wayland-wl-data-device-manager = { path = "../wl-data-device-manager" }
 gnoblin-wayland-ext-session-lock-v1 = { path = "../ext-session-lock-v1" }
 gnoblin-wayland-zwp-linux-dmabuf-v1 = { path = "../zwp-linux-dmabuf-v1" }
+gnoblin-wayland-wp-linux-drm-syncobj-v1 = { path = "../wp-linux-drm-syncobj-v1" }
 gnoblin-wayland-zwp-tablet-v2 = { path = "../zwp-tablet-v2" }
 gnoblin-wayland-wl-compositor = { path = "../wl-compositor" }
 gnoblin-wayland-wl-seat = { path = "../wl-seat" }

@@ -104,6 +104,13 @@
 //!   proved against the stand-in only. The capture protocols offer a GPU buffer
 //!   (`dma_buf`, `linux_dmabuf`) only when the backend can render into one
 //!   (`tests/dmabuf_capture.rs`, against a stand-in GPU; `tests/dmabuf_capture_gpu.rs` on a device).
+//! - **`wp_linux_drm_syncobj_v1`** — explicit sync: a client names an acquire and a release point of a DRM timeline for
+//!   each dmabuf it commits. The global exists only when the backend's renderer reports when the GPU has finished with a
+//!   buffer (`Backend::explicit_sync`, `Backend::buffers_retired`): Vulkan on a device with a render node whose kernel
+//!   supports syncobj eventfds. A software Vulkan driver (lavapipe), GLES and the software renderer do not serve it. A
+//!   commit waits for its acquire point without stalling the loop, and a release point is signalled when the GPU has
+//!   retired the frames that may have read the buffer. Tested in `tests/syncobj.rs`: the offer and the protocol errors
+//!   everywhere, the waits and releases on a machine with a DRM render node (a skip, with the reason, where there is none).
 //! - **`wp_tearing_control_v1`** — the hint is kept per surface and read back through
 //!   [`State::tearing_hint`]. A headless output presents nothing, so there is no vsync for
 //!   it to lift and the hint has no visible effect.

@@ -2570,6 +2570,7 @@ dependencies = [
  "gnoblin-wayland-wp-cursor-shape-v1",
  "gnoblin-wayland-wp-fifo-v1",
  "gnoblin-wayland-wp-fractional-scale-v1",
+ "gnoblin-wayland-wp-linux-drm-syncobj-v1",
  "gnoblin-wayland-wp-presentation-time",
  "gnoblin-wayland-wp-security-context-v1",
  "gnoblin-wayland-wp-single-pixel-buffer-v1",
@@ -2714,6 +2715,16 @@ dependencies = [
 name = "gnoblin-wayland-wp-fractional-scale-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wp-linux-drm-syncobj-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-backend",
+ "gnoblin-log",
  "gnoblin-wayland-api",
  "smithay",
 ]

@@ -289,13 +289,21 @@ Implicit sync is the default and must work, because most clients use it:
 
 Explicit sync is `linux-drm-syncobj-v1`, using Smithay's `wayland::drm_syncobj` module (present in the pinned revision):
 
-- Served only when the backend's device has a DRM node and `supports_syncobj_eventfd` is true. Lavapipe sessions do not
-  serve it.
+- Served only when the backend can keep the promise: `Backend::explicit_sync` answers with the DRM device when the
+  renderer reports retirement (Vulkan only) and `ExplicitSync::on_node` finds a render node whose kernel supports
+  `supports_syncobj_eventfd`. Lavapipe names no DRM node, so its sessions do not serve it; neither do GLES and the
+  software renderer.
 - Acquire points use Smithay's `DrmSyncPointBlocker`: the commit waits on an eventfd until the point signals, so the
-  renderer never waits on an acquire point itself.
-- Release points are signalled from the CPU when the timeline passes the value of the last frame that sampled the
-  buffer. The backend reports that through a new `Backend::buffers_retired` hook fed by the retire queue.
-- An explicit-sync surface skips the implicit export ioctl for its buffers.
+  renderer never waits on an acquire point itself. A commit with an acquire point is not also held on the dmabuf's
+  implicit fences.
+- Release points are signalled from the CPU. The compositor takes the point out of the surface as the commit applies
+  (Smithay would signal it when the next commit replaces the buffer, which is too early) and signals it when the surface
+  shows newer content and the GPU has retired every frame submitted up to then. `Backend::buffers_retired` reports
+  `Retirement { submitted, retired }` from the device timeline (`VulkanDevice::frame_progress`); a count that goes
+  backwards is a device made anew.
+- Not built: an explicit-sync surface still takes the implicit export ioctl in the LINEAR copy path, because that path
+  needs a flag from the frame's `Surface` to the texture cache (`plan.rs`, `frame.rs`). The wait returns at once on a
+  buffer with no implicit fences, so it costs nothing but the ioctl.
 
 Explicit sync matters most for NVIDIA's proprietary driver, whose implicit sync support is limited `[INFERENCE]`.
 

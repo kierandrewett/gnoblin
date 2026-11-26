@@ -26,6 +26,7 @@ pub use gnoblin_wayland_wp_content_type_v1 as wp_content_type_v1;
 pub use gnoblin_wayland_wp_cursor_shape_v1 as wp_cursor_shape_v1;
 pub use gnoblin_wayland_wp_fifo_v1 as wp_fifo_v1;
 pub use gnoblin_wayland_wp_fractional_scale_v1 as wp_fractional_scale_v1;
+pub use gnoblin_wayland_wp_linux_drm_syncobj_v1 as wp_linux_drm_syncobj_v1;
 pub use gnoblin_wayland_wp_presentation_time as wp_presentation_time;
 pub use gnoblin_wayland_wp_security_context_v1 as wp_security_context_v1;
 pub use gnoblin_wayland_wp_single_pixel_buffer_v1 as wp_single_pixel_buffer_v1;
@@ -117,4 +118,4 @@ pub const ALL: &[&ProtocolInfo] = &[
 ];
 
 /// What only some sessions advertise. A registry that lists one must list it at no higher version than it declares.
-pub const CONDITIONAL: &[&ProtocolInfo] = &[&zwp_linux_dmabuf_v1::PROTOCOL];
+pub const CONDITIONAL: &[&ProtocolInfo] = &[&zwp_linux_dmabuf_v1::PROTOCOL, &wp_linux_drm_syncobj_v1::PROTOCOL];
