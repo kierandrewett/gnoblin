@@ -163,7 +163,7 @@ fn register_workspace(builder: &mut Builder) {
         .get("name", |held, _| {
             look(held.ctx, |st| st.workspace(held.handle).map(|ws| ws.name.clone())).map(Val::Text)
         })
-        .set("name", |held, cx, value| {
+        .set_ref("name", |held, cx, value| {
             let name = value.text()?.to_owned();
             edit(held.ctx, |st| {
                 st.workspace_mut(held.handle)?.name = name;
@@ -177,7 +177,7 @@ fn register_workspace(builder: &mut Builder) {
                 st.workspace(held.handle).map(|ws| gaps_val(ws.gap_inner, ws.gap_outer))
             })
         })
-        .set("gaps", |held, cx, value| {
+        .set_ref("gaps", |held, cx, value| {
             let (inner, outer) = gaps_of(&value, "gaps")?;
             edit(held.ctx, |st| {
                 let ws = st.workspace_mut(held.handle)?;
@@ -225,23 +225,23 @@ fn register_workspace(builder: &mut Builder) {
             })
             .map(Val::Uint)
         })
-        .method("show", |held, _, args| {
+        .method_ref("show", |held, _, args| {
             show(held.ctx, held.handle, &args[0])?;
             Ok(Val::None)
         })
-        .method("invalidate", |held, _, _| {
+        .method_ref("invalidate", |held, _, _| {
             edit(held.ctx, |st| {
                 st.workspace_mut(held.handle)?.dirty = true;
                 Ok(())
             })?;
             Ok(Val::None)
         })
-        .method("walk", |held, _, args| {
+        .method_ref("walk", |held, _, args| {
             let step = args[0].int()?;
             edit(held.ctx, |st| st.walk(held.handle, step))?;
             Ok(Val::None)
         })
-        .method("find_split", |held, _, args| {
+        .method_ref("find_split", |held, _, args| {
             let (client, x, y) = (
                 client_node(held.ctx, "find_split", &args[0])?,
                 args[1].double()?,
@@ -256,7 +256,7 @@ fn register_workspace(builder: &mut Builder) {
                 .find_split(client, x, y)
                 .map_or(Val::None, |split| super::shell_layout::split_val(&split)))
         })
-        .method("set_split", |held, _, args| {
+        .method_ref("set_split", |held, _, args| {
             let ratio = args[1].double()?;
             let cross = if args[2].is_none() { f64::NAN } else { args[2].double()? };
             if !ratio.is_finite() || cross.is_infinite() {
@@ -270,7 +270,7 @@ fn register_workspace(builder: &mut Builder) {
             })?;
             Ok(Val::None)
         })
-        .method("reset_split", |held, _, args| {
+        .method_ref("reset_split", |held, _, args| {
             let layout = look(held.ctx, |st| st.workspace(held.handle).map(|ws| Rc::clone(&ws.layout)))?;
             layout.reset_split(args[0].uint()?);
             edit(held.ctx, |st| {

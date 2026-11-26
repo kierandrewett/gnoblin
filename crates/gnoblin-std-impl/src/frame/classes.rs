@@ -420,34 +420,34 @@ fn actions_classes(builder: &mut Builder) {
             let now = h.ui.frames.borrow().frames.get(&h.id).and_then(|rec| rec.now.clone());
             Ok(closure_val(now))
         })
-        .set("now", |h, _, v| {
+        .set_ref("now", |h, _, v| {
             let clock = closure_of(v)?;
             if let Some(rec) = h.ui.frames.borrow_mut().frames.get_mut(&h.id) {
                 rec.now = clock;
             }
             Ok(())
         })
-        .method("close", |h, _, _| {
+        .method_ref("close", |h, _, _| {
             actions::close(&h.ui, h.id).map_err(Fail::err)?;
             Ok(Val::None)
         })
-        .method("toggle_maximise", |h, _, _| {
+        .method_ref("toggle_maximise", |h, _, _| {
             actions::toggle_maximise(&h.ui, h.id).map_err(Fail::err)?;
             Ok(Val::None)
         })
-        .method("minimise", |h, _, _| {
+        .method_ref("minimise", |h, _, _| {
             actions::minimise(&h.ui, h.id).map_err(Fail::err)?;
             Ok(Val::None)
         })
-        .method("menu", |h, _, _| {
+        .method_ref("menu", |h, _, _| {
             actions::menu(&h.ui, h.id).map_err(Fail::err)?;
             Ok(Val::None)
         })
-        .method("lower", |h, _, _| {
+        .method_ref("lower", |h, _, _| {
             actions::lower(&h.ui, h.id).map_err(Fail::err)?;
             Ok(Val::None)
         })
-        .method("gesture", |h, _, args| {
+        .method_ref("gesture", |h, _, args| {
             actions::gesture(&h.ui, h.id, args[0].enum_value()?).map_err(Fail::err)?;
             Ok(Val::None)
         });
@@ -469,7 +469,7 @@ fn actions_classes(builder: &mut Builder) {
                     .ok_or_else(|| Fail::stale("the drag is gone"))?;
             frame_object(&h.ui, frame, cx)
         })
-        .method("attach", |h, cx, args| {
+        .method_ref("attach", |h, cx, args| {
             let cid = canvas_of(cx, args[0].object()?)?;
             let frame =
                 h.ui.frames
@@ -502,17 +502,17 @@ fn actions_classes(builder: &mut Builder) {
                 ))
             }
         })
-        .method("press", |h, _, args| {
+        .method_ref("press", |h, _, args| {
             let (x, y, button) = pointer_of(&args[0])?;
             drag::press(&h.ui, h.key, x, y, button).map_err(Fail::err)?;
             Ok(Val::None)
         })
-        .method("motion", |h, _, args| {
+        .method_ref("motion", |h, _, args| {
             let (x, y, _) = pointer_of(&args[0])?;
             drag::motion(&h.ui, h.key, x, y);
             Ok(Val::None)
         })
-        .method("release", |h, _, args| {
+        .method_ref("release", |h, _, args| {
             let (x, y, button) = pointer_of(&args[0])?;
             drag::release(&h.ui, h.key, x, y, button).map_err(Fail::err)?;
             Ok(Val::None)

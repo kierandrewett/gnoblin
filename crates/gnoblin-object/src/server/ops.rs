@@ -1,6 +1,5 @@
 //! The operations of the protocol, on a [`Library`]: what each function of `GnoblinObjectApi` does once its arguments are read.
 
-use std::any::Any;
 use std::cell::RefCell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
@@ -10,7 +9,7 @@ use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinDropFn, GnoblinInvokeFn};
 use super::Library;
 use super::cx::Cx;
 use super::object::{CtxState, Entry, Listener, Pending, State};
-use super::registry::Inits;
+use super::registry::{Inits, Native};
 use super::shell::ShellImpl;
 use crate::catalog::{ClassDef, MemberDef};
 use crate::client::Api;
@@ -64,19 +63,36 @@ impl Library {
 
     /// Runs `work` on the native state of an object of `class`, which `state` holds, for the length of one call about the object.
     ///
-    /// A class with a state is borrowed for the whole call, and a second call about the same object while the first runs is refused with
-    /// `E_BUSY`: it would be a second `&mut` to a state the first may have half changed. A class registered with `()` for state has none
-    /// to protect (`ClassImpl::stateless`), so the call takes no borrow and gets a `&mut ()` of its own. What runs inside the call may then
-    /// call the same object again, which is how the std library's `request_transition` runs the shell's callback and lets it read
+    /// A class with a state is borrowed for the whole call, as the member needs: a getter and a member registered `_ref` (`exclusive`
+    /// false) take a shared borrow, and these nest, so a closure of the shell that such a member runs may read the object's properties
+    /// and call its other `_ref` members. A member that changes its state takes the unique borrow, and a second call about the same
+    /// object while it runs, or a call to it while any borrow is held, is refused with `E_BUSY`: it would be a `&mut` that aliases
+    /// another reference to a state the first may have half changed. A class registered with `()` for state has none to protect
+    /// (`ClassImpl::stateless`), so the call takes no borrow and gets a `()` of its own. What runs inside the call may then call the
+    /// same object again, which is how the std library's `request_transition` runs the shell's callback and lets it read
     /// `gnoblin.workspaces`, another member of the object the call is about.
-    fn with_native<R>(&self, class: ClassId, state: &State, work: impl FnOnce(&mut dyn Any) -> Res<R>) -> Res<R> {
+    fn with_native<R>(
+        &self,
+        class: ClassId,
+        state: &State,
+        exclusive: bool,
+        work: impl FnOnce(Native<'_>) -> Res<R>,
+    ) -> Res<R> {
+        let busy = || Fail::new(abi::E_BUSY, "the object is in use by a call that is running");
         if self.classes[class as usize - 1].stateless {
-            return work(&mut ());
+            return if exclusive {
+                work(Native::Exclusive(&mut ()))
+            } else {
+                work(Native::Shared(&()))
+            };
         }
-        let mut guard = state
-            .try_borrow_mut()
-            .map_err(|_| Fail::new(abi::E_BUSY, "the object is in use by a call that is running"))?;
-        work(&mut **guard)
+        if exclusive {
+            let mut guard = state.try_borrow_mut().map_err(|_| busy())?;
+            work(Native::Exclusive(&mut **guard))
+        } else {
+            let guard = state.try_borrow().map_err(|_| busy())?;
+            work(Native::Shared(&**guard))
+        }
     }
 
     /// The id of the class `name`.
@@ -429,8 +445,8 @@ impl Library {
             Fail::unsupported(format!("`{}` is in the catalog and not implemented yet", property.name))
         })?;
         let mut cx = Cx::new(self, &st, obj, target.class);
-        let value = self.with_native(target.class, &target.state, |native| {
-            guarded(property.name, || read(native, &mut cx))
+        let value = self.with_native(target.class, &target.state, false, |native| {
+            guarded(property.name, || read(native.shared(), &mut cx))
         })?;
         self.tell_tracker(obj, target.class, member);
         Ok(value)
@@ -522,8 +538,8 @@ impl Library {
         if let Some(timing) = timing {
             cx = cx.with_timing(timing);
         }
-        self.with_native(class, &state, |native| {
-            guarded(property.name, || write(native, &mut cx, value))
+        self.with_native(class, &state, write.exclusive(), |native| {
+            guarded(property.name, || write.run(native, &mut cx, value))
         })?;
         self.queue_changed(st, obj, member);
         Ok(())
@@ -556,8 +572,8 @@ impl Library {
             ))
         })?;
         let mut cx = Cx::new(self, &st, obj, target.class);
-        let answer = self.with_native(target.class, &target.state, |native| {
-            guarded(method.name, || run(native, &mut cx, &args))
+        let answer = self.with_native(target.class, &target.state, run.exclusive(), |native| {
+            guarded(method.name, || run.run(native, &mut cx, &args))
         })?;
         args.iter().for_each(Val::adopt_closures);
         check_answer(def.name, method, &answer)?;

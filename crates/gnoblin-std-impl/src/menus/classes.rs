@@ -105,45 +105,45 @@ fn navigator(builder: &mut Builder) {
             Some(row) => handout(&h.ui, cx, row),
             None => Ok(Val::None),
         })
-        .method("active", |h, cx, _| handouts(&h.ui, cx, h.nav()?.active()))
-        .method("is_selected", |h, cx, args| {
+        .method_ref("active", |h, cx, _| handouts(&h.ui, cx, h.nav()?.active()))
+        .method_ref("is_selected", |h, cx, args| {
             let row = canvas_of(cx, args[0].object()?)?;
             Ok(Val::Bool(h.nav()?.is_selected(row)))
         })
-        .method("select", |h, cx, args| {
+        .method_ref("select", |h, cx, args| {
             let row = canvas_of(cx, args[0].object()?)?;
             h.update(|nav| nav.select(row))?;
             Ok(Val::None)
         })
-        .method("move", |h, _, args| {
+        .method_ref("move", |h, _, args| {
             let step = args[0].int()?;
             let info = card::row_of(&h.ui);
             h.update(|nav| nav.step(step.signum(), &info))?;
             Ok(Val::None)
         })
-        .method("home", |h, _, _| {
+        .method_ref("home", |h, _, _| {
             let info = card::row_of(&h.ui);
             h.update(|nav| nav.home(&info))?;
             Ok(Val::None)
         })
-        .method("end", |h, _, _| {
+        .method_ref("end", |h, _, _| {
             let info = card::row_of(&h.ui);
             h.update(|nav| nav.end(&info))?;
             Ok(Val::None)
         })
-        .method("jump", |h, _, args| {
+        .method_ref("jump", |h, _, args| {
             let info = card::row_of(&h.ui);
             let letter = args[0].text()?.to_owned();
             h.update(|nav| nav.jump(&letter, &info))?;
             Ok(Val::None)
         })
-        .method("open_submenu", |h, cx, args| {
+        .method_ref("open_submenu", |h, cx, args| {
             let rows = canvases(cx, &args[0])?;
             let info = card::row_of(&h.ui);
             h.update(|nav| nav.open_submenu(rows, &info))?;
             Ok(Val::None)
         })
-        .method("close_submenu", |h, _, _| {
+        .method_ref("close_submenu", |h, _, _| {
             h.update(Nav::close_submenu)?;
             Ok(Val::None)
         });
@@ -235,17 +235,17 @@ fn canvas_classes(builder: &mut Builder) {
             Some(sub) => handout(&h.ui, cx, sub),
             None => Ok(Val::None),
         })
-        .method("activate", |h, cx, args| {
+        .method_ref("activate", |h, cx, args| {
             let row = canvas_of(cx, args[0].object()?)?;
             card::activate(&h.ui, h.cid, row);
             Ok(Val::None)
         })
-        .method("open_submenu", |h, cx, args| {
+        .method_ref("open_submenu", |h, cx, args| {
             let row = canvas_of(cx, args[0].object()?)?;
             card::open_submenu(&h.ui, h.cid, row);
             Ok(Val::None)
         })
-        .method("close_submenu", |h, _, _| {
+        .method_ref("close_submenu", |h, _, _| {
             card::close_submenu(&h.ui, h.cid);
             Ok(Val::None)
         });
