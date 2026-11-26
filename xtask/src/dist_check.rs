@@ -406,11 +406,12 @@ pub fn check_layout(root: &Path, libdir: &str) -> Vec<String> {
                     "share/gnoblin/types/tsconfig.json maps the submodules of \"{package}\" to a directory that is not installed"
                 ));
             }
-            let host = format!("export * from \"{package}/host\";");
+            // The entry is the native library's: the generated classes, which is what a bare import is at run time.
+            let generated = format!("export * from \"{package}/generated/objects\";");
             let entry = root.join(format!("share/gnoblin/types/{package}/index.ts"));
-            if fs::read_to_string(&entry).is_ok_and(|text| !text.contains(&host)) {
+            if fs::read_to_string(&entry).is_ok_and(|text| !text.contains(&generated)) {
                 problems.push(format!(
-                    "share/gnoblin/types/{package}/index.ts does not export its host module"
+                    "share/gnoblin/types/{package}/index.ts does not export the generated classes"
                 ));
             }
         }

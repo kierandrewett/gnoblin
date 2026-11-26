@@ -168,7 +168,7 @@ fn a_spec_style_init_loads_in_the_dry_run_host() {
     let dir = Dir::new();
     let init = dir.write(
         "shell.ts",
-        "import { FloatingLayout, MasterStackLayout, Workspace } from 'gnoblin-std';\n\nconst input = gnoblin.input.primary;\ngnoblin.workspaces.add(new Workspace({ id: 'web', name: 'Web', layout: new MasterStackLayout() }));\ngnoblin.workspaces.add(new Workspace({ id: 'main', layout: new FloatingLayout() }));\ngnoblin.clients.style.cornerRadius = 12;\ninput.bind('Super+Return', () => {\n    gnoblin.spawn(['foot']);\n});\n",
+        "import { FloatingLayout, MasterStackLayout, Workspace } from 'gnoblin-std';\n\nconst input = gnoblin.input.primary;\ngnoblin.workspaces.add(new Workspace('web', { name: 'Web', layout: new MasterStackLayout() }));\ngnoblin.workspaces.add(new Workspace('main', { layout: new FloatingLayout() }));\ngnoblin.clients.style.cornerRadius = 12;\ninput.bind('Super+Return', () => {\n    gnoblin.spawn(['foot']);\n});\n",
     );
     let (code, out, err) = check(&init, &[]);
     assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
@@ -182,7 +182,7 @@ fn a_refusal_of_the_std_library_is_refused_here_as_a_session_refuses_it() {
     let dir = Dir::new();
     let init = dir.write(
         "shell.ts",
-        "import { Workspace } from 'gnoblin-std';\n\ngnoblin.workspaces.add(new Workspace({ id: 'web' }));\ngnoblin.workspaces.add(new Workspace({ id: 'web' }));\n",
+        "import { Workspace } from 'gnoblin-std';\n\ngnoblin.workspaces.add(new Workspace('web'));\ngnoblin.workspaces.add(new Workspace('web'));\n",
     );
     let (code, out, err) = check(&init, &["--json"]);
     assert_eq!(code, 1, "{err}");
@@ -190,7 +190,7 @@ fn a_refusal_of_the_std_library_is_refused_here_as_a_session_refuses_it() {
     assert_eq!(document["problems"][0]["kind"], "exception", "{out}");
     let message = document["problems"][0]["message"].as_str().unwrap_or_default();
     assert!(
-        message.contains("gnoblin.workspaces.add") && message.contains("already a workspace"),
+        message.contains("Workspaces.add") && message.contains("already a workspace with id"),
         "the library's words say what it refused: {out}"
     );
 }
@@ -236,7 +236,7 @@ fn a_file_that_reads_live_state_sees_an_empty_world_and_loads() {
     let dir = Dir::new();
     let init = dir.write(
         "shell.ts",
-        "const seen: string[] = [];\nfor (const client of gnoblin.clients) {\n    seen.push(client.title);\n}\nconst focused = gnoblin.input.primary.focusedClient;\nif (focused === null && gnoblin.clients.length === 0 && seen.length === 0) {\n    gnoblin.input.primary.bind('Super+k', () => {\n        gnoblin.spawn(['foot']);\n    });\n}\n",
+        "const seen: string[] = [];\nfor (const client of gnoblin.clients.toList()) {\n    seen.push(client.title);\n}\nconst focused = gnoblin.input.primary.focusedClient;\nif (focused === null && gnoblin.clients.length === 0 && seen.length === 0) {\n    gnoblin.input.primary.bind('Super+k', () => {\n        gnoblin.spawn(['foot']);\n    });\n}\n",
     );
     let (code, out, err) = check(&init, &[]);
     assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
@@ -380,9 +380,12 @@ fn types_init_writes_the_real_sources_and_a_second_run_keeps_an_edited_tsconfig(
     }
     for package in ["gnoblin-core", "gnoblin-std"] {
         let index = fs::read_to_string(library.join(package).join("index.ts")).expect("the index is written");
-        let original =
-            fs::read_to_string(sources.join(package).join("index.ts")).expect("the index is in the repository");
-        assert_eq!(index, format!("{original}\nexport * from \"{package}/host\";\n"));
+        // A bare import is the native library's at run time, so the editor's entry re-exports its generated classes.
+        assert_eq!(
+            Some(index.as_str()),
+            gnoblin_js_types::package_entry(package),
+            "{package}"
+        );
     }
 
     fs::write(target.join("tsconfig.json"), "{\"mine\": true}\n").expect("the user edits the tsconfig");

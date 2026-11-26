@@ -65,8 +65,8 @@ pub(crate) const HOST_MODULE_NAME: &str = "gnoblin-core/host";
 
 /// What a package entry has beyond the stock index: the exports of the package's host module, so one import line
 /// reaches `Client` and `ClientListener` alike (`Workspace` and `startDecorations` for `gnoblin-std`). The stock
-/// sources stay as they are because a host module is only evaluated when something imports it. The shell appends this to the
-/// index it embeds and [`editor_library_in`] appends it to the index an editor reads, so the two cannot disagree.
+/// sources stay as they are because a host module is only evaluated when something imports it. The TypeScript library appends this to the
+/// index it embeds.
 pub(crate) fn host_export(package: &str) -> String {
     format!("\nexport * from \"{package}/host\";\n")
 }
@@ -292,9 +292,10 @@ pub fn stock_sources_in(dirs: &[PathBuf]) -> Result<HashMap<String, JsTypeScript
 
 /// The stock library as an editor and a type checker read it: `(path under the library root, TypeScript)` for every module in
 /// path order, so each starts with its package directory (`gnoblin-std/scene/node.ts`). These are the real sources, byte for byte,
-/// except the package entries (`gnoblin-core/index.ts`, `gnoblin-std/index.ts`), which are the modules the runtime builds (the
-/// stock index plus [`host_export`]). The generated modules are the ones this runtime was built with. `gnoblinctl types init` writes
-/// them next to the user's config, so `import ... from "gnoblin-std/scene/node"` opens the file the shell runs.
+/// except the package entries (`gnoblin-core/index.ts`, `gnoblin-std/index.ts`): a bare `gnoblin-core` or `gnoblin-std` is the native
+/// library's on a shell that imports no deep module, so the entry the editor reads re-exports the generated declarations the native
+/// entry re-exports (`gnoblin_js_types::package_entry`), and a script that names `Workspace` is checked against the class it runs. The generated modules are the ones this runtime was built with. `gnoblinctl types init` writes them next to the user's
+/// config, so `import ... from "gnoblin-std/scene/node"` opens the file the shell runs.
 ///
 /// # Errors
 ///
@@ -302,10 +303,10 @@ pub fn stock_sources_in(dirs: &[PathBuf]) -> Result<HashMap<String, JsTypeScript
 pub fn editor_library_in(dirs: &[PathBuf]) -> Result<Vec<(String, String)>, StockError> {
     let mut library = Vec::new();
     for listed in listing(dirs)?.into_iter().filter(|listed| !listed.is_javascript()) {
-        let mut text = listed.read()?;
-        if PACKAGES.contains(&listed.name.as_str()) {
-            text.push_str(&host_export(&listed.name));
-        }
+        let text = match gnoblin_js_types::package_entry(&listed.name) {
+            Some(entry) => entry.to_owned(),
+            None => listed.read()?,
+        };
         library.push((listed.file, text));
     }
     Ok(library)
@@ -645,7 +646,10 @@ mod tests {
         for (file, text) in &library {
             let source = &sources[&import_name(file)].source;
             if PACKAGES.contains(&import_name(file).as_str()) {
-                assert_eq!(*text, format!("{source}{}", host_export(&import_name(file))));
+                assert_ne!(
+                    *text, **source,
+                    "{file}: the entry is the native one, not the TypeScript index"
+                );
             } else {
                 assert_eq!(text, source, "{file}");
             }
@@ -655,7 +659,10 @@ mod tests {
                 .iter()
                 .find(|(file, _)| file == &format!("{package}/index.ts"))
                 .expect("the package entry is listed");
-            assert!(index.ends_with(&format!("export * from \"{package}/host\";\n")));
+            assert!(
+                index.ends_with(&format!("export * from \"{package}/generated/objects\";\n")),
+                "{package}: {index}"
+            );
         }
     }
 

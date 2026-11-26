@@ -155,8 +155,8 @@ enum Generated {
     StdPkgConfig,
     /// `share/gnoblin/types/gnoblin.d.ts`: the globals of a TypeScript shell (`gnoblin`, `console`), as `gnoblinctl types init` writes it.
     TypesGlobals,
-    /// `share/gnoblin/types/<package>/index.ts`: the package's stock index with the exports of its host module added, which is the module
-    /// the runtime builds from them (`gnoblin-js`'s `editor_library_in` makes the same text for `types init`).
+    /// `share/gnoblin/types/<package>/index.ts`: the package entry as an editor reads it, the native library's
+    /// (`gnoblin_js_types::package_entry`, which `gnoblin-js`'s `editor_library_in` also uses for `types init`).
     TypesIndex(&'static str),
     /// `share/gnoblin/types/tsconfig.json`: the configuration that maps the two packages to the installed library and loads the globals.
     TypesConfig,
@@ -782,12 +782,10 @@ fn plan(repo: &Path, built: &Path, libdir: &str) -> Result<Vec<Planned>, DistErr
                         Generated::StdPkgConfig => (std_pkg_config(libdir).into_bytes(), true),
                         Generated::TypesGlobals => (gnoblin_js_types::render_dts().into_bytes(), false),
                         Generated::TypesIndex(package) => {
-                            let index = repo.join("data/js").join(package).join("index.ts");
-                            let mut text = fs::read_to_string(&index).map_err(|error| {
-                                DistError::Generate(format!("cannot read {}: {error}", index.display()))
+                            let entry = gnoblin_js_types::package_entry(package).ok_or_else(|| {
+                                DistError::Generate(format!("`{package}` is not a package of the library"))
                             })?;
-                            text.push_str(&format!("\nexport * from \"{package}/host\";\n"));
-                            (text.into_bytes(), false)
+                            (entry.as_bytes().to_vec(), false)
                         }
                         Generated::TypesConfig => (gnoblin_js_types::render_installed_tsconfig().into_bytes(), false),
                     };
@@ -1847,7 +1845,10 @@ mod tests {
             "{config}"
         );
         let index = fs::read_to_string(root.join("share/gnoblin/types/gnoblin-std/index.ts")).unwrap();
-        assert!(index.ends_with("export * from \"gnoblin-std/host\";\n"), "{index}");
+        assert!(
+            index.ends_with("export * from \"gnoblin-std/generated/objects\";\n"),
+            "{index}"
+        );
         assert_eq!(manifest_problems(&root).unwrap().0, Vec::<String>::new());
 
         let mut remove = options(&destdir, &target, "lib64");

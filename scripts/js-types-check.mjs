@@ -10,7 +10,8 @@
 //    that must compile do, and the wrong ones fail with the right error and no other.
 // 2. `gnoblin-core`, `gnoblin-std/scene`, `gnoblin-std/extensions/xr`, ... resolve to the real source files under
 //    .gnoblin/lib.
-// 3. Go-to-definition on an imported name opens the file that defines it.
+// 3. Go-to-definition on an imported name opens the file that defines it: a class of the native library (`Client`,
+//    `Workspace`) opens its generated declarations, a class of the TypeScript library the source.
 // 4. A class extends the real class it names: `Camera3D` the one `Node`, `XRCamera3D` that `Camera3D`.
 // 5. Hover shows the doc comment of the real source.
 
@@ -133,8 +134,8 @@ for (const [fixture, word, after, tail] of [
     ["scene.ts", "Camera3D", "new Camera3D(", "gnoblin-std/scene/camera.ts"],
     ["scene.ts", "Node", ": Node = camera", "gnoblin-std/scene/node.ts"],
     ["scene.ts", "XRCamera3D", "new XRCamera3D(", "gnoblin-std/extensions/xr/camera.ts"],
-    ["host.ts", "Workspace", "new Workspace(", "gnoblin-std/host/workspace.ts"],
-    ["host.ts", "Client", "(client: Client)", "gnoblin-core/host/client.ts"],
+    ["host.ts", "Workspace", "new Workspace(", "gnoblin-std/generated/objects.d.ts"],
+    ["host.ts", "Client", "(client: Client)", "gnoblin-core/generated/objects.d.ts"],
     ["modules.ts", "Style", "{ Box,", "gnoblin-std/style/style.ts"],
 ]) {
     const [first] = definitionOf(fixture, word, after);
@@ -173,13 +174,6 @@ check(
         inLibrary(xrCamera.base.declarations[0].getSourceFile().fileName, "gnoblin-std/scene/camera.ts"),
     "XRCamera3D (gnoblin-std/extensions/xr) extends the Camera3D declared in gnoblin-std/scene/camera.ts",
 );
-const client = heritageOf(importedClass("host.ts", "Client"));
-check(
-    client.base?.name === "NativeObject" &&
-        inLibrary(client.base.declarations[0].getSourceFile().fileName, "gnoblin-core/native_object.ts"),
-    "Client extends the NativeObject declared in gnoblin-core/native_object.ts",
-);
-
 // -- 5. hover -------------------------------------------------------------------------------------------------------
 
 const cameraSource = fs.readFileSync(path.join(library, "gnoblin-std", "scene", "camera.ts"), "utf8");

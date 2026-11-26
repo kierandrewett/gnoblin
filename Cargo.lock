@@ -1755,6 +1755,7 @@ dependencies = [
  "gnoblin-core-abi",
  "gnoblin-core-impl",
  "gnoblin-fixture-object-probe",
+ "gnoblin-js-types",
  "gnoblin-log",
  "gnoblin-model",
  "gnoblin-paint",
