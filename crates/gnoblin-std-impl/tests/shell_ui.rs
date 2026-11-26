@@ -110,6 +110,11 @@ struct Alert {
 
 impl Alert {
     fn start(rig: &mut Rig) -> Alert {
+        Alert::start_with(rig, true)
+    }
+
+    /// As [`Alert::start`]; with `clocked` false the alert is given no clock of its own, so it runs by the core's.
+    fn start_with(rig: &mut Rig, clocked: bool) -> Alert {
         let decorations = rig.make("decorations", &[]);
         decorations.call("start", &[]);
         let alerts = rig.make("not_responding_alerts", &[]);
@@ -118,7 +123,9 @@ impl Alert {
         alerts.set("interval_ms", d(0.0));
         let clock = Rc::new(Cell::new(0.0));
         let time = Rc::clone(&clock);
-        alerts.set("now", callback(move |_| Ok(d(time.get()))));
+        if clocked {
+            alerts.set("now", callback(move |_| Ok(d(time.get()))));
+        }
         rig.settle();
         Alert {
             _decorations: decorations,
@@ -301,6 +308,26 @@ fn the_alert_closes_the_menu_through_its_callback() {
     set(&mut rig, 3, "unresponsive", MirrorValue::Bool(true));
     assert_eq!(closed.get(), 1, "the menu is closed when the alert opens");
     assert!(alert.card(&rig).is_some());
+}
+
+#[test]
+fn with_no_clock_given_the_alert_arms_by_the_cores_clock() {
+    // The shell gave `now` to no one: the arm delay is due on the clock that wakes the toolkit for it, which is the one `Rig::advance` moves.
+    let mut rig = Rig::scratch_with_windows(1000.0, 800.0, 1);
+    let alert = Alert::start_with(&mut rig, false);
+    set(&mut rig, 3, "unresponsive", MirrorValue::Bool(true));
+    let card = alert.card(&rig).expect("an alert opens");
+    assert!(!card.flag("armed"), "the card is not armed at once");
+    rig.advance(500);
+    let card = alert.card(&rig).expect("the alert is still open");
+    assert!(!card.flag("armed"), "the delay is not over");
+    rig.advance(700);
+    let card = alert.card(&rig).expect("the alert is still open");
+    assert!(card.flag("armed"), "after the delay the card is armed");
+    assert!(
+        rig.reported().is_empty(),
+        "the alert read the core's clock without complaint"
+    );
 }
 
 #[test]

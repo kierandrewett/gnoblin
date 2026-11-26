@@ -8,7 +8,6 @@ use std::rc::Rc;
 use gnoblin_object::server::Cx;
 use gnoblin_object::{Obj, Res};
 
-use super::update::now_ms;
 use super::widget::{Cid, Special, ToastPart, Ui, WidgetKind, en};
 
 /// The card's width in pixels.
@@ -75,7 +74,7 @@ pub(crate) fn refresh(ui: &Rc<Ui>, cid: Cid) -> Result<(), String> {
             .call(0, &[])
             .and_then(|value| value.double())
             .map_err(|fail| fail.message)?,
-        None => now_ms(),
+        None => ui.core_now(),
     };
     let start = match part.start {
         Some(start) => start,

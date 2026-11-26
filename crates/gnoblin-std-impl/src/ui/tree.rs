@@ -52,6 +52,7 @@ pub(crate) fn ui_for(ctx: GnoblinCtx) -> Res<Rc<Ui>> {
         w: RefCell::new(Canvases::default()),
         pending: Cell::new(false),
         timer: RefCell::new(None),
+        core_timers: RefCell::new(None),
         epoch: Cell::new(0),
         frame_hooks: RefCell::new(Vec::new()),
         request_hooks: RefCell::new(Vec::new()),

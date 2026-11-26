@@ -8,8 +8,9 @@ use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gnoblin_core::Value;
+use gnoblin_core::objects::Timers;
 use gnoblin_core_abi::GnoblinCtx;
-use gnoblin_object::Val;
+use gnoblin_object::{Closure, Val};
 use gnoblin_paint::PaintOp;
 
 use super::tree::find;
@@ -40,6 +41,50 @@ pub(crate) fn epoch_ms() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0.0, |elapsed| elapsed.as_secs_f64() * 1000.0)
+}
+
+impl Ui {
+    /// The core's clock in milliseconds (`gnoblin.timers.now`): the clock the core's timers, and so the toolkit's wake timer, run by. A delay
+    /// the toolkit times for a core timer to wake is due on this clock, so whatever moves it (a test rig's `ManualClock`) moves the delay. When
+    /// the core's clock cannot be read the toolkit's own is used, and that is reported.
+    pub(crate) fn core_now(&self) -> f64 {
+        match self.core_clock() {
+            Ok(timers) => timers.now().unwrap_or_else(|fail| {
+                self.warn(&format!("the core's clock could not be read: {fail}"));
+                now_ms()
+            }),
+            Err(fail) => {
+                self.warn(&format!("the core's clock is not reachable: {fail}"));
+                now_ms()
+            }
+        }
+    }
+
+    /// The core's timers, got once.
+    fn core_clock(&self) -> Result<Rc<Timers>, String> {
+        if let Some(timers) = self.core_timers.borrow().as_ref() {
+            return Ok(Rc::clone(timers));
+        }
+        let objects = self.g.objects().map_err(|fail| fail.to_string())?;
+        let timers = Rc::new(Timers::get(&objects).map_err(|fail| fail.to_string())?);
+        *self.core_timers.borrow_mut() = Some(Rc::clone(&timers));
+        Ok(timers)
+    }
+
+    /// A clock a part is timed by, in milliseconds: the one the shell gave it, or the core's. `what` names the clock in the report when the
+    /// shell's throws, and the core's is read then.
+    pub(crate) fn clock_ms(&self, source: Option<&Closure>, what: &str) -> f64 {
+        match source {
+            Some(source) => source
+                .call(0, &[])
+                .and_then(|value| value.double())
+                .unwrap_or_else(|fail| {
+                    self.warn(&format!("{what} threw: {}", fail.message));
+                    self.core_now()
+                }),
+            None => self.core_now(),
+        }
+    }
 }
 
 impl Ui {

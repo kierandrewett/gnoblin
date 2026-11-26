@@ -457,7 +457,7 @@ type = "double"
 since = "0.2.0"
 default = 300.0
 
-# The clock in milliseconds. Left out, the toolkit's.
+# The clock in milliseconds. Left out, the core's (`timers.now`), the clock the toolkit's wake timer runs by.
 [[object.property]]
 name = "clock"
 type = "callback:time_source"

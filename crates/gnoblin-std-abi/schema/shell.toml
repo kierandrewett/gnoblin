@@ -256,7 +256,7 @@ type = "double"
 since = "0.2.0"
 default = 250.0
 
-# The clock the alert times the arming by, in milliseconds. Left out, the toolkit's.
+# The clock the alert times the arming by, in milliseconds. Left out, the core's (`timers.now`), the clock the toolkit's wake timer runs by.
 [[object.property]]
 name = "now"
 type = "callback:time_source"

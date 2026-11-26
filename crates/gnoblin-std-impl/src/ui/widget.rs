@@ -9,6 +9,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
+use gnoblin_core::objects::Timers;
 use gnoblin_core::{Gnoblin, Subscription};
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::ShellImpl;
@@ -481,6 +482,8 @@ pub(crate) struct Ui {
     pub(crate) pending: Cell<bool>,
     /// The timer that asks for the next turn of a time-based part.
     pub(crate) timer: RefCell<Option<Subscription>>,
+    /// The core's timers, held from the first read of the core's clock (see `Ui::core_now`).
+    pub(crate) core_timers: RefCell<Option<Rc<Timers>>>,
     /// A measurement changed since this was read: what a text measured is stale (see `text::epoch`).
     pub(crate) epoch: Cell<u64>,
     pub(crate) frame_hooks: RefCell<Vec<Hook>>,
