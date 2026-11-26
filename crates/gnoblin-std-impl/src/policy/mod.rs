@@ -2,7 +2,9 @@
 //! with the edges a dragged window snaps to, and with the touchpad gestures and pointer drags that act on windows and workspaces.
 //!
 //! Each piece that watches the desktop is a service with a `start`, and does nothing before it, so a shell that has a policy of its own never
-//! starts this one and two policies never answer one request:
+//! starts this one and two policies never answer one request. The one exception is `focus`: a shell that takes the tree decides every window's
+//! focus (the compositor's own window manager stands down), so the library starts the stock focus policy itself when it becomes the
+//! generation's desktop (`events::open`), and a shell that wants another calls `focus_policy.stop`:
 //!
 //! - `focus`: `focus_policy`, the focus modes, raise on click and auto raise, and the timers they need;
 //! - `requests`: `window_state`, the router of the requests a window makes (the first listener that handles one answers it, the stock policy
@@ -53,6 +55,13 @@ pub(crate) fn register(builder: &mut Builder) {
     drags::register(builder);
     gesture_actions::register(builder);
     slide::register(builder);
+}
+
+/// Starts the stock focus policy for the toolkit `ui`, once. The library calls it when it becomes a generation's desktop (`events::open`),
+/// so a shell that lets the library place its windows also has windows that take the keyboard; `focus_policy.stop` ends it for a shell
+/// that has a focus policy of its own.
+pub(crate) fn start_focus(ui: &Rc<Ui>) -> gnoblin_object::Res<()> {
+    focus::start(ui)
 }
 
 /// A request a window made. Answers whether a listener handled it, which the window menu respects: a `menu` request a listener answered

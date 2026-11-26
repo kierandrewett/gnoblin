@@ -175,8 +175,8 @@ stands. Rust ones build with `cargo build -p <package>` from the source tree; sc
 
 | Directory               | Language                 | Layers    | What it shows                                                                                        |
 | ----------------------- | ------------------------ | --------- | ---------------------------------------------------------------------------------------------------- |
-| `01-minimal-core-shell` | Rust                     | Core      | Places every window in a cascade, starts a terminal on a chord, closes the focused window.           |
-| `02-std-prelude`        | Rust                     | Core, std | One workspace per output, and chords that step through workspaces.                                   |
+| `01-minimal-core-shell` | Rust                     | Core      | Places every window in a cascade and gives it the keyboard, starts a terminal on a chord, closes it. |
+| `02-std-prelude`        | Rust                     | Core, std | One workspace per output, click focus from the library, chords that step through workspaces.         |
 | `03-python-std`         | Python                   | Core, std | A workspace with a layout of your own, a listener on windows, a chord.                               |
 | `03-typescript-std`     | TypeScript               | Core, std | The same shell in TypeScript.                                                                        |
 | `04-js-esm`             | JavaScript               | Core, std | ES modules: imports `gnoblin-core` and `gnoblin-std`, and a relative module.                         |

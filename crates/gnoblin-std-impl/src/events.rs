@@ -365,7 +365,22 @@ pub(crate) fn open(ctx: GnoblinCtx) -> Res<()> {
     };
     schedule(&std);
     register_providers(&g, ctx);
+    start_stock_focus(&g, ctx);
     Ok(())
+}
+
+/// Starts the stock focus policy (`policy/focus.rs`) on the generation that opened the desktop. A shell that holds the tree decides every
+/// window's focus, because the compositor's own window manager stands down for it, so a desktop the library runs has to move the keyboard:
+/// click focus, a new window taking focus and raise on click, as the seat's focus settings say. A shell with a policy of its own calls
+/// `focus_policy.stop`. A failure is the log's business: the desktop still runs, without focus.
+fn start_stock_focus(g: &Gnoblin, ctx: GnoblinCtx) {
+    let started = crate::ui::tree::ui_for(ctx).and_then(|ui| crate::policy::start_focus(&ui));
+    if let Err(fail) = started {
+        g.log_at(
+            LogLevel::Warn,
+            &format!("gnoblin-std: the stock focus policy did not start: {}", fail.message),
+        );
+    }
 }
 
 /// Attaches the library to the generation `ctx` with no desktop: it takes stock of the windows and outputs and watches the tree, which

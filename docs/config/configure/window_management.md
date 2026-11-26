@@ -10,6 +10,9 @@ cannot change them:
 - A double click on a stock titlebar toggles maximise, a right click opens the window menu, and a middle click does
   nothing.
 
+The library's focus policy keeps the first two, with no line in `shell.ts`, from the moment a file makes a workspace, a display or a
+window frame. A file that decides focus itself calls `FocusPolicy.get().stop()` first.
+
 A client that draws its own titlebar handles those clicks itself, and GTK apps usually do.
 
 ## Move and resize with the pointer

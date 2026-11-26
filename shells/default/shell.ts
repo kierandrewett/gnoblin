@@ -7,7 +7,6 @@
 import {
     Decorations,
     FloatingLayout,
-    FocusPolicy,
     Launcher,
     MoveBinding,
     NotRespondingAlerts,
@@ -29,14 +28,14 @@ for (const id of ["1", "2", "3", "4"]) {
 
 // gnoblin.workspaces.add(new Workspace("work", { name: "Work", layout: new MasterStackLayout() }));
 
-// Add a titlebar to each window, the window menu and the not-responding alert, answer a window that asks to be
-// maximised, minimised or made fullscreen, and move the keyboard focus as the seat's focus settings say.
-// Remove a call to disable that part.
+// Add a titlebar to each window, the window menu and the not-responding alert, and answer a window that asks to be
+// maximised, minimised or made fullscreen. Remove a call to disable that part.
+// The library moves the keyboard focus on its own, as the seat's focus settings say: a click or a new window takes it.
+// To write a focus policy of your own, import FocusPolicy and call `FocusPolicy.get().stop()` first.
 Decorations.get().start();
 WindowMenus.get().start();
 NotRespondingAlerts.get().start();
 WindowState.get().start();
-FocusPolicy.get().start();
 
 const input = gnoblin.input.primary;
 

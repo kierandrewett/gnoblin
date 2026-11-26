@@ -398,6 +398,9 @@ pub fn ids(windows: &[Window]) -> BTreeMap<String, u64> {
 /// The `xdg_toplevel` state a configure carries when the window is fullscreen.
 pub const STATE_FULLSCREEN: u32 = 2;
 
+/// The `xdg_toplevel` state a configure carries when the window has the keyboard (`activated`).
+pub const STATE_ACTIVATED: u32 = 4;
+
 /// The `xdg_toplevel` state a configure carries when the window is maximised.
 pub const STATE_MAXIMIZED: u32 = 1;
 
@@ -434,9 +437,23 @@ impl PointerLog {
 #[derive(Clone, Default)]
 pub struct KeyLog {
     pressed: Arc<Mutex<Vec<u32>>>,
+    /// How many times the keyboard has entered one of the client's windows (`wl_keyboard.enter`).
+    entered: Arc<AtomicU32>,
+    /// Whether the keyboard is on one of the client's windows now: entered and not left.
+    holding: Arc<AtomicBool>,
 }
 
 impl KeyLog {
+    /// How many times the compositor has given the client's window the keyboard (`wl_keyboard.enter`).
+    pub fn entered(&self) -> u32 {
+        self.entered.load(Ordering::SeqCst)
+    }
+
+    /// Whether the keyboard is on one of the client's windows now.
+    pub fn holding(&self) -> bool {
+        self.holding.load(Ordering::SeqCst)
+    }
+
     /// The evdev codes of the key presses the client was given, oldest first.
     pub fn pressed(&self) -> Vec<u32> {
         self.pressed.lock().expect("the key log").clone()
@@ -976,13 +993,18 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_keyboard::Event::Key {
-            key,
-            state: WEnum::Value(wl_keyboard::KeyState::Pressed),
-            ..
-        } = event
-        {
-            app.keys.pressed.lock().expect("the key log").push(key);
+        match event {
+            wl_keyboard::Event::Enter { .. } => {
+                app.keys.entered.fetch_add(1, Ordering::SeqCst);
+                app.keys.holding.store(true, Ordering::SeqCst);
+            }
+            wl_keyboard::Event::Leave { .. } => app.keys.holding.store(false, Ordering::SeqCst),
+            wl_keyboard::Event::Key {
+                key,
+                state: WEnum::Value(wl_keyboard::KeyState::Pressed),
+                ..
+            } => app.keys.pressed.lock().expect("the key log").push(key),
+            _ => {}
         }
     }
 }

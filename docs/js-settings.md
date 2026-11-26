@@ -148,3 +148,7 @@ table says what stays in each case.
 | `touchpadGestures` (drawn paths), `workspaceSets`, `launcher`, `inputSources`, tablets, styluses, trackballs, pointing sticks, `orientationLock`, keyboard options               | A swipe or pinch is `input.bind`; the rest: none |
 
 Window rules, titlebar clicks and the other seat policy have no replacement yet.
+
+The click focus, the focus of a new window and the raise on click stay with no line in `shell.ts`: the library starts its focus
+policy when a file makes a workspace, a display or a window frame. A file with a focus policy of its own calls
+`FocusPolicy.get().stop()` first; see [Focus and activation](/shell-api/focus-activation).
