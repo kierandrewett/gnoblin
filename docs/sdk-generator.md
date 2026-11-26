@@ -480,6 +480,10 @@ rounding of `Placement.tile`, a workspace in one call) and no behaviour of the d
 - Python: `gnoblin._std_sugar`, Rust in `gnoblin-runtime-python`.
 - TypeScript: `gnoblin-std/native.ts`.
 
-The proof is `crates/gnoblin-runtime-python/tests/shells.rs` and `crates/gnoblin-runtime-js/tests/shells.rs`: example 3 (a workspace with
-a layout of the shell's own, a listener on the clients, a chord) and the built-in layouts run through the real loader over the fake
-compositor and give the rectangles of the native Rust shells.
+Two test files hold the typed layer to the native shells' rectangles, through the real loader over the fake compositor:
+`crates/gnoblin-runtime-python/tests/shells.rs` and `crates/gnoblin-runtime-js/tests/shells.rs`.
+
+- The tests named `typed_table_*` run the shells of `tests/fixtures/typed_table`: example 3 as it was before it moved to the
+  generated object API.
+- Example 3 itself (`examples/03-python-std`, `examples/03-typescript-std`) is written on the generated object API and is held to
+  the same rectangles.

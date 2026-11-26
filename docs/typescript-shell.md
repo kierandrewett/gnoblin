@@ -267,10 +267,12 @@ new GridLayout({ columns: 3 }).attach(other); // a built-in layout: the algorith
 Records use camelCase (`gapInner`). A record you give may leave out the fields it wants zero, and a layout may leave out the
 hooks it does not need.
 
-The engine and `gnoblin-std/native` share one tree: the core is the one holder of the compositor's link, the engine's mirror is a
-view of the core's (`tree_link_open`/`tree_link_attach`), and what the engine writes and what the library writes leave through
-that one connection, one transaction on the wire at a time. A shell may therefore use `gnoblin-core`'s objects and
-`gnoblin-std/native` together, as `examples/03-typescript-std/shell.ts` does.
+The engine and `gnoblin-std/native` share one tree. The core is the one holder of the compositor's link, and the engine's mirror
+is a view of the core's (`tree_link_open`/`tree_link_attach`). What the engine writes and what the library writes leave through
+that one connection, one transaction on the wire at a time.
+
+A shell may therefore use `gnoblin-core`'s objects and `gnoblin-std/native` together. The test fixture
+`crates/gnoblin-runtime-js/tests/fixtures/typed_table/shell.ts` does, and its test checks that nothing is refused.
 
 - The stock layouts of `gnoblin-std` (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `KioskLayout`, `DwindleLayout`, `StripLayout`, `ArcLayout`, `Carousel3dLayout`) are thin classes over the library's built-in layouts: the options are plain fields as before, the algorithm is `libgnoblin-std`'s (`Builtin`, made by `builtin_new`, which belongs to no workspace).
 - They need `libgnoblin-std.so.1`, like `gnoblin-std/native`; their option errors are the library's.
@@ -285,8 +287,11 @@ that one connection, one transaction on the wire at a time. A shell may therefor
 - Its requests to the compositor go out as one `apply` per output, and an output with a request in flight is not asked again until the compositor has answered (the answer reaches the output's `onApplied` listeners).
 - A shell on `gnoblin-std/native` alone gets the same behaviour from `Profile` and `Display`.
 
-`examples/03-typescript-std/` has the shells the tests run. The hand-written part of the binding is `gnoblin-std/native`
-itself (`clients()`, `tile`, `createWorkspace`).
+Example 3 (`examples/03-typescript-std/`) does not use this binding. It uses the classes of
+[`gnoblin-std/generated/objects`](#the-object-classes-gnoblin-stdgeneratedobjects).
+
+The binding keeps a test for as long as it ships: `crates/gnoblin-runtime-js/tests/fixtures/typed_table/` holds example 3 as it
+was on this binding.
 
 ## The object classes: `gnoblin-std/generated/objects`
 
@@ -303,6 +308,8 @@ itself (`clients()`, `tile`, `createWorkspace`).
 - A window the workspace classes tell the shell of is the core's `Client` too: `members`, the `added` and `removed` events, and a layout's
   `children`, `focused` and `node`. It is the same object `gnoblin.clients.get(id)` gives. A window the frame, menu, policy and shell
   classes tell the shell of is still its id as text.
+- `examples/03-typescript-std/shell.ts` is a shell made of these classes: a `Workspace` with a `Layout` of its own (`compute` answers
+  one placement for each window), a listener on `gnoblin.clients`, and a chord that trades two windows with `workspace.clients.swap`.
 
 ```ts
 import { EntryModel, FocusPolicy } from "gnoblin-std/generated/objects";

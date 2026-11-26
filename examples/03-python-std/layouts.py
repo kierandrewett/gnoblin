@@ -1,4 +1,4 @@
-"""The built-in layouts of ``gnoblin.std`` from Python: one workspace and a chord for each tiling layout the library runs.
+"""The built-in layouts of ``gnoblin.objects.std`` from Python: one workspace and a chord for each tiling layout the library runs.
 
     gnoblin ./layouts.py
 
@@ -10,8 +10,10 @@ Every class here is generated from the library's table of layout kinds (``gnobli
 defaults and their enumerations are the library's, and so is the algorithm. The shell only names a kind and its options.
 """
 
-from gnoblin import gnoblin
-from gnoblin.std import (
+from gnoblin import gnoblin as session
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import (
+    Gaps,
     GridFill,
     GridLayout,
     MasterStackLayout,
@@ -19,10 +21,11 @@ from gnoblin.std import (
     MonocleLayout,
     SwapBinding,
     Workspace,
+    Workspaces,
 )
 
-main = Workspace.create("main", gaps=(6.0, 12.0))
-main.use(MasterStackLayout())
+main = Workspace("main", gaps=Gaps(inner=6.0, outer=12.0), layout=MasterStackLayout())
+Workspaces.get().add(main)
 
 LAYOUTS = {
     "Super+1": lambda: MasterStackLayout(),
@@ -33,8 +36,18 @@ LAYOUTS = {
     "Super+6": lambda: MasterStackLayout(orientation=MasterStackOrientation.TOP),
 }
 
-for chord, make in LAYOUTS.items():
-    gnoblin.bind(chord)(lambda make=make: main.use(make()))
 
-swap = SwapBinding().start()
-gnoblin.log("layouts shell is running")
+def switch(make):
+    def run(event):
+        main.layout = make()
+        return True
+
+    return run
+
+
+context = Gnoblin.get().input.primary
+for chord, make in LAYOUTS.items():
+    context.bind(chord, switch(make))
+
+SwapBinding().install()
+session.log("layouts shell is running")
