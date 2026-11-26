@@ -1341,8 +1341,13 @@ fn a_request_that_ended_in_its_window_is_not_answered_and_an_unknown_kind_passes
     rig.call(dialogs, "add_listener", &[dialog_listener(&rig, &log, &["Screenshot"])]);
     rig.until("the slot claim", || !rig.slot.state().claimed.is_empty());
     rig.slot.offer_and_finish(1, "consent:Screenshot");
-    // The connection publishes both events before the shell takes a turn, as a window that closed before the shell looked.
-    std::thread::sleep(Duration::from_millis(40));
+    // The connection publishes both events before the shell takes a turn, as a window that closed before the shell looked: the turn
+    // waits until both are queued, however long the connection's thread takes to publish them.
+    let end = Instant::now() + Duration::from_secs(10);
+    while host::queued_events() < 2 {
+        assert!(Instant::now() < end, "the connection never published the two events");
+        std::thread::sleep(Duration::from_millis(1));
+    }
     rig.slot.offer(2, "something-new", "", b"");
     rig.until("the unknown kind to pass", || rig.slot.answered(2).is_some());
     assert_eq!(rig.slot.answered(2).as_deref(), Some("pass"));
