@@ -1,6 +1,6 @@
 //! How a library implements the classes of its catalog.
 
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -30,6 +30,11 @@ pub(crate) type ReplayFn = Rc<dyn Fn(&mut Cx<'_>) -> Vec<Vec<Val>>>;
 
 /// The implementation of one class: a table per kind of member, indexed by member id minus one.
 pub(crate) struct ClassImpl {
+    /// The class holds `()` for state ([`Builder::class`]). There is nothing a call about one of its objects could leave half changed,
+    /// so the server takes no borrow of the object for the length of a call, and what runs in the call may call the same object again
+    /// (`Library::with_native`). A class with a state is borrowed for the whole call, and a second call about the object while the
+    /// first runs is refused with `E_BUSY`.
+    pub(crate) stateless: bool,
     pub(crate) ctor: Option<CtorFn>,
     pub(crate) get: Vec<Option<GetFn>>,
     pub(crate) set: Vec<Option<SetFn>>,
@@ -42,6 +47,7 @@ pub(crate) struct ClassImpl {
 impl ClassImpl {
     fn sized(members: usize) -> ClassImpl {
         ClassImpl {
+            stateless: false,
             ctor: None,
             get: vec![None; members],
             set: vec![None; members],
@@ -98,12 +104,22 @@ impl Builder {
     }
 
     /// Implements the class `name`, whose objects hold a `T`.
+    ///
+    /// A `T` of `()` says the class has no state: a call about one of its objects takes no borrow, so an implementation may run a closure
+    /// of the shell that reads or writes the same object (the std library's `request_transition` runs the shell's callback inside its
+    /// call, and the callback reads `gnoblin.workspaces`, another member of the same object). Any other `T` is borrowed for the whole call
+    /// about its object, and a call about the same object from inside it is refused with `E_BUSY`: a closure of the shell that an
+    /// implementation of such a class runs inside a call cannot call the object back. `Cx::later` runs the closure from the next turn,
+    /// when nothing is borrowed.
     pub fn class<T: Any>(&mut self, name: &str) -> ClassBuilder<'_, T> {
         let catalog: &'static CatalogDef = self.catalog;
         let index = catalog.classes.iter().position(|class| class.name == name);
         if index.is_none() {
             self.problems
                 .push(format!("the catalog has no class `{name}` to implement"));
+        }
+        if let Some(index) = index {
+            self.classes[index].stateless = TypeId::of::<T>() == TypeId::of::<()>();
         }
         ClassBuilder {
             def: index.map(|index| &catalog.classes[index]),

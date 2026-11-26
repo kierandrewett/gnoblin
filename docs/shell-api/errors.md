@@ -106,6 +106,12 @@ sets it where it refuses the call.
 | A generation a reload has replaced                                      | `invalid_state`                 |
 | A value of the wrong kind or out of range                               | none: `TypeError`, `RangeError` |
 
+An object that holds state of its own is in use while a call on it runs. A callback the call runs cannot call that object back: the
+callback gets `busy`, and the call goes on. A `Workspace` that runs its layout's `findSplit` is an example.
+
+The members the std library adds to `gnoblin` hold no state, so they are never in use. The callback of `gnoblin.requestTransition` may
+read `gnoblin.workspaces` or `gnoblin.displays`.
+
 `cancelled` and `config_rejected` come from `Operation` and the configuration, and `timed_out` from logind. A call on an object
 does not raise them.
 

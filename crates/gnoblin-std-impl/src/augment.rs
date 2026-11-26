@@ -27,6 +27,11 @@
 //! The members of `input`, `collection`, `client` and `output` are `receiver = true` augments: each call is handed the core object it
 //! acts on first.
 //!
+//! The classes here hold `()`, which the object server reads as no state to protect: a call about one of their objects takes no borrow.
+//! That is what lets `gnoblin.requestTransition` run the shell's callback inside its call while the callback reads `gnoblin.workspaces`,
+//! another member of the same object. A class here that was given a state would be borrowed for the whole call, and the callback's read
+//! would fail with `busy` (`gnoblin-js`'s `tests/transition_timer.rs` and `gnoblin-object`'s `tests/protocol.rs` hold it).
+//!
 //! `data/js/gnoblin-std/host/roots.ts`, `data/js/gnoblin-std/host/members.ts` and `data/js/gnoblin-std/index.ts` are the reference: the
 //! TypeScript host makes the same members when the package is loaded.
 

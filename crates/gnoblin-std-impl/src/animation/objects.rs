@@ -257,7 +257,9 @@ fn commit(cx: &mut Cx<'_>) -> Res<Val> {
 }
 
 /// Runs `work` once, and commits what it staged: the function `transition.request`, and the root's `requestTransition` that the library
-/// adds to the core's `gnoblin`.
+/// adds to the core's `gnoblin`. The root's call runs `work` inside it, and `work` may read the library's other members of that object
+/// (`gnoblin.workspaces`) because the object's class holds no state (`augment.rs`): the server borrows nothing of it for the length of
+/// the call.
 pub(crate) fn request(cx: &mut Cx<'_>, args: &[Val]) -> Res<Val> {
     let work = Rc::clone(args[0].closure()?);
     let rollback = (!args[2].is_none()).then(|| args[2].closure().cloned()).transpose()?;
