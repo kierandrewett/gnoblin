@@ -1,8 +1,23 @@
-# Console and inspector
+# JavaScript console and inspector
 
-The console is a live prompt into the running [TypeScript shell](typescript-shell.md). You type an expression, the
-shell evaluates it in its own runtime and prints the value. It sees what `shell.ts` sees: the `gnoblin` global, the
-clients and workspaces as they are right now, and the bindings the shell has registered.
+The console is a live prompt into the running [TypeScript shell](typescript-shell.md), which also runs plain JavaScript.
+You type a JavaScript expression, the shell evaluates it in its own runtime and prints the value. It sees what `shell.ts`
+sees: the `gnoblin` global, the clients and workspaces as they are right now, and the bindings the shell has registered.
+
+This page is JavaScript-specific on purpose: the console is a JavaScript REPL inside the JavaScript runtime, and the
+Python and Rust runtimes have no prompt of their own. With a [Python](python-shell.md) or [Rust](rust-shell.md) shell
+running, `gnoblinctl console` exits 1 and says that no JavaScript shell is listening. These tools work with a shell in any
+language:
+
+| To do this                               | Use                                                                                 |
+| ---------------------------------------- | ----------------------------------------------------------------------------------- |
+| Read or change what the compositor holds | `gnoblinctl OBJECT list`, `get`, `watch` and `call`, for every object type          |
+| Print from your shell                    | `print` or `logging` in Python, `g.log(..)` in Rust and `console.log` in TypeScript |
+| Follow what the shells print             | `gnoblinctl log --follow`: see [Logging](/guides/logging)                           |
+| Try a change without restarting          | Save the file, or run `gnoblinctl shell reload`, which every shell language answers |
+| Check a file before you save it          | `gnoblinctl check shell.ts` or `gnoblinctl check shell.py`                          |
+
+The [command-line index](cli/index.md) lists the object commands.
 
 A shell runs on the native library or on the TypeScript library
 ([Which library a shell runs on](typescript-shell.md#which-library-a-shell-runs-on)), and the prompt is that shell's own.

@@ -1,20 +1,28 @@
-# JavaScript UI toolkit
+# UI toolkit
 
-The JavaScript shell draws its own interface with a small toolkit. Import it from `gnoblin-std`:
+A shell draws its own interface with a small toolkit. It is a class library of `gnoblin-std`, so a TypeScript, a Python and
+a Rust shell use the same classes with the same members, each spelled its own way.
 
-```ts
-import { Box, Text } from "gnoblin-std";
-```
+- TypeScript imports them with `import { Box, Text } from "gnoblin-std"`.
+- Python imports them with `from gnoblin.objects.std import Box, Text`.
+- Rust takes them from `gnoblin_std::objects`, where the box is `UiBox` because `Box` is a Rust type.
 
-Every widget is an ordinary class with ordinary fields. Change a field and the next frame paints it. There is nothing to
+Properties are `camelCase` in TypeScript, `snake_case` attributes in Python, and a getter with a `set_` method in Rust.
+
+Every widget is an ordinary object with ordinary fields. Change a field and the next frame paints it. There is nothing to
 register and no property to declare.
 
 ## Canvas
 
-A `Canvas` is a node of the compositor's tree that shows a paint list. Give it a `behaviour`, a class that extends
-`Widget`, and have its `paint()` return the ops to paint, in node-local pixels, later ops over earlier ones:
+A `Canvas` is a node of the compositor's tree that shows a paint list. Give it a `behaviour`, an object of the `Widget`
+interface, and have its `paint()` return the ops to paint, in node-local pixels, later ops over earlier ones.
 
-```ts
+- TypeScript and Python extend `Widget`.
+- Rust fills in `WidgetHandlers` and calls `implement`.
+
+::: tabs
+
+```typescript
 import { Canvas, Widget } from "gnoblin-std";
 import type { PaintOp } from "gnoblin-std";
 
@@ -37,10 +45,97 @@ class Meter extends Widget {
 const canvas = new Canvas({ width: 120, height: 8 });
 const meter = new Meter(canvas);
 canvas.behaviour = meter;
+canvas.mountTop();
 
 meter.level = 0.8;
 canvas.invalidate();
 ```
+
+```python
+from gnoblin.objects.std import Canvas, PaintKind, PaintOp, Widget
+
+
+class Meter(Widget):
+    def __init__(self, canvas: Canvas) -> None:
+        self.canvas = canvas
+        self.level = 0.5
+
+    def paint(self) -> list[PaintOp]:
+        width, height = self.canvas.width, self.canvas.height
+        return [
+            PaintOp(PaintKind.RECT, x=0.0, y=0.0, width=width, height=height, radius=4.0, fill="#1e1e2e"),
+            PaintOp(PaintKind.RECT, x=0.0, y=0.0, width=width * self.level, height=height, radius=4.0, fill="#89b4fa"),
+        ]
+
+
+canvas = Canvas(width=120.0, height=8.0)
+meter = Meter(canvas)
+canvas.behaviour = meter
+canvas.mount_top()
+
+meter.level = 0.8
+canvas.invalidate()
+```
+
+```rust
+use std::cell::Cell;
+use std::rc::Rc;
+
+use gnoblin_std::objects::{Canvas, PaintKind, PaintOp, WidgetHandlers};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+
+    let canvas = Rc::new(Canvas::new(&objects)?);
+    canvas.set_width(120.0)?;
+    canvas.set_height(8.0)?;
+    let level = Rc::new(Cell::new(0.5));
+
+    let (surface, shown) = (Rc::clone(&canvas), Rc::clone(&level));
+    let meter = WidgetHandlers {
+        refresh: None,
+        arrange: None,
+        paint: Some(Box::new(move || {
+            let (width, height) = (surface.width()?, surface.height()?);
+            Ok(vec![
+                PaintOp {
+                    x: Some(0.0),
+                    y: Some(0.0),
+                    width: Some(width),
+                    height: Some(height),
+                    radius: Some(4.0),
+                    fill: Some("#1e1e2e".to_owned()),
+                    ..PaintOp::new(PaintKind::Rect)
+                },
+                PaintOp {
+                    x: Some(0.0),
+                    y: Some(0.0),
+                    width: Some(width * shown.get()),
+                    height: Some(height),
+                    radius: Some(4.0),
+                    fill: Some("#89b4fa".to_owned()),
+                    ..PaintOp::new(PaintKind::Rect)
+                },
+            ])
+        })),
+        natural_width: None,
+        natural_height: None,
+        on_pointer: None,
+        on_key: None,
+    }
+    .implement(&objects)?;
+    canvas.set_behaviour(&meter)?;
+    canvas.mount_top()?;
+
+    level.set(0.8);
+    canvas.invalidate()?;
+    Ok(())
+}
+```
+
+:::
 
 `invalidate()` asks for the canvas to paint again, so a change to `level` shows on the next frame.
 
@@ -53,7 +148,8 @@ The ops are:
 - `push-clip` with `x`, `y`, `width`, `height` and optionally `radius`, closed by `pop-clip`.
 - `push-opacity` with `alpha`, closed by `pop-opacity`.
 
-A colour is `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
+An op is a `PaintOp` with its `op` kind (`PaintKind.RECT` in Python, `PaintKind::Rect` in Rust). A colour is `#rgb`,
+`#rgba`, `#rrggbb` or `#rrggbbaa`.
 
 The toolkit encodes the list into the node's `content` property, and writes it only when it changed. An op that cannot be encoded is reported as `draw op N: ...` and the node keeps its last content. The
 format is described in [Canvas painting](/shell-api/canvas).
@@ -74,17 +170,61 @@ A canvas has these fields and methods:
 A `Box` is a canvas that fills itself (`fill`, `radius`) and arranges its child boxes:
 
 - `direction` is `"row"`, `"column"` or `"none"`. A row or column is a small flexbox. `"none"` leaves the children
-  where they are.
+  where they are. Python takes the name or `Direction.ROW`, and Rust takes `Direction::Row`.
 - `padding` is the space around the children and `gap` the space between them.
 - `grow` on a child takes its share of what is left. Every child is stretched across the other axis.
 
-```ts
+::: tabs
+
+```typescript
 import { Box, Icon, Text } from "gnoblin-std";
 
 const bar = new Box({ width: 300, height: 32, direction: "row", gap: 8, padding: 6, fill: "#1e1e2e" });
 bar.add(new Text({ text: "Files", grow: 1 }));
 bar.add(new Icon({ icon: "window-close-symbolic" }));
+bar.mountTop();
 ```
+
+```python
+from gnoblin.objects.std import Box, Icon, Text
+
+bar = Box(width=300.0, height=32.0, direction="row", gap=8.0, padding=6.0, fill="#1e1e2e")
+bar.add(Text(text="Files", grow=1.0))
+bar.add(Icon(icon="window-close-symbolic"))
+bar.mount_top()
+```
+
+```rust
+use gnoblin_std::objects::{Direction, Icon, Text, UiBox};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+
+    let bar = UiBox::new(&objects)?;
+    bar.set_width(300.0)?;
+    bar.set_height(32.0)?;
+    bar.set_direction(Direction::Row)?;
+    bar.set_gap(8.0)?;
+    bar.set_padding(6.0)?;
+    bar.set_fill("#1e1e2e")?;
+
+    let label = Text::new(&objects)?;
+    label.set_text("Files")?;
+    label.set_grow(1.0)?;
+    bar.add(&label.as_canvas()?)?;
+
+    let close = Icon::new(&objects)?;
+    close.set_icon("window-close-symbolic")?;
+    bar.add(&close.as_canvas()?)?;
+
+    bar.mount_top()?;
+    Ok(())
+}
+```
+
+:::
 
 The other widgets are boxes too:
 
@@ -140,13 +280,44 @@ window:
 
 Its look is plain data, `TitlebarStyle`. A field you leave out keeps its default:
 
-```ts
+::: tabs
+
+```typescript
 import { Decorations } from "gnoblin-std";
 
 const decorations = Decorations.get();
 decorations.style = { height: 36, buttons: ["close"], focusedFill: "#223344" };
 decorations.start();
 ```
+
+```python
+from gnoblin.objects.std import Decorations, TitlebarStyle, WindowButtonName
+
+decorations = Decorations.get()
+decorations.style = TitlebarStyle(height=36.0, buttons=[WindowButtonName.CLOSE], focused_fill="#223344")
+decorations.start()
+```
+
+```rust
+use gnoblin_std::objects::{Decorations, TitlebarStyle, WindowButtonName};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let decorations = Decorations::get(&objects)?;
+    decorations.set_style(&TitlebarStyle {
+        height: 36.0,
+        buttons: Some(vec![WindowButtonName::Close]),
+        focused_fill: "#223344".to_owned(),
+        ..TitlebarStyle::default()
+    })?;
+    decorations.start()?;
+    Ok(())
+}
+```
+
+:::
 
 The style has these fields:
 
@@ -165,11 +336,11 @@ A window has one title bar. Who draws it is negotiated with the client and publi
   decorations, asked for no preference, or never bound the protocol.
 - `none`: an X11 window while no shell declares decorations.
 
-Scripts read it from the client:
+Shells read it from the client:
 
 - `client.decoration` is the answer above.
-- `client.decorationWanted` is what the client asked for: `client`, `server`, or `unset`.
-- `ClientListener.onDecorationChanged` hears the answer change.
+- `client.decorationWanted` (`decoration_wanted` in Python and Rust) is what the client asked for: `client`, `server`, or `unset`.
+- A `ClientListener`'s `onDecorationChanged` hears the answer change (`on_decoration_changed` in Python and Rust).
 
 `Decorations` makes a server frame, and fills it with a `Titlebar`, only on a `server` window. It makes it again for a window
 whose answer changes. A `client` window never shows a second bar over its own: it has the underlay and the overlay only.
@@ -194,8 +365,9 @@ The stock library gives a server-decorated window's frame room of its own instea
   child of the `top` outlet, which lies above the window's node at `y = -height` and never over it. See
   [the window frame](/js-window-frame).
 - `client.bounds` (and `x`, `y`, `width` and `height`) is the content's rectangle. The frame is the content with its
-  inset round it, and `client.frameInset` is that inset: `{ top, right, bottom, left }`. It is all zero for a window with no
-  frame: one that draws its own frame, or that is fullscreen. For the stock titlebar only `top` is more than 0.
+  inset round it, and `client.frameInset` (`frame_inset` in Python and Rust) is that inset: `{ top, right, bottom, left }`.
+  It is all zero for a window with no frame: one that draws its own frame, or that is fullscreen. For the stock titlebar
+  only `top` is more than 0.
 - A layout places frames. The layout driver gives a tile to the frame and the content is what the four sides leave.
   Floating placement places the frame and puts the content inside it. Dragging keeps the frame inside the work area, so an
   edge is never lost off the screen, and an edge snap tiles the frame.
@@ -225,6 +397,52 @@ To have no frame on any window, leave `Decorations.get().start()` out of your fi
 | Return                        | Call `entry.onSubmit(text)`                                      |
 | Escape, Tab, other keys       | Left for the caller                                              |
 
+::: tabs
+
+```typescript
+import { Entry } from "gnoblin-std";
+
+const entry = new Entry({ x: 20, y: 48, width: 320, height: 36, fill: "#313244" });
+entry.mountTop();
+entry.onSubmit = (text) => console.log(`submitted ${text}`);
+entry.focus();
+```
+
+```python
+from gnoblin.objects.std import Entry
+
+entry = Entry(x=20.0, y=48.0, width=320.0, height=36.0, fill="#313244")
+entry.mount_top()
+entry.on_submit = lambda text: print(f"submitted {text}")
+entry.focus()
+```
+
+```rust
+use gnoblin_std::objects::Entry;
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+
+    let entry = Entry::new(&objects)?;
+    entry.set_x(20.0)?;
+    entry.set_y(48.0)?;
+    entry.set_width(320.0)?;
+    entry.set_height(36.0)?;
+    entry.set_fill("#313244")?;
+    entry.mount_top()?;
+    entry.set_on_submit(|text| {
+        println!("submitted {text}");
+        Ok(())
+    })?;
+    entry.focus()?;
+    Ok(())
+}
+```
+
+:::
+
 A key an entry uses it stops. `secret: true` shows a `*` for each character. The editing itself is `EntryModel`, with no
 drawing: `text`, `caret`, `selection`, `insert`, `backspace`, `delete`, `left`, `right`, `home`, `end` and `selectAll`.
 
@@ -243,6 +461,88 @@ its room from them:
 ## The stock shell UI
 
 Each of these is started by the starter and has a function that starts it.
+
+::: tabs
+
+```typescript
+import { Launcher, NotRespondingAlerts, Toast, WindowMenus } from "gnoblin-std";
+
+WindowMenus.get().start();
+NotRespondingAlerts.get().start();
+gnoblin.input.primary.bind("Super+space", () => {
+    Launcher.open();
+});
+Toast.show("The shell is running");
+```
+
+```python
+from gnoblin.objects.model import BindingEvent, Gnoblin
+from gnoblin.objects.std import Launcher, NotRespondingAlerts, Toast, WindowMenus
+
+gnoblin = Gnoblin.get()
+
+WindowMenus.get().start()
+NotRespondingAlerts.get().start()
+
+
+def launcher(event: BindingEvent) -> None:
+    Launcher.open()
+
+
+gnoblin.input.primary.bind("Super+space", launcher)
+Toast.show("The shell is running")
+```
+
+```rust
+use std::rc::Rc;
+use std::time::Instant;
+
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{Launcher, NotRespondingAlerts, Toast, WindowMenus};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let objects = g.std()?.objects()?;
+
+    WindowMenus::get(&objects)?.start()?;
+    NotRespondingAlerts::get(&objects)?.start()?;
+    if let Some(context) = model.input()?.and_then(|input| input.primary().ok().flatten()) {
+        let library = objects.clone();
+        let shell = Rc::clone(&model);
+        context.bind(
+            "Super+space",
+            Some(move |_| {
+                let shell = Rc::clone(&shell);
+                // Return starts what you typed, as `gnoblin.spawn` does.
+                Launcher::open(
+                    &library,
+                    Some(move |command: String| {
+                        shell.spawn(&[command], None)?;
+                        Ok(())
+                    }),
+                )?;
+                Ok(true)
+            }),
+            None,
+        )?;
+    }
+    // The toast reads this clock in milliseconds, so the fade follows the shell's own time.
+    let started = Instant::now();
+    Toast::show(
+        &objects,
+        "The shell is running",
+        None,
+        None,
+        None,
+        Some(move || Ok(started.elapsed().as_secs_f64() * 1000.0)),
+    )?;
+    Ok(())
+}
+```
+
+:::
 
 ### Window menu
 
@@ -279,8 +579,14 @@ Start it with `NotRespondingAlerts.get().start()`.
 - **`Toast.show(text)`** shows a message card in the top right corner for a few seconds.
 - **`Overview.get().toggle()`** dims the windows of the workspaces that are not shown, or gives them all full strength.
 
-`Ui.estimateText` and `Ui.encodePaintList` are the toolkit's two functions that need no canvas. [The TypeScript shell
-page](typescript-shell.md) has the table of the functions the older library had and the class that now holds each.
+`Ui.estimateText` and `Ui.encodePaintList` are the toolkit's two functions that need no canvas:
+
+- TypeScript spells them `Ui.estimateText` and `Ui.encodePaintList`.
+- Python spells them `Ui.estimate_text` and `Ui.encode_paint_list`.
+- Rust spells them `Ui::estimate_text` and `Ui::encode_paint_list`.
+
+[The TypeScript shell page](typescript-shell.md) has the table of the functions the older library had and the class that
+now holds each, and [the Python shell page](python-shell.md) has the same table in Python spellings.
 
 The consent and passphrase dialogs are not here: the compositor draws them, and `gnoblin.dialogs` observes them.
 

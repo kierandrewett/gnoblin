@@ -1,15 +1,55 @@
-# Window policy in TypeScript
+# Window policy
 
-The window policy of the TypeScript shell: moving and resizing with the keyboard, touchpad
-gesture actions, reduced motion, binding-only devices, focus hand-off, workspace removal and gesture bindings. Each section
-names the test that proves it (`crates/gnoblin-js/tests/{reposition,window_policy,input}.rs`).
+The window policy of the shell: moving and resizing with the keyboard, touchpad gesture actions, reduced motion,
+binding-only devices, focus hand-off, workspace removal and gesture bindings.
+
+It is the same in a TypeScript, a Python and a Rust shell: the policy is in the std library, and each language reaches it
+through the same classes. Each section names the test that proves it (`crates/gnoblin-js/tests/{reposition,window_policy,input}.rs`).
+
+Members are spelled the way the language spells them. TypeScript writes `moveWithKeys()`, Python `move_with_keys()` and
+Rust `move_with_keys()?`.
 
 ## Move and resize with the keyboard
 
-```ts
-gnoblin.clients.at(0)?.moveWithKeys();
-gnoblin.clients.at(0)?.resizeWithKeys();
+::: tabs
+
+```typescript
+import "gnoblin-std";
+
+const client = gnoblin.clients.at(0);
+client?.moveWithKeys();
+client?.resizeWithKeys();
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin
+import gnoblin.objects.std  # adds the keyboard modes to the window
+
+gnoblin = Gnoblin.get()
+
+client = gnoblin.clients.at(0)
+if client is not None:
+    client.move_with_keys()
+    client.resize_with_keys()
+```
+
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let Some(client) = model.clients()?.and_then(|clients| clients.at(0).ok().flatten()) else {
+        return Ok(());
+    };
+    client.move_with_keys()?;
+    client.resize_with_keys()?;
+    Ok(())
+}
+```
+
+:::
 
 The arrow keys move the window by 16 pixels inside the work area. For a resize, Right and Down grow it and Left and Up
 shrink it, never below 120 by 80.
@@ -24,7 +64,9 @@ The window menu's Move and Resize start these.
 
 ## Gesture actions
 
-```ts
+::: tabs
+
+```typescript
 import { PinchActionBinding, SwipeActionBinding } from "gnoblin-std";
 
 const swipe = new SwipeActionBinding({ trigger: "Swipe4" });
@@ -39,13 +81,76 @@ pinch.setFunction("out", (event) => console.log(event.scale));
 pinch.install();
 ```
 
+```python
+from gnoblin.objects.std import GestureEvent, PinchActionBinding, PinchWay, SwipeActionBinding, SwipeWay
+
+swipe = SwipeActionBinding(trigger="Swipe4")
+swipe.set_action(SwipeWay.UP, "window.toggle-maximise")
+swipe.set_action(SwipeWay.LEFT, "workspace.next")
+swipe.set_action(SwipeWay.RIGHT, "workspace.previous")
+swipe.install()
+
+
+def zoomed(event: GestureEvent) -> None:
+    print(event.scale)
+
+
+pinch = PinchActionBinding(trigger="Pinch3")
+pinch.set_action(PinchWay.IN, "window.minimise")
+pinch.set_function(PinchWay.OUT, zoomed)
+pinch.install()
+```
+
+```rust
+use gnoblin_std::objects::{
+    PinchActionBinding, PinchActionBindingOptions, PinchWay, SwipeActionBinding, SwipeActionBindingOptions, SwipeWay,
+};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+
+    let swipe = SwipeActionBinding::new_with(
+        &objects,
+        SwipeActionBindingOptions {
+            trigger: Some("Swipe4".to_owned()),
+            ..SwipeActionBindingOptions::default()
+        },
+    )?;
+    swipe.set_action(SwipeWay::Up, "window.toggle-maximise")?;
+    swipe.set_action(SwipeWay::Left, "workspace.next")?;
+    swipe.set_action(SwipeWay::Right, "workspace.previous")?;
+    swipe.install(None)?;
+
+    let pinch = PinchActionBinding::new_with(
+        &objects,
+        PinchActionBindingOptions {
+            trigger: Some("Pinch3".to_owned()),
+            ..PinchActionBindingOptions::default()
+        },
+    )?;
+    pinch.set_action(PinchWay::In, "window.minimise")?;
+    pinch.set_function(PinchWay::Out, |event| {
+        println!("{}", event.scale);
+        Ok(())
+    })?;
+    pinch.install(None)?;
+    Ok(())
+}
+```
+
+:::
+
 A gesture is `Swipe` or `Pinch` and a finger count. An action runs once, when the fingers lift, for the direction the
 gesture went; a cancelled gesture runs nothing.
 
 - The named actions are `workspace.next`, `workspace.previous`, `window.close`, `window.minimise` and
-  `window.toggle-maximise`. `Gestures.get().actionNames` lists them, and `Gestures.get().run(name)` runs one now.
+  `window.toggle-maximise`. `Gestures.get().actionNames` lists them (`action_names` in Python and Rust), and
+  `Gestures.get().run(name)` runs one now.
 - `setAction(way, name)` gives a way a named action and `setFunction(way, fn)` gives it a function. `clear(way)` takes
-  it away. A swipe has the ways `up`, `down`, `left` and `right`, and a pinch has `in` and `out`.
+  it away. A swipe has the ways `up`, `down`, `left` and `right`, and a pinch has `in` and `out`. Python and Rust take the
+  enums `SwipeWay` and `PinchWay`, and Python also takes the name as text.
 - `threshold` is how far the gesture must go before it counts. `Gestures.direction(dx, dy, threshold?)` gives the way a
   gesture has gone.
 - A gesture bound on `Swipe3` is refused while the stock three-finger slide holds that trigger, so delete the starter's
@@ -54,7 +159,49 @@ gesture went; a cancelled gesture runs nothing.
 
 ## Reduced motion
 
-While the seat's `reduced_motion` is true, `gnoblin.motion(duration)` is 0.
+While the seat's `reduced_motion` is true, `gnoblin.motion(duration)` is 0. Pass every duration you animate over through it.
+
+::: tabs
+
+```typescript
+import "gnoblin-std";
+
+const duration = gnoblin.motion(250); // 0 while the seat asks for reduced motion
+gnoblin.requestTransition(() => {}, { duration });
+```
+
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import TransitionOptions
+
+gnoblin = Gnoblin.get()
+
+duration = gnoblin.motion(250.0)  # 0.0 while the seat asks for reduced motion
+gnoblin.request_transition(lambda: None, TransitionOptions(duration=duration))
+```
+
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::TransitionOptions;
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let duration = model.motion(250.0)?; // 0 while the seat asks for reduced motion
+    model.request_transition(
+        || Ok(()),
+        Some(&TransitionOptions {
+            duration,
+            ..TransitionOptions::default()
+        }),
+        Some(|| Ok(())),
+    )?;
+    Ok(())
+}
+```
+
+:::
 
 - Workspace slides and a `requestTransition` with a duration passed through `gnoblin.motion` take no time.
 - The titlebar's close fade is skipped.
@@ -66,6 +213,76 @@ While the seat's `reduced_motion` is true, `gnoblin.motion(duration)` is 0.
 bindings made for it or for every device. `device.bindingOnly = false` gives the claim up. An action of `false` claims
 the trigger and does nothing with it; a function that returns `false` declines and lets the next binding have it.
 
+::: tabs
+
+```typescript
+import { Keyboard } from "gnoblin-core";
+
+for (const device of gnoblin.input.devices) {
+    if (device instanceof Keyboard && device.name.includes("Macro")) {
+        device.bind(
+            "F13",
+            () => {
+                gnoblin.spawn(["foot"]);
+            },
+            { only: true },
+        );
+    }
+}
+```
+
+```python
+from gnoblin.objects.model import BindingEvent, BindingOptions, Gnoblin, Keyboard
+
+gnoblin = Gnoblin.get()
+
+
+def terminal(event: BindingEvent) -> bool:
+    gnoblin.spawn(["foot"])
+    return True
+
+
+for device in gnoblin.input.devices:
+    if isinstance(device, Keyboard) and "Macro" in device.name:
+        device.bind("F13", terminal, BindingOptions(only=True))
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::{BindingOptions, ModelRoot};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    for device in input.devices()? {
+        if !device.name()?.contains("Macro") {
+            continue;
+        }
+        let shell = Rc::clone(&model);
+        device.bind(
+            "F13",
+            Some(move |_| {
+                shell.spawn(&["foot".to_owned()], None)?;
+                Ok(true)
+            }),
+            Some(&BindingOptions {
+                only: Some(true),
+                ..BindingOptions::default()
+            }),
+        )?;
+    }
+    Ok(())
+}
+```
+
+:::
+
 ## Focus and workspaces
 
 - A focused window that closes hands the keyboard to its neighbour in the workspace (the next, else the previous; a
@@ -76,6 +293,47 @@ the trigger and does nothing with it; a function that returns `false` declines a
 - A left press on a titlebar focuses and raises its window as a press on the window does.
 - Maximised, snapped and floating windows are refitted when a bar changes the work area.
 - A reload keeps the rectangles a maximised, fullscreen or snapped window returns to.
+
+::: tabs
+
+```typescript
+import "gnoblin-std";
+
+const dev = gnoblin.workspaces.byId("dev");
+if (dev && !gnoblin.workspaces.remove(dev)) {
+    console.log("the last workspace stays");
+}
+```
+
+```python
+from gnoblin.objects.model import Gnoblin
+import gnoblin.objects.std  # adds `workspaces` to the root
+
+gnoblin = Gnoblin.get()
+
+dev = gnoblin.workspaces.by_id("dev")
+if dev is not None and not gnoblin.workspaces.remove(dev):
+    print("the last workspace stays")
+```
+
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let workspaces = model.workspaces()?;
+    if let Some(dev) = workspaces.by_id("dev")? {
+        if !workspaces.remove(&dev)? {
+            println!("the last workspace stays");
+        }
+    }
+    Ok(())
+}
+```
+
+:::
 
 ## Workspace sets
 
