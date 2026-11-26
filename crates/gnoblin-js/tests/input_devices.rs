@@ -407,11 +407,11 @@ fn nothing_but_a_subclass_makes_a_native_object() {
 }
 
 #[test]
-#[ignore = "vrnw: needs gnoblin.extensions (the registry of extensions with an id and a status, and xr)"]
-fn extensions_iterate_with_an_id_and_a_status_and_xr_is_null_until_the_program_has_a_session() {
-    let mut world = world("g.seen = [...gnoblin.extensions].map((e) => `${e.id}:${e.status}`).join();\n");
+fn extensions_list_an_id_and_a_status_and_xr_is_undefined_until_the_program_has_a_session() {
+    let mut world = world("g.seen = gnoblin.extensions.list.map((e) => `${e.id}:${e.status}`).join();\n");
     assert_eq!(world.eval("seen"), "xr:unloaded");
-    assert_eq!(world.eval("String(gnoblin.extensions.xr)"), "null");
+    // The generated SDK gives none as `undefined`.
+    assert_eq!(world.eval("String(gnoblin.extensions.xr)"), "undefined");
     // The core's registry is one per process: the first world is gone before the second starts.
     drop(world);
 
@@ -421,10 +421,10 @@ fn extensions_iterate_with_an_id_and_a_status_and_xr_is_null_until_the_program_h
         with_xr.frame();
     }
     assert_eq!(
-        with_xr.eval("[...gnoblin.extensions].map((e) => `${e.id}:${e.status}`).join()"),
+        with_xr.eval("gnoblin.extensions.list.map((e) => `${e.id}:${e.status}`).join()"),
         "xr:ready"
     );
-    assert_eq!(with_xr.eval("gnoblin.extensions.xr !== null"), "true");
+    assert_eq!(with_xr.eval("gnoblin.extensions.xr !== undefined"), "true");
 }
 
 #[test]

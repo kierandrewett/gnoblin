@@ -179,9 +179,15 @@ fn register_camera(builder: &mut Builder) {
         })
         .set_ref("tracking", |h, cx, value| {
             let world = world_of(cx)?;
-            let obj = value.object()?;
-            cx.hold(obj)?;
-            if let Some(old) = world.tracking.borrow_mut().insert(h.node, obj) {
+            let obj = if value.is_none() { None } else { Some(value.object()?) };
+            if let Some(obj) = obj {
+                cx.hold(obj)?;
+            }
+            let old = match obj {
+                Some(obj) => world.tracking.borrow_mut().insert(h.node, obj),
+                None => world.tracking.borrow_mut().remove(&h.node),
+            };
+            if let Some(old) = old {
                 cx.unhold(old);
             }
             Ok(())
@@ -220,20 +226,18 @@ fn register_room(builder: &mut Builder) {
         })
         .set_ref("layout", |h, cx, value| {
             let room = room_of(&*world_of(cx)?, h.node)?;
-            let obj = value.object()?;
-            let layout = layout_of(cx, obj)?;
-            cx.hold(obj)?;
-            if let Some((old, _)) = room.layout.replace(Some((obj, layout))) {
+            let layout = if value.is_none() {
+                None
+            } else {
+                let obj = value.object()?;
+                let layout = layout_of(cx, obj)?;
+                cx.hold(obj)?;
+                Some((obj, layout))
+            };
+            if let Some((old, _)) = room.layout.replace(layout) {
                 cx.unhold(old);
             }
             Ok(())
-        })
-        .method_ref("clear_layout", |h, cx, _| {
-            let room = room_of(&*world_of(cx)?, h.node)?;
-            if let Some((old, _)) = room.layout.replace(None) {
-                cx.unhold(old);
-            }
-            Ok(Val::None)
         })
         .get("accept", |h, cx| {
             let room = room_of(&*world_of(cx)?, h.node)?;
@@ -241,7 +245,12 @@ fn register_room(builder: &mut Builder) {
         })
         .set_ref("accept", |h, cx, value| {
             let room = room_of(&*world_of(cx)?, h.node)?;
-            *room.accept.borrow_mut() = Some(Rc::clone(value.closure()?));
+            let accept = if value.is_none() {
+                None
+            } else {
+                Some(Rc::clone(value.closure()?))
+            };
+            *room.accept.borrow_mut() = accept;
             Ok(())
         })
         .get("unit", |h, cx| {
@@ -814,11 +823,17 @@ fn scale_limits(min: f64, max: f64) -> Res<()> {
     Ok(())
 }
 
-/// Sets the handler of a binding to the shell's object `obj`.
-fn set_handler(cx: &Cx<'_>, binding: &BindingData, obj: Obj) -> Res<()> {
-    let shell = cx.shell(obj)?;
-    cx.hold(obj)?;
-    if let Some(old) = binding.handler.replace(Some(Handler { obj, shell })) {
+/// Sets the handler of a binding to the shell's object `obj`, or takes it away for none.
+fn set_handler(cx: &Cx<'_>, binding: &BindingData, obj: Option<Obj>) -> Res<()> {
+    let handler = match obj {
+        Some(obj) => {
+            let shell = cx.shell(obj)?;
+            cx.hold(obj)?;
+            Some(Handler { obj, shell })
+        }
+        None => None,
+    };
+    if let Some(old) = binding.handler.replace(handler) {
         cx.unhold(old.obj);
     }
     Ok(())
@@ -862,7 +877,7 @@ fn register_binding(builder: &mut Builder, class: &'static str, native: Native) 
             data.priority.set(value.double()?);
         }
         if let Some(value) = inits.take("handler") {
-            set_handler(cx, &data, value.object()?)?;
+            set_handler(cx, &data, Some(value.object()?))?;
         }
         Ok(BindingHandle(data))
     });
@@ -894,7 +909,10 @@ fn register_binding(builder: &mut Builder, class: &'static str, native: Native) 
             let held = h.0.handler.borrow().as_ref().map_or(0, |handler| handler.obj);
             handout_or_none(cx, held)
         })
-        .set_ref("handler", |h, cx, value| set_handler(cx, &h.0, value.object()?))
+        .set_ref("handler", |h, cx, value| {
+            let obj = if value.is_none() { None } else { Some(value.object()?) };
+            set_handler(cx, &h.0, obj)
+        })
         .method_ref("claims", |h, _, _| {
             Ok(Val::List(
                 h.0.parsed.borrow().inputs().into_iter().map(Val::Text).collect(),

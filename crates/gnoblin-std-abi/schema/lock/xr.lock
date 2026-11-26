@@ -32,7 +32,7 @@ member | extensions.configure | method (name:string, options:object:xr_options, 
 member | extensions.list | property list<object:extension_info> ro | 0.2.0
 member | extensions.remove_listener | method (listener:object:xr_listener) | 0.2.0
 member | extensions.require | method (name:string) | 0.2.0
-member | extensions.xr | property object:xr_extension ro | 0.2.0
+member | extensions.xr | property object:xr_extension ro,optional | 0.2.0
 member | head_panel_options.scale | property double rw,optional | 0.2.0
 member | head_panel_options.x | property double rw | 0.2.0
 member | head_panel_options.y | property double rw | 0.2.0
@@ -77,7 +77,7 @@ member | spatial_triggers.rotate | property string rw | 0.2.0
 member | view_move_binding.claims | method () -> list<string> | 0.2.0
 member | view_move_binding.distance | property string rw | 0.2.0
 member | view_move_binding.enabled | property bool rw | 0.2.0
-member | view_move_binding.handler | property object:xr_drag_handler rw | 0.2.0
+member | view_move_binding.handler | property object:xr_drag_handler rw,optional | 0.2.0
 member | view_move_binding.id | property string rw | 0.2.0
 member | view_move_binding.parse_trigger | function (trigger:string) -> object:controller_trigger | 0.2.0
 member | view_move_binding.parsed | property object:controller_trigger ro | 0.2.0
@@ -88,7 +88,7 @@ member | view_move_binding.trigger | property string rw | 0.2.0
 member | view_resize_binding.claims | method () -> list<string> | 0.2.0
 member | view_resize_binding.edges | property enum:resize_corner rw | 0.2.0
 member | view_resize_binding.enabled | property bool rw | 0.2.0
-member | view_resize_binding.handler | property object:xr_drag_handler rw | 0.2.0
+member | view_resize_binding.handler | property object:xr_drag_handler rw,optional | 0.2.0
 member | view_resize_binding.id | property string rw | 0.2.0
 member | view_resize_binding.min_height | property double rw | 0.2.0
 member | view_resize_binding.min_width | property double rw | 0.2.0
@@ -99,7 +99,7 @@ member | view_resize_binding.priority | property double rw | 0.2.0
 member | view_resize_binding.trigger | property string rw | 0.2.0
 member | view_rotate_binding.claims | method () -> list<string> | 0.2.0
 member | view_rotate_binding.enabled | property bool rw | 0.2.0
-member | view_rotate_binding.handler | property object:xr_drag_handler rw | 0.2.0
+member | view_rotate_binding.handler | property object:xr_drag_handler rw,optional | 0.2.0
 member | view_rotate_binding.id | property string rw | 0.2.0
 member | view_rotate_binding.parse_trigger | function (trigger:string) -> object:controller_trigger | 0.2.0
 member | view_rotate_binding.parsed | property object:controller_trigger ro | 0.2.0
@@ -107,7 +107,7 @@ member | view_rotate_binding.priority | property double rw | 0.2.0
 member | view_rotate_binding.trigger | property string rw | 0.2.0
 member | view_scale_binding.claims | method () -> list<string> | 0.2.0
 member | view_scale_binding.enabled | property bool rw | 0.2.0
-member | view_scale_binding.handler | property object:xr_drag_handler rw | 0.2.0
+member | view_scale_binding.handler | property object:xr_drag_handler rw,optional | 0.2.0
 member | view_scale_binding.id | property string rw | 0.2.0
 member | view_scale_binding.max_scale | property double rw | 0.2.0
 member | view_scale_binding.min_scale | property double rw | 0.2.0
@@ -148,7 +148,7 @@ member | xr_camera3d.reference_space | property string rw | 0.2.0
 member | xr_camera3d.rotation | property object:vec3 rw | 0.2.0
 member | xr_camera3d.scale | property object:vec3 rw | 0.2.0
 member | xr_camera3d.size | property double rw | 0.2.0
-member | xr_camera3d.tracking | property object:xr_tracked_pose rw | 0.2.0
+member | xr_camera3d.tracking | property object:xr_tracked_pose rw,optional | 0.2.0
 member | xr_camera3d.transform | property object:pose rw | 0.2.0
 member | xr_camera3d.visible | property bool rw | 0.2.0
 member | xr_camera3d.world_transform | property object:pose ro | 0.2.0
@@ -178,7 +178,7 @@ member | xr_controller.tracked | property bool ro | 0.2.0
 member | xr_controller.trigger | property double ro | 0.2.0
 member | xr_drag_binding.claims | method () -> list<string> | 0.2.0
 member | xr_drag_binding.enabled | property bool rw | 0.2.0
-member | xr_drag_binding.handler | property object:xr_drag_handler rw | 0.2.0
+member | xr_drag_binding.handler | property object:xr_drag_handler rw,optional | 0.2.0
 member | xr_drag_binding.id | property string rw | 0.2.0
 member | xr_drag_binding.parse_trigger | function (trigger:string) -> object:controller_trigger | 0.2.0
 member | xr_drag_binding.parsed | property object:controller_trigger ro | 0.2.0
@@ -200,24 +200,23 @@ member | xr_drag_handler.on_end | method (event:object:xr_drag_event) native-def
 member | xr_drag_handler.on_start | method (event:object:xr_drag_event) -> bool? native-default | 0.2.0
 member | xr_drag_handler.on_update | method (event:object:xr_drag_event) native-default | 0.2.0
 member | xr_extension.available | property bool ro | 0.2.0
-member | xr_extension.room | property object:xr_room ro | 0.2.0
-member | xr_extension.session | property object:xr_session ro | 0.2.0
+member | xr_extension.room | property object:xr_room ro,optional | 0.2.0
+member | xr_extension.session | property object:xr_session ro,optional | 0.2.0
 member | xr_extension.sessions | property list<object:xr_session> ro | 0.2.0
 member | xr_listener.on_session_ended | method (session:object:xr_session) | 0.2.0
 member | xr_listener.on_session_started | method (session:object:xr_session) | 0.2.0
 member | xr_options.layout | property object:spatial_layout rw,optional | 0.2.0
 member | xr_options.room | property bool rw | 0.2.0
-member | xr_room.accept | property callback:xr_accept rw | 0.2.0
+member | xr_room.accept | property callback:xr_accept rw,optional | 0.2.0
 member | xr_room.add | method (child:object:scene_node, index?:int) -> object:scene_node | 0.2.0
 member | xr_room.alive | property bool ro | 0.2.0
 member | xr_room.children | property list<object:scene_node> ro | 0.2.0
-member | xr_room.clear_layout | method () | 0.2.0
 member | xr_room.find | method (name:string) -> object:scene_node? | 0.2.0
 member | xr_room.head | property object:camera3d ro | 0.2.0
 member | xr_room.id | property string rw | 0.2.0
 member | xr_room.input | property enum:input_mode rw | 0.2.0
 member | xr_room.is_pinned | method (view:object:view) -> bool | 0.2.0
-member | xr_room.layout | property object:spatial_layout rw | 0.2.0
+member | xr_room.layout | property object:spatial_layout rw,optional | 0.2.0
 member | xr_room.metres_per_unit | property double rw | 0.2.0
 member | xr_room.name | property string rw | 0.2.0
 member | xr_room.node | property uint ro | 0.2.0
@@ -250,12 +249,12 @@ member | xr_session.controller_removed | signal (controller:object:xr_controller
 member | xr_session.controllers | property list<object:xr_controller> ro | 0.2.0
 member | xr_session.head | property object:xr_tracked_pose ro | 0.2.0
 member | xr_session.id | property string ro | 0.2.0
-member | xr_session.input | property object:gnoblin.model.input_context ro | 0.2.0
+member | xr_session.input | property object:gnoblin.model.input_context ro,optional | 0.2.0
 member | xr_session.layer_budget | property uint ro | 0.2.0
 member | xr_session.tracking | property enum:xr_tracking ro | 0.2.0
-member | xr_session.viewport | property object:xr_viewport rw | 0.2.0
+member | xr_session.viewport | property object:xr_viewport rw,optional | 0.2.0
 member | xr_tracked_pose.available | property bool ro | 0.2.0
-member | xr_tracked_pose.pose | property object:pose ro | 0.2.0
+member | xr_tracked_pose.pose | property object:pose ro,optional | 0.2.0
 member | xr_viewport.camera | property object:camera3d rw | 0.2.0
 member | xr_viewport.composition | property enum:xr_composition rw | 0.2.0
 member | xr_viewport.content | property object:scene_node ro | 0.2.0

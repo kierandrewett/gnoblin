@@ -506,6 +506,7 @@ kind = "service"
 [[object.property]]
 name = "xr"
 type = "object:xr_extension"
+optional = true
 since = "0.2.0"
 readonly = true
 
@@ -588,6 +589,7 @@ readonly = true
 [[object.property]]
 name = "session"
 type = "object:xr_session"
+optional = true
 since = "0.2.0"
 readonly = true
 
@@ -595,6 +597,7 @@ readonly = true
 [[object.property]]
 name = "room"
 type = "object:xr_room"
+optional = true
 since = "0.2.0"
 readonly = true
 
@@ -637,6 +640,7 @@ readonly = true
 [[object.property]]
 name = "input"
 type = "object:gnoblin.model.input_context"
+optional = true
 since = "0.2.0"
 readonly = true
 
@@ -652,6 +656,7 @@ readonly = true
 [[object.property]]
 name = "viewport"
 type = "object:xr_viewport"
+optional = true
 since = "0.2.0"
 
 # The head.
@@ -724,6 +729,7 @@ readonly = true
 [[object.property]]
 name = "pose"
 type = "object:pose"
+optional = true
 since = "0.2.0"
 readonly = true
 
@@ -857,6 +863,7 @@ retained = true
 [[object.property]]
 name = "tracking"
 type = "object:xr_tracked_pose"
+optional = true
 since = "0.2.0"
 
 # The tracking space: only `local`, the one OpenXR space the program runs.
@@ -883,21 +890,19 @@ type = "object:camera3d"
 since = "0.2.0"
 readonly = true
 
-# The ring and the bindings of the room, or none to leave the panels where they are.
+# The ring and the bindings of the room, or none to leave the panels where they are: no panel is placed and no drag runs until a
+# layout is set again.
 [[object.property]]
 name = "layout"
 type = "object:spatial_layout"
-since = "0.2.0"
-
-# Takes the layout away: the ring places no panel and no drag runs until a layout is set again.
-[[object.method]]
-name = "clear_layout"
+optional = true
 since = "0.2.0"
 
 # Whether a window gets a panel; left out, every window does. A secure window never does.
 [[object.property]]
 name = "accept"
 type = "callback:xr_accept"
+optional = true
 since = "0.2.0"
 
 # Metres in one room unit: the head camera's.
@@ -1296,6 +1301,7 @@ default = 0.0
 [[object.property]]
 name = "handler"
 type = "object:xr_drag_handler"
+optional = true
 since = "0.2.0"
 
 # The inputs the binding's drags claim: the handler's `claims`, or the trigger's buttons in lower case.
