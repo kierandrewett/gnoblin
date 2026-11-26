@@ -20,14 +20,18 @@
 //!
 //! The software renderer draws every case below (it computes blur, shadow and border on the CPU), so a case marked
 //! `software` is checked against its picture as well; a new case the software renderer cannot draw is marked `false`.
+//!
+//! A case that blurs needs a renderer that draws a blur; [`blurs`] says which, so a renderer that does not yet can leave
+//! them out of its run and still be held to the rest.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use gnoblin_render::{BlurParams, Effects, Pass, Shadow, Vec3};
+use gnoblin_render::{BlurParams, Border, Effects, FilterParams, Pass, Shadow, Vec3};
 use gnoblin_types::{Color, Rect, RectF, Size};
 
 use crate::frame::{Layer, OutputFrame, Solid, Surface, SurfaceSource};
+use crate::grade::{self, Grade};
 use crate::image::Image;
 
 /// The tolerance of a case whose pixels are shapes and flat colour.
@@ -127,6 +131,68 @@ fn glass() -> Layer {
     Layer::Solid(glass)
 }
 
+/// The outside border of the border and filter cases: opaque green.
+fn green() -> Color {
+    Color::from_rgba8(0, 200, 0, 255)
+}
+
+/// A border: a ring of `width` along the layer's edge, `offset` from it, outside or (`inset`) inside.
+fn border(width: f32, offset: f32, inset: bool, color: Color) -> Pass {
+    Pass::Border(Border {
+        width,
+        offset,
+        inset,
+        color,
+    })
+}
+
+/// A solid layer with no colour of its own, so what it shows is what its effects draw over the backdrop.
+fn clear(dst: Rect, radius: f32, effects: Effects) -> Layer {
+    let mut layer = Solid::new(dst, Color::TRANSPARENT);
+    layer.corner_radius = radius;
+    layer.effects = effects;
+    Layer::Solid(layer)
+}
+
+/// An inset shadow: the colour falls from the hole's edge inwards over `blur`.
+fn inset_shadow() -> Pass {
+    Pass::Shadow(Shadow {
+        offset: Vec3::new(0.0, 2.0, 0.0),
+        blur: 4.0,
+        spread: 0.0,
+        opacity: 1.0,
+        color: Color::from_rgba8(0, 0, 0, 200),
+        frame: false,
+        inset: true,
+    })
+}
+
+/// The grade of the filter case.
+const FILTER: Grade = Grade {
+    saturate: 0.5,
+    brightness: 1.1,
+    contrast: 1.2,
+    noise: 0.0,
+};
+
+/// A colour as the picture holds it: straight, eight bits a channel.
+fn bytes(colour: Color) -> [u8; 3] {
+    [colour.r, colour.g, colour.b].map(|channel| (channel * 255.0).round() as u8)
+}
+
+/// The window's `[r, g, b]` over `backdrop` at `opacity`, as the source-over blend gives it.
+fn over(top: [f32; 3], opacity: f32, under: [f32; 3]) -> [f32; 3] {
+    [0, 1, 2].map(|i| top[i] * opacity + under[i] * (1.0 - opacity))
+}
+
+fn floats(colour: [u8; 3]) -> [f32; 3] {
+    colour.map(f32::from)
+}
+
+fn rounded(colour: [f32; 3]) -> [u8; 3] {
+    colour.map(|channel| channel.round() as u8)
+}
+
 const TINT: Color = Color::new(0.5, 0.8, 1.0, 1.0);
 
 /// The backdrop's two colours and the window's, as the probes read them.
@@ -148,8 +214,8 @@ pub struct Case {
     pub probes: fn(&Image),
 }
 
-/// The five scenes every renderer is held to.
-pub const CASES: [Case; 5] = [
+/// The scenes every renderer is held to.
+pub const CASES: [Case; 10] = [
     Case {
         name: "shadow",
         layers: || vec![window(one(shadow()), Color::WHITE, 1.0)],
@@ -236,6 +302,166 @@ pub const CASES: [Case; 5] = [
             assert_ne!(window_pixel, BLUE, "and the backdrop does not show through whole");
         },
     },
+    Case {
+        name: "border",
+        layers: || {
+            let mut chain = Effects::new();
+            // A ring outside the window with a one pixel gap, and a white one on its inside edge.
+            chain.push(border(2.0, 1.0, false, green())).expect("a border");
+            chain
+                .push(border(1.0, 0.0, true, Color::from_rgba8(255, 255, 255, 255)))
+                .expect("a border");
+            vec![window(chain, Color::WHITE, 1.0)]
+        },
+        software: false,
+        tolerance: SHAPE_TOLERANCE,
+        probes: |image| {
+            assert_eq!(
+                rgb(image, 12, 10),
+                ORANGE,
+                "the window's own pixels are inside the rings"
+            );
+            assert_eq!(
+                rgb(image, 8, 10),
+                [255, 255, 255],
+                "the inside ring is the window's edge column"
+            );
+            assert_eq!(rgb(image, 23, 10), [255, 255, 255], "and its far edge column");
+            assert_eq!(rgb(image, 7, 10), BLUE, "the offset leaves a gap outside the window");
+            assert_eq!(
+                rgb(image, 6, 10),
+                bytes(green()),
+                "the outside ring starts after the gap"
+            );
+            assert_eq!(rgb(image, 5, 10), bytes(green()), "and is two pixels wide");
+            assert_eq!(rgb(image, 4, 10), BLUE, "and ends there");
+        },
+    },
+    Case {
+        name: "corners",
+        layers: || {
+            let mut chain = Effects::new();
+            chain.push(shadow()).expect("a shadow");
+            chain
+                .push(Pass::Background {
+                    color: Color::from_rgba8(200, 40, 40, 255),
+                })
+                .expect("a background");
+            chain.push(border(1.0, 0.0, false, green())).expect("a border");
+            vec![clear(WINDOW, 4.0, chain)]
+        },
+        software: false,
+        tolerance: SHAPE_TOLERANCE,
+        probes: |image| {
+            let fill = [200, 40, 40];
+            assert_eq!(rgb(image, 16, 10), fill, "the background fills the layer");
+            assert_eq!(rgb(image, 12, 7), fill, "up to the straight part of its edge");
+            assert_ne!(rgb(image, 8, 7), fill, "but the corner is cut by the radius");
+            assert_ne!(rgb(image, 23, 15), fill, "at every corner");
+            assert_eq!(
+                rgb(image, 7, 10),
+                bytes(green()),
+                "the border runs along the straight edge"
+            );
+            assert_ne!(
+                rgb(image, 7, 7),
+                bytes(green()),
+                "and does not reach the square corner the radius cut away"
+            );
+        },
+    },
+    Case {
+        name: "inset_shadow",
+        layers: || vec![clear(Rect::new(6, 5, 20, 13), 4.0, one(inset_shadow()))],
+        software: false,
+        tolerance: SHAPE_TOLERANCE,
+        probes: |image| {
+            assert_close(
+                rgb(image, 16, 11),
+                PALE,
+                SHAPE_TOLERANCE,
+                "the middle of the layer is untouched",
+            );
+            assert_eq!(rgb(image, 6, 5), BLUE, "the corner the radius cut away is untouched");
+            // The hole is moved down by the offset, so the top edge is under the full shadow and the bottom edge
+            // only under the start of the falloff.
+            let top = rgb(image, 16, 5);
+            let bottom = rgb(image, 16, 17);
+            assert!(
+                top.iter().zip(PALE).all(|(got, plain)| *got < plain / 2),
+                "the top edge is dark: {top:?}"
+            );
+            assert!(
+                bottom.iter().zip(top).all(|(got, dark)| *got > dark),
+                "the bottom edge is lighter than the top: {bottom:?}, {top:?}"
+            );
+            assert!(
+                bottom.iter().zip(PALE).all(|(got, plain)| *got < plain),
+                "but darker than the backdrop: {bottom:?}"
+            );
+        },
+    },
+    Case {
+        name: "background",
+        layers: || {
+            let fill = Color::from_rgba8(200, 40, 40, 255);
+            vec![window(one(Pass::Background { color: fill }), Color::WHITE, 0.5)]
+        },
+        software: false,
+        tolerance: SHAPE_TOLERANCE,
+        probes: |image| {
+            // Half the fill over the backdrop, then half the window over that: the fill is under the content.
+            let fill = floats([200, 40, 40]);
+            for (x, backdrop) in [(12, BLUE), (20, PALE)] {
+                let under = over(fill, 0.5, floats(backdrop));
+                let want = rounded(over(floats(ORANGE), 0.5, under));
+                assert_close(
+                    rgb(image, x, 10),
+                    want,
+                    SHAPE_TOLERANCE,
+                    "the window over its background",
+                );
+            }
+            assert_eq!(rgb(image, 7, 10), BLUE, "the fill stops at the window's edge");
+            assert_eq!(rgb(image, 24, 10), PALE, "on every side");
+        },
+    },
+    Case {
+        name: "filter_grade",
+        layers: || {
+            let mut chain = Effects::new();
+            chain.push(border(1.0, 0.0, false, green())).expect("a border");
+            chain
+                .push(Pass::Filter(FilterParams {
+                    blur: 0.0,
+                    saturate: FILTER.saturate,
+                    brightness: FILTER.brightness,
+                    contrast: FILTER.contrast,
+                }))
+                .expect("a filter");
+            vec![window(chain, Color::WHITE, 1.0)]
+        },
+        software: false,
+        tolerance: SHAPE_TOLERANCE,
+        probes: |image| {
+            let graded = |colour: Color| bytes(grade::apply(FILTER, colour));
+            assert_close(
+                rgb(image, 12, 10),
+                graded(Color::from_rgba8(ORANGE[0], ORANGE[1], ORANGE[2], 255)),
+                SHAPE_TOLERANCE,
+                "the window's pixels are graded",
+            );
+            assert_close(
+                rgb(image, 12, 7),
+                graded(Color::from_rgba8(250, 190, 90, 255)),
+                SHAPE_TOLERANCE,
+                "its lighter row too",
+            );
+            assert_close(rgb(image, 7, 10), graded(green()), SHAPE_TOLERANCE, "so is its border");
+            assert_eq!(rgb(image, 30, 1), PALE, "what is behind the window is not");
+            assert_eq!(rgb(image, 3, 3), BLUE, "on either side");
+        },
+    },
 ];
 
 fn rgb(image: &Image, x: i32, y: i32) -> [u8; 3] {
@@ -248,6 +474,23 @@ fn assert_close(got: [u8; 3], want: [u8; 3], tolerance: u8, what: &str) {
         got.iter().zip(want).all(|(got, want)| got.abs_diff(want) <= tolerance),
         "{what}: drew {got:?}, expected {want:?}"
     );
+}
+
+/// Whether the case's layers blur: a backdrop blur or a filter with a blur. A renderer that draws no blur yet leaves
+/// such a case out of its run.
+#[must_use]
+pub fn blurs(case: &Case) -> bool {
+    (case.layers)().iter().any(|layer| {
+        let effects = match layer {
+            Layer::Solid(solid) => &solid.effects,
+            Layer::Surface(surface) => &surface.effects,
+            Layer::Overlay(_) => return false,
+        };
+        effects
+            .passes()
+            .iter()
+            .any(|pass| matches!(pass, Pass::Blur(_)) || matches!(pass, Pass::Filter(filter) if filter.blur > 0.0))
+    })
 }
 
 /// The frame of a case: the backdrop with the case's layers over it.
