@@ -173,6 +173,8 @@ jobs:
           ls -l /dev/kvm
       - name: Install QEMU and the seed tools
         run: |
+          # The runner's packages.microsoft.com source holds none of these packages and fails the update when it answers 403.
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/microsoft-prod.sources
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils genisoimage
       - name: Fetch the installed tree

@@ -126,6 +126,11 @@ fi
 case "$manager" in
     apt)
         export DEBIAN_FRONTEND=noninteractive
+        # A hosted GitHub runner lists packages.microsoft.com, which none of these packages come from; when that mirror
+        # answers 403 the whole update fails. Only a GitHub Actions run drops it; a developer's own sources are untouched.
+        if [ "${GITHUB_ACTIONS:-}" = true ]; then
+            "${as_root[@]}" rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/microsoft-prod.sources
+        fi
         "${as_root[@]}" apt-get update
         "${as_root[@]}" apt-get install -y --no-install-recommends "${packages[@]}"
         ;;
