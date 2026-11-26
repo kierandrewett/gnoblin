@@ -31,6 +31,7 @@ use gnoblin_render_frame::frame::{Layer, Model, Overlay, Solid, Surface, Surface
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_software::Software;
 
+mod effects;
 mod shader;
 
 /// The largest per-channel difference accepted where a blend rounds.

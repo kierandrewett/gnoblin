@@ -2,12 +2,12 @@
 //! The render pass, the pipelines, the samplers and the descriptor pools.
 //!
 //! One render pass draws into the target and keeps what is already there (`LOAD`), because a
-//! frame repaints only its damage. Two pipelines share a layout and a vertex stage: `solid`
-//! and `surface`, which are the GLES renderer's passes of the same names. Both blend
+//! frame repaints only its damage. Five pipelines share a layout and a vertex stage: `solid`,
+//! `surface`, `shadow`, `inset_shadow` and `border`, which are the GLES renderer's passes of the same names. All blend
 //! premultiplied colour (`ONE`, `ONE_MINUS_SRC_ALPHA`, for colour and for alpha), which is
 //! what the software renderer's compositing and every GLES pass agree on.
 //!
-//! A shell's own shader pass is a third kind of pipeline, one per source (`ShaderPipelines`): the same vertex stage, state and
+//! A shell's own shader pass is another kind of pipeline, one per source (`ShaderPipelines`): the same vertex stage, state and
 //! layout, with a fragment module compiled from the validated WGSL when a frame first draws the source.
 //!
 //! # Bindings
@@ -59,16 +59,25 @@ pub(super) struct ShaderSources<'a> {
     pub solid: &'a str,
     /// The textured fragment stage for client surfaces and bitmaps.
     pub surface: &'a str,
+    /// The drop shadow's fragment stage.
+    pub shadow: &'a str,
+    /// The inset shadow's fragment stage.
+    pub inset_shadow: &'a str,
+    /// The border's fragment stage.
+    pub border: &'a str,
 }
 
 impl ShaderSources<'static> {
     /// The sources the GLES renderer draws with.
     pub(super) fn shared() -> Self {
-        use gnoblin_render_frame::shader::sources::{SOLID, SURFACE, VERTEX};
+        use gnoblin_render_frame::shader::sources::{BORDER, INSET_SHADOW, SHADOW, SOLID, SURFACE, VERTEX};
         Self {
             vertex: VERTEX,
             solid: SOLID,
             surface: SURFACE,
+            shadow: SHADOW,
+            inset_shadow: INSET_SHADOW,
+            border: BORDER,
         }
     }
 }
@@ -81,6 +90,9 @@ pub(super) struct Compiled {
     vertex: Vec<u32>,
     solid: Vec<u32>,
     surface: Vec<u32>,
+    shadow: Vec<u32>,
+    inset_shadow: Vec<u32>,
+    border: Vec<u32>,
 }
 
 impl Compiled {
@@ -94,6 +106,9 @@ impl Compiled {
             vertex: compile("vertex", sources.vertex, StageKind::Vertex)?,
             solid: compile("solid", sources.solid, StageKind::Fragment)?,
             surface: compile("surface", sources.surface, StageKind::Fragment)?,
+            shadow: compile("shadow", sources.shadow, StageKind::Fragment)?,
+            inset_shadow: compile("inset-shadow", sources.inset_shadow, StageKind::Fragment)?,
+            border: compile("border", sources.border, StageKind::Fragment)?,
         })
     }
 }
@@ -121,6 +136,9 @@ pub(super) struct Pipelines {
     vertex: vk::ShaderModule,
     pub(super) solid: vk::Pipeline,
     pub(super) surface: vk::Pipeline,
+    pub(super) shadow: vk::Pipeline,
+    pub(super) inset_shadow: vk::Pipeline,
+    pub(super) border: vk::Pipeline,
     pub(super) linear: vk::Sampler,
     pub(super) nearest: vk::Sampler,
     /// The driver's cache of compiled pipelines, null when it could not be made.
@@ -144,12 +162,15 @@ impl Pipelines {
             vertex: vk::ShaderModule::null(),
             solid: vk::Pipeline::null(),
             surface: vk::Pipeline::null(),
+            shadow: vk::Pipeline::null(),
+            inset_shadow: vk::Pipeline::null(),
+            border: vk::Pipeline::null(),
             linear: vk::Sampler::null(),
             nearest: vk::Sampler::null(),
             cache: vk::PipelineCache::null(),
         };
         made.vertex = module(context, "vertex", &compiled.vertex)?;
-        let modules = ShaderModules::new(context, &compiled.solid, &compiled.surface)?;
+        let modules = ShaderModules::new(context, compiled)?;
         made.create(&modules)?;
         Ok(made)
     }
@@ -248,9 +269,12 @@ impl Pipelines {
         self.linear = sampler(device, vk::Filter::LINEAR)?;
         self.nearest = sampler(device, vk::Filter::NEAREST)?;
 
-        let made = self.graphics(&[modules.solid, modules.surface])?;
+        let made = self.graphics(&modules.fragments)?;
         self.solid = made[0];
         self.surface = made[1];
+        self.shadow = made[2];
+        self.inset_shadow = made[3];
+        self.border = made[4];
         Ok(())
     }
 
@@ -421,6 +445,9 @@ impl Drop for Pipelines {
         unsafe {
             device.destroy_pipeline(self.solid, None);
             device.destroy_pipeline(self.surface, None);
+            device.destroy_pipeline(self.shadow, None);
+            device.destroy_pipeline(self.inset_shadow, None);
+            device.destroy_pipeline(self.border, None);
             device.destroy_shader_module(self.vertex, None);
             device.destroy_pipeline_layout(self.layout, None);
             device.destroy_descriptor_set_layout(self.uniform_layout, None);
@@ -433,22 +460,28 @@ impl Drop for Pipelines {
     }
 }
 
-/// The two fragment modules of the shipped passes, destroyed when the pipelines have been made from them.
+/// The fragment modules of the shipped passes, destroyed when the pipelines have been made from them.
 struct ShaderModules {
     context: Rc<VkContext>,
-    solid: vk::ShaderModule,
-    surface: vk::ShaderModule,
+    /// Solid, surface, shadow, inset shadow and border, in the order [`Pipelines::create`] makes pipelines from them.
+    fragments: [vk::ShaderModule; 5],
 }
 
 impl ShaderModules {
-    fn new(context: &Rc<VkContext>, solid: &[u32], surface: &[u32]) -> Result<Self, VulkanError> {
+    fn new(context: &Rc<VkContext>, compiled: &Compiled) -> Result<Self, VulkanError> {
         let mut made = Self {
             context: Rc::clone(context),
-            solid: vk::ShaderModule::null(),
-            surface: vk::ShaderModule::null(),
+            fragments: [vk::ShaderModule::null(); 5],
         };
-        made.solid = module(context, "solid", solid)?;
-        made.surface = module(context, "surface", surface)?;
+        for (slot, (name, words)) in made.fragments.iter_mut().zip([
+            ("solid", &compiled.solid),
+            ("surface", &compiled.surface),
+            ("shadow", &compiled.shadow),
+            ("inset-shadow", &compiled.inset_shadow),
+            ("border", &compiled.border),
+        ]) {
+            *slot = module(context, name, words)?;
+        }
         Ok(made)
     }
 }
@@ -458,8 +491,9 @@ impl Drop for ShaderModules {
         // SAFETY: pipelines keep what they need of a module, so it may be destroyed once they
         // are made; a null handle is a no-op.
         unsafe {
-            self.context.device.destroy_shader_module(self.solid, None);
-            self.context.device.destroy_shader_module(self.surface, None);
+            for fragment in self.fragments {
+                self.context.device.destroy_shader_module(fragment, None);
+            }
         }
     }
 }

@@ -30,19 +30,19 @@ corners, runs shell shader passes and reads the picture back (`crates/gnoblin-re
 
 ### 2.1 What is missing for production
 
-| Gap                                                                             | Evidence                                                                                              |
-| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| No blur, shadow, border                                                         | `RendererKind::effect_kinds` is `["shader"]`, `crates/gnoblin-backend/src/render/renderer.rs:88-94`   |
-| No present, no dmabuf                                                           | `SurfaceSource::Dmabuf` is skipped, `gnoblin-render-frame/src/frame.rs:173-184`                       |
-| Not selectable on DRM                                                           | `crates/gnoblin-compositor/src/backend.rs:236-246` refuses everything but `auto` and `gles`           |
-| Every frame waits for the GPU                                                   | `FrameRecorder::submit` waits the fence, `src/frame.rs:298-313`                                       |
-| Every client buffer is uploaded whole, every frame                              | a new `VkImage` per surface per frame, `src/frame.rs:620-680`                                         |
-| One `vkAllocateMemory` per image                                                | `VkContext::allocate`, `src/context.rs:315-329`; no sub-allocation                                    |
-| One `VkDevice` per output                                                       | `Vulkan::with_sources` creates its own context, `src/lib.rs`                                          |
-| No 3D layers, no View pictures, no magnifier or colour matrix, no supersampling | `plan.rs:16-20`, `renderer.rs:96-101`, `frame.rs:692-696`                                             |
-| Device choice ignores the display                                               | `choose` ranks by device type only, `src/context.rs:492-553`                                          |
-| Nobody rebuilds a lost renderer                                                 | `RenderError::Lost` is only recorded, `renderer.rs:263-266`, `gnoblin-backend-drm/src/scanout.rs:366` |
-| No pipeline cache on disk                                                       | the `GraphicsContext` cache lives in memory only, `src/pipeline.rs:281-291`                           |
+| Gap                                                                                   | Evidence                                                                                              |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| No backdrop blur and no filter blur (shadow, border, background, grades landed in V2) | `RendererKind::effect_kinds` has no `blur`, `crates/gnoblin-backend/src/render/renderer.rs:88-94`     |
+| No present, no dmabuf                                                                 | `SurfaceSource::Dmabuf` is skipped, `gnoblin-render-frame/src/frame.rs:173-184`                       |
+| Not selectable on DRM                                                                 | `crates/gnoblin-compositor/src/backend.rs:236-246` refuses everything but `auto` and `gles`           |
+| Every frame waits for the GPU                                                         | `FrameRecorder::submit` waits the fence, `src/frame.rs:298-313`                                       |
+| Every client buffer is uploaded whole, every frame                                    | a new `VkImage` per surface per frame, `src/frame.rs:620-680`                                         |
+| One `vkAllocateMemory` per image                                                      | `VkContext::allocate`, `src/context.rs:315-329`; no sub-allocation                                    |
+| One `VkDevice` per output                                                             | `Vulkan::with_sources` creates its own context, `src/lib.rs`                                          |
+| No 3D layers, no View pictures, no magnifier or colour matrix, no supersampling       | `plan.rs:16-20`, `renderer.rs:96-101`, `frame.rs:692-696`                                             |
+| Device choice ignores the display                                                     | `choose` ranks by device type only, `src/context.rs:492-553`                                          |
+| Nobody rebuilds a lost renderer                                                       | `RenderError::Lost` is only recorded, `renderer.rs:263-266`, `gnoblin-backend-drm/src/scanout.rs:366` |
+| No pipeline cache on disk                                                             | the `GraphicsContext` cache lives in memory only, `src/pipeline.rs:281-291`                           |
 
 ### 2.2 Gaps the GLES reference has too
 

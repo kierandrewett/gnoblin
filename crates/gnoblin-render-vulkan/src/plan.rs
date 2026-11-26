@@ -27,13 +27,14 @@
 //! rectangle and the viewport, three columns of an optional projection and its parameters.
 //! A flat quad leaves the projection empty and its flag clear.
 
-use gnoblin_render::{Effects, Pass, ShaderKey};
+use gnoblin_render::{Border, Effects, Pass, ShaderKey, Shadow};
 use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 use smithay::utils::{Physical, Rectangle};
 
 use super::pipeline::{INSTANCE_FLOATS, UNIFORM_BYTES};
 use gnoblin_render_frame::frame::{Layer, OutputFrame, Overlay, Surface};
 use gnoblin_render_frame::geometry::physical_rect;
+use gnoblin_render_frame::grade::{self, Grade};
 use gnoblin_render_frame::shader::uniforms::{Uniforms, UserBlock};
 
 /// The distance between two draws' uniform blocks, in bytes.
@@ -46,6 +47,12 @@ pub(super) enum PassKind {
     Solid,
     /// A texture.
     Surface,
+    /// A drop shadow.
+    Shadow,
+    /// An inset shadow.
+    InsetShadow,
+    /// A ring along a layer's edge.
+    Border,
     /// A shell's shader pass, by the key of its source.
     User(ShaderKey),
 }
@@ -243,7 +250,6 @@ pub(super) fn plan_into(
     let damage = damage_of(frame, scale, physical);
     let mut built = FramePlan::default();
     let mut draws = Draws::new(target);
-    let radius_scale = scale.as_f64() as f32;
     for damage in damage.clone() {
         for (index, layer) in frame.layers().iter().enumerate() {
             match layer {
@@ -253,25 +259,42 @@ pub(super) fn plan_into(
                         continue;
                     }
                     let quad = to_rect(physical_rect(solid.dst, scale));
-                    if quad.is_empty() || !quad.intersects(damage) {
+                    if quad.is_empty() {
                         continue;
                     }
-                    let passes = shader_passes(shaders, index, &solid.effects, sizes);
-                    let mut uniforms = if passes.is_empty() {
-                        Uniforms::solid(quad, solid.colour, solid.tint, 1.0)
-                    } else {
-                        // The shader reads the solid's colour from a pixel of it, so the draw is a textured one.
-                        Uniforms::surface(quad, [0.0, 0.0, 1.0, 1.0], solid.tint, 1.0, 0.0)
-                    };
-                    uniforms.corner = solid.corner_radius * radius_scale;
-                    if let Some(shape) = solid.silhouette.filter(|_| solid.corner_radius > 0.0) {
-                        uniforms.round_to(to_rect(physical_rect(shape, scale)));
+                    let parts = Parts::new(
+                        quad,
+                        solid.corner_radius,
+                        solid.silhouette,
+                        &solid.effects,
+                        solid.tint,
+                        1.0,
+                        scale,
+                    );
+                    draws.under(&mut built, damage, &parts);
+                    if quad.intersects(damage) {
+                        let passes = shader_passes(shaders, index, &solid.effects, sizes);
+                        let mut uniforms = if passes.is_empty() {
+                            // The grade of a solid colour is done here, on the colour, as `grade::apply` does it.
+                            let colour = grade::apply(parts.grade, solid.colour);
+                            Uniforms::solid(quad, colour, solid.tint, 1.0)
+                        } else {
+                            // The shader reads the solid's colour from a pixel of it, so the draw is a textured one.
+                            let mut uniforms = Uniforms::surface(quad, [0.0, 0.0, 1.0, 1.0], solid.tint, 1.0, 0.0);
+                            uniforms.grade = parts.grade.to_array();
+                            uniforms
+                        };
+                        uniforms.corner = parts.radius;
+                        if let Some(shape) = parts.rounded_to {
+                            uniforms.round_to(shape);
+                        }
+                        if passes.is_empty() {
+                            draws.push(&mut built, PassKind::Solid, None, damage, quad, &uniforms);
+                        } else {
+                            draws.push_shader(&mut built, shaders, index, damage, quad, &uniforms);
+                        }
                     }
-                    if passes.is_empty() {
-                        draws.push(&mut built, PassKind::Solid, None, damage, quad, &uniforms);
-                    } else {
-                        draws.push_shader(&mut built, shaders, index, damage, quad, &uniforms);
-                    }
+                    draws.over(&mut built, damage, &parts);
                 }
                 Layer::Surface(surface) => {
                     if surface.model.is_some() {
@@ -282,32 +305,46 @@ pub(super) fn plan_into(
                         continue;
                     };
                     let quad = to_rect(physical_rect(surface.dst, scale));
-                    if quad.is_empty() || !quad.intersects(damage) {
+                    if quad.is_empty() {
                         continue;
                     }
-                    let mut uniforms = Uniforms::surface(
+                    let parts = Parts::new(
                         quad,
-                        texture_mapping(surface, *size),
+                        surface.corner_radius,
+                        surface.silhouette,
+                        &surface.effects,
                         surface.tint,
                         surface.opacity,
-                        surface.corner_radius * radius_scale,
+                        scale,
                     );
-                    if let Some(shape) = surface.silhouette.filter(|_| surface.corner_radius > 0.0) {
-                        uniforms.round_to(to_rect(physical_rect(shape, scale)));
-                    }
-                    let passes = shader_passes(shaders, index, &surface.effects, sizes);
-                    if passes.is_empty() {
-                        draws.push(
-                            &mut built,
-                            PassKind::Surface,
-                            Some(TextureSlot::Layer(index)),
-                            damage,
+                    draws.under(&mut built, damage, &parts);
+                    if quad.intersects(damage) {
+                        let mut uniforms = Uniforms::surface(
                             quad,
-                            &uniforms,
+                            texture_mapping(surface, *size),
+                            surface.tint,
+                            surface.opacity,
+                            parts.radius,
                         );
-                    } else {
-                        draws.push_shader(&mut built, shaders, index, damage, quad, &uniforms);
+                        uniforms.grade = parts.grade.to_array();
+                        if let Some(shape) = parts.rounded_to {
+                            uniforms.round_to(shape);
+                        }
+                        let passes = shader_passes(shaders, index, &surface.effects, sizes);
+                        if passes.is_empty() {
+                            draws.push(
+                                &mut built,
+                                PassKind::Surface,
+                                Some(TextureSlot::Layer(index)),
+                                damage,
+                                quad,
+                                &uniforms,
+                            );
+                        } else {
+                            draws.push_shader(&mut built, shaders, index, damage, quad, &uniforms);
+                        }
                     }
+                    draws.over(&mut built, damage, &parts);
                 }
                 Layer::Overlay(_) => continue,
             }
@@ -583,6 +620,225 @@ impl Draws {
             user_offset: user_offset as u32,
             instance: instance as u32,
         });
+    }
+}
+
+/// The largest corner radius and blur, in physical pixels: the limit the GLES renderer clamps to.
+const MAX_RADIUS: f32 = 4096.0;
+
+/// One flat layer's geometry and paint, in physical pixels, as its effects read it.
+struct Parts<'a> {
+    /// The rectangle the layer covers.
+    quad: Rect,
+    /// The corner radius.
+    radius: f32,
+    /// The shape the radius rounds, a shadow that follows the frame and a border run along: the silhouette, else `quad`.
+    shape: Rect,
+    /// The silhouette the layer's own pixels are rounded to, when it has one and the corners are round.
+    rounded_to: Option<Rect>,
+    effects: &'a Effects,
+    tint: Color,
+    /// The layer's own opacity, which each draw of its effects carries.
+    opacity: f32,
+    /// The layer's filter grade, identity when it has none.
+    grade: Grade,
+    /// Physical pixels to a logical one.
+    factor: f32,
+}
+
+impl<'a> Parts<'a> {
+    fn new(
+        quad: Rect,
+        corner_radius: f32,
+        silhouette: Option<Rect>,
+        effects: &'a Effects,
+        tint: Color,
+        opacity: f32,
+        scale: Scale,
+    ) -> Self {
+        let factor = scale.as_f64() as f32;
+        let silhouette = silhouette
+            .filter(|shape| !shape.is_empty())
+            .map(|shape| to_rect(physical_rect(shape, scale)));
+        Self {
+            quad,
+            radius: (corner_radius * factor).clamp(0.0, MAX_RADIUS),
+            shape: silhouette.unwrap_or(quad),
+            rounded_to: silhouette.filter(|_| corner_radius > 0.0),
+            effects,
+            tint,
+            opacity,
+            grade: grade_of(effects),
+            factor,
+        }
+    }
+}
+
+/// The grade of the layer's filter: its saturation, brightness and contrast, in the order [`grade::apply`] runs them.
+fn grade_of(effects: &Effects) -> Grade {
+    effects
+        .passes()
+        .iter()
+        .find_map(|pass| match pass {
+            Pass::Filter(filter) if filter.grades() => Some(Grade {
+                saturate: filter.saturate,
+                brightness: filter.brightness,
+                contrast: filter.contrast,
+                noise: 0.0,
+            }),
+            _ => None,
+        })
+        .unwrap_or(Grade::IDENTITY)
+}
+
+/// `colour` multiplied by `tint`, channel by channel, alpha included, as the solid pass does.
+fn tinted(colour: Color, tint: Color) -> Color {
+    Color::new(
+        colour.r * tint.r,
+        colour.g * tint.g,
+        colour.b * tint.b,
+        colour.a * tint.a,
+    )
+}
+
+/// The draws of a layer's effects around its own pixels, in the paint order of the design: outer shadows, then (below its
+/// content) the background and the inset shadows, and (above it) the borders. Within a kind, list order is paint order.
+///
+/// The layer's backdrop blur and filter blur are not drawn here.
+impl Draws {
+    /// The effects that sit under the layer's content.
+    fn under(&mut self, built: &mut FramePlan, damage: Rect, parts: &Parts<'_>) {
+        for pass in parts.effects.passes() {
+            if let Pass::Shadow(shadow) = pass
+                && !shadow.inset
+                && shadow.opacity > 0.0
+                && shadow.color.a > 0.0
+            {
+                self.shadow(built, damage, parts, shadow);
+            }
+        }
+        for pass in parts.effects.passes() {
+            if let Pass::Background { color } = pass {
+                self.background(built, damage, parts, *color);
+            }
+        }
+        for pass in parts.effects.passes() {
+            if let Pass::Shadow(shadow) = pass
+                && shadow.inset
+                && shadow.opacity > 0.0
+                && shadow.color.a > 0.0
+            {
+                self.inset_shadow(built, damage, parts, shadow);
+            }
+        }
+    }
+
+    /// The effects that sit over the layer's content.
+    fn over(&mut self, built: &mut FramePlan, damage: Rect, parts: &Parts<'_>) {
+        for pass in parts.effects.passes() {
+            if let Pass::Border(border) = pass {
+                self.border(built, damage, parts, border);
+            }
+        }
+    }
+
+    /// An outer shadow: the shape moved by the offset and grown by the spread, full strength at its edge and fading
+    /// outwards over the blur.
+    ///
+    /// The offset and the spread are whole pixels, as the GLES renderer rounds them, and the shader finds the shape by
+    /// shrinking the quad by the blur it was grown by.
+    fn shadow(&mut self, built: &mut FramePlan, damage: Rect, parts: &Parts<'_>, shadow: &Shadow) {
+        let factor = parts.factor;
+        let blur = (shadow.blur * factor).clamp(1.0, MAX_RADIUS);
+        let grow = blur.round() as i32 + (shadow.spread * factor).round() as i32;
+        let offset = |axis: f64| (axis as f32 * factor).round() as i32;
+        let base = if shadow.frame { parts.shape } else { parts.quad };
+        let quad = Rect::new(
+            base.x + offset(shadow.offset.x) - grow,
+            base.y + offset(shadow.offset.y) - grow,
+            (base.width as i32 + 2 * grow).max(0) as u32,
+            (base.height as i32 + 2 * grow).max(0) as u32,
+        );
+        if quad.is_empty() || !quad.intersects(damage) {
+            return;
+        }
+        let colour = grade::apply(parts.grade, shadow.color);
+        let mut uniforms = Uniforms::solid(quad, colour, Color::WHITE, shadow.opacity * parts.opacity);
+        uniforms.corner = parts.radius;
+        uniforms.params = [blur, blur, blur, 0.0];
+        self.push(built, PassKind::Shadow, None, damage, quad, &uniforms);
+    }
+
+    /// The background: one colour filling the layer, rounded like its content.
+    fn background(&mut self, built: &mut FramePlan, damage: Rect, parts: &Parts<'_>, color: Color) {
+        if color.a <= 0.0 || !parts.quad.intersects(damage) {
+            return;
+        }
+        let mut uniforms = Uniforms::solid(parts.quad, grade::apply(parts.grade, color), parts.tint, parts.opacity);
+        uniforms.corner = parts.radius;
+        if let Some(shape) = parts.rounded_to {
+            uniforms.round_to(shape);
+        }
+        self.push(built, PassKind::Solid, None, damage, parts.quad, &uniforms);
+    }
+
+    /// An inset shadow, inside the layer's shape and clipped to the layer's rectangle.
+    fn inset_shadow(&mut self, built: &mut FramePlan, damage: Rect, parts: &Parts<'_>, shadow: &Shadow) {
+        let Some(visible) = parts.quad.intersection(damage) else {
+            return;
+        };
+        let factor = parts.factor;
+        let colour = tinted(grade::apply(parts.grade, shadow.color), parts.tint);
+        let offset = [shadow.offset.x as f32 * factor, shadow.offset.y as f32 * factor];
+        let uniforms = Uniforms::inset_shadow(
+            parts.shape,
+            offset,
+            (shadow.blur * factor).clamp(0.0, MAX_RADIUS),
+            shadow.spread * factor,
+            colour,
+            shadow.opacity * parts.opacity,
+            parts.radius,
+        );
+        self.push(built, PassKind::InsetShadow, None, visible, parts.shape, &uniforms);
+    }
+
+    /// A border: the band between `offset` and `offset + width` of signed distance from the shape's edge, outside it or,
+    /// for an inset one, inside it. The quad is the shape grown by how far the ring reaches, and a pixel more for the
+    /// antialiased fringe.
+    fn border(&mut self, built: &mut FramePlan, damage: Rect, parts: &Parts<'_>, border: &Border) {
+        let width = border.width * parts.factor;
+        if width <= 0.0 || border.color.a <= 0.0 {
+            return;
+        }
+        let offset = border.offset * parts.factor;
+        let (near, far) = if border.inset {
+            (-(offset + width), -offset)
+        } else {
+            (offset, offset + width)
+        };
+        let reach = if border.inset { -offset } else { offset + width };
+        let grow = reach.max(0.0).ceil() as i32 + 1;
+        let shape = parts.shape;
+        let quad = Rect::new(
+            shape.x - grow,
+            shape.y - grow,
+            shape.width + 2 * grow as u32,
+            shape.height + 2 * grow as u32,
+        );
+        if !quad.intersects(damage) {
+            return;
+        }
+        let colour = grade::apply(parts.grade, border.color);
+        let uniforms = Uniforms::border(
+            quad,
+            grow as f32,
+            (near, far),
+            colour,
+            parts.tint,
+            parts.opacity,
+            parts.radius,
+        );
+        self.push(built, PassKind::Border, None, damage, quad, &uniforms);
     }
 }
 
@@ -903,5 +1159,198 @@ mod tests {
         assert_eq!(batch.uniforms.len(), 2 * UNIFORM_STRIDE);
         assert_eq!(batch.user.len(), 2 * UNIFORM_STRIDE);
         assert_eq!(batch.instances.len(), 2 * INSTANCE_FLOATS);
+    }
+
+    fn border(width: f32, colour: Color) -> Pass {
+        Pass::Border(gnoblin_render::Border {
+            width,
+            offset: 0.0,
+            inset: false,
+            color: colour,
+        })
+    }
+
+    fn shadow(inset: bool, blur: f32, opacity: f32) -> Pass {
+        Pass::Shadow(Shadow {
+            offset: gnoblin_render::Vec3::ZERO,
+            blur,
+            spread: 0.0,
+            opacity,
+            color: Color::BLACK,
+            frame: false,
+            inset,
+        })
+    }
+
+    /// A frame whose damage is `damage` and whose one clear layer sits at (16, 16, 16, 16) with `passes`.
+    fn effects_frame(damage: Rect, passes: Vec<Pass>) -> OutputFrame {
+        let mut frame = solid_frame(&[damage], &[]);
+        let mut layer = Solid::new(Rect::new(16, 16, 16, 16), Color::from_rgba8(10, 20, 30, 255));
+        for pass in passes {
+            layer.effects.push(pass).expect("a pass");
+        }
+        frame.push_layer(Layer::Solid(layer));
+        frame
+    }
+
+    fn planned_effects(frame: &OutputFrame) -> FramePlan {
+        plan(
+            frame,
+            Scale::IDENTITY,
+            Size::new(64, 64),
+            &TextureSizes::default(),
+            &Shaders::default(),
+        )
+    }
+
+    /// The float at `index` of the block of draw `draw`: the block's members are `vec4`s, so the colour is at 8 and the
+    /// grade at 20.
+    fn block_float(planned: &FramePlan, draw: usize, index: usize) -> f32 {
+        let at = draw * UNIFORM_STRIDE + index * 4;
+        f32::from_ne_bytes(planned.uniforms[at..at + 4].try_into().expect("four bytes"))
+    }
+
+    #[test]
+    fn a_layers_effects_are_drawn_in_paint_order_whatever_the_list_order() {
+        let frame = effects_frame(
+            Rect::new(0, 0, 64, 64),
+            vec![
+                border(2.0, Color::WHITE),
+                shadow(true, 4.0, 1.0),
+                Pass::Background { color: Color::WHITE },
+                shadow(false, 4.0, 1.0),
+            ],
+        );
+        let kinds: Vec<PassKind> = planned_effects(&frame).draws.iter().map(|draw| draw.kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                PassKind::Shadow,
+                PassKind::Solid,
+                PassKind::InsetShadow,
+                PassKind::Solid,
+                PassKind::Border
+            ],
+            "outer shadow, background, inset shadow, the layer's own colour, border"
+        );
+    }
+
+    #[test]
+    fn within_one_kind_the_list_is_the_paint_order() {
+        let frame = effects_frame(
+            Rect::new(0, 0, 64, 64),
+            vec![
+                border(2.0, Color::from_rgba8(255, 0, 0, 255)),
+                border(1.0, Color::BLACK),
+            ],
+        );
+        let planned = planned_effects(&frame);
+        // The layer's colour is draw 0; the red border is the first border and the black one is drawn over it.
+        assert_eq!(block_float(&planned, 1, 8), 1.0, "the first border is red");
+        assert_eq!(block_float(&planned, 2, 8), 0.0, "the second is black");
+    }
+
+    #[test]
+    fn an_effect_the_damage_does_not_touch_is_not_planned() {
+        // The shadow reaches 4 + 4 pixels around the layer, so a damage 12 pixels away misses it and the layer.
+        let frame = effects_frame(
+            Rect::new(0, 0, 4, 4),
+            vec![shadow(false, 4.0, 1.0), border(2.0, Color::WHITE)],
+        );
+        assert!(planned_effects(&frame).draws.is_empty(), "nothing reaches the damage");
+        // Damage that only the shadow reaches draws the shadow alone.
+        let frame = effects_frame(Rect::new(9, 20, 4, 4), vec![shadow(false, 4.0, 1.0)]);
+        let kinds: Vec<PassKind> = planned_effects(&frame).draws.iter().map(|draw| draw.kind).collect();
+        assert_eq!(kinds, [PassKind::Shadow]);
+    }
+
+    #[test]
+    fn an_effect_that_draws_nothing_plans_nothing() {
+        let frame = effects_frame(
+            Rect::new(0, 0, 64, 64),
+            vec![
+                border(0.0, Color::WHITE),
+                border(2.0, Color::TRANSPARENT),
+                shadow(false, 4.0, 0.0),
+                shadow(true, 4.0, 1.0),
+                Pass::Background {
+                    color: Color::TRANSPARENT,
+                },
+                Pass::Filter(gnoblin_render::FilterParams::IDENTITY),
+            ],
+        );
+        let kinds: Vec<PassKind> = planned_effects(&frame).draws.iter().map(|draw| draw.kind).collect();
+        assert_eq!(
+            kinds,
+            [PassKind::InsetShadow, PassKind::Solid],
+            "only the visible inset shadow and the layer itself"
+        );
+    }
+
+    #[test]
+    fn a_filter_grades_the_colours_of_every_effect_and_leaves_the_pass_to_grade_a_texture() {
+        let filter = gnoblin_render::FilterParams {
+            blur: 0.0,
+            saturate: 0.0,
+            brightness: 0.5,
+            contrast: 1.0,
+        };
+        let frame = effects_frame(
+            Rect::new(0, 0, 64, 64),
+            vec![border(2.0, Color::from_rgba8(255, 0, 0, 255)), Pass::Filter(filter)],
+        );
+        let planned = planned_effects(&frame);
+        let want = grade::apply(
+            Grade {
+                saturate: 0.0,
+                brightness: 0.5,
+                contrast: 1.0,
+                noise: 0.0,
+            },
+            Color::from_rgba8(255, 0, 0, 255),
+        );
+        // Draw 1 is the border: its colour is graded here, and its block carries the identity grade.
+        assert_eq!(block_float(&planned, 1, 8), want.r);
+        assert_eq!(block_float(&planned, 1, 9), want.g);
+        assert_eq!(
+            block_float(&planned, 1, 20),
+            1.0,
+            "a border is not graded by the shader"
+        );
+        // Draw 0 is the layer's own colour, also graded on the CPU.
+        let own = grade::apply(
+            Grade {
+                saturate: 0.0,
+                brightness: 0.5,
+                contrast: 1.0,
+                noise: 0.0,
+            },
+            Color::from_rgba8(10, 20, 30, 255),
+        );
+        assert_eq!(block_float(&planned, 0, 8), own.r);
+    }
+
+    #[test]
+    fn effects_are_planned_at_physical_sizes() {
+        let mut frame = solid_frame(&[Rect::new(0, 0, 64, 64)], &[]);
+        let mut layer = Solid::new(Rect::new(8, 8, 8, 8), Color::BLACK);
+        layer.effects.push(border(2.0, Color::WHITE)).expect("a border");
+        frame.push_layer(Layer::Solid(layer));
+        let planned = plan(
+            &frame,
+            Scale::new(2, 1),
+            Size::new(64, 64),
+            &TextureSizes::default(),
+            &Shaders::default(),
+        );
+        // The border draw is the second: the layer's rectangle is 16 pixels wide and the band is 4 wide, so the quad is
+        // grown by 4 + 1 on each side.
+        let at = INSTANCE_FLOATS;
+        assert_eq!(&planned.instances[at..at + 4], &[11.0, 11.0, 26.0, 26.0]);
+        assert_eq!(
+            block_float(&planned, 1, 19),
+            4.0,
+            "the band's far edge is 4 physical pixels out"
+        );
     }
 }

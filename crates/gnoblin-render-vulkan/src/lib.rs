@@ -4,8 +4,8 @@
 //! This is the third implementation of the frame description (see `gnoblin-render-frame`), built on `ash` and
 //! `naga`. Slice 1 is the offscreen renderer:
 //! it draws what the software renderer draws, plus the rounded corners the shared shaders
-//! already clip, and it reads the result back. It does not present, import dmabufs or draw the
-//! shipped effects (blur, shadow, border) yet; the design note lists what is next and in what order.
+//! already clip, and it reads the result back. It does not present, import dmabufs or draw a blur
+//! yet; the design note lists what is next and in what order.
 //!
 //! # What it draws
 //!
@@ -14,6 +14,9 @@
 //!   source rectangle and scaled with linear filtering. The pixels are premultiplied, as the
 //!   protocol says a shm buffer's are, and are blended with `ONE, ONE_MINUS_SRC_ALPHA`.
 //! - **Opacity** and **tint** per layer, in the same shader the GLES renderer runs.
+//! - **Effects**: outer and inset shadows, a background, borders and a filter's grade, in the paint order of
+//!   the design note (section 6.1) and with the same shaders as GLES. A solid colour is graded on the CPU by
+//!   [`grade::apply`](gnoblin_render_frame::grade::apply) and a layer's pixels in the fragment stage.
 //! - **The portal overlay and the cursor**, nearest-sampled, with the pixels under each saved
 //!   so a capture can leave the overlay (always) and the cursor (when asked) out.
 //! - **Output scale**: a frame's rectangles are logical and the target is physical, converted
@@ -21,7 +24,7 @@
 //! - **Damage**: only the damage is repainted. Each rectangle is a scissor, and overlapping
 //!   rectangles are made disjoint first so a translucent layer is never blended twice.
 //!
-//! Layers carrying a 3D model, the blur and shadow passes and a buffer's
+//! Layers carrying a 3D model, the backdrop blur, a filter's blur and a buffer's
 //! `set_buffer_transform` are not drawn, which is what the GLES renderer does for the last of
 //! them and what the design note schedules for the others. The `shader` pass is drawn (below).
 //!

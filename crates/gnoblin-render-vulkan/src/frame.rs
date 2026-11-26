@@ -1324,6 +1324,9 @@ impl Vulkan {
                     let pipeline = match draw.kind {
                         PassKind::Solid => self.pipelines.solid,
                         PassKind::Surface => self.pipelines.surface,
+                        PassKind::Shadow => self.pipelines.shadow,
+                        PassKind::InsetShadow => self.pipelines.inset_shadow,
+                        PassKind::Border => self.pipelines.border,
                         PassKind::User(key) => match bindings.pipelines.iter().find(|(held, _)| *held == key) {
                             Some((_, pipeline)) => *pipeline,
                             None => continue,
@@ -1357,7 +1360,11 @@ impl Vulkan {
                 }
                 let key = match draw.kind {
                     PassKind::User(key) => Some(key),
-                    PassKind::Solid | PassKind::Surface => None,
+                    PassKind::Solid
+                    | PassKind::Surface
+                    | PassKind::Shadow
+                    | PassKind::InsetShadow
+                    | PassKind::Border => None,
                 };
                 // The draw is covered by this block's contract: the buffers, sets and scissor are the ones bound above.
                 stamps.bracket(device, cmd, self.recorder.query.as_ref(), key, || {

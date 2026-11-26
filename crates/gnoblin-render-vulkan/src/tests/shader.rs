@@ -662,3 +662,27 @@ fn a_frame_with_more_sources_than_the_cache_holds_refuses_the_extras_and_builds_
     }
     clean(&vulkan);
 }
+
+#[test]
+fn a_filter_grade_is_applied_after_a_shader_pass() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let mut frame = frame(Color::BLACK, SIZE);
+    let mut layer = Solid::new(Rect::new(8, 8, 16, 16), colour(255, 0, 0, 255));
+    layer.effects.push(pass(SWAP, &[])).expect("a pass");
+    layer
+        .effects
+        .push(Pass::Filter(gnoblin_render::FilterParams {
+            blur: 0.0,
+            saturate: 0.0,
+            brightness: 0.5,
+            contrast: 1.0,
+        }))
+        .expect("a filter");
+    frame.push_layer(Layer::Solid(layer));
+    let image = draw(&mut vulkan, &frame);
+    // The swap makes the layer green; the grade then takes the colour to the grey of its luma, halved.
+    let grey = (0.715_f32 * 0.5 * 255.0).round() as u8;
+    assert_pixel(&image, (12, 12), [grey, grey, grey, 255], 1);
+    assert_pixel(&image, (2, 2), [0, 0, 0, 255], 0);
+    clean(&vulkan);
+}
