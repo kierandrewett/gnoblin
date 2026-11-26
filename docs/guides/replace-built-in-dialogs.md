@@ -61,6 +61,8 @@ loop {
 
 Replace the version with the one your Gnoblin build serves.
 
+Only the `gnoblin-client` crate exposes slot claims. The TypeScript and Python SDKs do not wrap `claim_slot`, so this example has no TypeScript or Python equivalent.
+
 A second program that claims `portal.ui` while one holds it is refused. Only the
 holder gives the slot back with `release_slot`, and a holder that disconnects
 gives it back too. The built-in dialog serves again from then on.
