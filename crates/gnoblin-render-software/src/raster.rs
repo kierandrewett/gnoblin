@@ -232,7 +232,10 @@ impl Cast {
     /// The geometry is the GLES renderer's: the quad is `base` moved by the offset and grown by the spread and by the
     /// blur rounded to a pixel, and `shadow.wgsl` finds the shape by insetting that quad by the unrounded blur, so the
     /// shape is the quad's inner rectangle and not exactly `base` grown by the spread.
-    pub(crate) fn outer(held: &Shadow, base: Area, radius: f32, scale: Scale) -> Self {
+    ///
+    /// `fade` is the layer's opacity, which the shadow takes as CSS's `box-shadow` does: a half-transparent window casts a
+    /// half-strength shadow.
+    pub(crate) fn outer(held: &Shadow, base: Area, radius: f32, fade: f32, scale: Scale) -> Self {
         let factor = scale.as_f64() as f32;
         let blur = (held.blur * factor).clamp(1.0, MAX_RADIUS);
         let spread = (held.spread * factor).round() as i32;
@@ -258,7 +261,7 @@ impl Cast {
         Self {
             quad,
             colour: held.color,
-            alpha: held.color.a * held.opacity,
+            alpha: held.color.a * held.opacity * fade,
             blur,
             kind: Kind::Outer(shape),
         }
@@ -558,6 +561,7 @@ mod tests {
             &shadow(8.0, 0.0, (0.0, 0.0)),
             area(16, 16, 16, 16),
             0.0,
+            1.0,
             Scale::IDENTITY,
         );
         cast.draw(&mut picture);
@@ -578,7 +582,13 @@ mod tests {
     #[test]
     fn a_shadow_is_smooth_not_stepped() {
         let mut picture = patch(area(0, 0, 64, 8), [255, 255, 255, 255]);
-        let cast = Cast::outer(&shadow(24.0, 0.0, (0.0, 0.0)), area(32, 0, 32, 8), 0.0, Scale::IDENTITY);
+        let cast = Cast::outer(
+            &shadow(24.0, 0.0, (0.0, 0.0)),
+            area(32, 0, 32, 8),
+            0.0,
+            1.0,
+            Scale::IDENTITY,
+        );
         cast.draw(&mut picture);
         let row: Vec<u8> = (8..32).map(|x| pixel(&picture, x, 4)[0]).collect();
         assert!(
@@ -593,12 +603,35 @@ mod tests {
     }
 
     #[test]
+    fn a_shadow_takes_the_layers_opacity() {
+        let drawn = |fade: f32| {
+            let mut picture = patch(area(0, 0, 48, 48), [255, 255, 255, 255]);
+            Cast::outer(
+                &shadow(8.0, 0.0, (0.0, 0.0)),
+                area(16, 16, 16, 16),
+                0.0,
+                fade,
+                Scale::IDENTITY,
+            )
+            .draw(&mut picture);
+            pixel(&picture, 12, 24)[0]
+        };
+        let (whole, half) = (255 - drawn(1.0), 255 - drawn(0.5));
+        assert!(whole > 40, "the shadow is there at full opacity: {whole}");
+        assert!(
+            (i32::from(whole) - 2 * i32::from(half)).abs() <= 2,
+            "half the opacity, half the shadow: {whole} against {half}"
+        );
+    }
+
+    #[test]
     fn a_shadow_offset_and_spread_move_and_grow_its_shape() {
         let mut picture = patch(area(0, 0, 48, 48), [255, 255, 255, 255]);
         let cast = Cast::outer(
             &shadow(1.0, 2.0, (4.0, 0.0)),
             area(16, 16, 16, 16),
             0.0,
+            1.0,
             Scale::IDENTITY,
         );
         cast.draw(&mut picture);

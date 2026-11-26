@@ -5,7 +5,8 @@
 //! [`blur`], and written back over the pixels the frame damaged. The order is the GPU renderers' (`gles`'s
 //! `draw_parts`):
 //!
-//! 1. The drop shadows, under everything the layer draws and not faded by its opacity.
+//! 1. The drop shadows, under everything the layer draws. A shadow takes the layer's opacity, as CSS does, and is not part
+//!    of the layer's group: it is faded by the opacity on its own.
 //! 2. The backdrop blur, which replaces the pixels behind the layer with their blur and grade.
 //! 3. The layer's own pixels, which Pixman blends with the layer's tint and opacity.
 //! 4. The layer's corners and, for a layer with a blur, its opacity: the layer is drawn square into the frame and
@@ -199,7 +200,7 @@ pub(crate) fn paint(
     let blurred = flat && effects.passes().iter().any(|pass| blurs(&pass));
     if flat {
         warn_unsupported(effects);
-        shadows(canvas, effects, dst, outline, radius)?;
+        shadows(canvas, effects, (dst, outline), radius, opacity)?;
     }
     // A layer with a backdrop blur is a group: it is drawn at full strength and faded as one.
     let group = blurred && opacity < 1.0;
@@ -330,14 +331,16 @@ fn under_content(
     canvas.write(&patch, need)
 }
 
-/// Draws the layer's drop shadows behind it, in one read of the output and one write.
+/// Draws the layer's drop shadows behind it, in one read of the output and one write. `place` is the layer's rectangle and
+/// the rectangle a shadow that asks for the frame follows; `opacity` is the layer's, which each shadow takes.
 fn shadows(
     canvas: &mut Canvas<'_, '_>,
     effects: &gnoblin_render::Effects,
-    dst: Area,
-    outline: Area,
+    place: (Area, Area),
     radius: f32,
+    opacity: f32,
 ) -> Result<(), RenderError> {
+    let (dst, outline) = place;
     let casts: Vec<Cast> = effects
         .passes()
         .iter()
@@ -346,6 +349,7 @@ fn shadows(
                 held,
                 if held.frame { outline } else { dst },
                 radius,
+                opacity,
                 canvas.scale,
             )),
             _ => None,
@@ -687,6 +691,59 @@ mod tests {
             levels.len() >= 18,
             "24 pixels of blur are many levels, not a handful of steps: {levels:?}"
         );
+    }
+
+    /// A shadow's darkness at the pixel beside a 32 pixel layer drawn at `opacity`, as a count of levels below white.
+    fn shadow_levels(opacity: f32, blurred: bool) -> u8 {
+        let mut effects = vec![soft_shadow(false)];
+        if blurred {
+            effects.push(Pass::Blur(BlurParams::default()));
+        }
+        let surface = Surface {
+            source: SurfaceSource::Snapshot(Arc::new(
+                Image::new(Size::new(32, 32), 128, [200, 100, 50, 255].repeat(32 * 32)).expect("a packed image"),
+            )),
+            src: gnoblin_types::RectF {
+                x: 0.0,
+                y: 0.0,
+                width: 32.0,
+                height: 32.0,
+            },
+            dst: Rect::new(32, 32, 32, 32),
+            transform: Transform::Normal,
+            opacity,
+            tint: Color::WHITE,
+            corner_radius: 0.0,
+            silhouette: None,
+            effects: chain(effects),
+            model: None,
+            secure: false,
+        };
+        let mut frame = frame_of(Color::WHITE, Vec::new());
+        frame.push_layer(Layer::Surface(surface));
+        let mut software = Software::new(SIZE).expect("a software renderer");
+        software.draw(&frame, Scale::IDENTITY).expect("drawn");
+        255 - software
+            .screenshot()
+            .expect("a readback")
+            .colour_at(30, 48)
+            .expect("a pixel")[0]
+    }
+
+    /// An outer shadow takes the layer's opacity, as CSS does, on the plain path and on the backdrop blur's.
+    #[test]
+    fn a_shadow_takes_the_layers_opacity() {
+        for blurred in [false, true] {
+            let (whole, half) = (shadow_levels(1.0, blurred), shadow_levels(0.5, blurred));
+            assert!(
+                whole > 20,
+                "the shadow is drawn at full opacity (blurred: {blurred}): {whole}"
+            );
+            assert!(
+                (i32::from(whole) - 2 * i32::from(half)).abs() <= 2,
+                "half the opacity casts half the shadow (blurred: {blurred}): {whole} against {half}"
+            );
+        }
     }
 
     #[test]
