@@ -18,7 +18,6 @@ use super::answer;
 use super::dialog;
 use crate::nodes;
 use crate::ui::classes::enumeration;
-use crate::ui::update::now_ms;
 use crate::ui::widget::{Cid, Ui};
 
 /// What the service keeps of the window an alert is open for.
@@ -174,19 +173,10 @@ impl Default for Alerts {
     }
 }
 
-/// The alert's clock, in milliseconds: the shell's, or the toolkit's.
+/// The alert's clock, in milliseconds: the shell's, or the core's (see `Ui::core_now`).
 fn clock(ui: &Ui) -> f64 {
     let source = ui.shell.borrow().alerts.now.clone();
-    match source {
-        Some(source) => source
-            .call(0, &[])
-            .and_then(|value| value.double())
-            .unwrap_or_else(|fail| {
-                ui.warn(&format!("the alert's clock threw: {fail}"));
-                now_ms()
-            }),
-        None => now_ms(),
-    }
+    ui.clock_ms(source.as_ref(), "the alert's clock")
 }
 
 /// The window `client` as the compositor's tree has it.

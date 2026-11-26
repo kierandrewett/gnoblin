@@ -11,7 +11,6 @@ use super::client::{Hook, Win};
 use super::{CloseFade, FrameId, en};
 use crate::animation::engine::motion;
 use crate::animation::staging::Prop;
-use crate::ui::update::now_ms;
 use crate::ui::widget::Ui;
 
 /// The fade on close: out over 0.18 s, as the window shrinks to 0.92 of its size.
@@ -31,7 +30,7 @@ fn gesture_key(gesture: u32) -> (&'static str, &'static str) {
 }
 
 impl Ui {
-    /// The clock a frame's actions are timed by, in milliseconds: the frame's own, the decorations', or the toolkit's.
+    /// The clock a frame's actions are timed by, in milliseconds: the frame's own, the decorations', or the core's (see `Ui::core_now`).
     pub(crate) fn frame_now(&self, frame: FrameId) -> f64 {
         let clock = {
             let world = self.frames.borrow();
@@ -41,16 +40,7 @@ impl Ui {
                 .and_then(|rec| rec.now.clone())
                 .or_else(|| world.deco.now.clone())
         };
-        match clock {
-            Some(clock) => clock
-                .call(0, &[])
-                .and_then(|value| value.double())
-                .unwrap_or_else(|fail| {
-                    self.warn(&format!("the clock of a window frame threw: {}", fail.message));
-                    now_ms()
-                }),
-            None => now_ms(),
-        }
+        self.clock_ms(clock.as_ref(), "the clock of a window frame")
     }
 
     /// Whether the window of the frame is fading out to be closed, or has been asked to close and has not gone yet.

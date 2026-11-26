@@ -646,7 +646,6 @@ fn wait_keeps_the_alert_away_until_the_window_answers_and_stops_answering_again(
 }
 
 #[test]
-#[ignore = "vrnw: needs Force quit to arm and kill the window's process: after 1200 ms of the shell's clock no kill call is made"]
 fn force_quit_does_nothing_until_the_alert_is_armed_then_kills_the_windows_process_and_closes() {
     let mut rig = world(1, FAST_ALERTS);
     stuck(&mut rig, 3, true);
@@ -666,7 +665,6 @@ fn force_quit_does_nothing_until_the_alert_is_armed_then_kills_the_windows_proce
 }
 
 #[test]
-#[ignore = "vrnw: needs Force quit to arm and kill the window's process: after 1200 ms of the shell's clock a press on it makes no kill call"]
 fn a_press_on_a_button_works_like_the_key_and_a_press_on_the_card_keeps_the_keyboard_on_it() {
     let mut rig = world(1, FAST_ALERTS);
     stuck(&mut rig, 3, true);

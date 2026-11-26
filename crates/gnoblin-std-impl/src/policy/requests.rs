@@ -36,7 +36,6 @@ use crate::object::client::{client_node, optional_client_node};
 use crate::object::record::{edit, enumeration, look, record};
 use crate::object::with_lib;
 use crate::state::lookup_quiet;
-use crate::ui::update::now_ms;
 use crate::ui::{Ui, ui_of};
 
 /// How near two sides of a window a resize request's pointer must be for the corner between them to move, in pixels.
@@ -130,19 +129,10 @@ struct ClientAsk {
     handled: bool,
 }
 
-/// The clock the drag's limit runs by, in milliseconds: the shell's, or the toolkit's.
+/// The clock the drag's limit runs by, in milliseconds: the shell's, or the core's (see `Ui::core_now`).
 fn clock(ui: &Ui) -> f64 {
     let source = ui.policy.borrow().requests.now.clone();
-    match source {
-        Some(source) => source
-            .call(0, &[])
-            .and_then(|value| value.double())
-            .unwrap_or_else(|fail| {
-                ui.warn(&format!("the clock of the window requests threw: {fail}"));
-                now_ms()
-            }),
-        None => now_ms(),
-    }
+    ui.clock_ms(source.as_ref(), "the clock of the window requests")
 }
 
 /// Whether the answers run.

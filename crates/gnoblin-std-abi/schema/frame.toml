@@ -793,7 +793,7 @@ type = "bool"
 since = "0.2.0"
 readonly = true
 
-# The clock the double click and the fade are timed by, in milliseconds. Left out, the toolkit's.
+# The clock the double click and the fade are timed by, in milliseconds. Left out, the core's (`timers.now`), the clock the toolkit's wake timer runs by.
 [[object.property]]
 name = "now"
 type = "callback:time_source"
@@ -1332,7 +1332,7 @@ type = "double"
 since = "0.2.0"
 default = 0.0
 
-# The clock the frames time double clicks and fades by, in milliseconds. Left out, the toolkit's.
+# The clock the frames time double clicks and fades by, in milliseconds. Left out, the core's (`timers.now`), the clock the toolkit's wake timer runs by.
 [[object.property]]
 name = "now"
 type = "callback:time_source"

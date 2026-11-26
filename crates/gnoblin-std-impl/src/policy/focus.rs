@@ -13,14 +13,12 @@
 use std::rc::Rc;
 
 use gnoblin_core::Subscription;
-use gnoblin_core::objects::Timers;
 use gnoblin_object::server::Builder;
 use gnoblin_object::{Closure, Fail, Res, Val};
 
 use super::stack;
 use crate::nodes;
 use crate::object::record::{enumeration, look, record};
-use crate::ui::update::now_ms;
 use crate::ui::{Ui, ui_of};
 
 /// How long a pointer must rest over a window before `change_on_pointer_rest` focuses it, in milliseconds.
@@ -266,8 +264,6 @@ struct FocusWaiting {
 pub(crate) struct Focus {
     started: bool,
     now: Option<Closure>,
-    /// The core's clock and timers, held from `start` to `stop`: what the delays are measured by when the shell gave no clock.
-    timers: Option<Rc<Timers>>,
     /// The windows that wait, in the order they began to.
     pending: Vec<(u64, FocusWaiting)>,
     /// The window whose button is held, so focus and rest wait for the release.
@@ -275,29 +271,10 @@ pub(crate) struct Focus {
     listening: Vec<Subscription>,
 }
 
-/// The policy's clock, in milliseconds: the shell's, or the core's (`gnoblin.timers.now`). The toolkit wakes the policy by a core timer, so
-/// a delay is due on the clock that wakes it: whatever moves the core's clock moves the policy's.
+/// The policy's clock, in milliseconds: the shell's, or the core's (see `Ui::core_now`).
 fn clock(ui: &Ui) -> f64 {
-    let (source, timers) = {
-        let policy = ui.policy.borrow();
-        (policy.focus.now.clone(), policy.focus.timers.clone())
-    };
-    if let Some(source) = source {
-        return source
-            .call(0, &[])
-            .and_then(|value| value.double())
-            .unwrap_or_else(|fail| {
-                ui.warn(&format!("the focus policy's clock threw: {fail}"));
-                now_ms()
-            });
-    }
-    let Some(timers) = timers else {
-        return now_ms();
-    };
-    timers.now().unwrap_or_else(|fail| {
-        ui.warn(&format!("the focus policy could not read the core's clock: {fail}"));
-        now_ms()
-    })
+    let source = ui.policy.borrow().focus.now.clone();
+    ui.clock_ms(source.as_ref(), "the focus policy's clock")
 }
 
 /// The settings now, or none when the seat's are not ones the library knows (that is reported).
@@ -318,8 +295,6 @@ fn start(ui: &Rc<Ui>) -> Res<()> {
     }
     // The library holds the windows that were there before the shell started, so a window that comes later is told from them.
     look(ui.ctx, |_| Ok(()))?;
-    // The delays are measured on the core's clock, the one the toolkit's wake timer runs by.
-    let timers = Rc::new(Timers::get(&ui.g.objects().map_err(crate::ui::tree::core_fail)?)?);
     let weak = Rc::downgrade(ui);
     let created =
         ui.g.on_client_created({
@@ -341,7 +316,6 @@ fn start(ui: &Rc<Ui>) -> Res<()> {
     let mut policy = ui.policy.borrow_mut();
     policy.focus.started = true;
     policy.focus.listening = vec![created, gone];
-    policy.focus.timers = Some(timers);
     drop(policy);
     ui.schedule();
     Ok(())
@@ -354,7 +328,6 @@ fn stop(ui: &Rc<Ui>) {
         policy.focus.started = false;
         policy.focus.pending.clear();
         policy.focus.pressed = None;
-        policy.focus.timers = None;
         std::mem::take(&mut policy.focus.listening)
     };
     for subscription in listening {
