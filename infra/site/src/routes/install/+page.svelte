@@ -82,10 +82,13 @@
 {#snippet configure()}
     <h3>Configure Gnoblin</h3>
     <p>
-        Write your shell in TypeScript, Python or Rust. Run <code class="inline">gnoblinctl config init</code> to write
-        a starter <code class="inline">~/.config/gnoblin/shell.ts</code>; a Python shell is
-        <code class="inline">shell.py</code> in the same directory, and a Rust shell is a library you build and run with
-        <code class="inline">gnoblin</code>.
+        Write your shell in TypeScript, Python or Rust. One command writes a starter in each:
+        <code class="inline">gnoblinctl config init --language typescript</code> writes
+        <code class="inline">~/.config/gnoblin/shell.ts</code>,
+        <code class="inline">gnoblinctl config init --language python</code> writes
+        <code class="inline">shell.py</code> in the same directory, and
+        <code class="inline">gnoblinctl config init --language rust</code> writes a Cargo project that builds to a
+        library for <code class="inline">gnoblin</code> to run. The default is TypeScript.
     </p>
     <MoreLink href={docsHref("recipes/complete-starter-config")}>Starter config</MoreLink>
 {/snippet}

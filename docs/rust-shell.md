@@ -152,6 +152,37 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 Like the other shells, the library is the whole configuration: it registers everything every time it starts, and a reload
 replaces it.
 
+### Start from the full default
+
+To start from the whole default desktop instead of a few lines, run this once:
+
+```sh
+gnoblinctl config init --language rust
+```
+
+It writes the project above, with the default desktop as its `src/lib.rs`, to `~/.config/gnoblin/rust-shell`
+(`$XDG_CONFIG_HOME/gnoblin/rust-shell` when that is set), and prints the commands to build it and to make `gnoblin` find
+the library:
+
+```text
+ok  Rust shell project written: /home/me/.config/gnoblin/rust-shell
+ok  written: /home/me/.config/gnoblin/rust-shell/Cargo.toml
+ok  written: /home/me/.config/gnoblin/rust-shell/src/lib.rs
+
+Next:
+  1. Open /home/me/.config/gnoblin/rust-shell/src/lib.rs in your editor.
+  2. Build it with `cargo build --manifest-path /home/me/.config/gnoblin/rust-shell/Cargo.toml`.
+  3. Run it once, from a terminal, with `gnoblin /home/me/.config/gnoblin/rust-shell/target/debug/libmyshell.so`.
+  4. To run it at every start, copy the library into the config directory with `cp /home/me/.config/gnoblin/rust-shell/target/debug/libmyshell.so /home/me/.config/gnoblin/shell.so`, or set `[shell] path = "/home/me/.config/gnoblin/rust-shell/target/debug/libmyshell.so"` in /home/me/.config/gnoblin/config.toml.
+```
+
+The `Cargo.toml` it writes depends on the `gnoblin-core` and `gnoblin-std` crates of the Gnoblin repository on GitHub. To
+depend on a checkout instead, as in the `path` lines above, add `--sdk /path/to/gnoblin`.
+
+The project is its own Cargo workspace, and `config init` never replaces it. A `Cargo.toml` or a `src/lib.rs` already there
+stops it, and `--force` writes the starter over both. The [recipe](/recipes/complete-starter-config) shows `src/lib.rs` in
+full, and [`gnoblinctl`](gnoblinctl.md#write-a-starter-config) has the other languages.
+
 ## Run it
 
 ```sh

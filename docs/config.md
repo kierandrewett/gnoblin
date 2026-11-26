@@ -62,10 +62,19 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 
 ## First config
 
-Write a commented starter shell file (`shell.ts`) and the editor files that give you completion, then reload the session:
+Write a commented starter shell in the language you pick. All three are the stock desktop as statements against the shell's
+objects, and none needs a build step except Rust:
 
 ```sh
-gnoblinctl config init
+gnoblinctl config init                        # TypeScript: shell.ts and the editor files
+gnoblinctl config init --language python      # Python: shell.py
+gnoblinctl config init --language rust        # Rust: a Cargo project in ~/.config/gnoblin/rust-shell
+```
+
+`--language` takes `typescript` (the default), `python` or `rust`. Then reload the session. A Rust shell is built first: the
+command prints the `cargo build` line and how to make `gnoblin` find the library.
+
+```sh
 gnoblinctl config reload
 ```
 

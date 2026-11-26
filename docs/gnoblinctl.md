@@ -193,8 +193,9 @@ gnoblinctl output call 6 apply supersample=2
   [starting Gnoblin](starting-gnoblin.md)), the request reloads that shell file as well.
 - `gnoblinctl config validate FILE` checks a file with the runtime's parser. It
   needs no session.
-- `gnoblinctl config init [DIR] [--force]` writes a starter `shell.ts`, the
-  [TypeScript shell](typescript-shell.md) file. It needs no session.
+- `gnoblinctl config init [DIR] [--language typescript|python|rust] [--force] [--sdk PATH]` writes a starter shell in the
+  language you choose: [TypeScript](typescript-shell.md), [Python](python-shell.md) or [Rust](rust-shell.md). It needs
+  no session.
 
 ```sh
 gnoblinctl config validate FILE
@@ -264,15 +265,28 @@ runs, or `--isolate`) answers `no-shell`.
 
 ### Write a starter config
 
-`gnoblinctl config init` writes a short, commented `shell.ts` into the config directory. That is `$XDG_CONFIG_HOME/gnoblin`
-or `~/.config/gnoblin`, and `DIR` names another.
+```sh
+gnoblinctl config init [DIR] [--language typescript|python|rust] [--force] [--sdk PATH]
+```
 
-The file is the stock desktop written as statements against the shell's objects: four floating workspaces added with
-`gnoblin.workspaces.add`, the titlebar, window menu and alert, and the stock keys bound with `input.bind`. It is the
-statements the shell runs when there is no `shell.ts`, so deleting one removes that part of the desktop.
+`gnoblinctl config init` writes a short, commented starter shell into the config directory, in the language you choose with
+`--language`. The config directory is `$XDG_CONFIG_HOME/gnoblin` or `~/.config/gnoblin`, and `DIR` names another.
 
-It also runs `gnoblinctl types init`, so an editor completes the names. Then it prints three steps: open the file, check
-it, and save it to reload.
+The three starters are the stock desktop written as statements against the shell's objects. Each has four floating
+workspaces, the titlebar, window menu and alert, the workspace keys, the drag bindings, the media keys and the launcher key.
+It is what the shell does when there is no shell file, so deleting a statement removes that part of the desktop.
+
+| `--language`           | Writes                                                          | Editor support                                            |
+| ---------------------- | --------------------------------------------------------------- | --------------------------------------------------------- |
+| `typescript` (default) | `shell.ts`                                                      | `.gnoblin/`, `gnoblin.d.ts` and `tsconfig.json`           |
+| `python` (or `py`)     | `shell.py`                                                      | `pyrightconfig.json`, when the Python stubs are installed |
+| `rust` (or `rs`)       | A Cargo project in `rust-shell/`: `Cargo.toml` and `src/lib.rs` | None; Cargo and rust-analyzer read the project            |
+
+With no `--language` it writes the TypeScript starter, as it always has. Each run prints three or four steps to do next.
+
+#### TypeScript
+
+It also runs `gnoblinctl types init`, so an editor completes the names.
 
 ```sh
 gnoblinctl config init
@@ -280,7 +294,7 @@ gnoblinctl config init
 
 ```text
 ok  shell.ts written: /home/me/.config/gnoblin/shell.ts
-ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib (200 files, the real sources of `gnoblin-core` and `gnoblin-std`)
+ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib (232 files, the real sources of `gnoblin-core` and `gnoblin-std`)
 ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/.gnoblin/gnoblin.d.ts
 ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
 
@@ -290,21 +304,89 @@ Next:
   3. Save it: a running shell reloads the file on save, and `gnoblinctl config reload` does it on request.
 ```
 
-A directory that already has a `shell.ts`, a `shell.js` or any other `shell.*` file is left as it is, and the command
-exits 1 with an error block that names the file. A second shell file would leave two equally preferred shells, and
+#### Python
+
+It writes `pyrightconfig.json` beside `shell.py`, with the installed stub package in `extraPaths`, so Pyright and Pylance see
+the types. The stubs are `share/gnoblin/types/python` of the Gnoblin install (see [Install layout](install-layout.md)). When
+they are not installed the command says so on a `warn` line, writes no `pyrightconfig.json`, and still writes `shell.py`. A
+`pyrightconfig.json` that is already there is kept.
+
+```sh
+gnoblinctl config init --language python
+```
+
+```text
+ok  shell.py written: /home/me/.config/gnoblin/shell.py
+ok  pyrightconfig.json created: /home/me/.config/gnoblin/pyrightconfig.json (finds the stubs in /usr/share/gnoblin/types/python)
+
+Next:
+  1. Open /home/me/.config/gnoblin/shell.py in your editor.
+  2. Check it with `gnoblinctl check /home/me/.config/gnoblin/shell.py`.
+  3. Save it: a running shell reloads the file on save, and `gnoblinctl config reload` does it on request.
+```
+
+#### Rust
+
+It writes a Cargo project in `rust-shell/` of the config directory, a `cdylib` crate called `myshell`, and prints the commands
+that build it and make `gnoblin` find the library. The project is its own Cargo workspace, so a workspace around the config
+directory does not adopt it.
+
+The project depends on the `gnoblin-core` and `gnoblin-std` crates of the Gnoblin repository, which are not on crates.io:
+
+- By default the manifest names the repository on GitHub.
+- With `--sdk PATH` it names the checkout of the Gnoblin source at `PATH`, which must hold `crates/gnoblin-core` and
+  `crates/gnoblin-std`. `--sdk` is for `--language rust` only.
+
+```sh
+gnoblinctl config init --language rust
+```
+
+```text
+ok  Rust shell project written: /home/me/.config/gnoblin/rust-shell
+ok  written: /home/me/.config/gnoblin/rust-shell/Cargo.toml
+ok  written: /home/me/.config/gnoblin/rust-shell/src/lib.rs
+
+Next:
+  1. Open /home/me/.config/gnoblin/rust-shell/src/lib.rs in your editor.
+  2. Build it with `cargo build --manifest-path /home/me/.config/gnoblin/rust-shell/Cargo.toml`.
+  3. Run it once, from a terminal, with `gnoblin /home/me/.config/gnoblin/rust-shell/target/debug/libmyshell.so`.
+  4. To run it at every start, copy the library into the config directory with `cp /home/me/.config/gnoblin/rust-shell/target/debug/libmyshell.so /home/me/.config/gnoblin/shell.so`, or set `[shell] path = "/home/me/.config/gnoblin/rust-shell/target/debug/libmyshell.so"` in /home/me/.config/gnoblin/config.toml.
+```
+
+A shell that loads `shell.so` from the config directory is the [shell discovery](starting-gnoblin.md) of tier 4; the
+`[shell] path` setting is tier 3. Rebuild with the same `cargo build` line, and a running shell reloads the library.
+
+#### Refusals and `--force`
+
+A directory that already has a `shell.ts`, a `shell.py`, a `shell.so` or any other `shell.*` file is left as it is. The
+command exits 1 with an error block that names the file. A second shell file would leave two equally preferred shells, and
 Gnoblin does not choose between them.
 
-Add `--force` to write the starter over `shell.ts`. The first line of the output says `replaced` when it did.
+For Rust the check is on the project: a `Cargo.toml` or a `src/lib.rs` in `rust-shell/` stops it.
 
-With `--json` it prints `init`, `replaced`, `next` and the fields of [`types init`](#editor-files).
+Add `--force` to write the starter over `shell.ts`, `shell.py`, or the Rust project's `Cargo.toml` and `src/lib.rs`. The first
+line of the output says `replaced` when it did.
+
+- `--force` does not replace a `pyrightconfig.json` or a `.gitignore`.
+- It skips the check for another shell file, so `--force` beside a `shell.ts` can leave a `shell.ts` and a `shell.py`
+  together. The session will not start until one is removed.
+
+With `--json` it prints `language` and the fields below, and `next`, the steps as text:
+
+| `--language` | Fields                                                                                                                                                      |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `typescript` | `init` (the `shell.ts`), `replaced`, and the fields of [`types init`](#editor-files)                                                                        |
+| `python`     | `init` (the `shell.py`), `replaced`, `stubs`, `pyrightconfig` and `pyrightconfig_created`; the last two are `null`/`false` when the stubs are not installed |
+| `rust`       | `init` (`src/lib.rs`), `manifest`, `project`, `replaced`, `build` (the command), `library` (the path it builds to)                                          |
 
 ## Check and types
 
 `gnoblinctl check FILE` checks a configuration file without a session. The
 extension decides what it does:
 
-- A `.ts`, `.mts`, `.js` or `.mjs` file is run in the [dry-run shell](#the-dry-run-shell), through the shell runtime's
-  own module loader.
+- A `.ts`, `.mts`, `.js`, `.mjs` or `.py` file is run in the [dry-run shell](#the-dry-run-shell): a TypeScript or JavaScript
+  file through the shell runtime's own module loader, a Python file through the Python runtime. `--types` is for the
+  TypeScript and JavaScript files only.
 - Any other file is checked as `gnoblinctl config validate FILE` checks it.
 
 The exit code is 0 when the file is fine, 1 when it found a problem and 2 for a

@@ -11,9 +11,10 @@ A shell is a program in one of three languages, and the three reach the same obj
 | Python     | `shell.py`, run as it is, no build step   | The [Python shell](python-shell.md), which writes a first `shell.py`.         |
 | Rust       | A library crate that you build with Cargo | The [Rust shell](rust-shell.md), which builds a first `libmyshell.so`.        |
 
-Your shell replaces the default: it is the whole configuration, and what it does not say the shell does not do. In
-TypeScript, run `gnoblinctl config init` to start from the full default as code you can read and cut down. This page shows
-how to grow a shell from a few lines into your own, in whichever language you picked.
+Your shell replaces the default: it is the whole configuration, and what it does not say the shell does not do. Run
+`gnoblinctl config init` (add `--language python` or `--language rust` for those) to start from the full default as code
+you can read and cut down. This page shows how to grow a shell from a few lines into your own, in whichever language you
+picked.
 
 ## The two libraries
 

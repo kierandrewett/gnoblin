@@ -18,12 +18,13 @@ gnoblinctl version
 gnoblinctl config get
 gnoblinctl config reload
 gnoblinctl config validate FILE
-gnoblinctl config init [DIR] [--force]
+gnoblinctl config init [DIR] [--language typescript|python|rust] [--force] [--sdk PATH]
 ```
 
-`config validate` and `config init` need no running session. `config init` writes a starter `shell.ts`, which sets up the
-stock desktop as statements against the shell's objects. Python and Rust shells start from the same objects; see
-[starting Gnoblin](../starting-gnoblin.md).
+`config validate` and `config init` need no running session. `config init` writes a starter shell that sets up the stock
+desktop as statements against the shell's objects, in the language you choose: `shell.ts` (the default), `shell.py`, or a
+Cargo project for a Rust shell. See [`gnoblinctl`](../gnoblinctl.md#write-a-starter-config) for what each writes and
+[starting Gnoblin](../starting-gnoblin.md) for how the shell is found.
 
 `config reload` also reloads the shell file, whatever language it is in, and exits 1 with `file:line:column` when that
 file fails to load.

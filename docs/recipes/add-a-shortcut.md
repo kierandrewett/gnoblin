@@ -35,8 +35,8 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 :::
 
 Use an installed terminal. A key is one `bind` call (one decorated function in Python), and your file is the whole
-configuration, so keep the stock keys you still want. Volume, media and workspace keys are lines of the TypeScript starter
-that `gnoblinctl config init` writes. If you use Python or Rust, copy the lines you want across.
+configuration, so keep the stock keys you still want. Volume, media and workspace keys are lines of the starter that
+`gnoblinctl config init` writes, in whichever language you chose with `--language`.
 
 To change a key that the file already binds, edit that line: a trigger is bound once, and a second bind of the same
 trigger is refused. This is the stock volume-up key with a smaller step:

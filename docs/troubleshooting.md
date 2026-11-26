@@ -46,8 +46,8 @@ Check which case applies:
   If the message still appears, include the output of `journalctl -b -u gdm` in
   your bug report.
 
-If no configuration exists, the session runs the stock configuration. `gnoblinctl config init` writes a starter `~/.config/gnoblin/shell.ts`
-and never replaces an existing file.
+If no configuration exists, the session runs the stock configuration. `gnoblinctl config init` writes a starter, `shell.ts`
+by default, or `shell.py` or a Rust project with `--language python` or `--language rust`, and never replaces an existing file.
 
 Gnoblin starts with its embedded configuration before applying the user
 configuration. If loading the shell file or the native settings fail, it tries the last

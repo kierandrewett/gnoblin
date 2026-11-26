@@ -120,7 +120,8 @@ gnoblin --shell tiler
 package ships its shell this way.
 
 **Tier 7: the packaged default.** Install Gnoblin and choose nothing. With no `shell.*` file of your own, `gnoblin` runs
-the stock shell, `<prefix>/share/gnoblin/default-shell/shell.ts`. It is the only shell that ships; it is a TypeScript file.
+the stock shell, `<prefix>/share/gnoblin/default-shell/shell.ts`. It is the only shell that ships; it is a TypeScript file,
+and `gnoblinctl config init --language python` or `--language rust` writes the same desktop in those languages.
 
 An earlier tier hides a later one, and a request that names something missing is an error. To check which shell a setup
 selects without starting a session, run `gnoblin --list-shells`.
@@ -329,5 +330,5 @@ A package installs a starter shell as `<prefix>/share/gnoblin/default-shell/shel
 read. It is what runs on a fresh install, and it is only the last tier. Any shell file of your own runs instead:
 
 - `gnoblinctl config init` writes a starter `shell.ts` (TypeScript).
-- Write a `shell.py` by hand (see the [Python shell](/python-shell)).
-- Build a Rust shell crate (see the [Rust shell](/rust-shell)).
+- `gnoblinctl config init --language python` writes a starter `shell.py` (see the [Python shell](/python-shell)).
+- `gnoblinctl config init --language rust` writes a Cargo project for a Rust shell crate (see the [Rust shell](/rust-shell)).

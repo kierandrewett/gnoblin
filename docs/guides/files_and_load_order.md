@@ -19,8 +19,8 @@ exactly one shell:
 7. The packaged default, `<prefix>/share/gnoblin/default-shell/shell.ts`.
 
 The config directory is `~/.config/gnoblin`, or `$XDG_CONFIG_HOME/gnoblin` when that variable is an absolute path. Put
-your shell file there, and `gnoblinctl config init` writes a TypeScript starter. A Python or Rust shell is a file you
-write yourself.
+your shell file there. `gnoblinctl config init` writes a starter in TypeScript, Python or Rust (`--language`, default
+TypeScript).
 
 Two shell files in the config directory, such as `shell.ts` and `shell.py`, leave nothing to choose by, so the start
 stops with a message that lists both. An already-running compositor does not see a variable you set in a terminal.

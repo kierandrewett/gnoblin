@@ -58,6 +58,10 @@ Next:
   3. Save it: a running shell reloads the file on save, and `gnoblinctl config reload` does it on request.
 ```
 
+The same command writes the starter in the other languages: `gnoblinctl config init --language python` writes a
+`shell.py` ([Python shell](python-shell.md)) and `gnoblinctl config init --language rust` writes a Cargo project
+([Rust shell](rust-shell.md)). `--language typescript` is the default.
+
 `config init` never replaces a config. It stops and says so when a shell file is already there, because two shell
 files in one directory leave Gnoblin with no way to choose.
 

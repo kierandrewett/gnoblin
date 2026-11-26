@@ -48,8 +48,30 @@ seat.bind("Super+q", close_focused)
 
 The file you write is the whole configuration. Nothing is layered under it, so a file with only the lines above has one
 workspace, no volume keys and no launcher. Save it as `~/.config/gnoblin/shell.py` (`$XDG_CONFIG_HOME/gnoblin` when that is
-set). `gnoblinctl config init` writes a starter `shell.ts` only, so a Python shell starts from this file, from the
-[recipes](/recipes) or from the shells in `examples/`.
+set). To start from the full default instead, run this once:
+
+```sh
+gnoblinctl config init --language python
+```
+
+It writes a commented `shell.py` to `~/.config/gnoblin` (`$XDG_CONFIG_HOME/gnoblin` when that is set), the same desktop as the
+TypeScript and Rust starters, and a `pyrightconfig.json` that points an editor at the stubs when they are installed:
+
+```text
+ok  shell.py written: /home/me/.config/gnoblin/shell.py
+ok  pyrightconfig.json created: /home/me/.config/gnoblin/pyrightconfig.json (finds the stubs in /usr/share/gnoblin/types/python)
+
+Next:
+  1. Open /home/me/.config/gnoblin/shell.py in your editor.
+  2. Check it with `gnoblinctl check /home/me/.config/gnoblin/shell.py`.
+  3. Save it: a running shell reloads the file on save, and `gnoblinctl config reload` does it on request.
+```
+
+`config init` never replaces a config. It stops and says so when a shell file is already there, because two shell files in
+one directory leave Gnoblin with no way to choose.
+
+Any `shell.*` file stops it, such as a `shell.py`, a `shell.ts` or a `shell.so`. Add `--force` to write the starter over
+`shell.py`. The [recipe](/recipes/complete-starter-config) shows the file in full.
 
 Save the file. The shell reloads it after a short pause, and the windows you have open stay where they are. A key you
 bind is live at once, and a key you delete stops working at that reload. `gnoblinctl check shell.py` checks the file before
@@ -184,7 +206,8 @@ the checker is a stub-only package, `<prefix>/share/gnoblin/types/python/`:
 - `_gnoblin_core.pyi`, for the built-in module.
 
 Point the checker at `<prefix>/share/gnoblin/types/python`, or add it to `extraPaths` (`python.analysis.extraPaths` in
-the Pylance and Pyright settings of an editor).
+the Pylance and Pyright settings of an editor). `gnoblinctl config init --language python` writes a `pyrightconfig.json`
+with that path, so Pyright and Pylance find the stubs for the files in your config directory.
 
 The hand-written stubs live in `crates/gnoblin-runtime-python/stubs/`. A test (`tests/shells.rs`,
 `the_stubs_of_the_package_agree_with_what_the_runtime_reflects`) holds them to what the runtime reflects of every public name.
