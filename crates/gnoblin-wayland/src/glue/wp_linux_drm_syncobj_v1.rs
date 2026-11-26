@@ -1,10 +1,12 @@
 //! `gnoblin-wayland-wp-linux-drm-syncobj-v1`: the global exists only when the backend can keep its promise, because it
 //! asks the backend's renderer when the GPU has finished with a buffer.
 
+use std::time::Duration;
+
 use gnoblin_backend::{Backend, ExplicitSync};
 use gnoblin_wayland_protocols::wp_linux_drm_syncobj_v1::{Host, SyncobjServing};
 use smithay::reexports::calloop::LoopHandle;
-use smithay::reexports::wayland_server::DisplayHandle;
+use smithay::reexports::wayland_server::{Client, DisplayHandle};
 use smithay::wayland::drm_syncobj::{DrmSyncobjHandler, DrmSyncobjState};
 
 use crate::State;
@@ -17,6 +19,10 @@ impl Host for State {
 
     fn loop_handle(&self) -> Option<LoopHandle<'static, Self>> {
         self.loop_handle.clone()
+    }
+
+    fn refuse_waits(&mut self, client: &Client, reason: &str) {
+        self.end_client_no_memory(client, reason);
     }
 }
 
@@ -55,5 +61,11 @@ impl State {
         }
         let retirement = backend.buffers_retired();
         self.syncobj.retire(retirement.submitted, retirement.retired);
+    }
+
+    /// How long the loop may sleep before it looks at the GPU again, while a release point waits for a frame to finish: a
+    /// frame retiring wakes nothing. `None` when no point waits, and the loop sleeps as long as it likes.
+    pub(crate) fn syncobj_poll(&self) -> Option<Duration> {
+        self.syncobj.awaiting_gpu().then_some(SyncobjServing::POLL)
     }
 }

@@ -11,36 +11,56 @@
 //!
 //! - the global is not offered by a software, GLES or lavapipe session;
 //! - the protocol errors that need no working timeline (a second object for a surface, a timeline that cannot be
-//!   imported, a buffer with no points), against a stand-in device that imports nothing.
+//!   imported, a buffer with no points, a surface that gets its object again after destroying it), against a stand-in
+//!   device that imports nothing.
 //!
 //! The rest needs a DRM render node whose kernel supports `DRM_IOCTL_SYNCOBJ_EVENTFD` (Linux 6.6 and later): the tests make
 //! real timelines on it, wait on a real acquire point and read the release point back from the kernel. Where there is none a
 //! test prints why and returns: compiled and linked on every gate, *run* on a machine with a GPU or a virtual one (`vkms`,
 //! `virtio-gpu`, `vgem`). A skip is deliberate and loud, never a silent pass.
 //!
-//! Failure modes, each with its test here (the list is in `protocols::wp_linux_drm_syncobj_v1`):
+//! Failure modes, each with its test here (the list is in `protocols::wp_linux_drm_syncobj_v1`; the notes of the review
+//! that added the later ones are in `docs/wayland-protocols.md`):
 //!
 //! - `a_session_without_a_retiring_gpu_renderer_does_not_serve_syncobj`,
 //!   `a_session_on_a_software_vulkan_device_does_not_serve_syncobj`
 //! - `a_second_syncobj_surface_is_a_protocol_error`, `a_timeline_that_cannot_be_imported_is_a_protocol_error`,
 //!   `a_buffer_with_no_points_is_a_protocol_error`
+//! - Smithay's own errors, kept with a real client because the compositor's hook runs before Smithay's:
+//!   `a_point_for_a_destroyed_surface_is_a_protocol_error`, `an_acquire_point_with_no_buffer_is_a_protocol_error`,
+//!   `an_acquire_point_with_no_release_point_is_a_protocol_error`,
+//!   `a_release_point_not_after_the_acquire_point_is_a_protocol_error`,
+//!   `points_with_a_shared_memory_buffer_are_a_protocol_error`
+//! - `a_release_point_with_no_buffer_is_no_buffer`
+//! - `a_syncobj_surface_made_again_is_still_unique`, `a_syncobj_surface_made_again_checks_its_commits`
 //! - `a_commit_waits_for_its_acquire_point`
-//! - `a_release_point_signals_after_the_frame_retires`
+//! - `a_surface_with_too_many_waiting_commits_ends_its_client`,
+//!   `a_client_with_too_many_waits_across_surfaces_is_ended`, and the guard that a client that signals its points is
+//!   never counted past a limit, `a_client_that_signals_its_points_never_reaches_its_limits`
+//! - `a_surface_destroyed_mid_wait_frees_its_waits`, `a_client_that_disconnects_mid_wait_frees_its_waits`
+//! - `a_surface_destroyed_mid_wait_signals_the_queued_release_points`,
+//!   `a_client_that_disconnects_mid_wait_signals_the_queued_release_points`
+//! - `a_release_point_signals_after_the_frame_retires`, `an_idle_session_releases_soon_after_the_gpu_retires`
 //! - `a_buffer_attached_again_releases_the_earlier_commit`
 //! - `a_device_made_anew_releases_every_replaced_point`
+//!
+//! Every session runs one at a time ([`SESSIONS`]): the tests that count the process's eventfds would otherwise count
+//! another test's.
 
 use gnoblin_wayland_testkit::stock;
 
 use std::fs::File;
+use std::net::Shutdown;
 use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::UnixStream;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::{Headless, HeadlessConfig};
 use gnoblin_backend::{Backend, DmabufImportError, DmabufProvider, DmabufSupport, ExplicitSync, Retirement};
 use gnoblin_wayland::{Config, ControlHandle, Server, SessionSnapshot, State};
+use gnoblin_wayland_protocols::wp_linux_drm_syncobj_v1::{CLIENT_WAIT_LIMIT, SURFACE_COMMIT_LIMIT};
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::{Format, Fourcc, Modifier};
 use smithay::backend::drm::DrmDeviceFd;
@@ -68,6 +88,15 @@ const MANAGER: &str = "wp_linux_drm_syncobj_manager_v1";
 
 /// The `wp_linux_drm_syncobj_surface_v1` error codes.
 const NO_ACQUIRE_POINT: u32 = 4;
+const NO_SURFACE: u32 = 1;
+const UNSUPPORTED_BUFFER: u32 = 2;
+const NO_BUFFER: u32 = 3;
+const NO_RELEASE_POINT: u32 = 5;
+const CONFLICTING_POINTS: u32 = 6;
+/// `wl_display.error.no_memory`, what a client past a limit is ended with.
+const NO_MEMORY: u32 = 2;
+/// Held while a session runs.
+static SESSIONS: Mutex<()> = Mutex::new(());
 /// The `wp_linux_drm_syncobj_manager_v1` error codes.
 const SURFACE_EXISTS: u32 = 0;
 const INVALID_TIMELINE: u32 = 1;
@@ -192,11 +221,18 @@ struct Client {
     queue: EventQueue<App>,
     app: App,
     observation: Arc<Mutex<SessionSnapshot>>,
+    /// A second handle on the socket, to hang up with.
+    hangup: UnixStream,
 }
 
 impl Client {
     fn qh(&self) -> QueueHandle<App> {
         self.queue.handle()
+    }
+
+    /// Ends the connection as a client that died would: the compositor reads end of file and destroys its objects.
+    fn hang_up(&self) {
+        self.hangup.shutdown(Shutdown::Both).expect("the socket shuts down");
     }
 
     fn roundtrip(&mut self) -> Result<(), DispatchError> {
@@ -270,6 +306,7 @@ impl Client {
 
 /// Runs `client` against a session on `backend`, and returns what it returns.
 fn session<T: Send + 'static>(backend: Headless, client: impl FnOnce(Client) -> T + Send + 'static) -> T {
+    let _serial = SESSIONS.lock().unwrap_or_else(PoisonError::into_inner);
     let directory = tempfile::tempdir().expect("a temporary directory");
     let socket = directory.path().join("wayland-0.sock");
     let config = Config {
@@ -282,6 +319,7 @@ fn session<T: Send + 'static>(backend: Headless, client: impl FnOnce(Client) -> 
     let worker = thread::spawn(move || {
         let _stop = StopOnDrop(control);
         let stream = UnixStream::connect(&socket).expect("the session is listening");
+        let hangup = stream.try_clone().expect("the socket clones");
         let connection = Connection::from_socket(stream).expect("a client connection");
         let (globals, queue) = registry_queue_init::<App>(&connection).expect("the global list");
         client(Client {
@@ -289,6 +327,7 @@ fn session<T: Send + 'static>(backend: Headless, client: impl FnOnce(Client) -> 
             queue,
             app: App,
             observation,
+            hangup,
         })
     });
     let outcome = server.run();
@@ -725,4 +764,542 @@ fn a_device_made_anew_releases_every_replaced_point() {
     ) else {
         return;
     };
+}
+
+/// The interface of the `wp_linux_drm_syncobj_surface_v1` object, which Smithay and the compositor raise its errors on.
+const SYNC_SURFACE: &str = "wp_linux_drm_syncobj_surface_v1";
+
+/// The eventfds the process holds open. The compositor keeps one for each acquire point a commit waits on, and the
+/// session shares the process with the test, so a test compares counts before and after rather than reading one.
+fn eventfds() -> usize {
+    std::fs::read_dir("/proc/self/fd")
+        .expect("the process's descriptors can be listed")
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            std::fs::read_link(entry.path()).is_ok_and(|target| target.to_str() == Some("anon_inode:[eventfd]"))
+        })
+        .count()
+}
+
+/// A surface with no role, for the tests that destroy it or need many: nothing about explicit sync needs a window.
+fn plain_surface(client: &mut Client) -> (wl_surface::WlSurface, wl_compositor::WlCompositor) {
+    let qh = client.qh();
+    let compositor: wl_compositor::WlCompositor = client.globals.bind(&qh, 1..=6, ()).expect("wl_compositor");
+    (compositor.create_surface(&qh, ()), compositor)
+}
+
+/// A timeline made on the device and imported by the client: the kernel's handle, to signal and read it, and the client's
+/// object, to name points of it.
+fn import(
+    client: &mut Client,
+    manager: &manager::WpLinuxDrmSyncobjManagerV1,
+    device: &DrmDeviceFd,
+) -> (Timeline, timeline::WpLinuxDrmSyncobjTimelineV1) {
+    let qh = client.qh();
+    let (kernel, fd) = Timeline::new(device);
+    let imported = manager.import_timeline(fd.as_fd(), &qh, ());
+    client.roundtrip().expect("the timeline is imported");
+    (kernel, imported)
+}
+
+/// Runs `build` on a surface that has the explicit sync object, and returns the protocol error the round trip after it
+/// ends in. `None` where there is no DRM device.
+fn commit_error(
+    test: &str,
+    build: impl FnOnce(
+        &mut Client,
+        &DrmDeviceFd,
+        &manager::WpLinuxDrmSyncobjManagerV1,
+        &wl_surface::WlSurface,
+        &sync_surface::WpLinuxDrmSyncobjSurfaceV1,
+    ) + Send
+    + 'static,
+) -> Option<(String, u32)> {
+    drm_session(test, move |mut client, device, _| {
+        let manager = client.manager();
+        let (surface, _compositor) = plain_surface(&mut client);
+        let qh = client.qh();
+        let sync = manager.get_surface(&surface, &qh, ());
+        build(&mut client, &device, &manager, &surface, &sync);
+        protocol_error(client.roundtrip())
+    })
+}
+
+#[test]
+fn a_point_for_a_destroyed_surface_is_a_protocol_error() {
+    let Some(error) = drm_session(
+        "a_point_for_a_destroyed_surface_is_a_protocol_error",
+        |mut client, device, _| {
+            let manager = client.manager();
+            let (surface, _compositor) = plain_surface(&mut client);
+            let qh = client.qh();
+            let sync = manager.get_surface(&surface, &qh, ());
+            let (_kernel, imported) = import(&mut client, &manager, &device);
+            surface.destroy();
+            client.roundtrip().expect("the surface is destroyed");
+            sync.set_acquire_point(&imported, 0, 1);
+            protocol_error(client.roundtrip())
+        },
+    ) else {
+        return;
+    };
+    assert_eq!((error.0.as_str(), error.1), (SYNC_SURFACE, NO_SURFACE));
+}
+
+#[test]
+fn an_acquire_point_with_no_buffer_is_a_protocol_error() {
+    let Some(error) = commit_error(
+        "an_acquire_point_with_no_buffer_is_a_protocol_error",
+        |client, device, manager, surface, sync| {
+            let (_kernel, imported) = import(client, manager, device);
+            sync.set_acquire_point(&imported, 0, 1);
+            surface.commit();
+        },
+    ) else {
+        return;
+    };
+    assert_eq!((error.0.as_str(), error.1), (SYNC_SURFACE, NO_BUFFER));
+}
+
+#[test]
+fn an_acquire_point_with_no_release_point_is_a_protocol_error() {
+    let Some(error) = commit_error(
+        "an_acquire_point_with_no_release_point_is_a_protocol_error",
+        |client, device, manager, surface, sync| {
+            let (kernel, imported) = import(client, manager, device);
+            kernel.signal(device, 1);
+            let buffer = client.dmabuf_buffer();
+            sync.set_acquire_point(&imported, 0, 1);
+            surface.attach(Some(&buffer), 0, 0);
+            surface.commit();
+        },
+    ) else {
+        return;
+    };
+    assert_eq!((error.0.as_str(), error.1), (SYNC_SURFACE, NO_RELEASE_POINT));
+}
+
+#[test]
+fn a_release_point_not_after_the_acquire_point_is_a_protocol_error() {
+    let Some(error) = commit_error(
+        "a_release_point_not_after_the_acquire_point_is_a_protocol_error",
+        |client, device, manager, surface, sync| {
+            let (kernel, imported) = import(client, manager, device);
+            kernel.signal(device, 5);
+            let buffer = client.dmabuf_buffer();
+            // One timeline, and a release point that is the acquire point.
+            sync.set_acquire_point(&imported, 0, 5);
+            sync.set_release_point(&imported, 0, 5);
+            surface.attach(Some(&buffer), 0, 0);
+            surface.commit();
+        },
+    ) else {
+        return;
+    };
+    assert_eq!((error.0.as_str(), error.1), (SYNC_SURFACE, CONFLICTING_POINTS));
+}
+
+#[test]
+fn points_with_a_shared_memory_buffer_are_a_protocol_error() {
+    let Some(error) = commit_error(
+        "points_with_a_shared_memory_buffer_are_a_protocol_error",
+        |client, device, manager, surface, sync| {
+            let (acquire, acquire_timeline) = import(client, manager, device);
+            let (_release, release_timeline) = import(client, manager, device);
+            acquire.signal(device, 1);
+            let buffer = client.shm_buffer();
+            sync.set_acquire_point(&acquire_timeline, 0, 1);
+            sync.set_release_point(&release_timeline, 0, 1);
+            surface.attach(Some(&buffer), 0, 0);
+            surface.commit();
+        },
+    ) else {
+        return;
+    };
+    assert_eq!((error.0.as_str(), error.1), (SYNC_SURFACE, UNSUPPORTED_BUFFER));
+}
+
+#[test]
+fn a_release_point_with_no_buffer_is_no_buffer() {
+    // A release point alone, with nothing attached and with the buffer removed: the protocol names `no_buffer` for both,
+    // and Smithay names `no_acquire_point` for a release point with no acquire point.
+    for removes_buffer in [false, true] {
+        let Some(error) = commit_error(
+            "a_release_point_with_no_buffer_is_no_buffer",
+            move |client, device, manager, surface, sync| {
+                let (_kernel, imported) = import(client, manager, device);
+                sync.set_release_point(&imported, 0, 1);
+                if removes_buffer {
+                    surface.attach(None, 0, 0);
+                }
+                surface.commit();
+            },
+        ) else {
+            return;
+        };
+        assert_eq!(
+            (error.0.as_str(), error.1),
+            (SYNC_SURFACE, NO_BUFFER),
+            "a release point with no buffer (buffer removed: {removes_buffer})"
+        );
+    }
+}
+
+#[test]
+fn a_syncobj_surface_made_again_is_still_unique() {
+    let (backend, _) = stand_in_backend(Some(stand_in_device()));
+    let (interface, code) = session(backend, |mut client| {
+        let manager = client.manager();
+        let (surface, _compositor) = plain_surface(&mut client);
+        let qh = client.qh();
+        let first = manager.get_surface(&surface, &qh, ());
+        client.roundtrip().expect("the first object is made");
+        first.destroy();
+        client.roundtrip().expect("the object is destroyed");
+        let _second = manager.get_surface(&surface, &qh, ());
+        client
+            .roundtrip()
+            .expect("a surface that destroyed its object may have another");
+        let _third = manager.get_surface(&surface, &qh, ());
+        protocol_error(client.roundtrip())
+    });
+    assert_eq!((interface.as_str(), code), (MANAGER, SURFACE_EXISTS));
+}
+
+#[test]
+fn a_syncobj_surface_made_again_checks_its_commits() {
+    let (backend, _) = stand_in_backend(Some(stand_in_device()));
+    let (interface, code) = session(backend, |mut client| {
+        let manager = client.manager();
+        let (surface, _compositor) = plain_surface(&mut client);
+        let qh = client.qh();
+        let first = manager.get_surface(&surface, &qh, ());
+        client.roundtrip().expect("the first object is made");
+        first.destroy();
+        client.roundtrip().expect("the object is destroyed");
+        // With no object the surface takes a buffer as any surface does.
+        let plain = client.shm_buffer();
+        surface.attach(Some(&plain), 0, 0);
+        surface.commit();
+        client
+            .roundtrip()
+            .expect("a surface with no object commits a buffer with no points");
+        // With the new object it must name its points.
+        let _second = manager.get_surface(&surface, &qh, ());
+        client.roundtrip().expect("the second object is made");
+        let again = client.shm_buffer();
+        surface.attach(Some(&again), 0, 0);
+        surface.commit();
+        protocol_error(client.roundtrip())
+    });
+    assert_eq!((interface.as_str(), code), (SYNC_SURFACE, NO_ACQUIRE_POINT));
+}
+
+/// A client that has made `count` commits on `surface`, each waiting on an acquire point that never signals. `next` is the
+/// number of the first point to name, and is left past the last.
+fn commit_waiting(
+    surface: &wl_surface::WlSurface,
+    sync: &sync_surface::WpLinuxDrmSyncobjSurfaceV1,
+    buffer: &wl_buffer::WlBuffer,
+    timelines: (
+        &timeline::WpLinuxDrmSyncobjTimelineV1,
+        &timeline::WpLinuxDrmSyncobjTimelineV1,
+    ),
+    next: &mut u32,
+    count: usize,
+) {
+    for _ in 0..count {
+        commit_with_points(surface, sync, buffer, (timelines.0, *next), (timelines.1, *next));
+        *next += 1;
+    }
+}
+
+#[test]
+fn a_surface_with_too_many_waiting_commits_ends_its_client() {
+    let Some(error) = drm_session(
+        "a_surface_with_too_many_waiting_commits_ends_its_client",
+        |mut client, device, _| {
+            let manager = client.manager();
+            let (surface, _compositor) = plain_surface(&mut client);
+            let qh = client.qh();
+            let sync = manager.get_surface(&surface, &qh, ());
+            let (_never, acquire) = import(&mut client, &manager, &device);
+            let (_released, release) = import(&mut client, &manager, &device);
+            let buffer = client.dmabuf_buffer();
+            let mut next = 1;
+            commit_waiting(
+                &surface,
+                &sync,
+                &buffer,
+                (&acquire, &release),
+                &mut next,
+                SURFACE_COMMIT_LIMIT,
+            );
+            client
+                .roundtrip()
+                .expect("a surface with as many waiting commits as it may have is not refused");
+            commit_waiting(&surface, &sync, &buffer, (&acquire, &release), &mut next, 1);
+            protocol_error(client.roundtrip())
+        },
+    ) else {
+        return;
+    };
+    assert_eq!((error.0.as_str(), error.1), ("wl_display", NO_MEMORY));
+}
+
+#[test]
+fn a_client_with_too_many_waits_across_surfaces_is_ended() {
+    let Some(error) = drm_session(
+        "a_client_with_too_many_waits_across_surfaces_is_ended",
+        |mut client, device, _| {
+            let manager = client.manager();
+            let qh = client.qh();
+            let (_never, acquire) = import(&mut client, &manager, &device);
+            let (_released, release) = import(&mut client, &manager, &device);
+            let buffer = client.dmabuf_buffer();
+            // Enough surfaces that no one of them reaches its own limit before the client reaches its.
+            let surfaces: Vec<_> = (0..=CLIENT_WAIT_LIMIT / SURFACE_COMMIT_LIMIT)
+                .map(|_| {
+                    let (surface, compositor) = plain_surface(&mut client);
+                    let sync = manager.get_surface(&surface, &qh, ());
+                    (surface, sync, compositor)
+                })
+                .collect();
+            let mut next = 1;
+            for held in 0..CLIENT_WAIT_LIMIT {
+                let (surface, sync, _) = &surfaces[held / SURFACE_COMMIT_LIMIT];
+                commit_waiting(surface, sync, &buffer, (&acquire, &release), &mut next, 1);
+            }
+            client
+                .roundtrip()
+                .expect("a client with as many waits as it may have is not refused");
+            let (surface, sync, _) = &surfaces[CLIENT_WAIT_LIMIT / SURFACE_COMMIT_LIMIT];
+            commit_waiting(surface, sync, &buffer, (&acquire, &release), &mut next, 1);
+            protocol_error(client.roundtrip())
+        },
+    ) else {
+        return;
+    };
+    assert_eq!((error.0.as_str(), error.1), ("wl_display", NO_MEMORY));
+}
+
+#[test]
+fn a_client_that_signals_its_points_never_reaches_its_limits() {
+    let Some(()) = drm_session(
+        "a_client_that_signals_its_points_never_reaches_its_limits",
+        |mut client, device, _| {
+            let manager = client.manager();
+            let (surface, _compositor) = plain_surface(&mut client);
+            let qh = client.qh();
+            let sync = manager.get_surface(&surface, &qh, ());
+            let (acquire, acquire_timeline) = import(&mut client, &manager, &device);
+            let (_released, release_timeline) = import(&mut client, &manager, &device);
+            let buffer = client.dmabuf_buffer();
+            client.roundtrip().expect("the buffer is made");
+            let baseline = eventfds();
+            // Three times what a client may have outstanding, one commit at a time: a wait that fired and a commit that
+            // was applied are not counted against the client or its surface any more, or the limits would be reached.
+            let commits = u32::try_from(3 * CLIENT_WAIT_LIMIT.max(SURFACE_COMMIT_LIMIT)).expect("a small count");
+            for point in 1..=commits {
+                commit_with_points(
+                    &surface,
+                    &sync,
+                    &buffer,
+                    (&acquire_timeline, point),
+                    (&release_timeline, point),
+                );
+                client
+                    .roundtrip()
+                    .expect("a commit of a client that signals its points is accepted");
+                acquire.signal(&device, u64::from(point));
+                wait_for("the wait of the commit to fire and close its eventfd", || {
+                    eventfds() <= baseline
+                });
+            }
+            client.roundtrip().expect("the last commit is accepted");
+        },
+    ) else {
+        return;
+    };
+}
+
+/// What a test holds of a surface with two commits queued: the first waits on an acquire point that never signals, the
+/// second's acquire point signalled and it waits only behind the first.
+struct QueuedPair {
+    surface: wl_surface::WlSurface,
+    first: Timeline,
+    second: Timeline,
+    /// The eventfds the process held before the first commit.
+    baseline: usize,
+    _keep: Vec<Box<dyn std::any::Any>>,
+}
+
+fn queue_two_commits(client: &mut Client, device: &DrmDeviceFd) -> QueuedPair {
+    let manager = client.manager();
+    let (surface, compositor) = plain_surface(client);
+    let qh = client.qh();
+    let sync = manager.get_surface(&surface, &qh, ());
+    let (_never, never_timeline) = import(client, &manager, device);
+    let (ready, ready_timeline) = import(client, &manager, device);
+    let (first, first_release) = import(client, &manager, device);
+    let (second, second_release) = import(client, &manager, device);
+    ready.signal(device, 1);
+    let buffer = client.dmabuf_buffer();
+    client.roundtrip().expect("the buffer is made");
+    let baseline = eventfds();
+    commit_with_points(&surface, &sync, &buffer, (&never_timeline, 1), (&first_release, 1));
+    client.roundtrip().expect("the first commit is accepted");
+    commit_with_points(&surface, &sync, &buffer, (&ready_timeline, 1), (&second_release, 1));
+    client.roundtrip().expect("the second commit is accepted");
+    // The first commit holds an eventfd for its wait; the second's point has signalled and holds none.
+    wait_for("the first commit's wait to hold an eventfd", || eventfds() > baseline);
+    QueuedPair {
+        surface,
+        first,
+        second,
+        baseline,
+        _keep: vec![
+            Box::new(manager),
+            Box::new(compositor),
+            Box::new(sync),
+            Box::new(never_timeline),
+            Box::new(ready_timeline),
+            Box::new(first_release),
+            Box::new(second_release),
+            Box::new(buffer),
+        ],
+    }
+}
+
+#[test]
+fn a_surface_destroyed_mid_wait_frees_its_waits() {
+    let Some(()) = drm_session(
+        "a_surface_destroyed_mid_wait_frees_its_waits",
+        |mut client, device, _| {
+            let queued = queue_two_commits(&mut client, &device);
+            queued.surface.destroy();
+            client.roundtrip().expect("the surface is destroyed");
+            wait_for("the destroyed surface's wait to close its eventfd", || {
+                eventfds() <= queued.baseline
+            });
+        },
+    ) else {
+        return;
+    };
+}
+
+#[test]
+fn a_client_that_disconnects_mid_wait_frees_its_waits() {
+    let Some(()) = drm_session(
+        "a_client_that_disconnects_mid_wait_frees_its_waits",
+        |mut client, device, _| {
+            let queued = queue_two_commits(&mut client, &device);
+            client.hang_up();
+            wait_for("the dead client's wait to close its eventfd", || {
+                eventfds() <= queued.baseline
+            });
+        },
+    ) else {
+        return;
+    };
+}
+
+#[test]
+fn a_surface_destroyed_mid_wait_signals_the_queued_release_points() {
+    let Some(()) = drm_session(
+        "a_surface_destroyed_mid_wait_signals_the_queued_release_points",
+        |mut client, device, _| {
+            let queued = queue_two_commits(&mut client, &device);
+            assert!(
+                !queued.first.signalled(&device, 1) && !queued.second.signalled(&device, 1),
+                "a release point signalled while its commit was queued"
+            );
+            queued.surface.destroy();
+            client.roundtrip().expect("the surface is destroyed");
+            wait_for("the release points of both queued commits, which nothing read", || {
+                queued.first.signalled(&device, 1) && queued.second.signalled(&device, 1)
+            });
+        },
+    ) else {
+        return;
+    };
+}
+
+#[test]
+fn a_client_that_disconnects_mid_wait_signals_the_queued_release_points() {
+    let Some(()) = drm_session(
+        "a_client_that_disconnects_mid_wait_signals_the_queued_release_points",
+        |mut client, device, _| {
+            let queued = queue_two_commits(&mut client, &device);
+            client.hang_up();
+            wait_for("the release points of both queued commits, which nothing read", || {
+                queued.first.signalled(&device, 1) && queued.second.signalled(&device, 1)
+            });
+        },
+    ) else {
+        return;
+    };
+}
+
+#[test]
+fn an_idle_session_releases_soon_after_the_gpu_retires() {
+    /// The loop's own timeout is 100 ms; a release that waits for it is slower than this.
+    const PROMPT: Duration = Duration::from_millis(60);
+    const TRIALS: u32 = 11;
+    let Some(worst) = drm_session(
+        "an_idle_session_releases_soon_after_the_gpu_retires",
+        |mut client, device, retirement| {
+            let manager = client.manager();
+            let (surface, _compositor) = plain_surface(&mut client);
+            let qh = client.qh();
+            let sync = manager.get_surface(&surface, &qh, ());
+            let (acquire, acquire_timeline) = import(&mut client, &manager, &device);
+            let (release, release_timeline) = import(&mut client, &manager, &device);
+            acquire.signal(&device, u64::from(TRIALS) + 1);
+            let buffer = client.dmabuf_buffer();
+            *retirement.lock().expect("the retirement") = Retirement {
+                submitted: 1,
+                retired: 1,
+            };
+            commit_with_points(&surface, &sync, &buffer, (&acquire_timeline, 1), (&release_timeline, 1));
+            client.roundtrip().expect("the first commit is accepted");
+            let mut worst = Duration::ZERO;
+            for trial in 2..=TRIALS + 1 {
+                // `trial` frames are in flight when the commit replaces the content, and the last one finishes while the
+                // session is idle: nothing the client does wakes the loop.
+                *retirement.lock().expect("the retirement") = Retirement {
+                    submitted: u64::from(trial),
+                    retired: u64::from(trial) - 1,
+                };
+                commit_with_points(
+                    &surface,
+                    &sync,
+                    &buffer,
+                    (&acquire_timeline, trial),
+                    (&release_timeline, trial),
+                );
+                client.roundtrip().expect("the commit is accepted");
+                thread::sleep(Duration::from_millis(30));
+                assert!(
+                    !release.signalled(&device, u64::from(trial) - 1),
+                    "the release point signalled with a frame still running"
+                );
+                retirement.lock().expect("the retirement").retired = u64::from(trial);
+                let started = Instant::now();
+                while !release.signalled(&device, u64::from(trial) - 1) {
+                    assert!(started.elapsed() < TIMEOUT, "the release point never signalled");
+                    thread::sleep(Duration::from_millis(1));
+                }
+                worst = worst.max(started.elapsed());
+            }
+            worst
+        },
+    ) else {
+        return;
+    };
+    println!("the worst release latency of {TRIALS} idle retirements: {worst:?}");
+    assert!(
+        worst < PROMPT,
+        "a release point waited {worst:?} for an idle loop to notice the GPU had finished"
+    );
 }

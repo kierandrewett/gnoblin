@@ -50,11 +50,12 @@ where
     ) {
         // A rule Smithay's handler does not enforce is checked first; a request it refuses has had its
         // protocol error posted and goes no further.
-        let (created, charged) = match crate::request_guard::screen(state, client, resource, &request) {
+        let (created, charged, adopted) = match crate::request_guard::screen(state, client, resource, &request) {
             Screened::Consumed => return,
-            Screened::Forward => (None, None),
-            Screened::ForwardThenTrack(created) => (Some(created), None),
-            Screened::ForwardThenCharge(charge) => (None, Some(charge)),
+            Screened::Forward => (None, None, None),
+            Screened::ForwardThenTrack(created) => (Some(created), None, None),
+            Screened::ForwardThenCharge(charge) => (None, Some(charge), None),
+            Screened::ForwardThenAdopt(adopt) => (None, None, Some(adopt)),
         };
         // What the compositor must see of a request Smithay keeps out of reach is taken after the screen, so a refused
         // request is never recorded, and before Smithay sees it; what an input method that just bound is owed is given
@@ -69,6 +70,9 @@ where
         }
         if let Some(charge) = charged {
             charge.record(state, client, dhandle);
+        }
+        if let Some(adopt) = adopted {
+            adopt.adopt(client, dhandle);
         }
     }
 

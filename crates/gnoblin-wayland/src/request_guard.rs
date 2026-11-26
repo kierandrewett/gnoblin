@@ -39,6 +39,12 @@
 //!    the object ([`Charge`]), so a request Smithay rejects leaves no entry behind, and is given back when the object
 //!    is destroyed (`crate::dispatch`). A GPU buffer is admitted where the loop imports it, which is where the backend is.
 //!    Tests: `tests/gpu_memory_budget.rs`.
+//! 7. **A surface that makes its explicit sync object again.** Smithay keeps the object in a cell it makes once, and a
+//!    `get_surface` after the object was destroyed leaves the cell empty: no `surface_exists` for a further object and no
+//!    commit errors. The object Smithay made is found from its protocol id once its handler has run and stored
+//!    ([`NewSyncobjSurface`]).
+//!    Tests: `tests/syncobj.rs`, `a_syncobj_surface_made_again_is_still_unique` and
+//!    `a_syncobj_surface_made_again_checks_its_commits`.
 
 use std::any::Any;
 use std::sync::{Mutex, PoisonError};
@@ -47,6 +53,10 @@ use smithay::backend::renderer::utils::RendererSurfaceStateUserData;
 use smithay::reexports::wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_buffer_params_v1::{
     self, ZwpLinuxBufferParamsV1,
 };
+use smithay::reexports::wayland_protocols::wp::linux_drm_syncobj::v1::server::wp_linux_drm_syncobj_manager_v1::{
+    self, WpLinuxDrmSyncobjManagerV1,
+};
+use smithay::reexports::wayland_protocols::wp::linux_drm_syncobj::v1::server::wp_linux_drm_syncobj_surface_v1::WpLinuxDrmSyncobjSurfaceV1;
 use smithay::reexports::wayland_protocols::xdg::shell::server::{xdg_surface, xdg_wm_base};
 use smithay::reexports::wayland_server::backend::ClientId;
 use smithay::reexports::wayland_server::protocol::wl_compositor::{self, WlCompositor};
@@ -74,6 +84,8 @@ pub(crate) enum Screened {
     ForwardThenTrack(NewXdgSurface),
     /// Smithay's handler handles it, and the memory the object it creates holds is recorded afterwards.
     ForwardThenCharge(Charge),
+    /// Smithay's handler handles it, and the object it creates is put where Smithay's own checks find it afterwards.
+    ForwardThenAdopt(NewSyncobjSurface),
 }
 
 /// What a request that was admitted to the memory ledger holds once Smithay has made its object.
@@ -158,6 +170,26 @@ impl NewXdgSurface {
                 *held.0.lock().unwrap_or_else(PoisonError::into_inner) = Some(object.downgrade());
             }
         });
+    }
+}
+
+/// A `get_surface` request of `wp_linux_drm_syncobj_manager_v1` that Smithay is about to handle.
+pub(crate) struct NewSyncobjSurface {
+    surface: WlSurface,
+    protocol_id: u32,
+}
+
+impl NewSyncobjSurface {
+    /// Stores the `wp_linux_drm_syncobj_surface_v1` Smithay made as the surface's object, when it could not.
+    ///
+    /// Smithay writes the object into a cell it makes once, so a surface that destroyed its object and asked for another
+    /// gets an object its commit hook and its `surface_exists` check cannot see. A request Smithay refused made no
+    /// object, and there is nothing to store.
+    pub(crate) fn adopt(self, client: &Client, handle: &DisplayHandle) {
+        let Ok(object) = client.object_from_protocol_id::<WpLinuxDrmSyncobjSurfaceV1>(handle, self.protocol_id) else {
+            return;
+        };
+        gnoblin_wayland_protocols::wp_linux_drm_syncobj_v1::adopt_surface_object(&self.surface, &object);
     }
 }
 
@@ -307,6 +339,26 @@ where
             return Screened::Consumed;
         }
         return Screened::Forward;
+    }
+    if let Some(request) = request.downcast_ref::<wp_linux_drm_syncobj_manager_v1::Request>() {
+        let (Some(_), wp_linux_drm_syncobj_manager_v1::Request::GetSurface { id, surface }) =
+            (resource.downcast_ref::<WpLinuxDrmSyncobjManagerV1>(), request)
+        else {
+            return Screened::Forward;
+        };
+        return match new_object_id(id, "wp_linux_drm_syncobj_surface_v1") {
+            Some(protocol_id) => Screened::ForwardThenAdopt(NewSyncobjSurface {
+                surface: surface.clone(),
+                protocol_id,
+            }),
+            None => {
+                log::warn!(
+                    area = "syncobj",
+                    "the id of a new wp_linux_drm_syncobj_surface_v1 could not be read, so a surface that makes its object again is not checked"
+                );
+                Screened::Forward
+            }
+        };
     }
     Screened::Forward
 }

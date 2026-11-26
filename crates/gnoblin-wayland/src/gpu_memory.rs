@@ -190,18 +190,24 @@ impl State {
     /// The compositor and every other client go on: a protocol error ends one connection. The client's buffers and
     /// surfaces are released as its objects are destroyed.
     pub(crate) fn refuse_client(&self, client: &Client, refusal: MemoryRefusal) {
+        self.end_client_no_memory(client, &refusal.to_string());
+    }
+
+    /// Ends `client`'s connection with `wl_display.error.no_memory` and the reason it is given, for a request that asks the
+    /// compositor to hold more than it will, whatever the resource (a budget, or the acquire waits of explicit sync).
+    pub(crate) fn end_client_no_memory(&self, client: &Client, reason: &str) {
         let pid = client
             .get_credentials(&self.display_handle)
             .ok()
             .map(|credentials| credentials.pid);
-        log::warn!(area = "memory", ?pid, %refusal, "a client's request is refused: no_memory");
+        log::warn!(area = "memory", ?pid, %reason, "a client's request is refused: no_memory");
         let backend = self.display_handle.backend_handle();
         let Ok(display) = backend.object_for_protocol_id(client.id(), &WL_DISPLAY_INTERFACE, 1) else {
             log::warn!(area = "memory", "the client's wl_display is gone, so it cannot be told");
             return;
         };
         // A message with a NUL cannot be sent; ours has none, and an empty one is still the right error code.
-        let message = CString::new(refusal.to_string()).unwrap_or_default();
+        let message = CString::new(reason).unwrap_or_default();
         backend.post_error(display, NO_MEMORY, message);
     }
 }

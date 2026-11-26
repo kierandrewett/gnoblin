@@ -54,13 +54,13 @@ impl CompositorHandler for State {
         crate::subsurface_position::applied(surface);
         // A release point an explicit-sync client named is taken before Smithay's handler would own it: it is signalled
         // when the GPU is done with the buffer, not when the next commit replaces it.
-        let released = if self.syncobj.served() {
+        let applied = if self.syncobj.served() {
             gnoblin_wayland_protocols::wp_linux_drm_syncobj_v1::take_points(surface)
         } else {
-            Vec::new()
+            gnoblin_wayland_protocols::wp_linux_drm_syncobj_v1::TakenPoints::default()
         };
         on_commit_buffer_handler::<Self>(surface);
-        self.syncobj.hold(released);
+        self.syncobj.hold(applied, self.loop_handle.as_ref());
         // A buffer whose pool the client shrank is the client's error; so is a viewport source that reaches
         // past the buffer the commit left attached.
         gnoblin_wayland_protocols::wl_compositor::verify_buffer(surface);

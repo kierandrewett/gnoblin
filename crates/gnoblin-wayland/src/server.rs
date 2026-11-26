@@ -952,8 +952,12 @@ impl Server {
             // then ran for ever: a session dropped as soon as it was up never ended, and the thread joining it waited
             // for good. The flag read here is `Control::stopping`, which nothing clears.
             let mut ended = Ok(());
+            // How long the loop sleeps when nothing wakes it.
+            let idle = Duration::from_millis(100);
             while !control.is_stopping() {
-                if let Err(error) = event_loop.dispatch(Duration::from_millis(100), &mut state) {
+                // A release point that waits for the GPU is looked at again soon: a frame retiring wakes no loop.
+                let timeout = state.syncobj_poll().map_or(idle, |poll| poll.min(idle));
+                if let Err(error) = event_loop.dispatch(timeout, &mut state) {
                     ended = Err(error);
                     break;
                 }
