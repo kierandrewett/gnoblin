@@ -109,4 +109,6 @@ GNOBLIN_LOG=wayland:debug,compositor:info,*:warn
 
 A bad entry is refused with a named error and the default applies. The `logging` configuration table sets the same levels, and `GNOBLIN_LOG` overrides it.
 
+Smithay and other libraries log through `tracing`, not through a component, so they follow the default level: `GNOBLIN_LOG=debug` turns their debug lines on as well. A value in `tracing`'s own syntax, such as `smithay=debug,warn`, is also accepted. It filters the console and the log file the same way and sets no component level.
+
 Component ids are 1 to 24 bytes of `a-z`, `0-9` and `-`, with no leading or trailing dash. The build fails on a bad id. A disabled call formats nothing, and the first call to a component registers it, so `gnoblin_log::components()` lists every component that has logged.

@@ -4234,6 +4234,7 @@ impl Host for State {
         match event {
             InputEvent::PointerMotion { output, position, .. } => {
                 let Some(entry) = self.outputs.iter().find(|entry| entry.backend == output) else {
+                    log::debug!(area = "input", output = ?output, "an absolute point names an output the seat does not have");
                     return;
                 };
                 let position = SmithayPoint::from((

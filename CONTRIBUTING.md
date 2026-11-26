@@ -147,7 +147,9 @@ IMAGE with docker or podman, as an ordinary user with your uid, and keeps the bu
 
 `scripts/ci/vm/run.sh DISTRO PREFIX SHELL OUTDIR` boots `fedora-43`, `arch`, `debian-13` or `opensuse-tumbleweed`
 under KVM, installs the clients, copies the tree `just vm-dist` installed to `/opt/gnoblin` and checks a session per
-client (foot, GTK 4, GTK 3, Firefox, xeyes and xterm through Xwayland) and the input `wev` receives. With no GPU it uses
+client (foot, GTK 4, GTK 3, Firefox, xeyes and xterm through Xwayland) and the input `wev` receives from the virtio mouse
+(relative) and the virtio tablet (absolute), sent as device events through QMP by `scripts/ci/vm/input-check.sh`; the same
+script checks against any running guest. With no GPU it uses
 a 2D virtual GPU, so the guest draws with Mesa's llvmpipe and every check leaves a capture in OUTDIR. A known bug is an
 expected failure in the script, named by its bead; when the bug is fixed the check passes and the run fails until the
 entry is removed.

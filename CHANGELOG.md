@@ -430,6 +430,7 @@
 - Controller trigger, grip, face button and stick presses are now held for 150 ms so a shell drag claim can discard them instead of sending a stray `BTN_RIGHT` click, so these clicks land 150 ms later; `XRSession.chordSettleMs` is capped at 60 ms and rejects non-numeric values.
 - A claimed chord now sends `chord` press and release events to the shell with the claim id, hiding both edges from the client until the claim ends, and a destroyed seat releases its claims so chords reach the client again.
 - Pointer presses and motion over a window the shell rotated or moved now reach it where it is drawn, not its unrotated placement rectangle.
+- On the DRM backend an absolute pointer (a virtio tablet in a virtual machine, a touch screen) now places the pointer where the device was touched. The backend took libinput's plain absolute coordinates, which are millimetres or a device's raw axis units, for fractions of the device's range, so every point was clamped into the output's bottom-right corner and no client was ever under the pointer, with no `wl_pointer.enter`; touch points had the same fault (lane Drm7xyb, bead gnoblin-7xyb; `crates/gnoblin-backend-drm/src/libinput/mod.rs`). The CI VM job now sends a tablet move, a click and two keys through QMP and checks what `wev` receives (`scripts/ci/vm/input-check.sh`).
 
 #### Outputs and backends
 
@@ -484,6 +485,7 @@
 
 #### Command line and tooling
 
+- `GNOBLIN_LOG=wayland:debug,*:warn`, the component syntax `docs/guides/logging.md` documents, is now accepted by every process and sets the level of each component. It was refused as an invalid `EnvFilter` directive, and the debug lines of the compositor's own components could not be turned on. A value in `tracing`'s syntax (`smithay=debug,warn`) still works (lane Drm7xyb, bead gnoblin-yv6i; `crates/gnoblin-log/src/init.rs`).
 - `cargo xtask deps` passes its own test again, now correctly asserting that `gnoblin-std-portal` is refused access to egui.
 - `just core-only` passes again: it refused the core because `gnoblin-std-abi` appeared in its build tree. That crate is reached only at build time, through `gnoblin-sdkgen` rendering the core's `gnoblin.model` catalog, and is never linked. The rule now refuses any std crate the core links, and any std crate its build reaches other than that one, by that one path.
 

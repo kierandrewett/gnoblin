@@ -17,8 +17,8 @@
 #
 # Each check is a gnoblin session on the DRM backend with one client. A check fails when gnoblin does not serve, the
 # GLES context never comes up, the kernel refuses a frame, or the client is not running after its wait. Input is sent
-# as device events through QMP (scripts/ci/vm/qmp.py) to the guest's virtio keyboard and relative mouse, and checked
-# with wev, which prints what a client receives. A check named in EXPECTED_FAILURES below is a known bug: its failure is
+# as device events through QMP (scripts/ci/vm/qmp.py) to the guest's virtio keyboard, relative mouse and absolute tablet,
+# and checked with wev, which prints what a client receives. A check named in EXPECTED_FAILURES below is a known bug: its failure is
 # reported and allowed, and its passing fails the run so the entry is removed with the fix.
 #
 # Images are downloaded once into CI_VM_CACHE (default ~/.cache/gnoblin-ci-vm) and verified against the distribution's
@@ -172,7 +172,7 @@ qemu-system-x86_64 -name "gnoblin-ci-$distro" -enable-kvm -machine q35 -cpu host
     -drive "file=$out/run/seed.iso,media=cdrom,readonly=on" \
     -netdev "user,id=n0,hostfwd=tcp:127.0.0.1:$port-:22" -device virtio-net-pci,netdev=n0 \
     "${display[@]}" \
-    -device virtio-keyboard-pci -device virtio-mouse-pci \
+    -device virtio-keyboard-pci -device virtio-mouse-pci -device virtio-tablet-pci \
     -qmp "unix:$qmp,server=on,wait=off" \
     -serial "file:$out/serial.log" &
 qemu_pid=$!
@@ -277,30 +277,15 @@ else
     record xterm-size pass "xterm window $size"
 fi
 
-# Input: the relative mouse moves into wev, clicks, and two keys are typed; wev prints what it was given.
-guest "./guest-session.sh $shell_path 'stdbuf -oL wev'" >"$out/input.session.txt" 2>&1 || true
-sleep 4
-"$here/qmp.py" "$qmp" move 200 150
-"$here/qmp.py" "$qmp" click
-sleep 1
-"$here/qmp.py" "$qmp" type ab
-sleep 2
-guest 'cat ~/session/client.log' >"$out/input.wev.log" 2>&1 || true
-guest 'cat ~/session/gnoblin.log' >"$out/input.gnoblin.log" 2>&1 || true
+# Input (the tablet is added after the mouse, which is what makes QEMU send a click to it): the relative mouse and then the absolute tablet are sent to wev through QMP (scripts/ci/vm/input-check.sh), and each
+# check is what wev was given.
+GUEST_CMD="ssh -i $out/run/key -p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5 -o BatchMode=yes ci@127.0.0.1" \
+    "$here/input-check.sh" "$qmp" "$shell_path" "$out" >"$out/input-check.txt" 2>&1 || true
 capture input
-if ! grep -q 'the shell .* serves' "$out/input.gnoblin.log"; then
-    record input-shell fail "the shell did not start, so the input checks below test the fallback (see input.gnoblin.log)"
-fi
-if grep -q 'wl_pointer\] enter' "$out/input.wev.log" && grep -q 'wl_pointer\] button' "$out/input.wev.log"; then
-    record pointer pass "wev got pointer enter and the click"
-else
-    record pointer fail "wev got no pointer enter or click (see input.wev.log)"
-fi
-if grep -q 'wl_keyboard\] enter' "$out/input.wev.log" && grep -qE 'wl_keyboard\] key: .*state: 1' "$out/input.wev.log"; then
-    record keyboard-focus pass "wev got keyboard focus and the keys"
-else
-    record keyboard-focus fail "wev got no keyboard enter or keys (see input.wev.log)"
-fi
+while IFS='|' read -r check outcome detail; do
+    record "$check" "$outcome" "$detail"
+done <"$out/input-results.txt"
+[ -s "$out/input-results.txt" ] || record input-check fail "the input checks produced no result (see input-check.txt)"
 
 guest 'sudo systemctl poweroff' >/dev/null 2>&1 || true
 for _ in $(seq 1 30); do

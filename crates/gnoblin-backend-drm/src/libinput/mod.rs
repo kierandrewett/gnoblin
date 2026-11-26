@@ -30,9 +30,12 @@
 //!    display is a pointer jump nobody asked for.
 //! 3. **A refused setting stops the rest of the configuration.** It is recorded and skipped
 //!    (`Applier`): `input_settings::tests::a_refused_setting_does_not_stop_the_rest`.
-//! 4. **An event is translated with the wrong scale.** libinput states absolute and touch
-//!    positions as fractions of the device's own range, so they pass through as they are and
-//!    the mapper places them on an output: `map::tests::an_absolute_point_lands_where_it_was_reported`.
+//! 4. **An event is translated with the wrong scale.** libinput's plain absolute and touch coordinates are
+//!    millimetres, or the raw axis units of a device with no size, so the glue asks for the position transformed
+//!    onto a fixed range and divides it back to a fraction of the device's own range ([`fraction`]); the mapper
+//!    places that on an output. Passed through as they came, a virtio tablet's every point was clamped into the
+//!    output's bottom-right corner and no client was ever under the pointer: the `tablet-position` and
+//!    `tablet-pointer` checks of `scripts/ci/vm/input-check.sh`.
 //! 5. **A gesture reaches the seat as a pointer click.** Gestures are [`InputEvent::Touchpad`]s
 //!    and never pointer events, so the router sees them and no client does.
 
@@ -341,13 +344,8 @@ impl Libinput {
             }
             BackendEvent::PointerMotionAbsolute { event } => {
                 let device = self.device_id(&event.device());
-                produced.extend(self.mapper.event(
-                    device,
-                    DeviceEvent::Absolute {
-                        x: event.x(),
-                        y: event.y(),
-                    },
-                ));
+                let (x, y) = fraction(&event);
+                produced.extend(self.mapper.event(device, DeviceEvent::Absolute { x, y }));
             }
             BackendEvent::PointerButton { event } => {
                 let device = self.device_id(&event.device());
@@ -374,7 +372,8 @@ impl Libinput {
             }
             BackendEvent::TouchDown { event } => {
                 let device = self.device_id(&event.device());
-                let (slot, x, y) = (slot_of(&event), event.x(), event.y());
+                let (x, y) = fraction(&event);
+                let slot = slot_of(&event);
                 self.touch_positions.insert((device, slot), (x, y));
                 produced.extend(self.mapper.event(
                     device,
@@ -388,7 +387,8 @@ impl Libinput {
             }
             BackendEvent::TouchMotion { event } => {
                 let device = self.device_id(&event.device());
-                let (slot, x, y) = (slot_of(&event), event.x(), event.y());
+                let (x, y) = fraction(&event);
+                let slot = slot_of(&event);
                 self.touch_positions.insert((device, slot), (x, y));
                 produced.extend(self.mapper.event(
                     device,
@@ -556,6 +556,9 @@ impl Libinput {
                 log::debug!(area = "input", ?other, "an event this seat does not use");
             }
         }
+        for event in &produced {
+            log::debug!(area = "input", ?event, "a device event reaches the seat");
+        }
         self.ready.extend(produced);
     }
 }
@@ -587,8 +590,21 @@ fn axis<E: PointerAxisEvent<LibinputInputBackend>>(event: &E) -> (f64, f64) {
     (amount(Axis::Horizontal), amount(Axis::Vertical))
 }
 
-/// The range a tablet position is asked for, so the fraction keeps far more than a pixel's worth of precision.
-const TABLET_RANGE: i32 = 1 << 16;
+/// The range a position is asked for, so the fraction keeps far more than a pixel's worth of precision.
+const POSITION_RANGE: i32 = 1 << 16;
+
+/// An absolute point as a fraction of the device's own range on each axis, from 0 to 1.
+///
+/// `x()` and `y()` are not that: libinput gives them in millimetres from the device's top left, and for a device that
+/// states no size, such as QEMU's virtio tablet, in its raw axis units (0 to 32767). Placed on an output as fractions,
+/// every point of such a device lands past the far edge and is clamped into the output's corner.
+fn fraction<E: AbsolutePositionEvent<LibinputInputBackend>>(event: &E) -> (f64, f64) {
+    let range = f64::from(POSITION_RANGE);
+    (
+        event.x_transformed(POSITION_RANGE) / range,
+        event.y_transformed(POSITION_RANGE) / range,
+    )
+}
 
 /// The tablet tool an event is about, named by what it is.
 fn tool_of<E: TabletToolEvent<LibinputInputBackend>>(event: &E) -> TabletTool {
@@ -640,10 +656,10 @@ fn axes_of<E: TabletToolEvent<LibinputInputBackend>>(event: &E) -> TabletAxes {
 
 /// A tool's position as a fraction of the tablet's range on each axis.
 fn tablet_position<E: TabletToolEvent<LibinputInputBackend>>(event: &E) -> (f64, f64) {
-    let range = f64::from(TABLET_RANGE);
+    let range = f64::from(POSITION_RANGE);
     (
-        event.x_transformed(TABLET_RANGE) / range,
-        event.y_transformed(TABLET_RANGE) / range,
+        event.x_transformed(POSITION_RANGE) / range,
+        event.y_transformed(POSITION_RANGE) / range,
     )
 }
 

@@ -60,10 +60,15 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
     let role = role.name();
     let mut problems = options.problems.clone();
 
-    let filter = match EnvFilter::try_new(&options.filter) {
-        Ok(filter) => filter,
-        Err(error) => {
-            problems.push(format!("ignoring {FILTER_VARIABLE}={:?}: {error}", options.filter));
+    let filter = match resolve_filter(&options.filter) {
+        Ok((filter, spec)) => {
+            if let Some(spec) = spec {
+                crate::filter::set_spec(spec);
+            }
+            filter
+        }
+        Err(problem) => {
+            problems.push(problem);
             EnvFilter::new(options::DEFAULT_FILTER)
         }
     };
@@ -132,4 +137,24 @@ fn install_panic_hook() {
         log::error!(panic = %information, "a thread panicked");
         previous(information);
     }));
+}
+
+/// The console filter for `text`, and the component levels it sets.
+///
+/// `text` is the documented specification first (`wayland:debug,*:warn`, see [`crate::filter::Spec`]): it sets
+/// the level of every component, which is what a `log::debug!` call site reads, and it becomes the matching
+/// `EnvFilter` directives so the console and the sink agree with it. A text that is not that syntax is tried as
+/// an `EnvFilter` (`smithay=debug,warn`) so a filter written for `tracing` keeps working; it sets no component
+/// level. A text that is neither is refused with the documented syntax's error.
+fn resolve_filter(text: &str) -> Result<(EnvFilter, Option<crate::filter::Spec>), String> {
+    match crate::filter::Spec::parse(text) {
+        Ok(spec) => {
+            let filter = EnvFilter::try_new(spec.env_filter_directives())
+                .map_err(|error| format!("ignoring {FILTER_VARIABLE}={text:?}: {error}"))?;
+            Ok((filter, Some(spec)))
+        }
+        Err(error) => EnvFilter::try_new(text)
+            .map(|filter| (filter, None))
+            .map_err(|_| format!("ignoring {FILTER_VARIABLE}={text:?}: {error}")),
+    }
 }

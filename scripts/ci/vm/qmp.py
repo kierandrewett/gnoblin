@@ -6,9 +6,12 @@
     qmp.py SOCKET type TEXT            TEXT as key presses on the guest's virtio keyboard (a-z, 0-9, space, '-', '.')
     qmp.py SOCKET key NAME             one QEMU key code, such as ret or esc
     qmp.py SOCKET move DX DY           relative motion on the guest's virtio mouse, in steps of at most 20
-    qmp.py SOCKET click [BUTTON]       press and release a mouse button (left by default)
+    qmp.py SOCKET abs X Y              the guest's virtio tablet to the point X Y, as fractions from 0 to 1 of its range
+    qmp.py SOCKET click [BUTTON]       press and release a pointer button (left by default)
 
 Every input reaches the guest as a device event, so it travels libinput -> compositor -> client as a person's would.
+QEMU routes motion by its kind (relative to the mouse, absolute to the tablet) and a button to the pointer device that was
+added last, so the guest must have the tablet after the mouse on its command line: a click is then the tablet's.
 """
 
 import json
@@ -17,6 +20,8 @@ import sys
 import time
 
 NAMED = {" ": "spc", "-": "minus", ".": "dot"}
+# The extent of a tablet axis, which is what QEMU's virtio tablet reports as its range.
+TABLET_MAX = 0x7FFF
 
 
 class Qmp:
@@ -75,6 +80,14 @@ def main(argv: list[str]) -> int:
             )
             dx, dy = dx - step_x, dy - step_y
             time.sleep(0.02)
+    elif action == "abs":
+        fx, fy = float(rest[0]), float(rest[1])
+        if not (0.0 <= fx <= 1.0 and 0.0 <= fy <= 1.0):
+            raise SystemExit("[qmp] abs takes fractions from 0 to 1")
+        qmp.events(
+            {"type": "abs", "data": {"axis": "x", "value": round(fx * TABLET_MAX)}},
+            {"type": "abs", "data": {"axis": "y", "value": round(fy * TABLET_MAX)}},
+        )
     elif action == "click":
         button = rest[0] if rest else "left"
         for down in (True, False):

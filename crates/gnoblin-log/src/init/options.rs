@@ -7,10 +7,10 @@ use std::path::Path;
 use crate::journal::SOCKET_PATH;
 use crate::record::SinkHandle;
 
-/// The environment variable that holds the `tracing` filter, in `EnvFilter` syntax.
-///
-/// Event targets are component names, so `GNOBLIN_LOG=wayland=debug,warn` shows the debug lines
-/// of the `wayland` component and warnings from everywhere else.
+/// The environment variable that holds the log filter: comma-separated `component:level` pairs, as
+/// [`crate::filter::Spec`] parses them (`GNOBLIN_LOG=wayland:debug,*:warn` shows the debug lines of the `wayland`
+/// component and warnings from everywhere else). A value in `tracing`'s `EnvFilter` syntax (`smithay=debug,warn`) is
+/// also accepted; it filters the console and the sink but sets no component level.
 pub const FILTER_VARIABLE: &str = "GNOBLIN_LOG";
 
 /// The environment variable that names the console output, one of the [`Console`] names.
