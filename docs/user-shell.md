@@ -160,6 +160,44 @@ from gnoblin.objects.model import Gnoblin
 Gnoblin.get().clients.on("focus_changed", log_focus)
 ```
 
+```rust
+// src/focus_log.rs
+use std::rc::Rc;
+
+use gnoblin_core::objects::{Client, ModelRoot};
+
+pub fn log_focus(shell: &Rc<ModelRoot>, client: Client, has_focus: bool) {
+    if has_focus {
+        if let Ok(app_id) = client.app_id() {
+            let argv = ["logger".to_owned(), "-t".to_owned(), "focus".to_owned(), app_id];
+            let _ = shell.spawn(&argv, None);
+        }
+    }
+}
+```
+
+```rust
+// src/lib.rs
+use std::rc::Rc;
+
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+
+mod focus_log;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let clients = model.clients()?;
+    let shell = Rc::clone(&model);
+    clients
+        .on_focus_changed(move |client, focused| focus_log::log_focus(&shell, client, focused))?
+        .keep();
+    Ok(())
+}
+```
+
 - A module beside the script, or in a package directory beside it, is read again from its source at every reload, so an edit
   of `focus_log.py` takes effect without a restart.
 - Libraries installed for your Python import as usual, and modules from `site-packages` are shared by every generation.
