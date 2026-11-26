@@ -1,0 +1,69 @@
+# cargo-deny policy for the gnoblin-xr extension workspace (`just ext-deny`).
+#
+# The extension is a workspace of its own, with its own lockfile and a much smaller dependency tree than the root
+# workspace, so it has its own policy file. cargo-deny reports a licence exception or an allowed source that no crate
+# of the checked graph uses, and the root `deny.toml` carries the ones only the root workspace needs (SQLCipher for the
+# keyring store, the fonts egui bundles for the portal dialogs, the pinned Smithay git source); sharing one file made
+# every extension run warn about them. The licence allow-list below is the root one, for the same reason: Gnoblin is
+# GPL-2.0-or-later, and a dependency is allowed only when its licence can be combined with that. Keep the two lists
+# the same, and add a licence to both when a dependency of either workspace needs it.
+[advisories]
+version = 2
+# A pulled advisory release is a fixable supply-chain bug: fail the build.
+yanked = "deny"
+# A direct dependency of this workspace that stops being maintained fails the build; one further down the graph is
+# reported and passes, as in the root policy.
+unmaintained = "workspace"
+ignore = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Workspace members refer to each other by path without a version, which the wildcard rule would otherwise reject.
+allow-wildcard-paths = true
+deny = []
+# The duplicate versions below each have two parents that ask for different ones, and neither parent has a release
+# that takes the other's: `cargo info` on 2026-11-26 shows ash 0.38.0, openxr 0.22.0 and petgraph 0.8.3 as the latest
+# of each. An entry goes when its crate has a single version again (cargo-deny then warns that the skip matched
+# nothing), so the list does not outlive the reason.
+skip = [
+    { crate = "hashbrown@0.15.5", reason = "petgraph 0.8.3 (prost-build 0.14's build-time graph) takes hashbrown 0.15 while indexmap 2.14 takes 0.17; build-time only, and petgraph has no release on 0.17" },
+    { crate = "libloading@0.8.9", reason = "ash 0.38 loads libvulkan with libloading 0.8 while openxr 0.22 loads the OpenXR runtime with 0.9; both are the latest releases of their crates" },
+    { crate = "syn@2.0.119", reason = "prost-derive, logos-codegen, miette-derive and zeroize_derive still derive with syn 2 while prost-build, serde_derive and thiserror-impl moved to syn 3; every one is a proc-macro or build-time crate" },
+]
+skip-tree = []
+
+[licenses]
+version = 2
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "GPL-2.0-or-later",
+    "GPL-3.0-or-later",
+    "ISC",
+    "LGPL-2.1-or-later",
+    "LGPL-3.0-or-later",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.9
+# The allow-list is a policy for dependencies this workspace will have, not just the ones it has today, so an allowance
+# no current dependency matches is expected and is not a warning.
+unused-allowed-license = "allow"
+
+[sources]
+unknown-registry = "deny"
+# This workspace has no git dependency: the root workspace's Smithay pin does not reach it, and a new one is a
+# reviewable change here.
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -238,7 +238,7 @@ deny:
 
 # The extension workspace (`extensions/gnoblin-xr`) is its own workspace with its own lockfile and target
 # directory, so the root recipes above do not reach it. It uses the toolchain and the rustfmt settings at the
-# repository root, and the same `deny.toml`.
+# repository root, and its own `deny.toml` (the root one carries exceptions only the root workspace uses).
 ext_manifest := "extensions/gnoblin-xr/Cargo.toml"
 
 # Fail if any file of the extension workspace is not rustfmt-clean.
@@ -253,9 +253,9 @@ ext-clippy:
 ext-test:
     cargo test --manifest-path {{ext_manifest}} --workspace --all-targets --locked
 
-# Check the extension workspace's advisories, licences, duplicate versions and git sources.
+# Check the extension workspace's advisories, licences, duplicate versions and git sources against its own policy.
 ext-deny:
-    cargo deny --manifest-path {{ext_manifest}} check
+    cargo deny --manifest-path {{ext_manifest}} --config extensions/gnoblin-xr/deny.toml check
 
 # The extension workspace's whole gate.
 ext-ci: ext-fmt-check ext-clippy ext-test ext-deny
