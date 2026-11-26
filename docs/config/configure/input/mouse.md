@@ -1,29 +1,33 @@
 # Mouse settings
 
-A `Mouse` stands for every pointer that is not a touchpad: a mouse, a trackball or a pointing stick. Its settings apply to
-all of them. The hardware backend gives them to each device when the session starts, when you plug a device in and after
-every reload; a nested session leaves its host's devices alone ([input device settings](/backends#input-device-settings)).
+A `Mouse` stands for every pointer that is not a touchpad: a mouse, a trackball or a pointing stick. The seat reports each
+device, and TypeScript and Python set the settings on the `Mouse` objects of `gnoblin.input.devices`.
+
+The hardware backend gives the settings to each device when the session starts, when you plug a device in and after every
+reload. A nested session leaves its host's devices alone ([input device settings](/backends#input-device-settings)).
 
 ::: tabs
 
 ```typescript
-import { Mouse } from "gnoblin-core/generated/objects";
+import { gnoblin, Mouse } from "gnoblin-core/generated/objects";
 
-const mouse = new Mouse({
-    sensitivity: -0.2,
-    acceleration: "flat",
-    naturalScroll: true,
-});
+for (const device of gnoblin.input.devices) {
+    if (device instanceof Mouse) {
+        device.sensitivity = -0.2;
+        device.acceleration = "flat";
+        device.naturalScroll = true;
+    }
+}
 ```
 
 ```python
-from gnoblin.objects.model import AccelerationProfile, Mouse
+from gnoblin.objects.model import AccelerationProfile, Gnoblin, Mouse
 
-mouse = Mouse(
-    sensitivity=-0.2,
-    acceleration=AccelerationProfile.FLAT,
-    natural_scroll=True,
-)
+for device in Gnoblin.get().input.devices:
+    if isinstance(device, Mouse):
+        device.sensitivity = -0.2
+        device.acceleration = AccelerationProfile.FLAT
+        device.natural_scroll = True
 ```
 
 ```rust
@@ -51,15 +55,21 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 
 :::
 
-| Setting           | TypeScript      | Python           | Rust             | Values                                                                     |
-| ----------------- | --------------- | ---------------- | ---------------- | -------------------------------------------------------------------------- |
-| Speed             | `sensitivity`   | `sensitivity`    | `sensitivity`    | A number from `-1` (slowest) to `1`, or none for the system's              |
-| Acceleration      | `acceleration`  | `acceleration`   | `acceleration`   | `AccelerationProfile`: default, flat or adaptive, or none for the system's |
-| Natural scrolling | `naturalScroll` | `natural_scroll` | `natural_scroll` | Boolean, or none for the system's                                          |
+| Setting           | TypeScript      | Python           | Rust             | Values                                           | Default      |
+| ----------------- | --------------- | ---------------- | ---------------- | ------------------------------------------------ | ------------ |
+| Speed             | `sensitivity`   | `sensitivity`    | `sensitivity`    | A number from `-1` (slowest) to `1`              | The system's |
+| Acceleration      | `acceleration`  | `acceleration`   | `acceleration`   | `AccelerationProfile`: default, flat or adaptive | The system's |
+| Natural scrolling | `naturalScroll` | `natural_scroll` | `natural_scroll` | Boolean                                          | The system's |
 
-The acceleration values are `"default"`, `"flat"` and `"adaptive"` in TypeScript; `AccelerationProfile.DEFAULT`, `FLAT` and
-`ADAPTIVE` in Python (a plain string is also accepted); and `AccelerationProfile::Default`, `Flat` and `Adaptive` in Rust.
+A setting you leave out keeps the system's value, and a change takes effect on the next reload.
 
-Each handle also has `reset(name)`, which takes one setting back to the system's value. `name` is `"sensitivity"`,
-`"acceleration"` or `"natural_scroll"`, and any other name is refused. The double-click time and drag threshold are not
-applied yet: see [input device settings](/backends#input-device-settings).
+Acceleration values by language:
+
+- TypeScript: `"default"`, `"flat"` and `"adaptive"`.
+- Python: `AccelerationProfile.DEFAULT`, `FLAT` and `ADAPTIVE`. A plain string is also accepted.
+- Rust: `AccelerationProfile::Default`, `Flat` and `Adaptive`.
+
+`reset(name)` takes one setting back to the system's value. `name` is `"sensitivity"`, `"acceleration"` or
+`"natural_scroll"`, and any other name is refused.
+
+The double-click time and drag threshold are not applied yet: see [input device settings](/backends#input-device-settings).
