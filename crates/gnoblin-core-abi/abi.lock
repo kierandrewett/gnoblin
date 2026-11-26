@@ -573,7 +573,7 @@ field | GnoblinObjectApi.track | unsafe extern "C" fn(ctx: GnoblinCtx, cb: Optio
 field | GnoblinObjectApi.last_error_code | unsafe extern "C" fn(buf: *mut u8, cap: usize) -> usize @152 +8 | 1.0
 field | GnoblinObjectApi.retain | unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj) -> i32 @160 +8 | 1.0
 
-struct | GnoblinApi | size 480 align 8 extensible | 1.0
+struct | GnoblinApi | size 488 align 8 extensible | 1.0
 
 field | GnoblinApi.size | u32 @0 +4 | 1.0
 field | GnoblinApi.major | u32 @4 +4 | 1.0
@@ -637,3 +637,4 @@ field | GnoblinApi.call | unsafe extern "C" fn(ctx: GnoblinCtx, object: u64, cla
 field | GnoblinApi.subscribe | unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, signal: u32, cb: GnoblinEventFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg @456 +8 | 1.0
 field | GnoblinApi.object_api | unsafe extern "C" fn(ctx: GnoblinCtx, namespace: GnoblinStr, out: *mut *const GnoblinObjectApi) -> i32 @464 +8 | 1.0
 field | GnoblinApi.set_write_stage | unsafe extern "C" fn(ctx: GnoblinCtx, stage: Option<GnoblinWriteStageFn>, peek: Option<GnoblinWriteStagePeekFn>, user: *mut c_void) -> i32 @472 +8 | 1.0
+field | GnoblinApi.node_effects_serial | unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, out: *mut u64) -> i32 @480 +8 | 1.0

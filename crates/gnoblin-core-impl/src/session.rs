@@ -11,7 +11,7 @@
 //! any table function, and the registry's release closures (which run while a generation retires) may reach back here.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -112,6 +112,18 @@ struct SessionStageMark {
     named: BTreeMap<(String, String), NamedNode>,
     /// The state entries the stage replaced or added, by key, as they were before the stage first touched them.
     state: BTreeMap<String, Option<Stored>>,
+    /// The last write of each node's `effects` at that moment.
+    effects: HashMap<NodeId, u64>,
+}
+
+/// Which write of a node's `effects` was the shell's last (`node_effects_serial`). The compositor's tree can be written but its effects
+/// are not carried back to a shell, so a caller that wants to know whether a list is still the one it wrote asks whether anything wrote
+/// the node's effects since.
+#[derive(Default)]
+struct EffectsWrites {
+    /// The serial the next write takes. Never goes back, even when a stage that made writes is abandoned.
+    next: u64,
+    last: HashMap<NodeId, u64>,
 }
 
 /// The shell instance's state. See the module docs.
@@ -139,6 +151,8 @@ pub(crate) struct Session {
     named: BTreeMap<(String, String), NamedNode>,
     /// The stage in progress, if a generation is staged.
     stage: Option<SessionStageMark>,
+    /// The shell's writes of nodes' `effects`.
+    effects: EffectsWrites,
     clock: Arc<dyn Clock>,
     /// Where the shell's reports to the guardian go, if the host has a guardian to tell.
     reports: Option<Arc<dyn ShellReports>>,
@@ -172,6 +186,7 @@ impl Default for Session {
             state_bytes: 0,
             named: BTreeMap::new(),
             stage: None,
+            effects: EffectsWrites::default(),
             clock: Arc::new(SystemClock),
             reports: None,
             reported_revision: None,
@@ -427,6 +442,17 @@ impl Session {
                 "the shell has not attached to the tree: call tree_attach first".to_owned(),
             )
         })
+    }
+
+    /// The shell wrote `node`'s `effects`: the write takes the next serial.
+    pub(crate) fn note_effects_write(&mut self, node: NodeId) {
+        self.effects.next += 1;
+        self.effects.last.insert(node, self.effects.next);
+    }
+
+    /// The serial of the last write of `node`'s `effects`, zero when the shell made none.
+    pub(crate) fn effects_serial(&self, node: NodeId) -> u64 {
+        self.effects.last.get(&node).copied().unwrap_or(0)
     }
 
     /// The tree for a read.
@@ -803,12 +829,17 @@ impl Session {
     /// A generation was made and will run its `init` against the live instance: remember what that `init` can change, to put it
     /// back if the stage is abandoned.
     fn staged(&mut self, id: GenerationId) {
+        // A node that is gone keeps no serial: the table holds the windows that have effects, not every one there was.
+        if let Some(tree) = self.tree.as_ref() {
+            self.effects.last.retain(|node, _| tree.exists(*node));
+        }
         self.processes.begin_stage();
         self.stage = Some(SessionStageMark {
             generation: id,
             tick: self.tree.as_ref().map(TreeSession::mark_tick),
             named: self.named.clone(),
             state: BTreeMap::new(),
+            effects: self.effects.last.clone(),
         });
     }
 
@@ -833,6 +864,9 @@ impl Session {
         }
         if restored {
             self.named = mark.named;
+            // The stage's writes of effects went with its tick: the serials go back to what they were, and `next` does not, so a
+            // serial is never taken twice.
+            self.effects.last = mark.effects;
         }
         for (key, before) in mark.state {
             match before {

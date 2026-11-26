@@ -14,7 +14,7 @@
 //!   (the layout of a workspace, the writes of a transition), and its callbacks enter the shell as they do in the runtime's turn.
 //!
 //! The core's registry is one per process, so a [`NativeCore`] holds a process-wide lock for as long as it lives.
-#![allow(dead_code)]
+#![allow(dead_code, unsafe_code)]
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -170,14 +170,18 @@ impl NativeCore {
         self.embedded.enter(shell, || host::close_generation(self.ctx))
     }
 
-    /// Reloads `role` as the runtime and the loader do: the new script is evaluated for a staged generation of the core. When it
-    /// took, the commit runs in the loader's order: the old generation's shutdown hooks run (with the shell as the way they enter),
-    /// the staged generation takes over (the old claims are released and the new ones sent behind them), and the old one is closed.
-    /// Else the staged generation is dropped and the old one serves on.
-    pub fn reload(&mut self, role: &mut gnoblin_js::JsRole) -> gnoblin_js::ReloadReport {
+    /// [`reload`](Self::reload), with `start` run as the new generation after its script has run and before the commit: what a native
+    /// shell's start writes to the tree through the core's node API, with nothing of the std library in it. `start` is given the staged
+    /// generation's context. It runs when the script fails too: a start that wrote before it threw has written.
+    pub fn reload_with(
+        &mut self,
+        role: &mut gnoblin_js::JsRole,
+        start: impl FnOnce(GnoblinCtx),
+    ) -> gnoblin_js::ReloadReport {
         let staged = host::stage_generation("js-rig", gnoblin_core_abi::LANG_TS);
         self.embedded.belong_to(staged);
         let report = role.reload_now();
+        start(staged);
         if report.ok {
             let old = std::mem::replace(&mut self.ctx, staged);
             self.embedded.serve(staged);
@@ -189,6 +193,14 @@ impl NativeCore {
             host::close_generation(staged);
         }
         report
+    }
+
+    /// Reloads `role` as the runtime and the loader do: the new script is evaluated for a staged generation of the core. When it
+    /// took, the commit runs in the loader's order: the old generation's shutdown hooks run (with the shell as the way they enter),
+    /// the staged generation takes over (the old claims are released and the new ones sent behind them), and the old one is closed.
+    /// Else the staged generation is dropped and the old one serves on.
+    pub fn reload(&mut self, role: &mut gnoblin_js::JsRole) -> gnoblin_js::ReloadReport {
+        self.reload_with(role, |_| {})
     }
 }
 
@@ -254,4 +266,48 @@ impl std::ops::DerefMut for CoreShell {
     fn deref_mut(&mut self) -> &mut JsShell {
         &mut self.shell
     }
+}
+
+/// Writes the `effects` of `node` as the generation `ctx`: one shadow of `blur`, through the core's node API as a native shell's start
+/// does it.
+pub fn write_effect(ctx: GnoblinCtx, node: u64, blur: f64) {
+    use gnoblin_core_abi as abi;
+    let api = host::api();
+    let (class, name) = ("window", "effects");
+    // SAFETY: `catalog_class` and `catalog_member` are functions of the core's table; the texts are live and `member` is a live struct
+    // that starts with its size.
+    let property = unsafe {
+        let class = (api.catalog_class)(ctx, class.as_ptr(), class.len());
+        assert_ne!(class, 0, "the tree has a window class");
+        let mut member: abi::GnoblinMember = std::mem::zeroed();
+        member.size = size_of::<abi::GnoblinMember>() as u32;
+        let code = (api.catalog_member)(
+            ctx,
+            class,
+            abi::MEMBER_PROPERTY,
+            name.as_ptr(),
+            name.len(),
+            &raw mut member,
+        );
+        assert_eq!(code, abi::E_OK, "the window class has effects");
+        member.id
+    };
+    // SAFETY: an all-zero effect record is a valid one: no text, no parameters, every number zero.
+    let mut effect: abi::GnoblinEffect = unsafe { std::mem::zeroed() };
+    effect.size = size_of::<abi::GnoblinEffect>() as u32;
+    effect.kind = abi::EFFECT_SHADOW;
+    effect.blur_radius = blur;
+    effect.colour = abi::GnoblinStr::borrowed("#ff000099");
+    let value = abi::GnoblinValue {
+        size: size_of::<abi::GnoblinValue>() as u32,
+        kind: abi::VALUE_EFFECTS,
+        flags: 0,
+        reserved: 0,
+        bits: 0,
+        ptr: (&raw const effect).cast(),
+        len: 1,
+    };
+    // SAFETY: `write_set` is a function of the core's table; `value` and `effect` are live for the call.
+    let code = unsafe { (api.write_set)(ctx, node, property, &value, 0.0) };
+    assert_eq!(code, abi::E_OK, "the effects write was refused");
 }

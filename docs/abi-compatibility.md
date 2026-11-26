@@ -140,8 +140,19 @@ The rules a shell and a library keep, which the table's documentation states in 
 
 - `cargo xtask gen-sdks --check` proves the catalogs of the two libraries and their locks.
 - The golden shells prove the tables did not move what they were built against. B1 appended `object_api` to `GnoblinApi` and
-  `GnoblinStdApi`, and `set_write_stage` was appended to `GnoblinApi` later. Later changes appended fields to `GnoblinObjectApi` (`track` in
+  `GnoblinStdApi`, and `set_write_stage` and `node_effects_serial` were appended to `GnoblinApi` later. Later changes appended fields to `GnoblinObjectApi` (`track` in
   B1.1, then `last_error_code` and `retain`), and no function was moved.
+
+### The effects serial field
+
+`GnoblinApi` has a function `node_effects_serial(ctx, node, out)`, appended after `set_write_stage` within ABI 1.0. The table grew from 480 to
+488 bytes. The effects of a node are not carried out by `node_get`, so a library cannot ask whether the list on a node is still the one it wrote:
+
+- Every write of a node's `effects` through the node API (`write_set`, `write_set_timed`) takes the next serial of the shell, and `out` is the
+  serial of the last write, zero when the shell made none.
+- A library that wrote a list reads the serial after its write and compares it later: the same serial means nothing has written the list since.
+- A write a failed reload's stage made is not counted: its serial goes back with the stage, and a serial is never taken twice.
+- A client asks `table_has` before it calls the function. A core built before it cannot say, and a library treats the list as still its own.
 
 ## What a shell sees
 

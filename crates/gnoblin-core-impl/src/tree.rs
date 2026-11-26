@@ -179,6 +179,18 @@ pub(crate) fn node_get(ctx: GnoblinCtx, node: u64, prop: u32) -> Result<GnoblinV
     Ok(lend_value(value))
 }
 
+/// `node_effects_serial`: the serial of the last write of `node`'s `effects`, zero when the shell made none.
+pub(crate) fn effects_serial(ctx: GnoblinCtx, node: u64) -> Result<u64, i32> {
+    check_ctx(ctx, "node_effects_serial", true)?;
+    session::with(|session| {
+        if !session.tree_ref()?.exists(node) {
+            return Err((abi::E_NO_SUCH_NODE, format!("node {node} is not in the tree")));
+        }
+        Ok(session.effects_serial(node))
+    })
+    .map_err(|error| fail("node_effects_serial", error))
+}
+
 /// `class_name`.
 pub(crate) fn class_name(ctx: GnoblinCtx, class: u32) -> Result<GnoblinStr, i32> {
     check_ctx(ctx, "class_name", true)?;
@@ -321,7 +333,11 @@ unsafe fn write_property(
         let value: MirrorValue =
             unsafe { read_value(value, def.value_kind) }.map_err(|error| (error.code(), error.message().to_owned()))?;
         tree.set(node, def.name, value, animation)
-            .map_err(|error| (abi::E_NO_SUCH_NODE, error.to_string()))
+            .map_err(|error| (abi::E_NO_SUCH_NODE, error.to_string()))?;
+        if def.name == "effects" {
+            session.note_effects_write(node);
+        }
+        Ok(())
     });
     match result {
         Ok(()) => abi::E_OK,

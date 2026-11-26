@@ -1003,13 +1003,23 @@ impl Reloading {
         self.settle();
     }
 
-    /// A reload whose new generation starts what `body` says and then fails: the staged generation is dropped and the running one
-    /// serves on.
-    fn reload_failing(&mut self, body: &str) {
+    /// A reload whose new generation writes one shadow of `blur` to window 3's effects through the core's node API as its start, as a
+    /// native shell does, after `body` has run and before the commit. A reload that fails has written it too.
+    fn reload_writing_effect(&mut self, body: &str, blur: f64) -> bool {
         std::fs::write(&self.entry, body).expect("shell.ts");
-        let report = self.core.reload(&mut self.role);
-        assert!(!report.ok, "the reload was meant to fail");
+        let report = self
+            .core
+            .reload_with(&mut self.role, |ctx| common::native::write_effect(ctx, 3, blur));
         self.settle();
+        report.ok
+    }
+
+    /// The blur radius of each effect window 3 carries, in order.
+    fn blurs(&self) -> Vec<f64> {
+        match self.comp.value(3, "effects") {
+            Some(MirrorValue::Effects(effects)) => effects.iter().map(|effect| effect.blur_radius).collect(),
+            _ => Vec::new(),
+        }
     }
 
     /// The seat's `decorations_available` as the compositor holds it.
@@ -1134,28 +1144,105 @@ fn a_reload_leaves_the_opacity_the_new_generation_set_itself_and_takes_off_the_r
     );
 }
 
+/// The effects of a node cannot be read back, but the core numbers every write of them: the old generation's effects come off a window
+/// only while the list is still the one it wrote, so what the new generation writes in its start stays, whether the new generation
+/// uses the library or nothing of it.
+#[test]
+fn a_reload_leaves_the_effects_the_new_generation_wrote_in_its_start_and_takes_off_the_old_ones() {
+    let styled = format!(
+        "{LIBRARY_GLOBALS}const style = gCore.gnoblin.clients.style;\n\
+         style.opacity = 0.8;\nstyle.cornerRadius = 12;\nstyle.shadows = [{{ y: 8, blur: 24, color: '#00000066' }}];\n"
+    );
+    let with_library = format!("{LIBRARY_GLOBALS}WindowState.get().start();\n");
+    let without_library = "import { gnoblin } from \"gnoblin-core\";\nvoid gnoblin;\n";
+    let mut shell = Reloading::boot(&styled);
+    shell.comp.create_window(3, "win1", "foot");
+    shell.settle();
+    assert_eq!(shell.blurs(), [24.0], "the style reaches the window");
+
+    // The controls: a new generation that writes no effects of its own has the old ones taken off, with or without the library.
+    shell.reload(&with_library);
+    assert_eq!(
+        shell.blurs(),
+        Vec::<f64>::new(),
+        "the library takes the old effects off"
+    );
+    shell.reload(&styled);
+    assert_eq!(shell.blurs(), [24.0]);
+    shell.reload(without_library);
+    assert_eq!(
+        shell.blurs(),
+        Vec::<f64>::new(),
+        "with no library to take over, the end of the old generation takes them off"
+    );
+
+    // A new generation of the library that has no style of its own, and writes a shadow to the node as its start.
+    shell.reload(&styled);
+    assert!(shell.reload_writing_effect(&with_library, 9.0));
+    assert_eq!(
+        shell.blurs(),
+        [9.0],
+        "the shadow the new generation wrote is its own and stays; the old generation's is gone"
+    );
+    assert_eq!(
+        shell.styled(),
+        (Some(1.0), 0.0, 1),
+        "the opacity and the corner radius the old style wrote come off beside it"
+    );
+
+    // A new generation that uses nothing of the library.
+    shell.reload(&styled);
+    assert_eq!(shell.blurs(), [24.0]);
+    assert!(shell.reload_writing_effect(without_library, 5.0));
+    assert_eq!(shell.blurs(), [5.0], "the shadow the new generation wrote stays");
+    assert_eq!(shell.styled(), (Some(1.0), 0.0, 1));
+
+    // A new generation with a style of its own that sets no shadow: what it wrote itself stays beside its style.
+    shell.reload(&styled);
+    assert!(shell.reload_writing_effect(
+        &format!("{LIBRARY_GLOBALS}gCore.gnoblin.clients.style.opacity = 0.5;\n"),
+        7.0
+    ));
+    assert_eq!(shell.blurs(), [7.0]);
+    assert_eq!(
+        shell.styled(),
+        (Some(0.5), 0.0, 1),
+        "its own opacity is written, its own shadow stays"
+    );
+}
+
 /// A generation that is staged and fails ends with the running one still serving: what it started is not taken from the running
 /// generation, whose style and declaration stay.
 #[test]
 fn a_failed_reload_leaves_the_running_generations_style_and_declaration() {
     let running = format!(
         "{LIBRARY_GLOBALS}{START_FRAMES}startFrames({{ resizeHandles: 6 }});\n\
-         const style = gCore.gnoblin.clients.style;\nstyle.opacity = 0.8;\nstyle.cornerRadius = 12;\n"
+         const style = gCore.gnoblin.clients.style;\nstyle.opacity = 0.8;\nstyle.cornerRadius = 12;\n\
+         style.shadows = [{{ y: 8, blur: 24, color: '#00000066' }}];\n"
     );
     let mut shell = Reloading::boot(&running);
     shell.comp.create_window(3, "win1", "foot");
     shell.settle();
-    assert_eq!(shell.styled(), (Some(0.8), 12.0, 0), "the style reaches the window");
+    assert_eq!(shell.styled(), (Some(0.8), 12.0, 1), "the style reaches the window");
     assert_eq!(shell.declared(), Some(true));
 
-    // The new generation starts decorations and says nothing of styles, then fails: it ends with nothing to take over.
-    shell.reload_failing(&format!(
-        "{LIBRARY_GLOBALS}{START_FRAMES}startFrames();\nWindowState.get().start();\nthrow new Error('the new generation fails');\n"
+    // The new generation starts decorations and says nothing of styles, writes a shadow of its own, then fails: it ends with nothing
+    // to take over, and its shadow goes with its stage.
+    assert!(!shell.reload_writing_effect(
+        &format!(
+            "{LIBRARY_GLOBALS}{START_FRAMES}startFrames();\nWindowState.get().start();\nthrow new Error('the new generation fails');\n"
+        ),
+        9.0
     ));
     assert_eq!(
         shell.styled(),
-        (Some(0.8), 12.0, 0),
+        (Some(0.8), 12.0, 1),
         "the running generation keeps its style: the failed one neither restyles nor clears it"
+    );
+    assert_eq!(
+        shell.blurs(),
+        [24.0],
+        "the failed generation's shadow went with its stage"
     );
     assert_eq!(
         shell.declared(),
@@ -1165,6 +1252,10 @@ fn a_failed_reload_leaves_the_running_generations_style_and_declaration() {
 
     // The next reload that works still takes over from the running generation.
     shell.reload(&format!("{LIBRARY_GLOBALS}WindowState.get().start();\n"));
-    assert_eq!(shell.styled(), (Some(1.0), 0.0, 0));
+    assert_eq!(
+        shell.styled(),
+        (Some(1.0), 0.0, 0),
+        "the shadow is still the running generation's, so it comes off"
+    );
     assert_eq!(shell.declared(), Some(false));
 }

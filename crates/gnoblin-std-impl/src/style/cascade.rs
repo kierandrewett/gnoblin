@@ -31,13 +31,24 @@ pub(crate) enum Scope {
 /// A client's node id.
 pub(crate) type NodeId64 = u64;
 
+/// The effects a generation left on a window's node.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum EffectsLeft {
+    /// None: the list it wrote was empty, or it wrote none.
+    None,
+    /// A list the core could not number (a core from before `node_effects_serial`): the node's effects are taken to be it.
+    Unknown,
+    /// A list written at this serial of the core (`Node::effects_serial`): the node holds it while the serial is the same.
+    Serial(u64),
+}
+
 /// What a generation wrote to a window's node and left there: the opacity and the corner radius it set when they are not what a window
-/// with no style holds, and whether it left effects. This is what the generation that takes over may take off, no more.
+/// with no style holds, and the effects. This is what the generation that takes over may take off, no more.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Left {
     opacity: Option<f64>,
     corner: Option<f64>,
-    effects: bool,
+    effects: EffectsLeft,
 }
 
 impl Left {
@@ -45,6 +56,17 @@ impl Left {
     /// compositor's single-precision storage of a double.
     fn holds(read: Result<f64, gnoblin_core::CoreError>, wrote: f64) -> bool {
         read.is_ok_and(|read| (read - wrote).abs() <= 1e-6 * wrote.abs().max(1.0))
+    }
+
+    /// Whether the node still holds the effects this left: the core numbers every write of a node's effects, and a list that was
+    /// written since (by a generation that started after this one, or by the shell's own node writes) has another serial. The effects
+    /// cannot be read, so a serial that cannot be read is no proof, and the list is left.
+    fn effects_held(&self, node: &gnoblin_core::Node) -> bool {
+        match self.effects {
+            EffectsLeft::None => false,
+            EffectsLeft::Unknown => true,
+            EffectsLeft::Serial(wrote) => node.effects_serial().is_ok_and(|now| now == wrote),
+        }
     }
 }
 
@@ -82,6 +104,8 @@ struct Applied {
     computed: Option<Computed>,
     notes: Vec<String>,
     effects: Option<Vec<Effect>>,
+    /// The core's serial of the write that put `effects` on the node, when it could say.
+    effects_serial: Option<u64>,
     opacity: Option<f64>,
     corner: Option<f64>,
 }
@@ -92,9 +116,13 @@ impl Applied {
         let left = Left {
             opacity: self.opacity.filter(|opacity| *opacity != 1.0),
             corner: self.corner.filter(|corner| *corner != 0.0),
-            effects: self.effects.as_ref().is_some_and(|effects| !effects.is_empty()),
+            effects: match (&self.effects, self.effects_serial) {
+                (Some(effects), Some(serial)) if !effects.is_empty() => EffectsLeft::Serial(serial),
+                (Some(effects), None) if !effects.is_empty() => EffectsLeft::Unknown,
+                _ => EffectsLeft::None,
+            },
         };
-        (left.opacity.is_some() || left.corner.is_some() || left.effects).then_some(left)
+        (left.opacity.is_some() || left.corner.is_some() || left.effects != EffectsLeft::None).then_some(left)
     }
 }
 
@@ -451,7 +479,10 @@ impl State {
             seen.epoch = epoch;
             seen.layers = key;
             let computed = self.resolve_style(&layers);
-            self.apply_client_style(client, computed, carried.is_some());
+            // The first application of a window the earlier generation left effects on writes this generation's list, an empty one
+            // included, unless the list on the node is no longer that generation's.
+            let take_over = carried.is_some_and(|left| left.effects_held(&self.g.node(NodeId(client))));
+            self.apply_client_style(client, computed, take_over);
         }
         // Every window this generation knows has had its turn: a handed-over window it never meets is gone.
         self.styles.carried.clear();
@@ -491,15 +522,15 @@ impl State {
         false
     }
 
-    /// Puts back what a window with no style holds, for what `left` says an earlier generation wrote: an opacity or a corner radius
-    /// only while the node still holds it (somebody else's later write stays), and the effects, which the tree cannot be read back
-    /// for, when the earlier generation left any. A window whose opacity a running transition plays keeps it: that is the script's own.
+    /// Puts back what a window with no style holds, for what `left` says an earlier generation wrote: an opacity, a corner radius and
+    /// effects only while the node still holds them (a later write of the shell's own stays; the effects are told by the core's serial
+    /// of their last write). A window whose opacity a running transition plays keeps it: that is the script's own.
     fn take_off(&self, client: NodeId64, left: &Left) {
         if !crate::nodes::alive(&self.g, client) {
             return;
         }
         let node = self.g.node(NodeId(client));
-        if left.effects {
+        if left.effects_held(&node) {
             let _ = node.set_effects(&[]);
         }
         if let Some(wrote) = left.opacity
@@ -515,7 +546,7 @@ impl State {
         }
     }
 
-    fn apply_client_style(&mut self, client: NodeId64, computed: Computed, carried: bool) {
+    fn apply_client_style(&mut self, client: NodeId64, computed: Computed, take_over: bool) {
         let g = self.g.clone();
         let node = g.node(NodeId(client));
         // The seat says whether the compositor accepts a shader effect (`compositor.user-shaders`); a tree with no seat, or a seat
@@ -533,14 +564,16 @@ impl State {
         } else {
             // A window an earlier generation styled keeps its effects: the first application clears them when the style has none. The
             // tree's effects cannot be read back, so over a library that is a reload or holds an earlier script's state (`inherited`),
-            // and for a window an earlier generation handed over (`carried`), the first application writes even an empty list; at a
-            // first start an empty list is what the window has.
+            // and for a window whose effects an earlier generation left and the node still holds (`take_over`), the first application
+            // writes even an empty list; at a first start an empty list is what the window has.
             let unchanged = match &applied.effects {
-                None => !(self.styles.inherited || carried) && mapping.effects.is_empty(),
+                None => !(self.styles.inherited || take_over) && mapping.effects.is_empty(),
                 Some(written) => *written == mapping.effects,
             };
             if !unchanged {
                 let _ = node.set_effects(&mapping.effects);
+                // Read straight after the write: the list is this application's while the node's serial is this one.
+                applied.effects_serial = node.effects_serial().ok();
             }
             applied.effects = Some(mapping.effects.clone());
         }

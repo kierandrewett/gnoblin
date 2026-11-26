@@ -354,3 +354,73 @@ fn a_live_generations_request_for_a_reload_reaches_the_controller_once() {
     );
     assert_eq!(host::take_reload_request(), None);
 }
+
+/// A write of `node`'s `effects` through the table: one shadow of `blur`.
+fn write_effects(ctx: GnoblinCtx, node: u64, blur: f64) -> i32 {
+    // SAFETY: an all-zero effect record is a valid one: no text, no parameters, every number zero.
+    let mut effect: abi::GnoblinEffect = unsafe { core::mem::zeroed() };
+    effect.size = size_of::<abi::GnoblinEffect>() as u32;
+    effect.kind = abi::EFFECT_SHADOW;
+    effect.blur_radius = blur;
+    effect.colour = GnoblinStr::borrowed("#00000066");
+    let mut value = blank_value();
+    value.kind = abi::VALUE_EFFECTS;
+    value.ptr = (&raw const effect).cast();
+    value.len = 1;
+    set(ctx, node, "window", "effects", &value, 0.0)
+}
+
+/// `node_effects_serial` of `node`: the code and the serial.
+fn effects_serial(ctx: GnoblinCtx, node: u64) -> (i32, u64) {
+    let mut serial = u64::MAX;
+    // SAFETY: `node_effects_serial` is a function of the core's table and `serial` a live local.
+    let rc = unsafe { (api().node_effects_serial)(ctx, node, &raw mut serial) };
+    (rc, if rc == abi::E_OK { serial } else { 0 })
+}
+
+#[test]
+fn the_serial_of_a_nodes_effects_numbers_the_shells_writes_and_a_failed_stage_gives_its_own_back() {
+    let _serial = serial();
+    let rig = rig();
+    let first = rig.ctx();
+    assert_eq!(
+        effects_serial(first, WINDOW),
+        (abi::E_OK, 0),
+        "nothing of the shell's wrote the effects yet"
+    );
+    assert_eq!(write_effects(first, WINDOW, 4.0), abi::E_OK, "{}", last_error());
+    let (_, one) = effects_serial(first, WINDOW);
+    assert!(one > 0, "a write takes a serial");
+    assert_eq!(set(first, WINDOW, "window", "opacity", &double(0.5), 0.0), abi::E_OK);
+    assert_eq!(
+        effects_serial(first, WINDOW),
+        (abi::E_OK, one),
+        "a write of another property is not a write of the effects"
+    );
+
+    // A stage that writes the effects takes the next serial; abandoned, it gives the old one back, and nobody takes its number again.
+    let failing = Gen::staged();
+    assert_eq!(write_effects(failing.ctx, WINDOW, 9.0), abi::E_OK);
+    let (_, staged) = effects_serial(failing.ctx, WINDOW);
+    assert!(staged > one);
+    registry::finish_retire(failing.ctx);
+    assert_eq!(
+        effects_serial(first, WINDOW),
+        (abi::E_OK, one),
+        "the failed stage's write went with the stage"
+    );
+
+    // A stage that takes over keeps what it wrote.
+    let next = Gen::staged();
+    assert_eq!(write_effects(next.ctx, WINDOW, 9.0), abi::E_OK);
+    let (_, kept) = effects_serial(next.ctx, WINDOW);
+    assert!(kept > staged, "a serial an abandoned stage took is not taken twice");
+    commit(first, next.ctx);
+    assert_eq!(effects_serial(next.ctx, WINDOW), (abi::E_OK, kept));
+    assert_eq!(
+        effects_serial(next.ctx, 999_999).0,
+        abi::E_NO_SUCH_NODE,
+        "a node the tree does not hold has no serial"
+    );
+    registry::finish_retire(next.ctx);
+}
