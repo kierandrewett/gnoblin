@@ -951,9 +951,15 @@ fn a_lost_connection_ends_the_holds_and_resumes_the_watches() {
     let log = Rc::new(RefCell::new(Vec::new()));
     rig.owner.idle(0, 0);
     rig.call(idle, "watch", &[Val::Double(1000.0), idle_listener(&rig, &log, "w")]);
-    let hold = rig.object(rig.call(idle, "inhibit", &[Val::Text("h".to_owned())]));
     rig.owner.idle(2000, 0);
     rig.settle();
+    assert_eq!(*log.borrow(), vec!["w:on_idle".to_owned()]);
+    // The compositor has not counted this hold yet, so the reading still has the session idle and the watch stays idle. A hold made
+    // before the reading would count at once, and the watch would never have heard idle for the connection to take back.
+    let hold = rig.object(rig.call(idle, "inhibit", &[Val::Text("h".to_owned())]));
+    rig.settle();
+    assert!(rig.flag(hold, "alive"));
+    assert_eq!(*log.borrow(), vec!["w:on_idle".to_owned()]);
     verbs::owner_lost("the compositor went away");
     rig.settle();
     assert_eq!(*log.borrow(), vec!["w:on_idle".to_owned(), "w:on_resume".to_owned()]);
