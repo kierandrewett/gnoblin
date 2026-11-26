@@ -1124,7 +1124,6 @@ fn a_reload_keeps_the_dialog_slot_for_a_generation_with_a_listener() {
 }
 
 #[test]
-#[ignore = "vrnw: needs a generation with no listener to give the dialog slot up: on a reload that stages a core generation (NativeCore::reload) no release_slot follows, the calls stay [claim_slot dialogs.observe]"]
 fn a_generation_with_no_listener_releases_the_dialog_slot_and_a_later_one_claims_it_afresh() {
     let slots = FakeSlots::default();
     let dir = tempfile::tempdir().expect("a temp dir");

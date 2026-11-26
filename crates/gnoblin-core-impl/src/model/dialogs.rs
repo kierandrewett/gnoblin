@@ -553,9 +553,11 @@ pub(super) fn register(builder: &mut Builder) {
 }
 
 /// The generation ended. A request it was shown and has not answered is refused, never passed: the verdict a listener would have given is
-/// not known. The claim is kept, so that a generation that takes over finds it held, and the slot connection refuses what nobody answers;
-/// a claim that nobody observes for the grace is given back (`SlotTimings::grace`), because the shell that held the policy is gone.
-/// A generation that never held the slot (one whose load failed) leaves the claim as it was.
+/// not known. When a reload is committing and the generation that takes over observes the slot, the claim stays with it. When the one
+/// that takes over has no listener, the claim is given back: that shell has no dialog policy, and the built-in dialog serves its requests,
+/// as it would for a shell that never had one. With nothing to take over (a shutdown, a crash) the claim is kept, and the slot connection
+/// refuses what nobody answers; a claim that nobody observes for the grace is handled by `SlotTimings::after_grace`, because the shell that
+/// held the policy is gone. A generation that never held the slot (one whose load failed) leaves the claim as it was.
 pub(super) fn forget(ctx: GnoblinCtx) {
     let Some(table) = DIALOGS.with(|dialogs| dialogs.take(ctx)) else {
         return;
@@ -565,13 +567,19 @@ pub(super) fn forget(ctx: GnoblinCtx) {
         observers.remove(&ctx);
         observers.is_empty()
     });
+    let reloading =
+        crate::registry::generation_of(ctx).is_some_and(|id| session::with(|session| session.staged_successor(id)));
     session::with(|session| {
         if let Some(slots) = session.slots_if_open() {
             for request in table.held.keys() {
                 slots.answer(*request, true);
             }
             if table.claimed && none_left {
-                slots.gap(true);
+                if reloading {
+                    slots.release(SLOT);
+                } else {
+                    slots.gap(true);
+                }
             }
         }
     });

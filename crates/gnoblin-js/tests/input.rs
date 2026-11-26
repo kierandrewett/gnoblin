@@ -1878,6 +1878,38 @@ fn the_stock_config_claims_the_floating_layouts_move_and_resize() {
     }
 }
 
+/// The stock config starts the window-state policy, so a window that asks to be maximised is maximised. Without it the request
+/// has no answer: the native library answers window requests only once `WindowState` is started.
+#[test]
+fn the_stock_config_answers_a_window_that_asks_to_be_maximised() {
+    let comp = world(false);
+    comp.0.add_node(
+        20,
+        ROOT,
+        "screen",
+        vec![
+            ("width", MirrorValue::Double(1000.0)),
+            ("height", MirrorValue::Double(800.0)),
+            ("primary", MirrorValue::Bool(true)),
+        ],
+    );
+    let (mut shell, _dir) = bare_shell(&comp);
+    let loaded = shell.load_default_config().expect("the stock config loads");
+    assert!(loaded.is_empty(), "{loaded:?}");
+    for _ in 0..4 {
+        shell.frame_with_core();
+    }
+    comp.0.request(3, "maximize", 0.0, 0.0);
+    for _ in 0..6 {
+        shell.frame_with_core();
+    }
+    assert_eq!(
+        comp.0.flag(3, "maximised"),
+        Some(true),
+        "the stock config answers the request"
+    );
+}
+
 #[test]
 fn a_user_init_replaces_the_stock_default_and_claims_only_its_own_keys() {
     let comp = world(false);

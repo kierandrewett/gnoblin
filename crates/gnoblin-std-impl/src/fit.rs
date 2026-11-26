@@ -2,13 +2,34 @@
 //! one shrinks to fit and moves inside it, its frame (the content with the room the client's frame takes round it) staying inside; a
 //! snapped window tiles to its zone again; a fullscreen window covers its output. This is `host/fitting.ts`.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+
 use gnoblin_core::Rect;
 
 use crate::client_state::fit_content;
 use crate::desks::output_rect;
-use crate::floating::shrink;
+use crate::floating::{Inset, shrink};
 use crate::nodes;
 use crate::state::{NodeId, State};
+
+thread_local! {
+    /// The room each window's frame took when it was last fitted, by window, kept across generations. A generation keeps its own
+    /// record of a window, so without this a reload's first pass would take the content's place for the frame's: the new frame
+    /// would move the content by all its room instead of by what it gained or lost, and a reload that drops the frames would leave
+    /// the old frame's offset. The table is the shell thread's, as every generation of the shell is.
+    static LAST_FITTED: RefCell<HashMap<NodeId, Inset>> = RefCell::new(HashMap::new());
+}
+
+/// The room `client`'s frame took when an earlier generation last fitted it, if one did.
+pub(crate) fn carried_fit(client: NodeId) -> Option<Inset> {
+    LAST_FITTED.with(|fitted| fitted.borrow().get(&client).copied())
+}
+
+/// `client` is gone: no later generation fits it.
+pub(crate) fn forget_fit(client: NodeId) {
+    LAST_FITTED.with(|fitted| fitted.borrow_mut().remove(&client));
+}
 
 /// A rectangle that moved to another output: shrunk to the area when larger, then moved inside it.
 pub(crate) fn fit_into(rect: &Rect, area: &Rect) -> Rect {
@@ -81,7 +102,12 @@ impl State {
             return false;
         }
         let inset = self.inset_of(client);
-        let Some(was) = self.rec.get_mut(&client).and_then(|rec| rec.fitted.replace(inset)) else {
+        let Some(rec) = self.rec.get_mut(&client) else {
+            return false;
+        };
+        let previous = rec.fitted.replace(inset);
+        LAST_FITTED.with(|fitted| fitted.borrow_mut().insert(client, inset));
+        let Some(was) = previous else {
             return false;
         };
         if was == inset {

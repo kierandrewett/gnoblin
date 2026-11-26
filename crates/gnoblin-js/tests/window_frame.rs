@@ -891,7 +891,6 @@ fn the_recipe_with_a_status_strip_and_a_dock_handle_mounts_and_works() {
 // ---- hot reload ---------------------------------------------------------------------------------------------------------
 
 #[test]
-#[ignore = "vrnw: needs a reload to give the window the new frame's offset: on a reload that stages a core generation (NativeCore::reload) the old frame's nodes go, but the content is at (10, 58), expected (10, 30), so the old titlebar's 28 is still added"]
 fn a_reload_swaps_the_generation_and_leaves_no_node_of_the_old_one() {
     let comp = FakeCompositor::new();
     comp.add_desktop(1000.0, 800.0);

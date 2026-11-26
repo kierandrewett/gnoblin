@@ -1068,7 +1068,7 @@ fn value_of(reply: &Json) -> &Json {
 }
 
 #[test]
-#[ignore = "vrnw: needs console renderer (inspect) on the generated library: a reply with value, type, text and truncated"]
+#[ignore = "gnoblin-xkwb: needs the rich console renderer on the native library (Client#3 { .. }, $class, Collection(n), [Function name], [Circular]); the native renderer gives plain JSON, and `gnoblin.clients.map` is not a function on the native collection"]
 fn the_console_evaluates_in_the_running_generation_and_renders_what_it_finds() {
     let comp = two_windows();
     let rig = rig(&comp, "import \"gnoblin-std\";\nexport {};\n");
@@ -1170,7 +1170,7 @@ fn the_console_evaluates_in_the_running_generation_and_renders_what_it_finds() {
 }
 
 #[test]
-#[ignore = "vrnw: needs console renderer (inspect) on the generated library: a reply with value, type, text and truncated"]
+#[ignore = "gnoblin-xkwb: needs the rich console renderer on the native library: a long array is not cut to a list with a `more` entry (the reply has no `value` array)"]
 fn a_rendering_that_outgrows_the_cap_is_cut_and_says_so() {
     let comp = two_windows();
     let rig = rig(&comp, "export {};\n");
@@ -1192,8 +1192,54 @@ fn a_rendering_that_outgrows_the_cap_is_cut_and_says_so() {
     assert!(long["value"].as_str().expect("a string").len() <= 4096);
 }
 
+/// The reply the native library gives `gnoblinctl console` for one value: `{ type, value?, text, truncated }`, the shape
+/// `answer` reads. A plain value failed before as an engine error, because the reply was the bare rendered text.
 #[test]
-#[ignore = "vrnw: needs console renderer (inspect) on the generated library: a reply with value, type, text and truncated"]
+fn the_native_console_answers_each_value_with_its_type_value_text_and_truncated() {
+    let comp = two_windows();
+    let rig = rig(&comp, "export {};\n");
+    let reply = |source: &str, max: usize| -> Json {
+        let text = evaluate_in(&rig.shell, source, max).expect("it renders");
+        serde_json::from_str(&text).expect("the reply is JSON")
+    };
+    assert_eq!(
+        reply("2", 65536),
+        json!({"type": "number", "value": 2, "text": "2", "truncated": false})
+    );
+    assert_eq!(
+        reply("'hi'", 65536),
+        json!({"type": "string", "value": "hi", "text": "\"hi\"", "truncated": false})
+    );
+    assert_eq!(
+        reply("null", 65536),
+        json!({"type": "null", "value": null, "text": "null", "truncated": false})
+    );
+    assert_eq!(
+        reply("({ a: 1, b: [1, 2] })", 65536),
+        json!({"type": "object", "value": {"a": 1, "b": [1, 2]}, "text": "{\"a\":1,\"b\":[1,2]}", "truncated": false})
+    );
+    assert_eq!(
+        reply("[1, 2]", 65536),
+        json!({"type": "array", "value": [1, 2], "text": "[1,2]", "truncated": false})
+    );
+    assert_eq!(
+        reply("undefined", 65536),
+        json!({"type": "undefined", "text": "undefined", "truncated": false}),
+        "undefined has no value"
+    );
+    assert_eq!(
+        reply("({ get constructor() { throw new Error('no'); } })", 65536),
+        json!({"type": "object", "text": "[object Object]", "truncated": false}),
+        "a getter that throws leaves the plain type, and a value JSON cannot hold has its String form"
+    );
+    assert_eq!(
+        reply("'x'.repeat(100)", 10),
+        json!({"type": "string", "text": "\"xxxxxxxxx", "truncated": true}),
+        "a text past the limit is cut, says so, and carries no value"
+    );
+}
+
+#[test]
 fn a_console_error_carries_its_message_and_where_in_the_expression_it_was() {
     let comp = two_windows();
     let rig = rig(&comp, "export {};\n");
@@ -1244,7 +1290,6 @@ fn a_console_error_carries_its_message_and_where_in_the_expression_it_was() {
 }
 
 #[test]
-#[ignore = "vrnw: needs console renderer (inspect) on the generated library: a reply with value, type, text and truncated"]
 fn a_runaway_expression_is_interrupted_and_the_shell_and_the_console_go_on() {
     let comp = two_windows();
     let mut rig = rig_with(&comp, "export {};\n", |config| config.entry_budget = RUNAWAY_BUDGET);
@@ -1285,7 +1330,6 @@ fn a_runaway_expression_is_interrupted_and_the_shell_and_the_console_go_on() {
 }
 
 #[test]
-#[ignore = "vrnw: needs console renderer (inspect) on the generated library: a reply with value, type, text and truncated"]
 fn a_write_made_at_the_prompt_travels_in_the_next_frames_transaction() {
     let comp = two_windows();
     let mut rig = rig(&comp, "export {};\n");
@@ -1305,7 +1349,7 @@ fn a_write_made_at_the_prompt_travels_in_the_next_frames_transaction() {
 }
 
 #[test]
-#[ignore = "vrnw: needs console renderer (inspect) on the generated library: a reply with value, type, text and truncated"]
+#[ignore = "gnoblin-xkwb: needs `inspect` (clients, workspaces, bindings) at the native console: `inspect is not defined`"]
 fn the_inspector_helpers_return_plain_data() {
     let comp = two_windows();
     let mut rig = rig(
@@ -1353,7 +1397,7 @@ fn the_inspector_helpers_return_plain_data() {
 }
 
 #[test]
-#[ignore = "vrnw: needs console renderer (inspect) on the generated library: a reply with value, type, text and truncated"]
+#[ignore = "gnoblin-yffr: a write made at the native console (`gnoblin.clients.at(0).y = 55`) is not in the frames `sent` reads; not yet traced whether it is a missing core commit or a rig that reads the legacy path"]
 fn the_role_serves_its_console_between_frames_and_a_reload_drops_what_the_prompt_defined() {
     let comp = two_windows();
     let dir = tempfile::tempdir().expect("a temp dir");
@@ -1415,7 +1459,6 @@ fn two_shells_do_not_share_a_console_and_the_socket_goes_with_its_server() {
 }
 
 #[test]
-#[ignore = "vrnw: needs console renderer (inspect) on the generated library: a reply with value, type, text and truncated"]
 fn what_an_expression_prints_through_console_comes_back_in_the_reply_and_goes_to_the_log() {
     let comp = two_windows();
     let rig = rig(&comp, "export {};\n");

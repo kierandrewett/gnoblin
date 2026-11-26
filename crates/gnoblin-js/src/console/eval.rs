@@ -14,8 +14,48 @@ use crate::generation::JsGeneration;
 use crate::script_console::JsConsoleLine;
 use crate::shell::JsShell;
 
-/// How a generation on the native library renders a console value: JSON, or the text of what has none, cut to the reply's limit.
-const PLAIN_RENDER: &str = "(function (value, max) { let text; try { text = typeof value === 'function' || value === undefined ? String(value) : JSON.stringify(value, (key, item) => typeof item === 'bigint' ? String(item) : item); } catch (error) { text = String(value); } if (text === undefined) { text = String(value); } return text.length > max ? text.slice(0, max) : text; })";
+/// How a generation on the native library renders a console value, as the protocol's reply `{ type, value?, text, truncated }` (the
+/// TypeScript library's is `inspect.render`): `type` names the value as that one does (`undefined`, `null`, `boolean`, `number`,
+/// `string`, `array`, `function`, `object`, or the class name of an object made by a class), `value` is the value as plain JSON data
+/// (absent for `undefined` and for what JSON cannot hold, such as a cycle), and `text` is its JSON, or `String(value)` when it has
+/// none. A text longer than the reply's limit is cut, says `truncated`, and carries no `value`.
+const PLAIN_RENDER: &str = r#"(function (value, max) {
+  const replacer = (key, item) => typeof item === "bigint" ? String(item) : item;
+  let type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+  if (type === "object") {
+    try {
+      const name = value.constructor && value.constructor.name;
+      if (typeof name === "string" && name !== "" && name !== "Object") type = name;
+    } catch (error) {
+      // A getter that throws leaves the plain type.
+    }
+  }
+  let data;
+  let text;
+  if (type !== "function" && value !== undefined) {
+    try {
+      text = JSON.stringify(value, replacer);
+      if (text !== undefined) data = JSON.parse(text);
+    } catch (error) {
+      text = undefined;
+    }
+  }
+  if (text === undefined) {
+    try {
+      text = String(value);
+    } catch (error) {
+      text = "[" + type + "]";
+    }
+  }
+  const reply = { type, text, truncated: false };
+  if (text.length > max) {
+    reply.text = text.slice(0, max);
+    reply.truncated = true;
+  } else if (data !== undefined) {
+    reply.value = data;
+  }
+  return JSON.stringify(reply);
+})"#;
 
 /// The reply to one request line.
 pub(super) fn answer(shell: &JsShell, line: &[u8], max_bytes: usize) -> Json {

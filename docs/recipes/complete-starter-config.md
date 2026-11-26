@@ -18,12 +18,14 @@ is this, in full:
 import {
     Decorations,
     FloatingLayout,
+    FocusPolicy,
     Launcher,
     MoveBinding,
     NotRespondingAlerts,
     ResizeBinding,
     StripLayout,
     WindowMenus,
+    WindowState,
     Workspace,
     WorkspaceSlideBinding,
 } from "gnoblin-std";
@@ -38,11 +40,14 @@ for (const id of ["1", "2", "3", "4"]) {
 
 // gnoblin.workspaces.add(new Workspace("work", { name: "Work", layout: new MasterStackLayout() }));
 
-// Add a titlebar to each window, the window menu and the not-responding alert.
+// Add a titlebar to each window, the window menu and the not-responding alert, answer a window that asks to be
+// maximised, minimised or made fullscreen, and move the keyboard focus as the seat's focus settings say.
 // Remove a call to disable that part.
 Decorations.get().start();
 WindowMenus.get().start();
 NotRespondingAlerts.get().start();
+WindowState.get().start();
+FocusPolicy.get().start();
 
 const input = gnoblin.input.primary;
 

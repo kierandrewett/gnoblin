@@ -35,39 +35,39 @@ fn accepted(session: &Gnoblin) -> Option<(u64, serde_json::Value)> {
     Some((revision, serde_json::from_slice(&bytes).expect("the document is JSON")))
 }
 
-/// `input.keyboard.delay` of the accepted document once the revision in force is `revision`.
-fn delay_at(session: &Gnoblin, revision: u64) -> Option<i64> {
+/// `compositor.user-shaders` of the accepted document once the revision in force is `revision`.
+fn shaders_at(session: &Gnoblin, revision: u64) -> Option<bool> {
     let (current, document) = accepted(session)?;
     if current != revision {
         return None;
     }
-    document["input"]["keyboard"]["delay"].as_i64()
+    document["compositor"]["user-shaders"].as_bool()
 }
 
 #[track_caller]
-fn wait_delay(session: &mut Gnoblin, revision: u64, delay: i64) {
-    session.wait_for(&format!("revision {revision} holds delay {delay}"), |session| {
-        delay_at(session, revision) == Some(delay)
-    });
+fn wait_shaders(session: &mut Gnoblin, revision: u64, enabled: bool) {
+    session.wait_for(
+        &format!("revision {revision} holds user-shaders {enabled}"),
+        |session| shaders_at(session, revision) == Some(enabled),
+    );
 }
 
-/// A shell that sets the repeat delay of a keyboard, which the document carries as `input.keyboard.delay`. The session is headless and
-/// has no input device, so the script makes the keyboard it writes the setting through: a keyboard setting is the kind's and not the
-/// device's.
-fn shell_with_delay(delay: i64) -> String {
+/// A shell that writes the compositor's `user_shaders` setting, which the document carries as `compositor.user-shaders`. The session is
+/// headless and has no input device, and a script cannot make one (a device is reported by the seat), so the setting is one that belongs
+/// to no device.
+fn shell_with_shaders(enabled: bool) -> String {
     format!(
-        "import {{ Keyboard, gnoblin }} from \"gnoblin-core\";\n\
+        "import {{ gnoblin }} from \"gnoblin-core\";\n\
          \n\
-         const keyboard = new (Keyboard as any)(gnoblin.input.primary, \"test\", \"Test keyboard\", [\"keyboard\"]);\n\
-         keyboard.repeatDelay = {delay};\n"
+         gnoblin.compositor.userShaders = {enabled};\n"
     )
 }
 
 /// A shell that asks for the reload itself when a window opens, so the request starts inside the shell and no `gnoblinctl` is involved.
-fn shell_that_reloads(delay: i64) -> String {
+fn shell_that_reloads(enabled: bool) -> String {
     format!(
         "{}\ngnoblin.clients.addListener({{\n    onAdded() {{\n        gnoblin.runtime.reloadConfig();\n    }},\n}});\n",
-        shell_with_delay(delay)
+        shell_with_shaders(enabled)
     )
 }
 
@@ -82,26 +82,26 @@ fn start(shell_text: &str) -> (Gnoblin, tempfile::TempDir) {
 
 #[test]
 fn the_shell_commits_its_document_as_revision_one() {
-    let (mut session, _dir) = start(&shell_with_delay(32));
-    wait_delay(&mut session, 1, 32);
+    let (mut session, _dir) = start(&shell_with_shaders(false));
+    wait_shaders(&mut session, 1, false);
 }
 
 #[test]
 fn config_reload_commits_the_file_and_answers_with_the_revision() {
-    let (mut session, dir) = start(&shell_with_delay(32));
-    wait_delay(&mut session, 1, 32);
-    save(&dir.path().join("shell.ts"), &shell_with_delay(40));
+    let (mut session, dir) = start(&shell_with_shaders(false));
+    wait_shaders(&mut session, 1, false);
+    save(&dir.path().join("shell.ts"), &shell_with_shaders(true));
     let committed = owner(&session)
         .reload_config()
         .expect("the reload is answered with its revision");
     assert_eq!(committed.revision, 2);
-    wait_delay(&mut session, 2, 40);
+    wait_shaders(&mut session, 2, true);
 }
 
 #[test]
 fn config_reload_of_a_file_that_does_not_load_is_refused_with_why_and_the_accepted_document_stays() {
-    let (mut session, dir) = start(&shell_with_delay(32));
-    wait_delay(&mut session, 1, 32);
+    let (mut session, dir) = start(&shell_with_shaders(false));
+    wait_shaders(&mut session, 1, false);
     save(&dir.path().join("shell.ts"), "export const broken: number = ;\n");
     let error = owner(&session)
         .reload_config()
@@ -111,25 +111,25 @@ fn config_reload_of_a_file_that_does_not_load_is_refused_with_why_and_the_accept
     };
     assert_eq!(code, "config-rejected");
     assert!(message.contains("shell.ts"), "the refusal names the file: {message}");
-    assert_eq!(delay_at(&session, 1), Some(32), "revision 1 is still in force");
+    assert_eq!(shaders_at(&session, 1), Some(false), "revision 1 is still in force");
     // The shell that serves stays, and a fixed file commits as the next revision.
-    save(&dir.path().join("shell.ts"), &shell_with_delay(48));
+    save(&dir.path().join("shell.ts"), &shell_with_shaders(true));
     assert_eq!(
         owner(&session).reload_config().expect("a fixed file reloads").revision,
         2
     );
-    wait_delay(&mut session, 2, 48);
+    wait_shaders(&mut session, 2, true);
 }
 
 #[test]
 fn a_script_that_reloads_the_configuration_commits_what_the_file_says_now() {
-    let (mut session, dir) = start(&shell_that_reloads(24));
-    wait_delay(&mut session, 1, 24);
-    save(&dir.path().join("shell.ts"), &shell_that_reloads(48));
+    let (mut session, dir) = start(&shell_that_reloads(false));
+    wait_shaders(&mut session, 1, false);
+    save(&dir.path().join("shell.ts"), &shell_that_reloads(true));
     let mut client = Mapper::connect(&session.wayland());
     client.map_window("reload.test", "reload");
-    // The second revision carries the delay the file holds when the window opens, not the one it held at login.
-    wait_delay(&mut session, 2, 48);
+    // The second revision carries the setting the file holds when the window opens, not the one it held at login.
+    wait_shaders(&mut session, 2, true);
 }
 
 #[test]

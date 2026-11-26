@@ -29,6 +29,9 @@ only call that decides anything: the requester is told it was refused and the di
 There is no call that allows a request, and none that reads or gives a secret. A listener that does nothing, throws or runs
 past its time budget leaves the request to the dialog. `decline` after the window has closed does nothing.
 
+A reload keeps the observation when the new configuration adds a listener again. When it adds none, the dialogs serve every
+request again, as they do for a shell that never had a listener.
+
 `gnoblin.dialogs` has these members:
 
 | Member                     | Meaning                      |
