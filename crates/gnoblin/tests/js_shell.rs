@@ -3010,8 +3010,9 @@ fn device_settings_reach_the_compositors_document_a_refused_value_is_reported_an
     });
     let generation = shell.generation();
     write("device.repeatDelay = 20000;");
+    // The refusal names the property as the shell wrote it (`device.repeatDelay`), not as the schema spells it (`repeat_delay`).
     wait_for("the refusal is reported", &session, &mut mapper, &shell, || {
-        shell.diagnostics().iter().any(|text| text.contains("repeat_delay"))
+        shell.diagnostics().iter().any(|text| text.contains("repeatDelay"))
     });
     assert_eq!(
         repeat_delay(&session.ipc()),
