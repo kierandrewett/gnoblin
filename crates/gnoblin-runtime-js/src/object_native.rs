@@ -186,6 +186,10 @@ impl Callable for JsClosure {
                 };
                 Ok(())
             })?;
+            // The stack names the loaded modules' lines; the author's `.ts` lines are what the report should name.
+            if let CallEnded::Raised(message) = &mut ended {
+                *message = enter.remap(message);
+            }
             Ok(ended)
         })
         .map_err(|message| Fail::new(abi::E_PANIC, message))?;

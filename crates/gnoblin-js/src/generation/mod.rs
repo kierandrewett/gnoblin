@@ -569,6 +569,11 @@ impl JsGeneration {
         }
     }
 
+    /// `stack` with every frame of a loaded module rewritten to the file and position that wrote it: a `.ts` file's own lines.
+    pub(crate) fn remap_stack(&self, stack: &str) -> String {
+        remap_stack(&self.load, stack).0
+    }
+
     /// Starts keeping the lines the script logs through `console`, until [`take_console`](Self::take_console).
     /// The console evaluates one expression at a time, so a capture never nests.
     pub(crate) fn capture_console(&self) {

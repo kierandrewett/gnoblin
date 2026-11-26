@@ -370,14 +370,14 @@ fn example_7_a_binding_class_written_in_ts_moves_a_window_when_its_chord_is_pres
 /// The shell of the reload project. `tag` says which edit it is, and the marker file counts how often a listener ran.
 fn reload_shell(tag: &str, marker: &Path) -> String {
     format!(
-        r#"import {{ CollectionListener, gnoblin }} from "gnoblin-core";
+        r#"import {{ ClientCollectionListener, gnoblin }} from "gnoblin-core";
 import type {{ Client }} from "gnoblin-core";
 
 import {{ place }} from "./place.ts";
 
 // Every window the listener hears of adds a line to the marker file, so a listener that outlives its generation shows as a
 // second line for one window.
-class Tiler extends CollectionListener<Client> {{
+class Tiler extends ClientCollectionListener {{
     onAdded(_client: Client): void {{
         gnoblin.spawn(["sh", "-c", "echo {tag} >> {marker}"]);
         place();
@@ -401,7 +401,7 @@ export function place(): void {
     if (output === undefined) {
         return;
     }
-    const windows = [...gnoblin.clients];
+    const windows = gnoblin.clients.toList();
     const gap = 24;
     const height = (output.height - gap * (windows.length - 1)) / windows.length;
     windows.forEach((client, at) => {
@@ -417,7 +417,7 @@ export function place(): void {
     if (output === undefined) {
         return;
     }
-    const windows = [...gnoblin.clients];
+    const windows = gnoblin.clients.toList();
     const width = output.width / windows.length;
     windows.forEach((client, at) => {
         client.bounds = { x: output.x + at * width, y: output.y, width, height: output.height };
@@ -597,9 +597,9 @@ fn example_17_a_js_shell_that_imports_only_gnoblin_core_runs_through_the_runtime
     let dir = project("core-only");
     fs::write(
         dir.join("shell.js"),
-        r#"import { CollectionListener, gnoblin } from "gnoblin-core";
+        r#"import { ClientCollectionListener, gnoblin } from "gnoblin-core";
 
-class Tiler extends CollectionListener {
+class Tiler extends ClientCollectionListener {
     onAdded() {
         tile();
     }
@@ -610,7 +610,7 @@ class Tiler extends CollectionListener {
 
 function tile() {
     const output = gnoblin.outputs.at(0);
-    const windows = [...gnoblin.clients];
+    const windows = gnoblin.clients.toList();
     const width = output.width / windows.length;
     windows.forEach((client, at) => {
         client.bounds = { x: output.x + at * width, y: output.y, width, height: output.height };

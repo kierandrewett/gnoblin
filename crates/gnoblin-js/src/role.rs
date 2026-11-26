@@ -653,6 +653,11 @@ impl JsRole {
         self.shell.call_script(f)
     }
 
+    /// `stack` rewritten to the files and positions of the running generation's sources: see [`JsShell::remap_stack`].
+    pub fn remap_stack(&self, stack: &str) -> String {
+        self.shell.remap_stack(stack)
+    }
+
     /// The shell, for a caller that evaluates a probe in it.
     pub fn shell_mut(&mut self) -> &mut JsShell {
         &mut self.shell
