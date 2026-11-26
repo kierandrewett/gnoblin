@@ -65,23 +65,28 @@ fn unit_id(example: &Example) -> String {
 
 /// A tool of the documentation build: `$ENV`, then the website's `node_modules`, then the path.
 fn find_tool(env: &str, name: &str, how: &str) -> Result<PathBuf, String> {
-    if let Some(explicit) = std::env::var_os(env).filter(|value| !value.is_empty()) {
+    // Absolute, so the `node_modules` beside it, and the `typeRoots` written from it, do not depend on the directory tsc reads a
+    // relative path from. Symlinks stay: `tsc` links into `typescript/bin`, and its `node_modules` is the one beside the link.
+    let found = if let Some(explicit) = std::env::var_os(env).filter(|value| !value.is_empty()) {
         let explicit = PathBuf::from(explicit);
-        return if explicit.is_file() {
-            Ok(explicit)
+        if explicit.is_file() {
+            explicit
         } else {
-            Err(format!("{env} names {}, which is not a file", explicit.display()))
-        };
-    }
-    let local = Path::new(SITE_BIN).join(name);
-    if local.is_file() {
-        return Ok(local);
-    }
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    std::env::split_paths(&path)
-        .map(|dir| dir.join(name))
-        .find(|candidate| candidate.is_file())
-        .ok_or_else(|| format!("`{name}` is not installed: {how}, or set {env} to it"))
+            return Err(format!("{env} names {}, which is not a file", explicit.display()));
+        }
+    } else {
+        let local = Path::new(SITE_BIN).join(name);
+        if local.is_file() {
+            local
+        } else {
+            let path = std::env::var_os("PATH").unwrap_or_default();
+            std::env::split_paths(&path)
+                .map(|dir| dir.join(name))
+                .find(|candidate| candidate.is_file())
+                .ok_or_else(|| format!("`{name}` is not installed: {how}, or set {env} to it"))?
+        }
+    };
+    std::path::absolute(&found).map_err(|error| format!("cannot resolve {}: {error}", found.display()))
 }
 
 fn pages_under(docs: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
