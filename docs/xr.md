@@ -82,7 +82,8 @@ Logs are under the `xr` name: `[guardian] started xr (generation N, pid P)` and 
 
 ## What the stock shell does
 
-The stock shell's XR side is `data/js/gnoblin-std/extensions/xr/`. It reacts to the seat named `xr`.
+The stock shell's XR side is the `xr` module of `libgnoblin-std`, so a shell in any language gets it. It reacts to the seat
+named `xr`. Until that seat appears the library only watches the seats, so a session with no XR program pays nothing for it.
 
 When the seat arrives the shell builds a node named `room` under `root`. The room holds:
 
@@ -109,28 +110,45 @@ Every window gets a `View` under the room when it maps, and loses it when the wi
 | `rotation`           | Radians about each axis. Only the turn about `y` is used.            |
 | `scale`              | Millimetres per window pixel, the same on all three axes.            |
 
-A dialog has no View of its own. Its parent's View shows it, because the dialog is a child of the parent window.
+A dialog (a window whose `parent_window` names another) gets a View of its own. That View is a child of its parent's View,
+placed where the dialog sits on the parent and 2 pixels in front, so it moves, turns and scales with the parent. A dialog
+whose parent has no View is placed on the ring like any window.
 
 A client that is `secure` never gets a View, and one that turns secure loses it. The compositor enforces that on its
 own: it masks a secure node in every View's picture.
 
-A TypeScript script can keep other windows out of the room with an `accept` function; XR scripting is TypeScript-only today. It runs every frame,
-so a window comes in when it starts to say yes:
+A shell can keep other windows out of the room with an `accept` function. It runs every frame, so a window comes in when
+it starts to say yes:
 
 ::: tabs
 
 ```typescript
-gnoblin.extensions.configure("xr", {
-    accept: (client) => !client.appId.startsWith("org.keepassxc"),
-});
+import { Extensions } from "gnoblin-std/generated/objects";
+
+Extensions.get().configure("xr", { room: true }, (client) => !client.appId.startsWith("org.keepassxc"));
 ```
 
-```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-# The XR extension is TypeScript-only.
+```python
+from gnoblin.objects.std import Extensions, XROptions
+
+Extensions.get().configure("xr", XROptions(room=True), lambda client: not client.app_id.startswith("org.keepassxc"))
 ```
 
-```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-// The XR extension is TypeScript-only.
+```rust
+use gnoblin_std::objects::{Extensions, XrClient, XrOptions};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let options = XrOptions { room: true, layout: None };
+    Extensions::get(&objects)?.configure(
+        "xr",
+        &options,
+        Some(|client: XrClient| Ok(!client.app_id.starts_with("org.keepassxc"))),
+    )?;
+    Ok(())
+}
 ```
 
 :::
@@ -139,8 +157,8 @@ A window's `accept` function is the one way to choose which windows appear: ther
 
 ### The ring
 
-The panels sit on a ring round you. The ring is `arrangeRing` in `extensions/xr/ring.ts`, a pure function of the
-windows' sizes and the focus, so a window's place never depends on anything but those:
+The panels sit on a ring round you. The ring is `SpatialLayout.arrangeRing` (`arrange_ring` in Python and Rust), a pure
+function of the windows' sizes and the index of the focused one, so a window's place never depends on anything but those:
 
 - The ring has a radius of 1.6 m, and the centre of each panel is 1.4 m above the room's floor. The extension reports
   poses in OpenXR's local space, whose origin is where your head starts, and the room's floor is 1.4 m below that
@@ -286,132 +304,221 @@ Not wired: the thumbstick click (`BTN_MIDDLE`), the A, X and Y buttons (`BTN_SID
 switching hands. On a Touch-style controller B is the secondary input, so it sends `BTN_RIGHT`, not `BTN_EXTRA`. The ray
 comes from the right hand only.
 
-## Scripting XR in TypeScript
+## Scripting XR
 
-XR scripting belongs to the TypeScript library. The native `gnoblin-core` and `gnoblin-std` have no `gnoblin.extensions`,
-so a shell that uses `gnoblin.extensions` or imports `gnoblin-std/extensions/xr` runs on the TypeScript library, as
-[Which library a shell runs on](/typescript-shell#which-library-a-shell-runs-on) says. The examples below are for that
-library.
-
-The classes of `gnoblin-std/extensions/xr` are in the TypeScript shell. They are objects over the tree's nodes, like a
-`Client`: the XR program is a separate process, and nothing here loads into the shell.
-
-The library is the directory `data/js/gnoblin-std/extensions/xr/`, with one file for each part: the camera, controllers,
-layout, ring, room, runtime, session, viewport and bindings.
-
-- `gnoblin-std/extensions/xr` is the entry a script imports. It is the only module that checks that XR is available.
-- The shell's own XR code imports the files beside it, so it loads when no XR is present.
+XR scripting is part of `gnoblin-std`, so a shell in TypeScript, Python or Rust uses the same classes, generated from the
+library's catalog. They are objects over the tree's nodes, like a `Client`: the XR program is a separate process, and nothing
+here loads into the shell. The [API reference](/reference) lists every member in each language.
 
 ### Is XR there?
 
-`gnoblin.extensions.xr` is `null` until the program has a session, which is while the seat named `xr` exists. A script
-guards the use:
+`gnoblin.extensions.xr` is empty until the program has a session, which is while the seat named `xr` exists. A shell checks
+for it, and a listener hears the session begin and end:
 
 ::: tabs
 
 ```typescript
-const xr = gnoblin.extensions.xr;
-if (xr?.session) {
+import { Extensions, XRListener, type XRSession } from "gnoblin-std/generated/objects";
+
+class Announce extends XRListener {
+    onSessionStarted(session: XRSession): void {
+        gnoblin.spawn(["notify-send", `Headset session ${session.id} started`]);
+    }
+    onSessionEnded(session: XRSession): void {
+        gnoblin.spawn(["notify-send", `Headset session ${session.id} ended`]);
+    }
+}
+
+const extensions = Extensions.get();
+extensions.addListener(new Announce());
+if (extensions.xr?.session) {
     // The session is alive, and the stock room is built.
 }
 ```
 
-```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-# The XR extension is TypeScript-only.
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import Extensions, XRListener, XRSession
+
+gnoblin = Gnoblin.get()
+
+
+class Announce(XRListener):
+    def on_session_started(self, session: XRSession) -> None:
+        gnoblin.spawn(["notify-send", f"Headset session {session.id} started"])
+
+    def on_session_ended(self, session: XRSession) -> None:
+        gnoblin.spawn(["notify-send", f"Headset session {session.id} ended"])
+
+
+extensions = Extensions.get()
+extensions.add_listener(Announce())
+xr = extensions.xr
+if xr is not None and xr.session is not None:
+    pass  # The session is alive, and the stock room is built.
 ```
 
-```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-// The XR extension is TypeScript-only.
-```
+```rust
+use std::rc::Rc;
 
-:::
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{Extensions, XrListenerHandlers};
+use gnoblin_std::prelude::*;
 
-A session object that a script kept reads `alive === false` once the session ends, and every write to it, to its room
-or to a panel throws. A script that wants to follow the headset comes and goes listens for it:
-
-::: tabs
-
-```typescript
-gnoblin.extensions.addListener({
-    onSessionStarted: (session) => {},
-    onSessionEnded: (session) => {},
-});
-```
-
-```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-# The XR extension is TypeScript-only.
-```
-
-```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-// The XR extension is TypeScript-only.
-```
-
-:::
-
-Importing the module fails at load, with a message that says what to do, when there is no XR extension:
-
-::: tabs
-
-```typescript
-import { XRCamera3D, ViewMoveBinding } from "gnoblin-std/extensions/xr";
-```
-
-```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-# The XR extension is TypeScript-only.
-```
-
-```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-// The XR extension is TypeScript-only.
-```
-
-:::
-
-The import works when the session declared XR (`GNOBLIN_XR=1`) or when the program already has a session. A config that
-must also work without a headset guards `gnoblin.extensions.xr` instead of importing.
-
-### The room, the head and the viewport
-
-The stock shell builds the room when the session starts. To change what it builds, configure it before the session
-starts, which a config can because it runs first:
-
-::: tabs
-
-```typescript
-gnoblin.extensions.configure("xr", {
-    room: true,
-    layout: { radius: 1.8, triggers: { move: "Right.Grip+Drag", resize: null } },
-});
-```
-
-```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-# The XR extension is TypeScript-only.
-```
-
-```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-// The XR extension is TypeScript-only.
-```
-
-:::
-
-`room: false` builds nothing and leaves the room to the script. A script that builds its own room hands it over with a
-viewport; the program reads the node named `room` and the camera named `head`, and assigning the viewport names them:
-
-::: tabs
-
-```typescript
-const xr = gnoblin.extensions.xr;
-if (xr?.session) {
-    const head = new xr.Camera3D({ tracking: xr.session.head, near: 0.05, far: 100 });
-    xr.session.viewport = new xr.Viewport({ content: new xr.Room(), camera: head, composition: "auto" });
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let objects = g.std()?.objects()?;
+    let extensions = Extensions::get(&objects)?;
+    let (started, ended) = (Rc::clone(&model), Rc::clone(&model));
+    let listener = XrListenerHandlers {
+        on_session_started: Some(Box::new(move |session| {
+            let text = format!("Headset session {} started", session.id()?);
+            started.spawn(&["notify-send".to_owned(), text], None)?;
+            Ok(())
+        })),
+        on_session_ended: Some(Box::new(move |session| {
+            let text = format!("Headset session {} ended", session.id()?);
+            ended.spawn(&["notify-send".to_owned(), text], None)?;
+            Ok(())
+        })),
+    }
+    .implement(&objects)?;
+    extensions.add_listener(&listener)?;
+    if let Some(xr) = extensions.xr()?
+        && xr.session()?.is_some()
+    {
+        // The session is alive, and the stock room is built.
+    }
+    Ok(())
 }
 ```
 
-```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-# The XR extension is TypeScript-only.
+:::
+
+A session object that a shell kept reads `alive` as false once the session ends, and a write to it fails. The stock room
+ends with the session, so a handle on it fails as an object that is gone.
+
+Two more calls tell a shell what is there:
+
+- `require("xr")` fails with a message that says what to do when there is no XR extension. It succeeds when the session
+  declared XR (`GNOBLIN_XR=1`) or when the program already has a session. A configuration that must also work without a
+  headset checks `xr` instead.
+- `list` names each extension with its status: `xr` is `ready` while there is a session and `unloaded` otherwise.
+
+### The room, the head and the viewport
+
+The stock shell builds the room when the session starts. To change what it builds, configure it before the session starts,
+which a configuration can because it runs first. This one puts the ring 1.8 m away, moves with the right hand only, and leaves
+`resize` out:
+
+::: tabs
+
+```typescript
+import { Extensions, SpatialLayout } from "gnoblin-std/generated/objects";
+
+const layout = new SpatialLayout({ radius: 1.8, triggers: { move: "Right.Grip+Drag", resize: "" } });
+Extensions.get().configure("xr", { room: true, layout });
 ```
 
-```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-// The XR extension is TypeScript-only.
+```python
+from gnoblin.objects.std import Extensions, SpatialLayout, SpatialTriggers, XROptions
+
+layout = SpatialLayout(
+    radius=1.8,
+    triggers=SpatialTriggers(move="Right.Grip+Drag", resize="", rotate="Trigger+Thumbstick+Drag"),
+)
+Extensions.get().configure("xr", XROptions(room=True, layout=layout))
+```
+
+```rust
+use gnoblin_std::objects::{Extensions, SpatialLayout, SpatialLayoutOptions, SpatialTriggers, XrClient, XrOptions};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let layout = SpatialLayout::new_with(
+        &objects,
+        SpatialLayoutOptions {
+            radius: Some(1.8),
+            triggers: Some(SpatialTriggers {
+                r#move: "Right.Grip+Drag".to_owned(),
+                resize: String::new(),
+                ..SpatialTriggers::default()
+            }),
+            ..SpatialLayoutOptions::default()
+        },
+    )?;
+    let options = XrOptions { room: true, layout: Some(layout) };
+    // Every window gets a panel.
+    Extensions::get(&objects)?.configure("xr", &options, Some(|_client: XrClient| Ok(true)))?;
+    Ok(())
+}
+```
+
+:::
+
+`room: false` builds nothing and leaves the room to the shell. A trigger left empty leaves that binding out. A shell that
+builds its own room hands it over with a viewport. The program reads the node named `room` and the camera named `head`, and
+assigning the viewport names them:
+
+::: tabs
+
+```typescript
+import { Extensions, XRCamera3D, XRRoom, XRViewport } from "gnoblin-std/generated/objects";
+
+const session = Extensions.get().xr?.session;
+if (session) {
+    const head = new XRCamera3D({ tracking: session.head, near: 0.05, far: 100 });
+    session.viewport = new XRViewport(new XRRoom(), head, { composition: "auto" });
+}
+```
+
+```python
+from gnoblin.objects.std import Extensions, XRCamera3D, XRRoom, XRViewport, XrComposition
+
+xr = Extensions.get().xr
+session = xr.session if xr is not None else None
+if session is not None:
+    head = XRCamera3D(tracking=session.head, near=0.05, far=100.0)
+    session.viewport = XRViewport(XRRoom(), head, composition=XrComposition.AUTO)
+```
+
+```rust
+use gnoblin_std::objects::{
+    Extensions, XrCamera3D, XrCamera3DOptions, XrComposition, XrRoom, XrViewport, XrViewportOptions,
+};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let Some(xr) = Extensions::get(&objects)?.xr()? else {
+        return Ok(());
+    };
+    let Some(session) = xr.session()? else {
+        return Ok(());
+    };
+    let head = XrCamera3D::new_with(
+        &objects,
+        XrCamera3DOptions {
+            tracking: session.head()?,
+            near: Some(0.05),
+            far: Some(100.0),
+            ..XrCamera3DOptions::default()
+        },
+    )?;
+    let room = XrRoom::new(&objects)?;
+    let viewport = XrViewport::new_with(
+        &objects,
+        &room.as_scene_node()?,
+        &head.as_camera3d()?,
+        XrViewportOptions { composition: Some(XrComposition::Auto) },
+    )?;
+    session.set_viewport(&viewport)?;
+    Ok(())
+}
 ```
 
 :::
@@ -419,30 +526,63 @@ if (xr?.session) {
 `near` and `far` are in metres. The stock room is replaced by the new one. `composition: "projection"` draws each panel
 through the head camera as a projection layer; `"layers"` and `"auto"` leave them as flat quads.
 
-A client can also be shown in a panel that is fixed to your head, in metres in front of the eyes. The window keeps its
-panel on the ring as well:
+A client can also be shown in a panel that is fixed to your head, in metres in front of the eyes. The window keeps its panel
+on the ring as well, and the panel goes with the window:
 
 ::: tabs
 
 ```typescript
-const panel = xr.room.pinToHead(client, { x: 0.1, y: -0.2, z: -1 });
+import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Extensions } from "gnoblin-std/generated/objects";
+
+const room = Extensions.get().xr?.room;
+const client = Gnoblin.get().clients?.focused;
+if (room && client) {
+    room.pinToHead(client, { x: 0.1, y: -0.2, z: -1 });
+}
 ```
 
-```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-# The XR extension is TypeScript-only.
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import Extensions, HeadPanelOptions
+
+xr = Extensions.get().xr
+room = xr.room if xr is not None else None
+client = Gnoblin.get().clients.focused
+if room is not None and client is not None:
+    room.pin_to_head(client, HeadPanelOptions(x=0.1, y=-0.2, z=-1.0))
 ```
 
-```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-// The XR extension is TypeScript-only.
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{Extensions, HeadPanelOptions};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let Some(room) = Extensions::get(&objects)?.xr()?.map(|xr| xr.room()).transpose()?.flatten() else {
+        return Ok(());
+    };
+    let model = ModelRoot::get(&g.objects()?)?;
+    let Some(client) = model.clients()?.map(|clients| clients.focused()).transpose()?.flatten() else {
+        return Ok(());
+    };
+    room.pin_to_head(&client, Some(&HeadPanelOptions { x: 0.1, y: -0.2, z: -1.0, scale: None }))?;
+    Ok(())
+}
 ```
 
 :::
 
+A head-locked panel is also the way to keep a screen in view: a virtual output attached to the viewer is not supported, so
+`room.pinToHead(client)` (`pin_to_head` in Python and Rust) is how a layer-shell client stays in front of your eyes.
+
 ### Moving, resizing, turning and scaling a panel
 
-The program writes one `controller` node for each hand (see "Controller nodes"), and the shell reads the nodes once a
-frame. The room's `SpatialLayout` holds the bindings that act on the panel under the ray, as `FloatingLayout` holds its
-own, and `layout.bindings` is their collection:
+The program writes one `controller` node for each hand (see "Controller nodes"), and the shell reads the nodes once a frame.
+The room's `SpatialLayout` holds the bindings that act on the panel under the ray, and `layout.bindings` is their
+collection:
 
 | Id       | Class               | Default trigger           | What a drag does                                                               |
 | -------- | ------------------- | ------------------------- | ------------------------------------------------------------------------------ |
@@ -451,117 +591,257 @@ own, and `layout.bindings` is their collection:
 | `rotate` | `ViewRotateBinding` | `Trigger+Thumbstick+Drag` | Turns the panel about its own centre by what the hand turns.                   |
 | `scale`  | `ViewScaleBinding`  | `Grip+Thumbstick+Drag`    | Adds the metres the hand pushes along its aim to the scale. Not in the layout. |
 
-- `SpatialLayout`'s `triggers` takes `move`, `resize` and `rotate`. A trigger of `null` leaves the binding out.
-- A `ViewScaleBinding` is added by the script, with `minScale` and `maxScale` (0.2 and 3) as limits.
+- `SpatialLayout`'s `triggers` takes `move`, `resize` and `rotate`. An empty trigger leaves the binding out.
+- A `ViewScaleBinding` is added by the shell, with `minScale` and `maxScale` (0.2 and 3) as limits.
 - `ViewResizeBinding` takes `edges`: `"quadrant"` (the corner nearest the ray) or one corner, such as `"top-left"`.
+- Setting the room's `layout` to none takes it away: no panel is placed and no drag runs until a layout is set again.
+
+This layout leaves `rotate` out, adds a scale drag, replaces the stock `move` with a ray drag and turns `resize` off:
 
 ::: tabs
 
 ```typescript
-const xr = gnoblin.extensions.xr;
-if (xr?.room) {
-    const spatial = new xr.SpatialLayout({ triggers: { rotate: null } });
-    spatial.bindings.add(new xr.ViewScaleBinding({ minScale: 0.5, maxScale: 2 }));
-    // The stock `move` holds the id, so remove it before adding a ray drag in its place.
-    spatial.bindings.remove("move");
-    spatial.bindings.add(new xr.ViewMoveBinding({ id: "move", tracking: "ray", rotation: "keep" }));
-    xr.room.layout = spatial;
+import { Extensions, SpatialLayout, ViewMoveBinding, ViewScaleBinding } from "gnoblin-std/generated/objects";
+
+const room = Extensions.get().xr?.room;
+if (room) {
+    const spatial = new SpatialLayout({ triggers: { rotate: "" } });
+    const bindings = spatial.bindings;
+    if (bindings) {
+        bindings.add(new ViewScaleBinding({ minScale: 0.5, maxScale: 2 }));
+        // The stock `move` holds the id, so remove it before adding a ray drag in its place.
+        bindings.remove("move");
+        bindings.add(new ViewMoveBinding({ id: "move", tracking: "ray", rotation: "keep" }));
+        const resize = bindings.find("resize");
+        if (resize) {
+            resize.enabled = false;
+        }
+    }
+    room.layout = spatial;
 }
 ```
 
-```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-# The XR extension is TypeScript-only.
+```python
+from gnoblin.objects.std import (
+    Extensions,
+    SpatialLayout,
+    SpatialTriggers,
+    ViewMoveBinding,
+    ViewRotation,
+    ViewScaleBinding,
+    ViewTracking,
+)
+
+xr = Extensions.get().xr
+room = xr.room if xr is not None else None
+if room is not None:
+    spatial = SpatialLayout(triggers=SpatialTriggers(move="Grip+Drag", resize="Grip+Trigger+Drag", rotate=""))
+    bindings = spatial.bindings
+    bindings.add(ViewScaleBinding(min_scale=0.5, max_scale=2.0))
+    # The stock `move` holds the id, so remove it before adding a ray drag in its place.
+    bindings.remove("move")
+    bindings.add(ViewMoveBinding(id="move", tracking=ViewTracking.RAY, rotation=ViewRotation.KEEP))
+    resize = bindings.find("resize")
+    if resize is not None:
+        resize.enabled = False
+    room.layout = spatial
 ```
 
-```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-// The XR extension is TypeScript-only.
+```rust
+use gnoblin_std::objects::{
+    Extensions, SpatialLayout, SpatialLayoutOptions, SpatialTriggers, ViewMoveBinding, ViewMoveBindingOptions,
+    ViewRotation, ViewScaleBinding, ViewScaleBindingOptions, ViewTracking,
+};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let Some(room) = Extensions::get(&objects)?.xr()?.map(|xr| xr.room()).transpose()?.flatten() else {
+        return Ok(());
+    };
+    let spatial = SpatialLayout::new_with(
+        &objects,
+        SpatialLayoutOptions {
+            triggers: Some(SpatialTriggers { rotate: String::new(), ..SpatialTriggers::default() }),
+            ..SpatialLayoutOptions::default()
+        },
+    )?;
+    if let Some(bindings) = spatial.bindings()? {
+        let scale = ViewScaleBinding::new_with(
+            &objects,
+            ViewScaleBindingOptions { min_scale: Some(0.5), max_scale: Some(2.0), ..ViewScaleBindingOptions::default() },
+        )?;
+        bindings.add(&scale.as_xr_drag_binding()?)?;
+        // The stock `move` holds the id, so remove it before adding a ray drag in its place.
+        bindings.remove("move")?;
+        let ray = ViewMoveBinding::new_with(
+            &objects,
+            ViewMoveBindingOptions {
+                id: Some("move".to_owned()),
+                tracking: Some(ViewTracking::Ray),
+                rotation: Some(ViewRotation::Keep),
+                ..ViewMoveBindingOptions::default()
+            },
+        )?;
+        bindings.add(&ray.as_xr_drag_binding()?)?;
+        if let Some(resize) = bindings.find("resize")? {
+            resize.set_enabled(false)?;
+        }
+    }
+    room.set_layout(&spatial)?;
+    Ok(())
+}
 ```
 
 :::
 
-`bindings.add` refuses a binding whose id is taken, as every layout's collection does, so a script removes the stock
-binding first. A binding that matches the same trigger at the same priority as another is refused too.
+`bindings.add` refuses a binding whose id is taken, as every layout's collection does, so a shell removes the stock binding
+first. A binding that matches the same trigger at the same priority as another is refused too. A binding's `trigger` can be
+set again, and `parsed` reads it back in its one canonical spelling.
 
-A cancelled drag, which an untracked hand or a throw causes, puts the panel back where it was.
+A cancelled drag, which an untracked hand or a hook that fails causes, puts the panel back where it was.
 
 ### Your own drag binding
 
-`xr.ControllerDragBinding` is the base of the four classes above. A script extends it and gets the same hooks, which
-run once a frame while the trigger's buttons are down together:
+`XRControllerDragBinding` is the base of the four classes above. A shell's own binding is one of them with a `handler`: an
+object of the `XRDragHandler` interface whose hooks run once a frame while the trigger's buttons are down together. This one
+nudges the panel sideways as far as the hand travels:
 
 ::: tabs
 
 ```typescript
-class Nudge extends xr.ControllerDragBinding {
-    constructor() {
-        super({ id: "nudge", trigger: "Primary+Drag" });
+import { Extensions, XRControllerDragBinding, XRDragHandler, type XRDragEvent } from "gnoblin-std/generated/objects";
+
+class Nudge extends XRDragHandler {
+    private start = 0;
+    private hand = 0;
+
+    onStart(event: XRDragEvent): boolean {
+        if (!event.view || !event.controller.pose) {
+            return false;
+        }
+        this.start = event.view.x;
+        this.hand = event.controller.pose.position.x;
+        return true;
     }
-    onStart(event) {
-        return event.view ? { view: event.view, start: event.view.transform, hand: event.controller.pose } : false;
+
+    onUpdate(event: XRDragEvent): void {
+        const pose = event.controller.pose;
+        if (event.view && pose) {
+            event.view.x = this.start + pose.position.x - this.hand;
+        }
     }
-    onUpdate(event, state) {
-        // The panel follows the hand's sideways travel since the drag began.
-        const travel = event.controller.pose.position.subtract(state.hand.position);
-        const target = state.start.clone();
-        target.position = state.start.position.add(new Vector3(travel.x, 0, 0));
-        state.view.transform = target;
-    }
-    onCancel(_event, state) {
-        state.view.transform = state.start;
+
+    onCancel(event: XRDragEvent): void {
+        if (event.view) {
+            event.view.x = this.start;
+        }
     }
 }
-xr.room.layout.bindings.add(new Nudge());
+
+const bindings = Extensions.get().xr?.room?.layout?.bindings;
+bindings?.add(new XRControllerDragBinding({ id: "nudge", trigger: "Primary+Drag", handler: new Nudge() }));
 ```
 
-```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-# The XR extension is TypeScript-only.
+```python
+from gnoblin.objects.std import Extensions, XRControllerDragBinding, XRDragEvent, XRDragHandler
+
+
+class Nudge(XRDragHandler):
+    start = 0.0
+    hand = 0.0
+
+    def on_start(self, event: XRDragEvent) -> bool:
+        if event.view is None:
+            return False
+        self.start = event.view.x
+        self.hand = event.controller.pose.position.x
+        return True
+
+    def on_update(self, event: XRDragEvent) -> None:
+        if event.view is not None:
+            event.view.x = self.start + event.controller.pose.position.x - self.hand
+
+    def on_cancel(self, event: XRDragEvent) -> None:
+        if event.view is not None:
+            event.view.x = self.start
+
+
+xr = Extensions.get().xr
+room = xr.room if xr is not None else None
+if room is not None and room.layout is not None:
+    room.layout.bindings.add(XRControllerDragBinding(id="nudge", trigger="Primary+Drag", handler=Nudge()))
 ```
 
-```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-// The XR extension is TypeScript-only.
+```rust
+use std::cell::Cell;
+use std::rc::Rc;
+
+use gnoblin_std::objects::{Extensions, XrDragBinding, XrDragBindingOptions, XrDragHandlerHandlers};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let Some(room) = Extensions::get(&objects)?.xr()?.map(|xr| xr.room()).transpose()?.flatten() else {
+        return Ok(());
+    };
+    let Some(bindings) = room.layout()?.map(|layout| layout.bindings()).transpose()?.flatten() else {
+        return Ok(());
+    };
+    // Where the panel and the hand were when the drag began.
+    let start = Rc::new(Cell::new((0.0, 0.0)));
+    let (begin, follow, back) = (Rc::clone(&start), Rc::clone(&start), Rc::clone(&start));
+    let nudge = XrDragHandlerHandlers {
+        on_start: Some(Box::new(move |event| {
+            let (Some(view), Some(pose)) = (event.view, event.controller.pose()?) else {
+                return Ok(false);
+            };
+            begin.set((view.x()?, pose.position.x));
+            Ok(true)
+        })),
+        on_update: Some(Box::new(move |event| {
+            if let (Some(view), Some(pose)) = (event.view, event.controller.pose()?) {
+                let (panel, hand) = follow.get();
+                view.set_x(panel + pose.position.x - hand)?;
+            }
+            Ok(())
+        })),
+        on_cancel: Some(Box::new(move |event| {
+            if let Some(view) = event.view {
+                view.set_x(back.get().0)?;
+            }
+            Ok(())
+        })),
+        on_end: None,
+        claims: None,
+    }
+    .implement(&objects)?;
+    let binding = XrDragBinding::new_with(
+        &objects,
+        XrDragBindingOptions {
+            id: Some("nudge".to_owned()),
+            trigger: Some("Primary+Drag".to_owned()),
+            handler: Some(nudge),
+            ..XrDragBindingOptions::default()
+        },
+    )?;
+    bindings.add(&binding)?;
+    Ok(())
+}
 ```
 
 :::
 
-`onStart` returns a state object to take the drag or `false` to decline it. The event has:
+`onStart` (`on_start`) returns `false` to decline the drag; any other answer takes it. The event has:
 
 - `controller`, its `ray`, and the `view` under the ray;
 - `hit`, where the ray struck the view;
 - `deltaTime` in seconds, and `unit`, the metres for each room unit.
 
-A binding that needs more than its trigger's buttons overrides `claims()`. A throw-and-glide binding is not built in:
-write it as a class like this one, with a physics stepper of your own.
-
-### A head-locked panel as a virtual output
-
-A layer-shell client can use the headset as a screen when a virtual output is attached to the viewer:
-
-::: tabs
-
-```typescript
-const hud = new VirtualOutput({ name: "XR-HUD", width: 1600, height: 900, attachment: "viewer" });
-try {
-    gnoblin.outputs.add(hud);
-} catch (error) {
-    // Today: GnoblinError, code "unsupported".
-}
-```
-
-```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-# The XR extension is TypeScript-only.
-```
-
-```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-// The XR extension is TypeScript-only.
-```
-
-:::
-
-The class checks its options: whole pixel sizes above zero, and `attachment` `"viewer"` or none.
-
-`gnoblin.outputs.add` throws a `GnoblinError` with
-code `unsupported` and the message "virtual outputs are not supported by this backend", and the collection does not
-change. Until it can, `room.pinToHead(client)` puts a window in a panel fixed to the head.
+A handler that needs more than its trigger's buttons defines `claims()`. A throw-and-glide binding is not built in: write it
+as a handler like this one, with a physics stepper of your own.
 
 ### Controller nodes
 
@@ -597,19 +877,14 @@ A claimed input is withheld from the window under the ray, and a press waits for
 - A press that began under a claim never reaches the window.
 - The values are still written for the shell to read.
 
-The pointer is the right hand's. The left hand's node is published and nothing reaches a window from it. There are no
-controller signals.
+The pointer is the right hand's. The left hand's node is published and nothing reaches a window from it. The session tells
+a shell when a controller comes and goes (`controller_added` and `controller_removed`).
 
-The bindings follow the ordinary lifecycle, and live in the room layout's `bindings`, a `BindingCollection`:
+A drag's bindings follow the ordinary lifecycle:
 
-- `onStart` returns a state object, or `false` to decline.
+- `onStart` takes the drag, or declines it with `false`.
 - `onUpdate` runs once a frame with that frame's pose.
 - `onEnd` or `onCancel` ends the drag.
-
-| Binding             | Trigger             | What it writes                                                                                        |
-| ------------------- | ------------------- | ----------------------------------------------------------------------------------------------------- |
-| `ViewMoveBinding`   | `Grip+Drag`         | The View's position and rotation, never the client. `tracking: "ray"` follows where the ray points.   |
-| `ViewResizeBinding` | `Grip+Trigger+Drag` | The View's scale on every update, and nothing to the client until release; then at most one new size. |
 
 A trigger is the buttons held together, then `Drag`, with an optional `Left.` or `Right.` hand:
 
@@ -624,67 +899,68 @@ A panel that was moved or resized is pinned: the ring leaves it where it is unti
   2% or leaves the client's picture under 85% of the pixels the new size shows (`pixelsPerMetre`, 1200).
 - **Tiled workspaces.** A layout that owns the window's rectangle may place the window again.
 
-Turning a binding off and replacing it are the collection's calls:
-
-::: tabs
-
-```typescript
-const bindings = xr.room.layout.bindings;
-bindings.remove("move");
-bindings.add(new xr.ViewMoveBinding({ id: "move", trigger: "Right.Grip+Drag", tracking: "ray", rotation: "keep" }));
-bindings.get("resize").enabled = false;
-```
-
-```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-# The XR extension is TypeScript-only.
-```
-
-```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-// The XR extension is TypeScript-only.
-```
-
-:::
-
-A binding of your own extends `XRControllerDragBinding` and is added the same way. `event.view` is the panel under the
-ray when the drag began, `event.controller.pose` and `event.ray` are the hand, and `event.hit` is where the ray struck.
-
 ### Claiming a controller's inputs
 
 A drag takes its buttons from the window under the ray:
 
-- The runtime claims the buttons of the binding's trigger on the controller that started the drag, as `onStart` accepts.
+- The library claims the buttons of the binding's trigger on the controller that started the drag, as the drag starts.
 - It gives them back when the drag ends, however it ends: the buttons are released, the hand is lost, the binding is
-  removed or throws, the session ends or the shell reloads.
+  removed or its hook fails, the session ends or the shell reloads.
 - A `Grip+Drag` claims `grip`, and a `Grip+Trigger+Drag` claims `trigger` and `grip`.
-- A binding that needs other inputs overrides `claims()`.
+- A handler that needs other inputs defines `claims()`.
 
-A script can claim inputs of its own on a controller. Each owner has one claim, a later one of the same owner replaces
-it, and the node holds the union of every owner's, so a claim made for a menu is not undone when a drag ends:
+A shell can claim inputs of its own on a controller. Each owner is a name you choose and has one claim, a later one of the
+same owner replaces it, and the node holds the union of every owner's, so a claim made for a menu is not undone when a drag
+ends:
 
 ::: tabs
 
 ```typescript
-const hand = xr.sessions.at(0)?.controllers.get("60");
-const menu = {};
-hand?.claim(menu, ["thumbstick"]);
-hand?.release(menu);
+import { Extensions } from "gnoblin-std/generated/objects";
+
+const hand = Extensions.get().xr?.session?.controller("60");
+hand?.claim("menu", ["thumbstick"]);
+hand?.release("menu");
 ```
 
-```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-# The XR extension is TypeScript-only.
+```python
+from gnoblin.objects.std import Extensions
+
+xr = Extensions.get().xr
+session = xr.session if xr is not None else None
+hand = session.controller("60") if session is not None else None
+if hand is not None:
+    hand.claim("menu", ["thumbstick"])
+    hand.release("menu")
 ```
 
-```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
-// The XR extension is TypeScript-only.
+```rust
+use gnoblin_std::objects::Extensions;
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let Some(session) = Extensions::get(&objects)?.xr()?.map(|xr| xr.session()).transpose()?.flatten() else {
+        return Ok(());
+    };
+    if let Some(hand) = session.controller("60")? {
+        hand.claim("menu", &["thumbstick".to_owned()])?;
+        hand.release("menu")?;
+    }
+    Ok(())
+}
 ```
 
 :::
 
-The names are the five of the table above, in lower case. A list that is anything else throws a `TypeError` that names
-`Controller#<id>.claimed`, and a controller that is gone throws a `SceneError`. `hand.claimed` reads the union.
+The names are the five of the table above, in lower case. A list that is anything else, or an empty owner, fails with a
+type error that names `Controller#<id>.claimed`, and a controller that is gone refuses the claim. A release of a gone
+controller does nothing. `hand.claimed` reads the union.
 
-The compositor gives a shell's claims back when the shell goes (a crash, a kill), because the program would otherwise
-withhold the input for ever.
+When the shell's generation ends (a reload or an exit) the library gives back every claim it made, and the compositor gives
+a shell's claims back when the shell goes (a crash, a kill), because the program would otherwise withhold the input for
+ever.
 
 ## Testing without a headset
 
@@ -734,7 +1010,7 @@ Logs, the tree dump and the pictures are left in `/tmp/xr-smoke`.
       then sees the press first.
 - **A panel has one scale.** The program reads the first component of a View's `scale`, so a resize previews the growth
   evenly and the aspect changes when the client's new size lands.
-- **ThrowViewBinding.** There is no built-in throw-and-glide binding; write one as a class of your own.
+- **ThrowViewBinding.** There is no built-in throw-and-glide binding; write one as a drag handler of your own.
 - **A stalled script.** The program writes the head pose and submits layers without waiting for the shell, and the
   shell reads the tree once a frame. No test stalls a shell while the program runs: that is unverified.
 
@@ -744,8 +1020,8 @@ Logs, the tree dump and the pictures are left in `/tmp/xr-smoke`.
 - The extension needs a Vulkan device and `XR_KHR_vulkan_enable2`. Without them it runs a headless session, which plans
   and drives the pointer and shows nothing.
 - No headset has shown it. Everything here has run only against Monado's null compositor, which shows nothing, a stub
-  runtime, a fake owner, a fake tree and the real compositor on its headless backend. The TypeScript XR classes ran only
-  against a fake tree.
+  runtime, a fake owner, a fake tree and the real compositor on its headless backend. The XR classes of `gnoblin-std`
+  ran against a fake tree, and the stock room and grab against the real compositor on its headless backend.
 - Head tracking, the layer budget and the eyes a layer declares are proven only that way. Nothing says what a person
   sees, whether a layer swims, or how a real tracker's noise behaves.
 - WiVRn, real controllers and a runtime that loses a session are untried.
