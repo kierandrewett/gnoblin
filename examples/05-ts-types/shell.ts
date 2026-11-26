@@ -4,7 +4,7 @@
 //
 // The types are erased when the file loads; nothing compiles ahead of time. Run `gnoblinctl types init` once for an editor that
 // knows `gnoblin-core`. An error in any of the three files is reported at the line of the `.ts` file that wrote it.
-import { CollectionListener, gnoblin } from "gnoblin-core";
+import { ClientCollectionListener, gnoblin } from "gnoblin-core";
 import type { Client } from "gnoblin-core";
 
 import { explode, split } from "./geometry.ts";
@@ -19,7 +19,7 @@ function tile(): void {
     if (output === undefined) {
         return;
     }
-    const windows: Client[] = [...gnoblin.clients];
+    const windows: Client[] = gnoblin.clients.toList();
     const pieces = split(
         { x: output.x, y: output.y, width: output.width, height: output.height },
         windows.length,
@@ -31,7 +31,7 @@ function tile(): void {
     });
 }
 
-class Tiler extends CollectionListener<Client> {
+class Tiler extends ClientCollectionListener {
     onAdded(_client: Client): void {
         tile();
     }

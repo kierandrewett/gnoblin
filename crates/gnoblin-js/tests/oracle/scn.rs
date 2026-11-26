@@ -16,6 +16,13 @@ use gnoblin_tree_client::tree_mirror::{MirrorValue, TxOp};
 
 use crate::common::{LIBRARY_GLOBALS, Rig, rig_setup};
 
+/// The oracle records the TypeScript library, which a shell that imports nothing else now does not run on. A module only that library has
+/// pins the scenario's shell to it. The import joins the first line of the prelude, so no line of the scenario's source moves and the
+/// positions in the fixtures stay.
+fn typescript_globals() -> String {
+    LIBRARY_GLOBALS.replacen('\n', " import \"gnoblin-std/layout\";\n", 1)
+}
+
 /// A property value in a world or an action.
 #[derive(Clone, Debug)]
 pub enum V {
@@ -387,7 +394,7 @@ impl Scn {
     pub fn new(name: &str, home: Home, world: &World, body: &str) -> Scn {
         let source = format!("{PRELUDE}{body}");
         let build = world.clone();
-        let rig = rig_setup(LIBRARY_GLOBALS, &source, move |comp| build.build(comp));
+        let rig = rig_setup(&typescript_globals(), &source, move |comp| build.build(comp));
         let boot = rig.load_diagnostics.clone();
         let mark = 0;
         Scn {

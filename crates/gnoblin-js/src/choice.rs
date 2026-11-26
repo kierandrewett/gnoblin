@@ -4,20 +4,19 @@
 //! generated from the catalog, over the object protocol of the libraries) or entirely on the TypeScript library (`data/js`), never
 //! on both: two object models in one generation would hand a script handles of one that the other does not know.
 //!
-//! The package entries `gnoblin-core` and `gnoblin-std` are the TypeScript library's until the generated classes cover what a shell
-//! uses, and the XR extension (`gnoblin-std/extensions/xr`) is only there. So the choice reads the shell's static import graph:
-//! it starts at the entry module and follows every import and re-export that names a file, through the resolution the loader uses,
-//! and parses each file with the parser the loader strips with. The shell runs on the native library when
+//! The package entries `gnoblin-core` and `gnoblin-std` are the native library's: they re-export the generated object classes. The
+//! deep modules of the TypeScript library (`gnoblin-std/layout`, `gnoblin-core/bindings/...`) and the XR extension
+//! (`gnoblin-std/extensions/xr`) are only there. So the choice reads the shell's static import graph: it starts at the entry module
+//! and follows every import and re-export that names a file, through the resolution the loader uses, and parses each file with the
+//! parser the loader strips with. The shell runs on the native library unless
 //!
-//! - some module of the graph imports one of the generated object modules, and
-//! - no module imports anything else of the stock library (a package entry, a deep module, the XR extension), and
-//! - no module contains a dynamic `import()`, whose specifier is known only when it runs.
+//! - some module imports a deep module of the TypeScript library or the XR extension, or
+//! - some module contains a dynamic `import()`, whose specifier is known only when it runs.
 //!
-//! Any other graph runs on the TypeScript library, which is what every shell ran on before the native one existed. A type-only
-//! import is erased before the module runs and does not count. A graph that cannot be read to its end (a file that does not exist,
-//! does not parse or cannot be resolved) is [`Choice::Unknown`] when nothing it did read needs the TypeScript library: the load fails
-//! the same way on either library, and the caller keeps the library it already runs on so that the failure the author sees is the
-//! real one.
+//! Either of those runs the whole shell on the TypeScript library. A type-only import is erased before the module runs and does not
+//! count. A graph that cannot be read to its end (a file that does not exist, does not parse or cannot be resolved) is
+//! [`Choice::Unknown`] when nothing it did read needs the TypeScript library: the load fails the same way on either library, and the
+//! caller keeps the library it already runs on so that the failure the author sees is the real one.
 
 use std::collections::HashSet;
 use std::fs;
@@ -29,8 +28,10 @@ use oxc_span::SourceType;
 
 use crate::loader::resolve_file;
 
-/// The generated modules a shell imports to run on the native library.
-const NATIVE_MODULES: [&str; 3] = [
+/// The modules of the stock packages the native library serves: the package entries and the generated object modules.
+const NATIVE_MODULES: [&str; 5] = [
+    "gnoblin-core",
+    "gnoblin-std",
     "gnoblin-core/generated/objects",
     "gnoblin-core/generated/object_base",
     "gnoblin-std/generated/objects",
@@ -61,9 +62,9 @@ impl StockRuntime {
 /// What the import graph of a shell says about the library it needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Choice {
-    /// Every module was read, the shell imports the generated object modules and nothing else of the stock library.
+    /// Every module was read and none needs the TypeScript library.
     Generated,
-    /// A module needs the TypeScript library, or no module needs the native one; the text says why.
+    /// A module needs the TypeScript library; the text says why.
     Typescript(String),
     /// The graph could not be read to its end and nothing read so far needs the TypeScript library.
     Unknown,
@@ -77,11 +78,9 @@ fn in_package(specifier: &str, package: &str) -> bool {
             .is_some_and(|rest| rest.starts_with('/'))
 }
 
-/// What one module's own text says: why it needs the TypeScript library, whether it imports a generated object module, and the
-/// specifiers of the files it imports.
+/// What one module's own text says: why it needs the TypeScript library, and the specifiers of the files it imports.
 struct Reads {
     typescript: Option<String>,
-    native: bool,
     files: Vec<String>,
 }
 
@@ -98,7 +97,6 @@ fn read_module(path: &Path, source: &str) -> Option<Reads> {
     let record = &parsed.module_record;
     let mut reads = Reads {
         typescript: None,
-        native: false,
         files: Vec::new(),
     };
     for (specifier, requests) in &record.requested_modules {
@@ -108,8 +106,9 @@ fn read_module(path: &Path, source: &str) -> Option<Reads> {
         }
         let specifier: &str = specifier.as_str();
         if NATIVE_MODULES.contains(&specifier) {
-            reads.native = true;
-        } else if PACKAGES.iter().any(|package| in_package(specifier, package)) {
+            continue;
+        }
+        if PACKAGES.iter().any(|package| in_package(specifier, package)) {
             reads.typescript.get_or_insert_with(|| {
                 format!(
                     "{} imports {specifier}, which only the TypeScript library has",
@@ -140,7 +139,7 @@ pub(crate) fn choose(root: &Path, entry: &Path) -> Choice {
         return Choice::Unknown;
     };
     match resolve_file(&root, "", first) {
-        Ok(entry) => walk(&root, vec![entry], false, false),
+        Ok(entry) => walk(&root, vec![entry], false),
         Err(_) => Choice::Unknown,
     }
 }
@@ -166,11 +165,11 @@ pub(crate) fn choose_source(root: &Path, path: &Path, source: &str) -> Choice {
             Err(_) => unknown = true,
         }
     }
-    walk(&root, files, reads.native, unknown)
+    walk(&root, files, unknown)
 }
 
-/// Follows the files of the graph that `pending` starts, each once. `native` and `unknown` are what the modules read before already said.
-fn walk(root: &Path, mut pending: Vec<PathBuf>, mut native: bool, mut unknown: bool) -> Choice {
+/// Follows the files of the graph that `pending` starts, each once. `unknown` is what the modules read before already said.
+fn walk(root: &Path, mut pending: Vec<PathBuf>, mut unknown: bool) -> Choice {
     let mut seen: HashSet<PathBuf> = HashSet::new();
     while let Some(path) = pending.pop() {
         if !seen.insert(path.clone()) {
@@ -187,7 +186,6 @@ fn walk(root: &Path, mut pending: Vec<PathBuf>, mut native: bool, mut unknown: b
         if let Some(reason) = reads.typescript {
             return Choice::Typescript(reason);
         }
-        native |= reads.native;
         let base = path.to_str().unwrap_or_default().to_owned();
         for specifier in &reads.files {
             match resolve_file(root, &base, specifier) {
@@ -196,15 +194,7 @@ fn walk(root: &Path, mut pending: Vec<PathBuf>, mut native: bool, mut unknown: b
             }
         }
     }
-    if unknown {
-        Choice::Unknown
-    } else if native {
-        Choice::Generated
-    } else {
-        Choice::Typescript(
-            "it imports no generated object module, so the global `gnoblin` is the TypeScript library's".to_owned(),
-        )
-    }
+    if unknown { Choice::Unknown } else { Choice::Generated }
 }
 
 #[cfg(test)]
@@ -269,26 +259,26 @@ mod tests {
         }
     }
 
+    /// The global `gnoblin` is the native library's too, so a shell that imports nothing runs there.
     #[test]
-    fn a_shell_that_imports_no_generated_module_stays_on_the_typescript_library() {
+    fn a_shell_that_imports_nothing_is_generated() {
         let (_dir, root) = root_with(&[("shell.ts", "gnoblin.clients.length;\n")]);
-        let choice = choose(&root, Path::new("shell.ts"));
-        assert!(typescript(&choice).contains("global `gnoblin`"), "{choice:?}");
+        assert_eq!(choose(&root, Path::new("shell.ts")), Choice::Generated);
     }
 
     #[test]
-    fn the_package_entries_and_their_deep_modules_are_the_typescript_librarys() {
+    fn the_package_entries_are_generated_and_the_deep_modules_typescript() {
         let (_dir, root) = root_with(&[
             (
                 "entry.ts",
-                "import { gnoblin } from \"gnoblin-core\";\nimport { Gnoblin } from \"gnoblin-core/generated/objects\";\n",
+                "import { Gnoblin } from \"gnoblin-core\";\nimport { Workspaces } from \"gnoblin-std\";\nvoid [Gnoblin, Workspaces];\n",
             ),
             (
                 "deep.ts",
-                "import { x } from \"gnoblin-std/layout\";\nimport { Gnoblin } from \"gnoblin-core/generated/objects\";\n",
+                "import { x } from \"gnoblin-std/layout\";\nimport { Gnoblin } from \"gnoblin-core\";\n",
             ),
         ]);
-        assert!(typescript(&choose(&root, Path::new("entry.ts"))).contains("gnoblin-core"));
+        assert_eq!(choose(&root, Path::new("entry.ts")), Choice::Generated);
         assert!(typescript(&choose(&root, Path::new("deep.ts"))).contains("gnoblin-std/layout"));
     }
 
@@ -351,8 +341,12 @@ mod tests {
     fn the_starter_is_read_from_its_text() {
         let (_dir, root) = root_with(&[("helper.ts", "export const h = 1;\n")]);
         let path = Path::new("/stock/shell.ts");
-        assert!(matches!(
+        assert_eq!(
             choose_source(&root, path, "import { gnoblin } from \"gnoblin-core\";\n"),
+            Choice::Generated
+        );
+        assert!(matches!(
+            choose_source(&root, path, "import { focusSettings } from \"gnoblin-std/focus\";\n"),
             Choice::Typescript(_)
         ));
         assert_eq!(choose_source(&root, path, OBJECTS), Choice::Generated);

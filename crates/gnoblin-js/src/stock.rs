@@ -362,9 +362,21 @@ pub(crate) const DOCUMENT_MODULE: &str = "gnoblin-core/generated/document";
 
 const DOCUMENT_SOURCE: &str = "import { InputManager } from \"gnoblin-core/generated/objects\";\nglobalThis.__gnoblinDocument = {\n  revision: () => InputManager.get().documentRevision,\n  text: () => InputManager.get().document,\n};\n";
 
-/// The modules of the native library by import name: the object classes and the package entries the generator rendered when this
-/// crate was built, and the engine's own module that reads the document, as the embedded TypeScript the loader strips (they are
-/// plain JavaScript, which strips to itself).
+/// The package entry `gnoblin-core` on the native library: the core's object classes, and the global `gnoblin` a shell reads without an
+/// import. A generation on the native library imports it before the shell, so the global is always there.
+pub(crate) const CORE_ENTRY_MODULE: &str = "gnoblin-core";
+
+const CORE_ENTRY_SOURCE: &str = "import { gnoblin } from \"gnoblin-core/generated/objects\";\nexport * from \"gnoblin-core/generated/objects\";\nglobalThis.gnoblin = gnoblin;\n";
+
+/// The package entry `gnoblin-std` on the native library: the std's object classes, which also put the std members on the core's root
+/// (`gnoblin.workspaces`) when the module evaluates.
+const STD_ENTRY_MODULE: &str = "gnoblin-std";
+
+const STD_ENTRY_SOURCE: &str = "import \"gnoblin-core\";\nexport * from \"gnoblin-std/generated/objects\";\n";
+
+/// The modules of the native library by import name: the object classes the generator rendered when this crate was built, the
+/// package entries over them, and the engine's own module that reads the document, as the embedded TypeScript the loader strips
+/// (they are plain JavaScript, which strips to itself).
 fn native_modules() -> HashMap<String, JsTypeScriptModule> {
     let module = |name: &str, source: &'static str| {
         (
@@ -378,7 +390,11 @@ fn native_modules() -> HashMap<String, JsTypeScriptModule> {
     NATIVE
         .iter()
         .map(|(name, source)| module(name, source))
-        .chain(std::iter::once(module(DOCUMENT_MODULE, DOCUMENT_SOURCE)))
+        .chain([
+            module(DOCUMENT_MODULE, DOCUMENT_SOURCE),
+            module(CORE_ENTRY_MODULE, CORE_ENTRY_SOURCE),
+            module(STD_ENTRY_MODULE, STD_ENTRY_SOURCE),
+        ])
         .collect()
 }
 

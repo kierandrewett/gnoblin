@@ -12,7 +12,7 @@ import { MasterStackLayout, Workspace } from "gnoblin-std";
 import { bindLaunchers } from "./keys.js";
 
 // One workspace that tiles its windows with the stock master-stack layout.
-gnoblin.workspaces.add(new Workspace({ id: "main", name: "Main", layout: new MasterStackLayout() }));
+gnoblin.workspaces.add(new Workspace("main", { name: "Main", layout: new MasterStackLayout() }));
 
 // The key bindings live in a module of their own.
 bindLaunchers(gnoblin.input.primary);

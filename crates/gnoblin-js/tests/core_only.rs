@@ -16,7 +16,7 @@ use common::*;
 
 /// The entry of the core-only shell: everything it imports is `gnoblin-core`.
 const SHELL: &str = r#"
-import { gnoblin, ClientListener, CollectionListener } from "gnoblin-core";
+import { gnoblin, ClientListener, ClientCollectionListener } from "gnoblin-core";
 import type { Client } from "gnoblin-core";
 
 const log: string[] = [];
@@ -39,13 +39,13 @@ function tile(): void {
     if (output === undefined) {
         return;
     }
-    const windows = [...gnoblin.clients];
+    const windows = gnoblin.clients.toList();
     const width = output.width / windows.length;
     windows.forEach((client, at) => {
         client.bounds = { x: output.x + at * width, y: output.y, width, height: output.height };
     });
 }
-class Tiler extends CollectionListener<Client> {
+class Tiler extends ClientCollectionListener {
     onAdded(client: Client): void {
         log.push(`added ${client.id}`);
         tile();
@@ -165,7 +165,7 @@ fn a_shell_that_imports_only_gnoblin_core_observes_places_binds_and_spawns_and_l
     // The import log: the core library was loaded, and no module of `gnoblin-std` was.
     let loaded = rig.shell.embedded_modules();
     assert!(
-        loaded.iter().any(|name| name == "gnoblin-core/host/client"),
+        loaded.iter().any(|name| name == "gnoblin-core/generated/objects"),
         "the import log lists what was loaded: {loaded:?}"
     );
     let std: Vec<_> = loaded.iter().filter(|name| name.starts_with("gnoblin-std")).collect();
@@ -175,8 +175,8 @@ fn a_shell_that_imports_only_gnoblin_core_observes_places_binds_and_spawns_and_l
 #[test]
 fn a_shell_that_imports_gnoblin_std_loads_its_modules_and_has_the_members_it_adds() {
     let mut rig = rig_setup(
-        "import { gnoblin } from \"gnoblin-core\"; import { Workspace } from \"gnoblin-std\";\n\
-         gnoblin.workspaces.add(new Workspace({ id: \"main\", layout: \"floating\" }));\n",
+        "import { gnoblin } from \"gnoblin-core\"; import { FloatingLayout, Workspace } from \"gnoblin-std\";\n\
+         gnoblin.workspaces.add(new Workspace(\"main\", { layout: new FloatingLayout() }));\n",
         "",
         world,
     );
@@ -189,7 +189,7 @@ fn a_shell_that_imports_gnoblin_std_loads_its_modules_and_has_the_members_it_add
     );
     let loaded = rig.shell.embedded_modules();
     assert!(
-        loaded.iter().any(|name| name == "gnoblin-std/host/workspace"),
+        loaded.iter().any(|name| name == "gnoblin-std/generated/objects"),
         "the import log shows the std modules that were loaded: {loaded:?}"
     );
 }
@@ -198,7 +198,7 @@ fn a_shell_that_imports_gnoblin_std_loads_its_modules_and_has_the_members_it_add
 fn a_core_only_shell_controls_a_windows_frame_callbacks_and_the_seats_built_in_motion() {
     let mut rig = rig_setup(
         "import { gnoblin } from \"gnoblin-core\";\n\
-         const [client] = gnoblin.clients;\n\
+         const client = gnoblin.clients.at(0)!;\n\
          client.framePolicy = \"throttle\";\n\
          client.frameRate = 10;\n\
          client.reportPresented = true;\n\

@@ -57,7 +57,7 @@ fn the_second_start_loads_every_module_from_bytecode() {
     let cold = first.stats();
     assert_eq!(cold.hits, 0, "nothing was cached yet");
     assert!(
-        cold.writes >= 40,
+        cold.writes >= 7,
         "the stock library and shell.ts were written: {cold:?}"
     );
     assert_eq!(cold.misses, cold.writes, "every module that missed was written");
@@ -103,10 +103,7 @@ fn a_changed_config_is_compiled_and_the_stock_library_is_still_cached() {
         (1, 1),
         "only shell.ts was compiled: {stats:?}"
     );
-    assert!(
-        stats.hits >= 40,
-        "the stock library was loaded from bytecode: {stats:?}"
-    );
+    assert!(stats.hits >= 6, "the stock library was loaded from bytecode: {stats:?}");
 }
 
 #[test]

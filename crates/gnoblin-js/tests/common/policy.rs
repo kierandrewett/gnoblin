@@ -14,17 +14,23 @@ pub fn imports() -> String {
 pub const SEAT: u64 = 21;
 pub const LOCK: u64 = 23;
 
-/// A layout that gives every window the whole area it is offered, and marks it tiled.
+/// A layout that gives every window the whole area it is offered, and marks it tiled, and `Plain`, the layout that places
+/// nothing and so leaves every window where it is. The generated `Layout` is abstract, so the old base class `new Layout()`
+/// that a case names is read as `new Plain()`.
 pub const FILL: &str = "class Fill extends Layout {\n\
-    \x20   compute(c: any) { return c.children.map((n: any) => ({ node: n, tiled: true, bounds: { ...c.area } })); }\n\
+    \x20   compute(c: any) { return c.children.map((n: any) => ({ node: n, tiled: true, bounds: { x: c.area.x, y: c.area.y, width: c.area.width, height: c.area.height } })); }\n\
+}\n\
+class Plain extends Layout {\n\
+    \x20   compute(_c: any) { return []; }\n\
 }\n";
 
 /// A shell over the screens, a seat, a lock and `n` windows (ids 3 on). `layout` is the TypeScript expression of every
 /// workspace's layout; `config` is more statements of the `shell.ts`, run after the three workspaces `1` to `3` are
 /// added. There are no titlebars, menus, keys or other stock parts unless `config` starts them.
 pub fn world(n: u64, second: bool, layout: &str, config: &str) -> Rig {
+    let layout = layout.replace("new Layout()", "new Plain()");
     let init = format!(
-        "{FILL}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id, layout: {layout} }}));\n{config}\n"
+        "{FILL}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace(id, {{ layout: {layout} }}));\n{config}\n"
     );
     let mut rig = rig_setup(&imports(), &init, move |comp| populate(comp, n, second));
     let diagnostics = rig.settle();
@@ -156,7 +162,7 @@ pub fn next_generation(rig: Rig, config: &str) -> Rig {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
     let init = format!(
-        "{}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id }}));\n{config}\n",
+        "{}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace(id, {{ layout: new FloatingLayout() }}));\n{config}\n",
         imports()
     );
     std::fs::write(root.join("shell.ts"), init).expect("shell.ts is written");

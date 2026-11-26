@@ -1,10 +1,11 @@
 //! Which stock library a shell runs on (`gnoblin_js` `choice`): decided from the shell's static import graph before any module
 //! evaluates, so a shell never has the TypeScript library's object model and the native library's classes together.
 //!
-//! The import log of the loader (`JsShell::embedded_modules`) says what a generation loaded. A shell that imports a package entry,
-//! or no gnoblin module at all (it reads the global `gnoblin`), or that reaches the XR extension or a dynamic `import()`, loads the
-//! TypeScript host and none of the native classes; a shell that imports only the generated object modules loads those and no
-//! TypeScript module. A reload that would change the choice is refused and the old generation keeps serving.
+//! The import log of the loader (`JsShell::embedded_modules`) says what a generation loaded. A shell that imports a package entry
+//! (`gnoblin-core`, `gnoblin-std`), or no gnoblin module at all (it reads the global `gnoblin`), or only the generated object
+//! modules, loads the generated classes and no TypeScript module. A shell that reaches a deep module of the TypeScript library
+//! (the XR extension here) or a dynamic `import()` loads the TypeScript host and none of the native classes. A reload that would
+//! change the choice is refused and the old generation keeps serving.
 
 use std::fs;
 use std::path::Path;
@@ -17,6 +18,9 @@ mod common;
 use common::*;
 
 const HOST: &str = "gnoblin-core/host";
+const GENERATED: &str = "gnoblin-core/generated/objects";
+/// A module only the TypeScript library has: a shell that imports it runs on the TypeScript library.
+const DEEP: &str = "import \"gnoblin-std/extensions/xr/exports\";\n";
 const OBJECTS: &str = "import { Gnoblin } from \"gnoblin-core/generated/objects\";\n";
 
 fn loaded(rig: &Rig) -> Vec<String> {
@@ -45,24 +49,25 @@ fn rig_files(files: &[(&str, &str)]) -> Rig {
 }
 
 #[test]
-fn a_shell_that_imports_gnoblin_core_runs_on_the_typescript_library() {
+fn a_shell_that_imports_gnoblin_core_runs_on_the_generated_library() {
     let mut rig = rig_with(
         "import { gnoblin } from \"gnoblin-core\";\n",
         "(globalThis as any).seen = gnoblin.clients.length;",
     );
     let modules = loaded(&rig);
-    assert!(modules.iter().any(|name| name == HOST), "{modules:?}");
+    assert!(modules.iter().all(|name| name != HOST), "{modules:?}");
     assert!(
-        modules.iter().all(|name| !name.contains("generated/object")),
-        "no native class is loaded beside the TypeScript object model: {modules:?}"
+        modules.iter().any(|name| name == GENERATED),
+        "the package entry serves the generated classes: {modules:?}"
     );
     assert_eq!(rig.eval("globalThis.seen"), "0");
 }
 
 #[test]
-fn a_shell_that_imports_no_gnoblin_module_and_reads_the_global_runs_on_the_typescript_library() {
+fn a_shell_that_imports_no_gnoblin_module_and_reads_the_global_runs_on_the_generated_library() {
     let mut rig = rig_with("", "(globalThis as any).seen = gnoblin.clients.length;");
-    assert!(loaded(&rig).iter().any(|name| name == HOST), "{:?}", loaded(&rig));
+    assert!(loaded(&rig).iter().all(|name| name != HOST), "{:?}", loaded(&rig));
+    assert!(loaded(&rig).iter().any(|name| name == GENERATED), "{:?}", loaded(&rig));
     assert_eq!(rig.eval("globalThis.seen"), "0");
 }
 
@@ -80,10 +85,11 @@ fn a_shell_that_imports_only_the_generated_modules_loads_no_typescript_module() 
     let modules = loaded(&rig);
     assert!(modules.iter().all(|name| name != HOST), "{modules:?}");
     assert!(
-        modules
-            .iter()
-            .all(|name| name.starts_with("gnoblin-core/generated/") || name.starts_with("gnoblin-std/generated/")),
-        "only the generated object modules are loaded: {modules:?}"
+        modules.iter().all(|name| name == "gnoblin-core"
+            || name == "gnoblin-std"
+            || name.starts_with("gnoblin-core/generated/")
+            || name.starts_with("gnoblin-std/generated/")),
+        "only the package entries and the generated object modules are loaded: {modules:?}"
     );
     assert_eq!(
         rig.eval("globalThis.seen"),
@@ -143,16 +149,16 @@ fn marker(role: &mut gnoblin_js::JsRole) -> String {
 #[test]
 fn a_reload_that_changes_the_library_is_refused_and_the_old_shell_keeps_serving() {
     let generated = format!("{OBJECTS}(globalThis as any).marker = \"generated one\";\nvoid Gnoblin;\n");
-    let (mut role, root, _keep) = role_over(&generated);
+    let (mut role, root, mut keep) = role_over(&generated);
     assert_eq!(marker(&mut role), "generated one");
 
-    // Now the entry needs the TypeScript library (a package entry): refused, naming the cause.
+    // Now the entry needs the TypeScript library (a deep module): refused, naming the cause.
     fs::write(
         root.join("shell.ts"),
-        "import { gnoblin } from \"gnoblin-core\";\n(globalThis as any).marker = \"typescript\";\nvoid gnoblin;\n",
+        format!("{DEEP}(globalThis as any).marker = \"typescript\";\n"),
     )
     .expect("shell.ts is rewritten");
-    let report = role.reload_now();
+    let report = keep.1.reload(&mut role);
     assert!(!report.ok, "the reload that changes the library is refused");
     let text = report
         .errors
@@ -161,7 +167,7 @@ fn a_reload_that_changes_the_library_is_refused_and_the_old_shell_keeps_serving(
         .collect::<Vec<_>>()
         .join("; ");
     assert!(text.contains("restart gnoblin to change the stock library"), "{text}");
-    assert!(text.contains("gnoblin-core"), "the cause is named: {text}");
+    assert!(text.contains("gnoblin-std/extensions/xr"), "the cause is named: {text}");
     assert_eq!(marker(&mut role), "generated one", "the old generation still serves");
     role.tick().expect("the old shell still runs a frame");
 
@@ -171,23 +177,21 @@ fn a_reload_that_changes_the_library_is_refused_and_the_old_shell_keeps_serving(
         format!("{OBJECTS}(globalThis as any).marker = \"generated two\";\nvoid Gnoblin;\n"),
     )
     .expect("shell.ts is rewritten");
-    let report = role.reload_now();
+    let report = keep.1.reload(&mut role);
     assert!(report.ok, "{:?}", report.errors);
     assert_eq!(marker(&mut role), "generated two");
 }
 
 #[test]
 fn a_reload_from_the_typescript_library_to_the_generated_one_is_refused_the_same_way() {
-    let (mut role, root, _keep) = role_over(
-        "import { gnoblin } from \"gnoblin-core\";\n(globalThis as any).marker = \"typescript\";\nvoid gnoblin;\n",
-    );
+    let (mut role, root, mut keep) = role_over(&format!("{DEEP}(globalThis as any).marker = \"typescript\";\n"));
     assert_eq!(marker(&mut role), "typescript");
     fs::write(
         root.join("shell.ts"),
         format!("{OBJECTS}(globalThis as any).marker = \"generated\";\nvoid Gnoblin;\n"),
     )
     .expect("shell.ts is rewritten");
-    let report = role.reload_now();
+    let report = keep.1.reload(&mut role);
     assert!(!report.ok);
     let text = report
         .errors
@@ -201,15 +205,15 @@ fn a_reload_from_the_typescript_library_to_the_generated_one_is_refused_the_same
     // Staying on the library is taken.
     fs::write(
         root.join("shell.ts"),
-        "import { gnoblin } from \"gnoblin-core\";\n(globalThis as any).marker = \"typescript two\";\nvoid gnoblin;\n",
+        format!("{DEEP}(globalThis as any).marker = \"typescript two\";\n"),
     )
     .expect("shell.ts is rewritten");
-    assert!(role.reload_now().ok);
+    assert!(keep.1.reload(&mut role).ok);
     assert_eq!(marker(&mut role), "typescript two");
 }
 
 #[test]
-fn a_first_load_with_a_missing_import_fails_as_it_always_did_on_the_typescript_library() {
+fn a_first_load_with_a_missing_import_fails_as_it_always_did_on_the_generated_library() {
     let comp = FakeCompositor::new();
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
@@ -222,11 +226,8 @@ fn a_first_load_with_a_missing_import_fails_as_it_always_did_on_the_typescript_l
     let text = error.to_string();
     assert!(text.contains("./nowhere"), "{text}");
     assert!(
-        shell
-            .embedded_modules()
-            .iter()
-            .all(|name| !name.contains("generated/object")),
-        "an unreadable graph runs on the TypeScript library, where the shell started: {:?}",
+        shell.embedded_modules().iter().all(|name| name != HOST),
+        "an unreadable graph runs on the generated library, where the shell started: {:?}",
         shell.embedded_modules()
     );
 }

@@ -25,17 +25,17 @@ fn gaps_are_the_workspaces_and_the_layouts_own_properties() {
     // `gaps.outer` is `Workspace.gaps.outer` and `gaps.inner` a layout's `gap`: the window of a one-window master stack
     // is inset by the outer gap from every edge of the 1000 by 800 screen.
     let mut rig = world(
-        "gnoblin.workspaces.add(new Workspace({ id: 'a', layout: new MasterStackLayout({ gap: 12 }), \
+        "gnoblin.workspaces.add(new Workspace('a', { layout: new MasterStackLayout({ gap: 12 }), \
          gaps: { inner: 4, outer: 6 } }));",
     );
     assert_eq!(
-        rig.eval("JSON.stringify(gnoblin.workspaces.get('a').gaps)"),
+        rig.eval("JSON.stringify(gnoblin.workspaces.byId('a').gaps)"),
         r#"{"inner":4,"outer":6}"#
     );
-    assert_eq!(rig.eval("String(gnoblin.workspaces.get('a').layout.gap)"), "12");
+    assert_eq!(rig.eval("String(gnoblin.workspaces.byId('a').layout.gap)"), "12");
     assert_eq!(rig.comp.rect(3), "6,6,988,788", "the window sits inside the outer gap");
     // A gap is a property: a later write moves the window.
-    rig.eval("gnoblin.workspaces.get('a').gaps = { inner: 4, outer: 20 }; 0");
+    rig.eval("gnoblin.workspaces.byId('a').gaps = { inner: 4, outer: 20 }; 0");
     rig.settle();
     assert_eq!(rig.comp.rect(3), "20,20,960,760");
 }
@@ -46,9 +46,9 @@ fn a_key_is_input_bind_and_a_key_bound_twice_is_refused() {
         "globalThis.ran = 0;\n\
          gnoblin.input.primary.bind('Super+Return', () => { globalThis.ran += 1; });\n\
          globalThis.second = (() => { try { gnoblin.input.primary.bind('Super+Return', () => {}); return 'bound'; } \
-         catch (error) { return error.constructor.name; } })();",
+         catch (error) { return error.constructor.name + ':' + error.code; } })();",
     );
-    assert_eq!(rig.eval("globalThis.second"), "BindingConflictError");
+    assert_eq!(rig.eval("globalThis.second"), "GnoblinError:already_exists");
     let id = rig.comp.claim_id("<Super>Return");
     rig.comp.chord(id, "<Super>Return", "press");
     rig.settle();
@@ -72,23 +72,26 @@ fn a_touchpad_gesture_is_input_bind_on_a_gesture_trigger() {
 #[test]
 fn titlebars_the_window_menu_and_the_alert_are_started_by_helpers_and_only_once() {
     let mut rig = world("export {};");
-    assert_eq!(rig.eval("String(windowMenu.started)"), "false");
-    assert_eq!(rig.eval("String(notRespondingAlerts.started)"), "false");
+    assert_eq!(rig.eval("String(WindowMenus.get().started)"), "false");
+    assert_eq!(rig.eval("String(NotRespondingAlerts.get().started)"), "false");
     rig.comp.create_window(4, "two", "foot");
     rig.settle();
     assert_eq!(
-        rig.eval("String(gnoblin.clients.at(1).frameInset.top)"),
+        rig.eval("String(Decorations.get().insetOf(gnoblin.clients.at(1)).top)"),
         "0",
         "no titlebar until the helper runs"
     );
     rig.eval(
-        "startDecorations(); startDecorations(); startWindowMenu(); startWindowMenu(); startNotRespondingAlert(); 0",
+        "Decorations.get().start(); Decorations.get().start(); WindowMenus.get().start(); WindowMenus.get().start(); NotRespondingAlerts.get().start(); 0",
     );
     rig.comp.create_window(5, "three", "foot");
     rig.settle();
-    assert_eq!(rig.eval("String(gnoblin.clients.at(2).frameInset.top)"), "28");
-    assert_eq!(rig.eval("String(windowMenu.started)"), "true");
-    assert_eq!(rig.eval("String(notRespondingAlerts.started)"), "true");
+    assert_eq!(
+        rig.eval("String(Decorations.get().insetOf(gnoblin.clients.at(2)).top)"),
+        "28"
+    );
+    assert_eq!(rig.eval("String(WindowMenus.get().started)"), "true");
+    assert_eq!(rig.eval("String(NotRespondingAlerts.get().started)"), "true");
     assert_eq!(
         rig.comp.children(5).len(),
         1,

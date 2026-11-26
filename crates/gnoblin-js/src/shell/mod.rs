@@ -55,7 +55,7 @@ use crate::dialogs::JsDialogs;
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
 use crate::host_idle::JsIdle;
-use crate::stock::{HOST_MODULE_NAME, STARTER_MODULE_NAME, StockLibrary, starter_module};
+use crate::stock::{CORE_ENTRY_MODULE, HOST_MODULE_NAME, STARTER_MODULE_NAME, StockLibrary, starter_module};
 use crate::workspaces::JsWorkspaceSnapshot;
 use crate::{bindings, input};
 
@@ -258,10 +258,9 @@ impl JsShell {
         let has_starter = starter.is_some();
         js.stock_dirs = Arc::new(config.stock_dirs.clone());
         js.stock = Some(Arc::new(StockLibrary::new(config.stock_dirs.clone(), starter)));
-        // Generation 0 is the bare one (no user code); the reloader numbers the ones it stages from 1. It starts on the TypeScript
-        // library, which every shell ran on before the native one existed, and is built again on the native library when the entry
-        // loaded into it needs that.
-        let generation = JsGeneration::new(&js.for_runtime(StockRuntime::Typescript)?, 0)?;
+        // Generation 0 is the bare one (no user code); the reloader numbers the ones it stages from 1. It starts on the native
+        // library, and is built again on the TypeScript library when the entry loaded into it imports a module only that one has.
+        let generation = JsGeneration::new(&js.for_runtime(StockRuntime::Generated)?, 0)?;
         install_host(&generation, &state, &js, js.stage_budget)?;
 
         Ok(Self {
@@ -676,9 +675,10 @@ impl SwapHost for ShellSwap<'_> {
     }
 }
 
-/// Installs the host functions in `generation` and, for a generation on the TypeScript library, loads `gnoblin-core/host`, under
-/// `budget` or [`HOST_INSTALL_BUDGET`], whichever is longer. A generation on the native library has the objects of the libraries
-/// (`config.natives`) and nothing of the engine's own object model: no `__gnoblinHost`, no host module.
+/// Installs the host functions in `generation` and loads the module that defines the global `gnoblin`: `gnoblin-core/host` on the
+/// TypeScript library, the package entry `gnoblin-core` on the native one. Both run under `budget` or [`HOST_INSTALL_BUDGET`],
+/// whichever is longer. A generation on the native library has the objects of the libraries (`config.natives`) and nothing of the
+/// engine's own object model: no `__gnoblinHost`, no host module.
 fn install_host(
     generation: &JsGeneration,
     state: &SharedState,
@@ -694,9 +694,8 @@ fn install_host(
         for native in &config.natives {
             native.install(ctx, &ids)?;
         }
-        if legacy {
-            Module::import(ctx, HOST_MODULE_NAME)?.finish::<Value<'_>>().map(drop)?;
-        }
+        let root = if legacy { HOST_MODULE_NAME } else { CORE_ENTRY_MODULE };
+        Module::import(ctx, root)?.finish::<Value<'_>>().map(drop)?;
         Ok(())
     })
 }

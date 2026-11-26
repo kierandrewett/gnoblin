@@ -19,9 +19,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use gnoblin_js::{
-    ENTRY_BUDGET, FRAME_BUDGET, JsConfig, JsErrorKind, JsShell, JsShellConfig, JsShellError, STAGE_BUDGET,
-};
+use gnoblin_js::{ENTRY_BUDGET, FRAME_BUDGET, JsConfig, JsErrorKind, JsShellConfig, JsShellError, STAGE_BUDGET};
 
 mod common;
 use common::*;
@@ -53,7 +51,8 @@ fn the_stock_default_config_is_a_load_and_runs_under_the_stage_budget() {
     let mut config = JsShellConfig::new(fs::canonicalize(dir.path()).expect("the temp dir exists"))
         .with_stock(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js"));
     config.js.stage_budget = Duration::from_micros(1);
-    let mut shell = JsShell::new(Box::new(comp), config).expect("the library installs under its own floor");
+    let clock = Arc::clone(&config.clock);
+    let (mut shell, _core) = native::shell_over_core(&comp, clock, config);
     let error = shell
         .load_default_config()
         .expect_err("a stage budget of a microsecond cannot hold the starter");
@@ -121,7 +120,7 @@ fn measure(label: &str, load_factor: usize) {
     // The budgets are the product's: `JsShellConfig::new`, the real clock, nothing loosened.
     let config = JsShellConfig::new(&root).with_stock(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js"));
     let started = Instant::now();
-    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots under the product budgets");
+    let mut shell = native::CoreShell::new(&comp, config);
     let boot = started.elapsed();
 
     let started = Instant::now();
@@ -131,11 +130,10 @@ fn measure(label: &str, load_factor: usize) {
     let load = started.elapsed();
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
 
-    let mut bare = JsShell::new(
-        Box::new(comp.clone()),
+    let mut bare = native::CoreShell::new(
+        &comp,
         JsShellConfig::new(&root).with_stock(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")),
-    )
-    .expect("a second shell boots");
+    );
     let started = Instant::now();
     bare.load_default_config()
         .expect("the stock default loads under the stage budget");
@@ -151,11 +149,10 @@ fn measure(label: &str, load_factor: usize) {
             comp.create_window(1000 + round, "new", "foot");
         }
         let started = Instant::now();
-        let frame = shell.frame().expect("a frame");
+        let diagnostics = shell.frame_with_core();
         frames.push(started.elapsed());
         fired.extend(
-            frame
-                .diagnostics
+            diagnostics
                 .into_iter()
                 .filter(|line| line.contains("budget") || line.contains("stopped")),
         );

@@ -83,8 +83,7 @@ impl JsHost {
             Choice::Typescript(reason) => Some((StockRuntime::Typescript, reason)),
             Choice::Generated => Some((
                 StockRuntime::Generated,
-                "it imports nothing from gnoblin but the generated object modules and has no dynamic import()"
-                    .to_owned(),
+                "it imports nothing from gnoblin that only the TypeScript library has".to_owned(),
             )),
             Choice::Unknown => None,
         };
@@ -103,7 +102,7 @@ impl JsHost {
                     stack: None,
                 });
             }
-            (None, running) => running.unwrap_or(StockRuntime::Typescript),
+            (None, running) => running.unwrap_or(StockRuntime::Generated),
         };
         self.config.for_runtime(runtime)
     }
