@@ -76,7 +76,7 @@ jobs:
             image: registry.opensuse.org/opensuse/tumbleweed:latest
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Make room on the runner
@@ -94,7 +94,7 @@ jobs:
         renderer: [software, gles, vulkan]
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Install just
@@ -106,8 +106,10 @@ jobs:
       # The list includes Mesa's EGL (llvmpipe) and lavapipe, the devices the GLES and Vulkan runs draw on.
       - name: Install system libraries
         run: scripts/ci-install-system-libraries.sh
-      - name: Show the pinned toolchain
-        run: rustup show active-toolchain
+      - name: Install and show the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
       - name: Test the renderer and draw a session with it
         run: just renderer-test ${{ matrix.renderer }}
 
@@ -117,7 +119,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Install just
@@ -133,7 +135,7 @@ jobs:
       - name: Pack the tree
         run: tar -C "$RUNNER_TEMP/vm-dist" -czf "$RUNNER_TEMP/vm-dist.tar.gz" .
       - name: Keep the tree for the DRM jobs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vm-dist
           path: ${{ runner.temp }}/vm-dist.tar.gz
@@ -158,7 +160,7 @@ jobs:
             distro: opensuse-tumbleweed
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       # Hosted Linux runners have KVM; the device belongs to root until a rule opens it to the runner's user.
@@ -173,14 +175,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils genisoimage
       - name: Fetch the installed tree
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: vm-dist
           path: ${{ runner.temp }}
       - name: Unpack the installed tree
         run: mkdir -p "$RUNNER_TEMP/vm-dist" && tar -C "$RUNNER_TEMP/vm-dist" -xzf "$RUNNER_TEMP/vm-dist.tar.gz"
       - name: Reuse the cloud image of this week
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/gnoblin-ci-vm
           key: vm-image-${{ matrix.distro }}-${{ github.run_id }}
@@ -192,7 +194,7 @@ jobs:
           "$RUNNER_TEMP/vm-out"
       - name: Keep the captures and logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: drm-vm-${{ matrix.distro }}
           path: ${{ runner.temp }}/vm-out
@@ -220,11 +222,11 @@ jobs:
       CI_VM_MODE: gpu
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Fetch the installed tree
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: vm-dist
           path: ${{ runner.temp }}
@@ -237,7 +239,7 @@ jobs:
           "$RUNNER_TEMP/vm-out"
       - name: Keep the logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gpu-vm-${{ matrix.distro }}
           path: ${{ runner.temp }}/vm-out

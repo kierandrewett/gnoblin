@@ -89,12 +89,12 @@ jobs:
     steps:
       - name: Install Git for the checkout
         run: apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates git
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
       - name: Install the repository tools
         run: ./scripts/pkgrepo/container/install-tools.sh
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: packages-${{ inputs.release_tag }}-*
           path: raw
@@ -191,7 +191,7 @@ jobs:
           python3 scripts/pkgrepo build --project "$PROJECT" --channel "$CHANNEL" --packages packages \
             --output tree --existing existing --gnupg-home "$GNUPGHOME" --base-url "$REPO_URL" \
             --source-commit "$SOURCE_COMMIT" --source-ref "$GITHUB_REF_NAME" "${apk_key[@]}" "${replace[@]}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: repository-${{ env.PROJECT }}-${{ inputs.channel }}-${{ inputs.release_tag }}
           path: tree

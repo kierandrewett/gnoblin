@@ -438,6 +438,9 @@ __metadata:
     esbuild: "npm:^0.25.0"
     hono: "npm:^4.13.14"
     typescript: "npm:^7.0.2"
+  dependenciesMeta:
+    esbuild:
+      built: false
   languageName: unknown
   linkType: soft
 

@@ -54,8 +54,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - run: corepack enable
@@ -73,7 +73,7 @@ jobs:
         run: |
           yarn check
           yarn lint
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           # The Python reference is made by Sphinx, from the packages pinned in requirements.txt.
           python-version: "3.12"
@@ -82,11 +82,13 @@ jobs:
       - name: Install system libraries
         # The API reference and the example checks run the SDK generator and build the SDK crates.
         run: scripts/ci-install-system-libraries.sh
-      - name: Show the pinned toolchain
-        run: rustup show active-toolchain
+      - name: Install and show the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
       - name: Restore the Rust build
         # The reference (cargo doc) and the example checks (cargo check) build the SDK crates and what they depend on.
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -104,7 +106,7 @@ jobs:
         # Headless Chrome over the key pages in light and dark, at three sizes, and a search query.
         working-directory: infra/site
         run: yarn test:pages
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bundles
           path: |
@@ -117,12 +119,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: bundles
           path: infra
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.16.1
       - run: terraform fmt -check -recursive
@@ -143,12 +145,12 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.TF_BACKEND_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_BACKEND_SECRET_ACCESS_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: bundles
           path: infra
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.16.1
           terraform_wrapper: false

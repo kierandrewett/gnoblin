@@ -61,7 +61,7 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       # The runner starts with about 14 GB free; the workspace's debug build and test targets need more, and the job
@@ -75,15 +75,17 @@ jobs:
       # A bare ubuntu-latest runner has none of the system libraries the crates link or probe (libudev, libinput, libseat,
       # libpipewire and others), so the build fails without this step. The list lives in the script and nowhere else.
       - name: Install Node.js for JavaScript checks
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22.17.0"
       - name: Install system libraries
         run: scripts/ci-install-system-libraries.sh
       # rust-toolchain.toml selects the compiler and installs rustfmt and
       # clippy, so every runner builds with the same toolchain as a developer.
-      - name: Show the pinned toolchain
-        run: rustup show active-toolchain
+      - name: Install and show the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
       - name: Run the workspace gate
         run: just workspace-ci
       # The binary links `libgnoblin-core.so.1` and the install tree has a layout (`cargo xtask dist-check`):
@@ -101,7 +103,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Install just and cargo-deny
@@ -110,8 +112,10 @@ jobs:
           tool: just,cargo-deny
       - name: Install system libraries
         run: scripts/ci-install-system-libraries.sh
-      - name: Show the pinned toolchain
-        run: rustup show active-toolchain
+      - name: Install and show the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
       - name: Run the extension workspace gate
         run: just ext-ci
 
@@ -126,7 +130,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Install just
@@ -138,8 +142,10 @@ jobs:
         run: |
           scripts/ci-install-system-libraries.sh
           pipewire --version
-      - name: Show the pinned toolchain
-        run: rustup show active-toolchain
+      - name: Install and show the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
       - name: Run the private-daemon tests
         run: just pipewire-test
 
@@ -152,7 +158,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Install just
@@ -178,7 +184,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Install just
@@ -188,8 +194,10 @@ jobs:
       # The libraries the crates link and the `pipewire` daemon, from the one list.
       - name: Install system libraries
         run: scripts/ci-install-system-libraries.sh
-      - name: Show the pinned toolchain
-        run: rustup show active-toolchain
+      - name: Install and show the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
       - name: Build the core with no std crate and test a session with no provider
         run: just core-only
 
@@ -202,7 +210,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Install just
@@ -211,8 +219,10 @@ jobs:
           tool: just
       - name: Install system libraries
         run: scripts/ci-install-system-libraries.sh
-      - name: Show the pinned toolchain
-        run: rustup show active-toolchain
+      - name: Install and show the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
       - name: Check the ABI locks and the golden shells
         run: just abi-check
 
@@ -231,7 +241,7 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Make room on the runner
@@ -242,8 +252,10 @@ jobs:
           tool: just
       - name: Install system libraries
         run: scripts/ci-install-system-libraries.sh
-      - name: Show the pinned toolchain
-        run: rustup show active-toolchain
+      - name: Install and show the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
       - name: Run the modular sessions
         run: just modular
 
@@ -255,7 +267,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Install just
@@ -264,8 +276,10 @@ jobs:
           tool: just
       - name: Install system libraries
         run: scripts/ci-install-system-libraries.sh
-      - name: Show the pinned toolchain
-        run: rustup show active-toolchain
+      - name: Install and show the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
       - name: Check the system packages of the -sys crates
         run: just native-libs
 
@@ -277,7 +291,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Install just
@@ -286,7 +300,9 @@ jobs:
           tool: just
       - name: Install system libraries
         run: scripts/ci-install-system-libraries.sh
-      - name: Show the pinned toolchain
-        run: rustup show active-toolchain
+      - name: Install and show the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
       - name: Check the generated SDKs
         run: just gen-sdks-check

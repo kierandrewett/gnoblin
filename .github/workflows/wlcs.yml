@@ -52,14 +52,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       # What the compositor's crates link and what wlcs builds with, from the one list.
       - name: Install system libraries
         run: scripts/ci-install-system-libraries.sh wlcs
-      - name: Show the pinned toolchain
-        run: rustup show active-toolchain
+      - name: Install and show the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
       - name: Run wlcs
         run: |
           case "${{ inputs.scope }}" in

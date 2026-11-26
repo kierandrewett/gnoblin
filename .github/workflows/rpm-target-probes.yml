@@ -58,10 +58,10 @@ jobs:
               zypper --non-interactive install python3 tar gzip
               ;;
           esac
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Record host capability floors
         run: scripts/probe-rpm-target.py ${{ matrix.expectation }} --output "build/rpm-probes/${{ matrix.target }}.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rpm-probe-${{ matrix.target }}
           path: build/rpm-probes/${{ matrix.target }}.json

@@ -15,5 +15,10 @@
   "scripts": {
     "build": "esbuild src/index.tsx --bundle --format=esm --platform=neutral --target=es2022 --jsx=automatic --jsx-import-source=hono/jsx --outfile=dist/index.js",
     "typecheck": "tsc --noEmit"
+  },
+  "dependenciesMeta": {
+    "esbuild": {
+      "built": false
+    }
   }
 }

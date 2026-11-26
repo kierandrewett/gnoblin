@@ -41,6 +41,7 @@ case "${1:-}" in
                 sh -s -- -y --no-modify-path --profile minimal --default-toolchain none
         fi
         # rust-toolchain.toml selects the compiler and its components; this installs it.
+        rustup toolchain install
         rustup show active-toolchain
         # The tests start their own buses and sockets in a runtime directory, which must exist and be private.
         XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)"

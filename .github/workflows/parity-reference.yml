@@ -61,14 +61,14 @@ jobs:
       - name: Install checkout and cache tools
         run: dnf -y install git tar zstd gzip
       - name: Check out the tree without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: false
       - name: Install the build dependencies
         run: scripts/parity-reference.sh deps
       # Mutter 51.0 takes most of the job to build and changes only when the tag or the build recipe does.
       - name: Restore the Mutter build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /opt/mutter51
           key: mutter51-${{ hashFiles('scripts/parity-reference.sh') }}
@@ -78,14 +78,14 @@ jobs:
       # reports were made from), with its pinned Mutter and its patch series, as a release of it is.
       - name: Check out the Mutter-based Gnoblin
         id: mutter-based
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 5bb523e9c84c99002306c7f666b5d55316fea7b2
           path: mutter-based-src
           submodules: recursive
           fetch-depth: 1
       - name: Restore the Mutter-based Gnoblin build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /opt/gnoblin
           key: gnoblin-mutter-based-${{ steps.mutter-based.outputs.commit }}-${{ hashFiles('scripts/parity-reference.sh') }}
@@ -97,7 +97,7 @@ jobs:
         run: scripts/parity-reference.sh run parity-report.txt
       - name: Keep the report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: parity-report
           path: parity-report.txt

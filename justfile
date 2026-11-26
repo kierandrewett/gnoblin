@@ -123,7 +123,8 @@ modular:
 # map, frames draw, the session locks and unlocks; see crates/gnoblin/tests/gpu_memory_soak.rs). RENDERER is software,
 # gles or vulkan; with no GPU, gles runs on Mesa's llvmpipe and vulkan on lavapipe, which
 # scripts/ci-install-system-libraries.sh installs. The renderer tests skip themselves on a machine with no device for
-# them; here a skip fails the recipe, so the renderer job of matrix.yml cannot pass without testing its renderer.
+# them, and the Vulkan renderer's validation test skips without the Khronos validation layer; here a skip fails the recipe, so the
+# renderer job of matrix.yml cannot pass without testing its renderer.
 renderer-test renderer:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -131,8 +132,8 @@ renderer-test renderer:
     log="$(mktemp)"
     trap 'rm -f "$log"' EXIT
     cargo test --locked -p "gnoblin-render-{{renderer}}" -- --nocapture 2>&1 | tee "$log"
-    if grep -E "no surfaceless EGL context|no Vulkan device|no Vulkan loader" "$log"; then
-        echo "renderer-test: there is no {{renderer}} device here, so its tests skipped" >&2
+    if grep -E "no surfaceless EGL context|no Vulkan device|no Vulkan loader|the validation layer is not installed" "$log"; then
+        echo "renderer-test: there is no {{renderer}} device or validation layer here, so its tests skipped" >&2
         exit 1
     fi
     GNOBLIN_SOAK_RENDERER="{{renderer}}" GNOBLIN_SOAK_SECONDS=60 \

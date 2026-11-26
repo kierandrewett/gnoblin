@@ -27,25 +27,26 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH
 
 # Linked or probed by the build, and what the tests load or start from the system.
 libraries=(
-    "libudev-dev|systemd-devel|systemd-libs|systemd-devel"                # libudev-sys: pkg-config libudev
-    "libseat-dev|libseat-devel|seatd|seatd-devel"                         # libseat-sys: pkg-config libseat
-    "libpipewire-0.3-dev|pipewire-devel|pipewire|pipewire-devel"          # libspa-sys, pipewire-sys: pkg-config libpipewire-0.3
-    "libclang-dev|clang-devel|clang|clang-devel"                          # bindgen, run by libspa-sys, needs libclang.so
-    "libssl-dev|openssl-devel|openssl|libopenssl-devel"                   # sqlcipher, built from source by libsqlite3-sys: openssl/crypto.h
-    "libxkbcommon-dev|libxkbcommon-devel|libxkbcommon|libxkbcommon-devel" # linker: -lxkbcommon
-    "libpixman-1-dev|pixman-devel|pixman|libpixman-1-0-devel"             # linker: -lpixman-1
-    "libinput-dev|libinput-devel|libinput|libinput-devel"                 # linker: -linput
-    "libgbm-dev|mesa-libgbm-devel|mesa|libgbm-devel"                      # linker: -lgbm
-    "dbus-daemon|dbus-daemon|dbus|dbus-1-daemon"                          # the compat adapters' tests start a private bus and fail without it
-    "pipewire|pipewire|pipewire|pipewire"                                 # gnoblin-capture, gnoblin-pipewire-export and the cast tests start a private daemon
-    "pipewire-bin|pipewire-utils|-|pipewire-tools"                        # pw-dump, which the cast and portal tests run (Arch's pipewire package has it)
-    "xwayland|xorg-x11-server-Xwayland|xorg-xwayland|xwayland"            # three gnoblin-xwayland unit tests fail without an Xwayland on PATH; real X11 tests run with it
-    "libegl1|mesa-libEGL|-|Mesa-libEGL1"                                  # smithay opens libEGL.so.1 at run time and panics without it; pulls in Mesa's llvmpipe
-    "libvulkan1|vulkan-loader|vulkan-icd-loader|libvulkan1"               # the Vulkan renderer's loader; its tests skip without a loader and a device
-    "mesa-vulkan-drivers|mesa-vulkan-drivers|vulkan-swrast|libvulkan_lvp" # lavapipe, the software Vulkan device the renderer's 38 tests run on
-    "libwayland-dev|wayland-devel|wayland|wayland-devel"                  # wayland-sys probes wayland-client and wayland-server with pkg-config unless its dlopen feature is on
-    "libdrm-dev|libdrm-devel|libdrm|libdrm-devel"                         # drm-sys and smithay's DRM backend: pkg-config libdrm
-    "libpython3-dev|python3-devel|python|python3-devel"                   # gnoblin-runtime-python: pyo3 finds python3 and links -lpython3.N
+    "libudev-dev|systemd-devel|systemd-libs|systemd-devel"                                              # libudev-sys: pkg-config libudev
+    "libseat-dev|libseat-devel|seatd|seatd-devel"                                                       # libseat-sys: pkg-config libseat
+    "libpipewire-0.3-dev|pipewire-devel|pipewire|pipewire-devel"                                        # libspa-sys, pipewire-sys: pkg-config libpipewire-0.3
+    "libclang-dev|clang-devel|clang|clang-devel"                                                        # bindgen, run by libspa-sys, needs libclang.so
+    "libssl-dev|openssl-devel|openssl|libopenssl-devel"                                                 # sqlcipher, built from source by libsqlite3-sys: openssl/crypto.h
+    "libxkbcommon-dev|libxkbcommon-devel|libxkbcommon|libxkbcommon-devel"                               # linker: -lxkbcommon
+    "libpixman-1-dev|pixman-devel|pixman|libpixman-1-0-devel"                                           # linker: -lpixman-1
+    "libinput-dev|libinput-devel|libinput|libinput-devel"                                               # linker: -linput
+    "libgbm-dev|mesa-libgbm-devel|mesa|libgbm-devel"                                                    # linker: -lgbm
+    "dbus-daemon|dbus-daemon|dbus|dbus-1-daemon"                                                        # the compat adapters' tests start a private bus and fail without it
+    "pipewire|pipewire|pipewire|pipewire"                                                               # gnoblin-capture, gnoblin-pipewire-export and the cast tests start a private daemon
+    "pipewire-bin|pipewire-utils|-|pipewire-tools"                                                      # pw-dump, which the cast and portal tests run (Arch's pipewire package has it)
+    "xwayland|xorg-x11-server-Xwayland|xorg-xwayland|xwayland"                                          # three gnoblin-xwayland unit tests fail without an Xwayland on PATH; real X11 tests run with it
+    "libegl1|mesa-libEGL|-|Mesa-libEGL1"                                                                # smithay opens libEGL.so.1 at run time and panics without it; pulls in Mesa's llvmpipe
+    "libvulkan1|vulkan-loader|vulkan-icd-loader|libvulkan1"                                             # the Vulkan renderer's loader; its tests skip without a loader and a device
+    "mesa-vulkan-drivers|mesa-vulkan-drivers|vulkan-swrast|libvulkan_lvp"                               # lavapipe, the software Vulkan device the renderer's 38 tests run on
+    "vulkan-validationlayers|vulkan-validation-layers|vulkan-validation-layers|vulkan-validationlayers" # Khronos validation layer: the renderer's validation test skips without it
+    "libwayland-dev|wayland-devel|wayland|wayland-devel"                                                # wayland-sys probes wayland-client and wayland-server with pkg-config unless its dlopen feature is on
+    "libdrm-dev|libdrm-devel|libdrm|libdrm-devel"                                                       # drm-sys and smithay's DRM backend: pkg-config libdrm
+    "libpython3-dev|python3-devel|python|python3-devel"                                                 # gnoblin-runtime-python: pyo3 finds python3 and links -lpython3.N
 )
 
 # What a bare distribution container lacks and a hosted runner has: the C toolchain the -sys crates and cc builds use,
