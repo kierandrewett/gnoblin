@@ -1383,15 +1383,7 @@ impl<'a> Py<'a> {
         for slot in &slots {
             match &slot.member {
                 Member::Property(property) => {
-                    self.property_source(
-                        c,
-                        object,
-                        &snake_name,
-                        &lookups,
-                        property,
-                        object.augment_of.is_some(),
-                        &mut claim,
-                    )?;
+                    self.property_source(c, object, &snake_name, &lookups, property, &mut claim)?;
                 }
                 Member::Method(method) => {
                     self.method_source(c, object, &snake_name, &lookups, method, &mut claim)?;
@@ -1631,7 +1623,6 @@ impl<'a> Py<'a> {
         snake_name: &str,
         lookups: &[MemberLookup],
         property: &Property,
-        augment: bool,
         claim: &mut impl FnMut(&str) -> Result<(), String>,
     ) -> Result<(), String> {
         let class_owned = class_name(object);
@@ -1659,7 +1650,7 @@ impl<'a> Py<'a> {
         }
         // The member an augment adds to a class of another library is read as the object, as in TypeScript and Rust: it is the augmenting
         // library's own, and `T | None` is for what the library the object belongs to may not have.
-        let read = self.ty_read(&property.ty, property.always || augment)?;
+        let read = self.ty_read(&property.ty, property.always || object.augment_of.is_some())?;
         c.line("@builtins.property");
         self.named(c, class, &ident, false, Some(&spell));
         // A property the catalog says the library `always` has an object for is read as one: a none answer is the library breaking its word,
