@@ -56,7 +56,7 @@ use crate::log;
 
 /// What the device's renderer is: the EGL display GLES draws on, or the Vulkan device the outputs share, with the
 /// 1x1 renderer that answers what a client asks of the GPU before any output draws.
-enum Api {
+enum DeviceApi {
     Gles {
         display: EGLDisplay,
         /// A 1x1 context on the display, made on the first import of a client's GPU buffer, that decides whether the
@@ -75,7 +75,7 @@ enum Api {
 pub(crate) struct Device {
     gbm: GbmDevice<DrmDeviceFd>,
     drm: DrmDeviceFd,
-    api: Api,
+    api: DeviceApi,
     /// What clients were offered, so each import checks a buffer against it.
     support: Option<DmabufSupport>,
 }
@@ -93,11 +93,11 @@ impl Device {
             RenderError::Unavailable
         })?;
         let api = match kind {
-            RendererKind::Gles => Api::Gles {
+            RendererKind::Gles => DeviceApi::Gles {
                 display: egl::gbm_display(&gbm)?,
                 probe: None,
             },
-            RendererKind::Vulkan => Api::Vulkan {
+            RendererKind::Vulkan => DeviceApi::Vulkan {
                 // The card the session drives names the Vulkan device that draws for it. Without a device on that node
                 // the share takes the best one: the buffers are written through the CPU, so any device can.
                 share: GpuShare::on_node(drm.dev_id().ok()),
@@ -122,8 +122,8 @@ impl Device {
     /// Which renderer the device is for.
     pub(crate) fn kind(&self) -> RendererKind {
         match self.api {
-            Api::Gles { .. } => RendererKind::Gles,
-            Api::Vulkan { .. } => RendererKind::Vulkan,
+            DeviceApi::Gles { .. } => RendererKind::Gles,
+            DeviceApi::Vulkan { .. } => RendererKind::Vulkan,
         }
     }
 
@@ -131,7 +131,7 @@ impl Device {
     /// it sits on. `None` when it imports none.
     pub(crate) fn dmabuf_support(&mut self) -> Option<DmabufSupport> {
         let support = match &mut self.api {
-            Api::Gles { display, .. } => {
+            DeviceApi::Gles { display, .. } => {
                 let formats = display.dmabuf_render_formats();
                 if formats.iter().next().is_none() {
                     log::info!(area = "render", "the GPU's EGL display imports no dmabuf format");
@@ -143,7 +143,7 @@ impl Device {
                     .map(|node| node.dev_id());
                 DmabufSupport::new(node, formats.iter().copied())
             }
-            Api::Vulkan { .. } => self.vulkan_probe().ok()?.dmabuf_support()?,
+            DeviceApi::Vulkan { .. } => self.vulkan_probe().ok()?.dmabuf_support()?,
         };
         self.support = Some(support.clone());
         Some(support)
@@ -151,7 +151,7 @@ impl Device {
 
     /// The GLES probe context, made on first use.
     fn gles_probe(&mut self) -> Result<&mut Gles, RenderError> {
-        let Api::Gles { display, probe } = &mut self.api else {
+        let DeviceApi::Gles { display, probe } = &mut self.api else {
             return Err(RenderError::Unsupported);
         };
         if probe.is_none() {
@@ -162,7 +162,7 @@ impl Device {
 
     /// The Vulkan probe renderer, made on first use on the shared device.
     fn vulkan_probe(&mut self) -> Result<&mut AnyRenderer, RenderError> {
-        let Api::Vulkan { share, probe } = &mut self.api else {
+        let DeviceApi::Vulkan { share, probe } = &mut self.api else {
             return Err(RenderError::Unsupported);
         };
         if probe.is_none() {
@@ -176,10 +176,10 @@ impl Device {
     /// cannot go on.
     pub(crate) fn max_composed_edge(&mut self) -> u32 {
         match self.api {
-            Api::Gles { .. } => self
+            DeviceApi::Gles { .. } => self
                 .gles_probe()
                 .map_or(MAX_VIRTUAL_EDGE, |probe| probe.max_texture_size().min(MAX_VIRTUAL_EDGE)),
-            Api::Vulkan { .. } => self
+            DeviceApi::Vulkan { .. } => self
                 .vulkan_probe()
                 .map_or(MAX_VIRTUAL_EDGE, |probe| probe.max_texture_size().min(MAX_VIRTUAL_EDGE)),
         }
@@ -192,11 +192,11 @@ impl Device {
             .ok_or(DmabufImportError::Unsupported)?
             .check(dmabuf)?;
         match self.api {
-            Api::Gles { .. } => self
+            DeviceApi::Gles { .. } => self
                 .gles_probe()
                 .and_then(|probe| probe.import_dmabuf(dmabuf))
                 .map_err(DmabufImportError::Refused),
-            Api::Vulkan { .. } => self
+            DeviceApi::Vulkan { .. } => self
                 .vulkan_probe()
                 .map_err(DmabufImportError::Refused)?
                 .import_dmabuf(dmabuf),
@@ -211,8 +211,8 @@ impl Device {
             .ok_or(DmabufCopyError::Unsupported)?
             .check(dmabuf)?;
         match self.api {
-            Api::Gles { .. } => Ok(self.gles_probe()?.read_dmabuf(dmabuf)?),
-            Api::Vulkan { .. } => Ok(self.vulkan_probe()?.read_dmabuf(dmabuf)?),
+            DeviceApi::Gles { .. } => Ok(self.gles_probe()?.read_dmabuf(dmabuf)?),
+            DeviceApi::Vulkan { .. } => Ok(self.vulkan_probe()?.read_dmabuf(dmabuf)?),
         }
     }
 
@@ -226,8 +226,8 @@ impl Device {
         live: &[u64],
     ) -> Result<Image, RenderError> {
         match self.api {
-            Api::Gles { .. } => self.gles_probe()?.read_view(scene, capture, live),
-            Api::Vulkan { .. } => self.vulkan_probe()?.view_pixels(scene, capture, live),
+            DeviceApi::Gles { .. } => self.gles_probe()?.read_view(scene, capture, live),
+            DeviceApi::Vulkan { .. } => self.vulkan_probe()?.view_pixels(scene, capture, live),
         }
     }
 
@@ -235,12 +235,12 @@ impl Device {
     /// frame that names no View, which is the cover a locked output shows.
     pub(crate) fn release_views(&mut self) {
         match &mut self.api {
-            Api::Gles { probe, .. } => {
+            DeviceApi::Gles { probe, .. } => {
                 if let Some(probe) = probe {
                     probe.retire_views(&[]);
                 }
             }
-            Api::Vulkan { probe, .. } => {
+            DeviceApi::Vulkan { probe, .. } => {
                 if let Some(probe) = probe {
                     probe.release_views();
                 }
@@ -253,14 +253,14 @@ impl Device {
     /// shared device's, which every output's own footprint already counts, so it adds nothing.
     pub(crate) fn footprint(&self) -> Footprint {
         match &self.api {
-            Api::Gles { probe, .. } => probe.as_ref().map(|probe| probe.footprint()).unwrap_or_default(),
-            Api::Vulkan { .. } => Footprint::default(),
+            DeviceApi::Gles { probe, .. } => probe.as_ref().map(|probe| probe.footprint()).unwrap_or_default(),
+            DeviceApi::Vulkan { .. } => Footprint::default(),
         }
     }
 
     /// Gives back what the probe holds only between uses.
     pub(crate) fn release_scratch(&mut self) {
-        if let Api::Gles { probe: Some(probe), .. } = &mut self.api {
+        if let DeviceApi::Gles { probe: Some(probe), .. } = &mut self.api {
             probe.release_scratch();
         }
     }
@@ -280,12 +280,12 @@ impl Device {
             .ok_or(DmabufCopyError::Unsupported)?
             .check(dmabuf)?;
         match self.api {
-            Api::Gles { .. } => {
+            DeviceApi::Gles { .. } => {
                 Ok(self
                     .gles_probe()?
                     .copy_image_into_dmabuf(dmabuf, picture, copy.region, copy.from)?)
             }
-            Api::Vulkan { .. } => Ok(self.vulkan_probe()?.copy_image_into_dmabuf(dmabuf, picture, copy)?),
+            DeviceApi::Vulkan { .. } => Ok(self.vulkan_probe()?.copy_image_into_dmabuf(dmabuf, picture, copy)?),
         }
     }
 
@@ -300,7 +300,7 @@ impl Device {
 
     /// Forgets the probe renderer of a device that was lost, so the next question builds one on the new device.
     pub(crate) fn forget_lost_probe(&mut self) {
-        if let Api::Vulkan { probe, .. } = &mut self.api {
+        if let DeviceApi::Vulkan { probe, .. } = &mut self.api {
             *probe = None;
         }
     }
@@ -419,13 +419,22 @@ impl Buffers {
         formats: &FormatSet,
     ) -> Result<Self, RenderError> {
         let vulkan = device.kind() == RendererKind::Vulkan;
-        let modifiers: Vec<Modifier> = formats
+        let offered: Vec<Modifier> = formats
             .iter()
             .filter(|format| format.code == Fourcc::Xrgb8888)
-            // The Vulkan renderer writes the buffer through a mapping, which is the LINEAR layout.
-            .filter(|format| !vulkan || format.modifier == Modifier::Linear)
             .map(|format| format.modifier)
             .collect();
+        // The Vulkan renderer writes the buffer through a mapping, which is the LINEAR layout: a plane that lists it gets
+        // it, and one that lists only implicit modifiers (a virtual GPU's) gets a LINEAR buffer GBM makes without one.
+        let modifiers: Vec<Modifier> = if !vulkan {
+            offered
+        } else if offered.contains(&Modifier::Linear) {
+            vec![Modifier::Linear]
+        } else if offered.contains(&Modifier::Invalid) {
+            vec![Modifier::Invalid]
+        } else {
+            Vec::new()
+        };
         if modifiers.is_empty() {
             if vulkan {
                 log::warn!(
@@ -446,14 +455,24 @@ impl Buffers {
             i32::try_from(size.height).map_err(|_| degenerate())?,
         ));
         let renderer = match &mut device.api {
-            Api::Gles { display, .. } => ScanRenderer::Gles(Box::new(Gles::on_display(display, composed)?)),
-            Api::Vulkan { share, .. } => ScanRenderer::Vulkan(Box::new(VulkanScan::new(share, composed, size, SLOTS)?)),
+            DeviceApi::Gles { display, .. } => ScanRenderer::Gles(Box::new(Gles::on_display(display, composed)?)),
+            DeviceApi::Vulkan { share, .. } => {
+                ScanRenderer::Vulkan(Box::new(VulkanScan::new(share, composed, size, SLOTS)?))
+            }
         };
         Ok(Self {
             renderer,
             composed,
             size: physical,
-            allocator: GbmAllocator::new(device.gbm.clone(), GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT),
+            // A plane that lists no modifier (a virtual GPU's) takes the buffer GBM makes for the LINEAR flag.
+            allocator: GbmAllocator::new(
+                device.gbm.clone(),
+                if vulkan && !modifiers.contains(&Modifier::Linear) {
+                    GbmBufferFlags::SCANOUT | GbmBufferFlags::LINEAR
+                } else {
+                    GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT
+                },
+            ),
             exporter: GbmFramebufferExporter::new(device.gbm.clone(), NodeFilter::None),
             drm: device.drm.clone(),
             modifiers,
@@ -540,7 +559,8 @@ impl Buffers {
     /// [`RenderError`] when no renderer can be made yet; the lost one is kept and the caller tries again later.
     pub(crate) fn rebuild(&mut self, device: &mut Device) -> Result<(), RenderError> {
         device.forget_lost_probe();
-        let (ScanRenderer::Vulkan(vulkan), Api::Vulkan { share, .. }) = (&mut self.renderer, &mut device.api) else {
+        let (ScanRenderer::Vulkan(vulkan), DeviceApi::Vulkan { share, .. }) = (&mut self.renderer, &mut device.api)
+        else {
             return Err(RenderError::Unsupported);
         };
         vulkan.rebuild(share, self.composed)
@@ -706,6 +726,7 @@ fn allocate(
         ),
         ScanRenderer::Vulkan(vulkan) => {
             // A buffer the renderer cannot write is refused here, with its format, and not at the first flip.
+            let dmabuf = as_linear(dmabuf)?;
             vulkan
                 .renderer()
                 .import_dmabuf(&dmabuf)
@@ -722,6 +743,29 @@ fn allocate(
         target,
         framebuffer,
     })
+}
+
+/// `dmabuf` labelled LINEAR when GBM exported it with no modifier: a buffer made for the LINEAR flag is one, and the Vulkan
+/// renderer writes only LINEAR buffers.
+fn as_linear(dmabuf: Dmabuf) -> Result<Dmabuf, String> {
+    if smithay::backend::allocator::Buffer::format(&dmabuf).modifier == Modifier::Linear {
+        return Ok(dmabuf);
+    }
+    let mut builder = Dmabuf::builder(
+        smithay::backend::allocator::Buffer::size(&dmabuf),
+        smithay::backend::allocator::Buffer::format(&dmabuf).code,
+        Modifier::Linear,
+        dmabuf.flags(),
+    );
+    for ((handle, offset), stride) in dmabuf.handles().zip(dmabuf.offsets()).zip(dmabuf.strides()) {
+        let owned = handle
+            .try_clone_to_owned()
+            .map_err(|error| format!("the scan-out buffer's plane cannot be duplicated: {error}"))?;
+        builder.add_plane(owned, offset, stride);
+    }
+    builder
+        .build()
+        .ok_or_else(|| "the scan-out buffer cannot be described as LINEAR".to_owned())
 }
 
 /// The scan-out of one output for one [`crate::frame::present`] call: draws into the

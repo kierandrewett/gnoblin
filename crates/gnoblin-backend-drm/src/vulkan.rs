@@ -22,7 +22,7 @@
 //!    output, so a frame with one, and the frame after it, misses everything (`a_filter_widens_the_damage_for_two_frames`).
 //! 5. **A lost device is drawn on again.** Once a call returns [`RenderError::Lost`] the output is lost and draws
 //!    nothing until it is rebuilt ([`VulkanScan::rebuild`]); the GBM buffers survive, so the screen keeps the last
-//!    frame ([`Recovery`] paces the rebuilds: `the_rebuilds_back_off_and_settle`).
+//!    frame ([`RebuildPacing`] paces the rebuilds: `the_rebuilds_back_off_and_settle`).
 //! 6. **A capture shows a secure window, or leaves the output showing the redaction.** The frame last drawn is kept
 //!    when it has a secure layer; a capture draws it redacted, reads, and draws it whole again
 //!    ([`VulkanScan::with_redaction`]).
@@ -178,11 +178,11 @@ fn shown_rect(rect: Rect, composed: Size, shown: Size) -> Rect {
 /// going away within ten minutes is retried every five seconds, which is what an explicit renderer choice gets (the
 /// session never swaps it for another renderer, and the log says each failure).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Recovery {
+pub(crate) struct RebuildPacing {
     failures: VecDeque<Instant>,
 }
 
-impl Recovery {
+impl RebuildPacing {
     /// How far back a failure still counts.
     const WINDOW: Duration = Duration::from_secs(600);
     /// The waits after the first, second and third failure in the window.
@@ -573,7 +573,7 @@ mod tests {
     #[test]
     fn the_rebuilds_back_off_and_settle() {
         let start = Instant::now();
-        let mut recovery = Recovery::default();
+        let mut recovery = RebuildPacing::default();
         assert_eq!(
             recovery.failed(start),
             Duration::ZERO,

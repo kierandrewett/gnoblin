@@ -101,7 +101,7 @@ use crate::modeset::Composition;
 use crate::present::{OutputPresenter, Presenter, complete_flips};
 use crate::scanout::{Buffers, Device as ScanoutDevice, Flip, LiveModeset};
 use crate::session::{SeatEvent, SeatState, Transition};
-use crate::vulkan::Recovery;
+use crate::vulkan::RebuildPacing;
 use gnoblin_backend::render::renderer::RendererKind;
 use gnoblin_backend::{
     Backend, BackendError, BackendEvent, DmabufImportError, DmabufSupport, Host, InputEvent, InputSource, Output,
@@ -183,7 +183,7 @@ pub struct Drm {
     /// What a capture draws in place of a secure layer.
     treatment: SecureTreatment,
     /// How soon a lost Vulkan renderer is rebuilt.
-    recovery: Recovery,
+    recovery: RebuildPacing,
     /// When the next rebuild of a lost renderer may happen, while one is waiting.
     retry_at: Option<Instant>,
     /// Wakes the event loop after a delay, so a rebuild that has waited is noticed; set when the backend registers.
@@ -323,7 +323,7 @@ impl Drm {
             real_modeset,
             renderer,
             treatment,
-            recovery: Recovery::default(),
+            recovery: RebuildPacing::default(),
             retry_at: None,
             wake: None,
             flipped: 0,
@@ -585,7 +585,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
         };
         if buffers.is_lost() {
             // The device went away under this output. The screen keeps the last frame (the scan-out buffers are not
-            // touched) until a renderer is made on a device again, paced by `Recovery`.
+            // touched) until a renderer is made on a device again, paced by `RebuildPacing`.
             let now = Instant::now();
             if self.retry_at.is_some_and(|at| now < at) {
                 return Ok(Present::Nothing);
