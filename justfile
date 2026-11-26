@@ -158,6 +158,16 @@ gen-sdks:
 gen-sdks-check:
     cargo xtask gen-sdks --check
 
+# Check the examples of every `::: tabs` group in docs/ in their own language: tsc over the installed declarations, pyright over the
+# installed stubs, `cargo check` against the SDK crates. Needs `yarn install` in infra/site. Not part of `just workspace-ci`: the
+# Infrastructure workflow runs it with the documentation build (`yarn build` in infra/site).
+docs-examples:
+    cargo xtask docs-examples
+
+# Write the generated API reference pages into infra/site/.generated/docs, where the website reads them. Never committed.
+docs-reference:
+    cargo xtask docs-reference
+
 # Prove the golden fixtures of the native std port are what the TypeScript std does now, over three runs
 # (crates/gnoblin-std-impl/tests/ORACLE.md). `cargo xtask oracle record` rewrites them.
 oracle-check:

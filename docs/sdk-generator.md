@@ -14,6 +14,17 @@ cargo xtask gen-sdks --check            # prove the generator is sound (CI runs 
 cargo xtask gen-sdks --update           # record an additive change of the catalogue in the surface locks
 ```
 
+## The API reference
+
+The generator also writes the [API reference](reference/index.md) of the website: one page of the types of each library for
+each language. `cargo xtask docs-reference` writes the pages, and `yarn build` in `infra/site` runs it. Nothing it writes is
+committed.
+
+- The declarations on a page are slices of the files the `object-types` and `object-api` targets render, so a page cannot name a
+  member the SDK lacks.
+- The descriptions are the comments above each class, property, method and signal in the schema files.
+- The command fails when a class of the catalog has no declaration in a language.
+
 ## Where the files go
 
 | Call site                              | When        | Writes                                                                                                     |

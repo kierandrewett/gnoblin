@@ -3,6 +3,7 @@
     // page's centred 720 px column, with the navigation and the sticky outline in the side margins. The outline
     // moves into the article below 1280 px, and the navigation into the menu sheet below 1024 px.
     import { codeBlocks } from "#lib/actions/code-blocks.ts";
+    import { langTabs } from "#lib/actions/lang-tabs.ts";
     import Details from "#lib/components/content/Details.svelte";
     import Breadcrumbs from "#lib/components/layout/Breadcrumbs.svelte";
     import EditLink from "#lib/components/layout/EditLink.svelte";
@@ -31,7 +32,7 @@
     </div>
     <article class="article" data-pagefind-body data-pagefind-meta="trail:{trail}">
         <div data-pagefind-ignore><Breadcrumbs trail={doc.trail} title={doc.title} /></div>
-        <div class="prose" use:codeBlocks={doc.body}>
+        <div class="prose" use:codeBlocks={doc.body} use:langTabs={doc.body}>
             <h1 class:ident data-pagefind-meta="title">{doc.title}</h1>
             {#if doc.lede}<p class="lede">{@html doc.lede}</p>{/if}
             {#if doc.headings.length}
@@ -48,12 +49,12 @@
             {@html doc.body}
         </div>
         <div data-pagefind-ignore>
-            <EditLink file={doc.file} />
+            {#if !doc.generated}<EditLink file={doc.file} />{/if}
             <Pager prev={doc.prev} next={doc.next} />
         </div>
     </article>
     <div class="toc-col" data-pagefind-ignore>
-        <OnThisPage headings={doc.headings} file={doc.file} />
+        <OnThisPage headings={doc.headings} file={doc.file} generated={doc.generated} />
     </div>
 </div>
 

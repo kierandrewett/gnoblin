@@ -3,17 +3,71 @@
 `gnoblin.idle.watch(ms, listener)` runs your code when the session has had no input for `ms` milliseconds. Use it to dim a
 panel, lock the screen or suspend the machine after a pause. It returns an `IdleWatch`.
 
-```ts
-import { Toast } from "gnoblin-std";
+::: tabs
 
+```typescript
 gnoblin.idle.watch(300_000, {
     onIdle: () => gnoblin.session.lock(),
-    onResume: () => Toast.show("Welcome back"),
+    onResume: () => gnoblin.spawn(["notify-send", "Welcome back"]),
 });
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. After five minutes without input the session locks, and the first input
-afterwards shows a message.
+```python
+from gnoblin.objects.model import Gnoblin, IdleListener
+
+gnoblin = Gnoblin.get()
+
+
+class LockWhenIdle(IdleListener):
+    def on_idle(self, watch):
+        gnoblin.session.lock()
+
+    def on_resume(self, watch):
+        gnoblin.spawn(["notify-send", "Welcome back"])
+
+
+gnoblin.idle.watch(300_000, LockWhenIdle())
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::{IdleListenerHandlers, ModelRoot};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = Rc::new(ModelRoot::get(&objects)?);
+    let Some(idle) = model.idle()? else {
+        return Ok(());
+    };
+    let (locker, notifier) = (Rc::clone(&model), Rc::clone(&model));
+    let listener = IdleListenerHandlers {
+        on_idle: Some(Box::new(move |_watch| {
+            if let Some(session) = locker.session()? {
+                session.lock()?;
+            }
+            Ok(())
+        })),
+        on_resume: Some(Box::new(move |_watch| {
+            notifier.spawn(&["notify-send".to_owned(), "Welcome back".to_owned()], None)?;
+            Ok(())
+        })),
+        on_closed: None,
+    }
+    .implement(&objects)?;
+    idle.watch(300_000.0, Some(&listener))?;
+    Ok(())
+}
+```
+
+:::
+
+Put the TypeScript in `~/.config/gnoblin/shell.ts` and the Python in `~/.config/gnoblin/shell.py`. The Rust is a shell
+library, which [Write a shell in Rust](/rust-shell) builds and runs. After five minutes without input the session locks, and
+the first input afterwards shows a notification.
 
 ## Watch for idleness
 
@@ -40,6 +94,14 @@ An `IdleListener` is a class with optional methods, or an object that has some o
 | `gnoblin.idle.inhibitors` | How many holds keep the session awake.                                |
 | `gnoblin.idle.watches`    | The live watches, oldest first.                                       |
 
+The table uses the TypeScript spellings. The other languages spell the same members their own way:
+
+- Python uses `snake_case` and attributes: `watch.is_idle`, `watch.cancel()` and `gnoblin.idle.idle_ms`.
+- Rust has a getter for each property, and every call returns a `Result`: `watch.is_idle()?`, `watch.cancel()?` and
+  `idle.idle_ms()?`.
+
+The [API reference](/reference) lists every member in each language.
+
 The compositor publishes the time since the last input and the number of holds, and a watch is a threshold over that
 reading. A hold from a Wayland idle-inhibit surface, such as a video player's, therefore delays `onIdle` the way it delays a
 screen blank.
@@ -53,11 +115,39 @@ configuration with none costs the compositor nothing.
 `gnoblin.idle.inhibit(holder)` records a hold under a name you choose and returns an `IdleInhibitor`. While one stands the
 session is not idle, and every watch resumes. `inhibitor.release()` gives it back.
 
-```ts
+::: tabs
+
+```typescript
 const hold = gnoblin.idle.inhibit("presentation");
 // Later:
 hold.release();
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin
+
+hold = Gnoblin.get().idle.inhibit("presentation")
+# Later:
+hold.release()
+```
+
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    if let Some(idle) = model.idle()? {
+        let hold = idle.inhibit("presentation")?;
+        // Later:
+        hold.release()?;
+    }
+    Ok(())
+}
+```
+
+:::
 
 - Holding again under a name you already hold returns the same object.
 - If the compositor refuses the hold, because it keeps a limited number, `inhibitor.alive` is `false` and the shell logs why.

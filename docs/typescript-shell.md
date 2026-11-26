@@ -288,7 +288,7 @@ A shell may therefore use `gnoblin-core`'s objects and `gnoblin-std/native` toge
 - A shell on `gnoblin-std/native` alone gets the same behaviour from `Profile` and `Display`.
 
 Example 3 (`examples/03-typescript-std/`) does not use this binding. It uses the classes of
-[`gnoblin-std/generated/objects`](#the-object-classes-gnoblin-stdgeneratedobjects).
+[`gnoblin-std/generated/objects`](#the-object-classes-gnoblin-std-generated-objects).
 
 The binding keeps a test for as long as it ships: `crates/gnoblin-runtime-js/tests/fixtures/typed_table/` holds example 3 as it
 was on this binding.

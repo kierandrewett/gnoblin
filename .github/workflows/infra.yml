@@ -4,12 +4,32 @@ on:
     paths:
       - "infra/**"
       - "docs/**"
+      # The examples of the pages are checked against the SDK crates, and the reference is written from the schema.
+      - "crates/gnoblin-core/**"
+      - "crates/gnoblin-core-abi/**"
+      - "crates/gnoblin-std/**"
+      - "crates/gnoblin-std-abi/**"
+      - "crates/gnoblin-schema/**"
+      - "crates/gnoblin-sdkgen/**"
+      - "data/js/**"
+      - "xtask/**"
+      - "Cargo.lock"
       - ".github/workflows/infra.yml"
   push:
     branches: [main]
     paths:
       - "infra/**"
       - "docs/**"
+      # The examples of the pages are checked against the SDK crates, and the reference is written from the schema.
+      - "crates/gnoblin-core/**"
+      - "crates/gnoblin-core-abi/**"
+      - "crates/gnoblin-std/**"
+      - "crates/gnoblin-std-abi/**"
+      - "crates/gnoblin-schema/**"
+      - "crates/gnoblin-sdkgen/**"
+      - "data/js/**"
+      - "xtask/**"
+      - "Cargo.lock"
       - ".github/workflows/infra.yml"
   workflow_dispatch:
     inputs:
@@ -47,8 +67,14 @@ jobs:
         run: |
           yarn check
           yarn lint
+      - name: Install system libraries
+        # The API reference and the example checks run the SDK generator and build the SDK crates.
+        run: scripts/ci-install-system-libraries.sh
+      - name: Show the pinned toolchain
+        run: rustup show active-toolchain
       - name: Build the website
-        # Fails on a broken link in docs/, a page that is not in the sidebar and a heading link that does not exist.
+        # Writes the API reference, checks the examples of every ::: tabs group in its language (tsc, pyright, cargo check), then
+        # fails on a broken link in docs/, a page that is not in the sidebar and a heading link that does not exist.
         working-directory: infra/site
         run: yarn build
       - name: Check the built pages

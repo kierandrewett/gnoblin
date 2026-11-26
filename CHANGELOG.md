@@ -65,6 +65,7 @@
 - The events documentation now says that a window which opens and closes inside one batch of what the compositor published is told of neither way, and example 39 logs a line when its shell is told a window appeared, which its test waits for before closing the window; the test closed the window as soon as the compositor published it and sometimes saw no closed window (bead gnoblin-7f4v; `docs/events/desktop-state.md`, `examples/39-native-errors`).
 - The JavaScript shell's frame stages are now listed in a table with their ordering requirements recorded and tested, with no change in behaviour.
 - The location settings page now says how to allow the `gnoblin` agent in GeoClue's `[agent]` whitelist, with the drop-in to save (also in the source tree as `packaging/geoclue/50-gnoblin.conf`).
+- A documentation page can show one example in TypeScript, Python and Rust as tabs (`::: tabs`, bead gnoblin-tvq1; `docs/documentation-site.md`). `cargo xtask docs-examples` checks each example in its own language (`tsc` and `pyright` against the installed declarations and stubs, `cargo check` against the SDK crates), and a failure names the page and the line. `cargo xtask docs-reference` writes the API reference pages for the three languages from the schema catalog and its comments into the website's build input; they are not committed. `docs/shell-api/idle.md` is the first page converted. The link from `docs/typescript-shell.md` to its object-classes heading names the heading's real anchor.
 
 ### Added
 

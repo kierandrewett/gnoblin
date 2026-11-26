@@ -169,6 +169,33 @@ export const NAV: NavSection[] = [
                 ],
             },
             {
+                label: "API reference",
+                slug: "reference",
+                items: [
+                    {
+                        label: "TypeScript",
+                        items: [
+                            { label: "Core", slug: "reference/typescript/core" },
+                            { label: "Std", slug: "reference/typescript/std" },
+                        ],
+                    },
+                    {
+                        label: "Python",
+                        items: [
+                            { label: "Core", slug: "reference/python/core" },
+                            { label: "Std", slug: "reference/python/std" },
+                        ],
+                    },
+                    {
+                        label: "Rust",
+                        items: [
+                            { label: "Core", slug: "reference/rust/core" },
+                            { label: "Std", slug: "reference/rust/std" },
+                        ],
+                    },
+                ],
+            },
+            {
                 label: "Events",
                 slug: "events",
                 items: [

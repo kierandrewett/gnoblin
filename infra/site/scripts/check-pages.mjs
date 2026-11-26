@@ -32,6 +32,9 @@ const PAGES = [
     "/docs/bridge/connection",
     "/docs/install-arch",
     "/docs/guides/replace-built-in-dialogs",
+    // Language tabs, and a page of the generated API reference.
+    "/docs/shell-api/idle",
+    "/docs/reference/typescript/core",
     "/this-page-does-not-exist",
 ];
 const VIEWPORTS = {

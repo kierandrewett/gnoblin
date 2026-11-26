@@ -634,7 +634,11 @@ fn load_docs(root: &Path) -> Result<Vec<Mention>, String> {
             .to_string_lossy()
             .replace('\\', "/");
         let text = fs::read_to_string(&page).map_err(|error| format!("could not read {relative}: {error}"))?;
-        mentions.extend(scan_doc(&relative, &text));
+        // The Python and Rust examples of a tab group spell the same names their own way, and are checked by `docs-examples`.
+        mentions.extend(scan_doc(
+            &relative,
+            &crate::docs_tabs::blank_other_languages(&relative, &text),
+        ));
     }
     Ok(mentions)
 }

@@ -6,14 +6,25 @@ import { docsHref, NAV_ORDER, UNLISTED, type NavEntry } from "../nav.ts";
 import { renderMarkdown } from "./markdown.ts";
 
 export const DOCS_DIR = __DOCS_DIR__;
+/** The pages `cargo xtask docs-reference` writes (the API reference); `yarn build` runs it first. They sit beside the pages of
+ *  docs/ in the page tree and are never committed. */
+export const GENERATED_DIR = __GENERATED_DIR__;
 
-function walk(dir: string): string[] {
+function walk(root: string, dir: string): string[] {
+    if (!existsSync(dir)) return [];
     return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
         const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) return entry.name === "public" ? [] : walk(full);
-        return entry.name.endsWith(".md") ? [path.relative(DOCS_DIR, full).split(path.sep).join("/")] : [];
+        if (entry.isDirectory()) return entry.name === "public" ? [] : walk(root, full);
+        return entry.name.endsWith(".md") ? [path.relative(root, full).split(path.sep).join("/")] : [];
     });
 }
+
+/** Where a page's file is: docs/, or the generated pages. */
+function sourcePath(file: string): string {
+    return generatedFiles.has(file) ? path.join(GENERATED_DIR, file) : path.join(DOCS_DIR, file);
+}
+
+const generatedFiles = new Set<string>();
 
 let pages: Map<string, string> | undefined;
 /** slug -> file under docs/ ("" -> index.md). */
@@ -21,9 +32,19 @@ export function docsPages(): Map<string, string> {
     if (pages) return pages;
     // index.md is the folder's page: "index.md" -> "", "recipes/index.md" -> "recipes".
     const slugOf = (file: string) => file.replace(/\.md$/, "").replace(/(^|\/)index$/, "");
-    pages = new Map(walk(DOCS_DIR).map((file) => [slugOf(file), file]));
+    pages = new Map(walk(DOCS_DIR, DOCS_DIR).map((file) => [slugOf(file), file]));
+    for (const file of walk(GENERATED_DIR, GENERATED_DIR)) {
+        const slug = slugOf(file);
+        if (pages.has(slug)) throw new Error(`docs/${file} and the generated page ${file} are both at /docs/${slug}`);
+        generatedFiles.add(file);
+        pages.set(slug, file);
+    }
     checkSidebar(pages);
     return pages;
+}
+
+function sourceName(file: string): string {
+    return generatedFiles.has(file) ? `the generated page ${file}` : `docs/${file}`;
 }
 
 /** Every page must be in the sidebar (src/lib/nav.ts) or in UNLISTED, and every sidebar entry must exist. */
@@ -31,10 +52,17 @@ function checkSidebar(all: Map<string, string>) {
     const listed = new Set([...NAV_ORDER.map((e) => e.slug), ...UNLISTED]);
     const problems: string[] = [];
     for (const [slug, file] of all) {
-        if (!listed.has(slug)) problems.push(`docs/${file} is not in the sidebar (src/lib/nav.ts NAV) or UNLISTED`);
+        if (!listed.has(slug))
+            problems.push(`${sourceName(file)} is not in the sidebar (src/lib/nav.ts NAV) or UNLISTED`);
     }
     for (const slug of listed) {
-        if (!all.has(slug)) problems.push(`src/lib/nav.ts lists "${slug}", but docs/ has no such page`);
+        if (!all.has(slug)) {
+            const generated = slug === "reference" || slug.startsWith("reference/");
+            problems.push(
+                `src/lib/nav.ts lists "${slug}", but there is no such page` +
+                    (generated ? " (the API reference is written by `yarn reference`)" : " in docs/"),
+            );
+        }
     }
     const seen = new Set<string>();
     for (const { slug } of NAV_ORDER) {
@@ -80,7 +108,7 @@ export function loadDocsPage(slug: string): Promise<DocsPage> | null {
     let page = rendered.get(slug);
     if (!page) {
         page = (async () => {
-            const source = readFileSync(path.join(DOCS_DIR, file), "utf8");
+            const source = readFileSync(sourcePath(file), "utf8");
             const md = await renderMarkdown(source, { file, docsDir: DOCS_DIR, resolveLink: resolveDocsLink });
             const at = NAV_ORDER.findIndex((e) => e.slug === slug);
             const entry = NAV_ORDER[at];
@@ -88,6 +116,7 @@ export function loadDocsPage(slug: string): Promise<DocsPage> | null {
             return {
                 slug,
                 file,
+                generated: generatedFiles.has(file),
                 ...md,
                 trail: entry ? entry.trail : [],
                 section: entry ? entry.section.id : null,

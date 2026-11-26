@@ -387,6 +387,35 @@ table.tbl {
     box-shadow: 0 1px 3px rgba(var(--shadow-rgb), 0.12);
 }
 
+/* Language tabs (`::: tabs` in docs/): one example in each SDK language. The code panel keeps its Copy button; the tab
+   names the language, so the panel's own label goes. */
+.lang-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+    margin: var(--s-5) 0;
+}
+
+.lang-tabs .seg {
+    align-self: flex-start;
+}
+
+.lang-panel[hidden] {
+    display: none;
+}
+
+.lang-tabs .code {
+    margin: 0;
+}
+
+.lang-tabs .code-head .lang {
+    display: none;
+}
+
+.lang-tabs .code-head {
+    justify-content: flex-end;
+}
+
 /* Screenshots: full frame, 1 px border, 8 px radius, a plain caption. */
 .shot {
     border-radius: var(--r-sm);

@@ -9,6 +9,9 @@ import { defineConfig, type Plugin } from "vite";
 const here = path.dirname(fileURLToPath(import.meta.url));
 // The pages are read from the repository's docs folder at build time; nothing is copied into this folder.
 const docsDir = path.resolve(here, "../../docs");
+// The API reference is written here by `cargo xtask docs-reference` (`yarn reference`, which `yarn build` runs first). It is
+// ignored by Git and read like docs/.
+const generatedDir = path.resolve(here, ".generated/docs");
 
 // The commit and time of this build, shown in the footer. CI sets GITHUB_SHA; a local build asks Git.
 const buildSha =
@@ -81,8 +84,9 @@ export default defineConfig({
         __BUILD_SHA__: JSON.stringify(buildSha),
         __BUILT_AT__: JSON.stringify(builtAt),
         __DOCS_DIR__: JSON.stringify(docsDir),
+        __GENERATED_DIR__: JSON.stringify(generatedDir),
     },
-    server: { fs: { allow: [docsDir] } },
+    server: { fs: { allow: [docsDir, generatedDir] } },
     plugins: [
         docsAssets(),
         sveltekit({

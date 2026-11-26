@@ -1604,6 +1604,7 @@ __metadata:
     playwright-core: "npm:^1.64.1"
     prettier: "npm:^3.9.10"
     prettier-plugin-svelte: "npm:^4.1.1"
+    pyright: "npm:^1.1.410"
     rehype-stringify: "npm:^10.0.1"
     remark-gfm: "npm:^4.0.1"
     remark-parse: "npm:^11.0.0"
@@ -2801,6 +2802,21 @@ __metadata:
   version: 2.3.1
   resolution: "punycode@npm:2.3.1"
   checksum: 10c0/14f76a8206bc3464f794fb2e3d3cc665ae416c01893ad7a02b23766eb07159144ee612ad67af5e84fa4479ccfe67678c4feb126b0485651b302babf66f04f9e9
+  languageName: node
+  linkType: hard
+
+"pyright@npm:^1.1.410":
+  version: 1.1.414
+  resolution: "pyright@npm:1.1.414"
+  dependencies:
+    fsevents: "npm:~2.3.3"
+  dependenciesMeta:
+    fsevents:
+      optional: true
+  bin:
+    pyright: index.js
+    pyright-langserver: langserver.index.js
+  checksum: 10c0/3c20a4c391edae433141d4e89ee35bffb9db844da3d736f5c4303b0c7052154cf729305db82485481eccbe7fab2bc312cf025291242b9f11a035916ef29a38b5
   languageName: node
   linkType: hard
 

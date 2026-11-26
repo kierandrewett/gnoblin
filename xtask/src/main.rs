@@ -8,7 +8,9 @@ mod compat_report;
 mod deps;
 mod dist;
 mod dist_check;
+mod docs_examples;
 mod docs_parity;
+mod docs_tabs;
 mod dupes;
 mod elf;
 mod gen_proto;
@@ -48,6 +50,13 @@ subcommands:
   dupes --warn       the same report, printing every hit and exiting zero
   logging            fail on a direct logging-crate dependency or a stock print in library code
   docs-parity        fail on a documented gnoblin name the implemented surface lacks, unless allow-listed
+  docs-examples [--lang typescript|python|rust]... [--out DIR] [PAGE.md ...]
+                     check the examples of every `::: tabs` group of docs/ in its own language: tsc over the installed
+                     declarations, pyright over the installed stubs, cargo check against the SDK crates; a failure names the
+                     page and the line; see xtask/src/docs_examples.rs
+  docs-reference [--out DIR]
+                     write the generated API reference pages (TypeScript, Python, Rust) into infra/site/.generated/docs,
+                     where the website reads them; they are never committed
   compat-report --json  the same report as JSON
   dist install|uninstall --prefix P [--destdir D] [--profile NAME] [--libdir NAME]
                      install or remove the session tree; see xtask/src/dist.rs
@@ -90,6 +99,8 @@ fn main() -> ExitCode {
         ("stage", _) => stage::run(&rest),
         ("watch-shell", _) => watch_shell::run(&rest),
         ("docs-parity", []) => docs_parity::run(),
+        ("docs-examples", _) => docs_examples::run_examples(&rest),
+        ("docs-reference", _) => docs_examples::run_reference(&rest),
         ("compat-report", []) => compat_report::run(false),
         ("compat-report", [flag]) if flag == "--json" => compat_report::run(true),
         ("dupes", []) => dupes::run(true),

@@ -11,6 +11,8 @@ export interface DocsPage {
     slug: string;
     /** Path under docs/, for the edit link. */
     file: string;
+    /** Written by the generator at build time (the API reference): there is no source file to edit. */
+    generated: boolean;
     title: string;
     /** HTML of the paragraph right after the title. */
     lede: string;

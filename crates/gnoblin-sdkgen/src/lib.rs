@@ -15,6 +15,9 @@
 //!
 //! Adding a language is one [`Target`] implementation and one line in [`targets`]; `docs/sdk-generator.md` is the contract.
 //!
+//! Beside the targets, [`render_reference`] renders the API reference pages of the website (`cargo xtask docs-reference`): Markdown
+//! sliced from the same declarations, with the descriptions the schema files carry as comments. Nothing of it is committed either.
+//!
 //! The targets, and the logical paths they write (relative to the output directory):
 //!
 //! | target       | writes                                                                                        |
@@ -37,6 +40,7 @@ mod object_script;
 mod objects;
 mod python;
 mod python_std;
+mod reference;
 mod rust;
 mod std_dyn;
 mod surface;
@@ -51,6 +55,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub use model::SdkSpec;
+pub use reference::{DocLanguage, render_reference};
 pub use surface::{LockReport, check_surface_lock, render_surface_locks, surface_lines};
 
 /// The command that writes a readable copy of everything, named in every banner and error.

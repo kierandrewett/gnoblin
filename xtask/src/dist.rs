@@ -898,6 +898,38 @@ fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), DistError> 
     Ok(())
 }
 
+/// Writes what an install gives an editor or a type checker, with nothing built, under `dest`: the stock TypeScript library and its generated declarations
+/// (`share/gnoblin/js`), the globals and the `tsconfig.json` that maps the package names to them (`share/gnoblin/types`), and the Python stub package
+/// (`share/gnoblin/types/python`). It runs the install's own plan, so the files are the ones `dist install` would write, byte for byte. `docs-examples`
+/// type-checks the examples of the documentation against this tree.
+pub(crate) fn write_editor_tree(repo: &Path, dest: &Path) -> Result<(), DistError> {
+    // The plan writes a generated file only when the library it describes was built, so the tree is planned against a build that names both.
+    let built = dest.join(".planned-build");
+    fs::create_dir_all(&built).map_err(io_at(&built))?;
+    for name in [CORE_BUILT_NAME, STD_BUILT_NAME] {
+        fs::write(built.join(name), b"").map_err(io_at(&built))?;
+    }
+    let planned = plan(repo, &built, DEFAULT_LIBDIR)?;
+    fs::remove_dir_all(&built).map_err(io_at(&built))?;
+    for entry in planned {
+        if !(entry.to.starts_with("share/gnoblin/js/") || entry.to.starts_with("share/gnoblin/types/")) {
+            continue;
+        }
+        let to = dest.join(&entry.to);
+        if let Some(parent) = to.parent() {
+            fs::create_dir_all(parent).map_err(io_at(parent))?;
+        }
+        match entry.content {
+            PlannedContent::File(from) => {
+                fs::copy(&from, &to).map_err(io_at(&from))?;
+            }
+            PlannedContent::Bytes(bytes) => fs::write(&to, bytes).map_err(io_at(&to))?,
+            PlannedContent::Link(_) | PlannedContent::Dir => {}
+        }
+    }
+    Ok(())
+}
+
 fn expand_libdir(to: &str, libdir: &str) -> String {
     to.replace(LIBDIR_TOKEN, libdir)
 }
@@ -1443,6 +1475,24 @@ mod tests {
             .expect("the runtime is planned");
         assert_eq!(runtime.mode, FileMode::Program);
         assert!(matches!(runtime.content, PlannedContent::File(_)));
+    }
+
+    #[test]
+    fn the_editor_tree_is_what_an_install_writes_for_a_type_checker_with_nothing_built() {
+        let dir = scratch("dist-editor-tree");
+        write_editor_tree(&repo_root(), &dir).unwrap();
+        for file in [
+            "share/gnoblin/types/tsconfig.json",
+            "share/gnoblin/types/gnoblin.d.ts",
+            "share/gnoblin/types/gnoblin-core/index.ts",
+            "share/gnoblin/js/gnoblin-core/generated/objects.d.ts",
+            "share/gnoblin/types/python/gnoblin/py.typed",
+            "share/gnoblin/types/python/gnoblin/objects/model.pyi",
+        ] {
+            assert!(dir.join(file).is_file(), "{file} is written");
+        }
+        // Nothing that needs a build: no program, no library, no header, and the scratch build the plan was made against is gone.
+        assert!(!dir.join("bin").exists() && !dir.join("include").exists() && !dir.join(".planned-build").exists());
     }
 
     #[test]

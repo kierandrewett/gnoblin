@@ -1,12 +1,13 @@
 // Markdown to HTML for the docs pages, at build time. Supports what the pages in docs/ use, the way VitePress read
 // them: GitHub-flavoured Markdown (tables), `::: details Title` and the callout containers (`::: tip` and so on),
-// `{#id}` after a heading, VitePress heading ids, fenced code highlighted with Shiki, images from docs/ and links
-// between pages written as `page.md`, `../page.md#anchor` or `/path#anchor`.
+// `{#id}` after a heading, VitePress heading ids, fenced code highlighted with Shiki (not with `plain` after the language), `::: tabs` (one fenced example
+// for each SDK language, shown as tabs), images from docs/ and links between pages written as `page.md`,
+// `../page.md#anchor` or `/path#anchor`.
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { Element, ElementContent, Root as HastRoot, Text } from "hast";
 import { toString as hastToString } from "hast-util-to-string";
-import type { Paragraph, Root as MdastRoot, RootContent } from "mdast";
+import type { Code, Paragraph, Root as MdastRoot, RootContent } from "mdast";
 import rehypeStringify from "rehype-stringify";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
@@ -68,6 +69,10 @@ const CALLOUTS: Record<string, { icon: string; title: string }> = {
     warning: { icon: "warning", title: "Warning" },
     danger: { icon: "danger", title: "Danger" },
 };
+
+/** The languages of a `::: tabs` group, in the order the tabs are written. `cargo xtask docs-examples` checks each example in its
+ *  own language and reads the same grammar (xtask/src/docs_tabs.rs): change them together. */
+const TAB_LANGS = ["typescript", "python", "rust"] as const;
 
 let highlighter: Promise<Highlighter> | undefined;
 function getHighlighter(): Promise<Highlighter> {
@@ -149,8 +154,32 @@ function container(hName: string, hProperties: Record<string, string>, children:
     return { type: "paragraph", children: blockChildren, data: { hName, hProperties } };
 }
 
+/** The blocks of a `::: tabs` group: one fenced block each of the TAB_LANGS in their order, `skip="reason"` the only option,
+ *  and nothing else. A mistake is an error that names the page and the line. */
+function checkTabs(children: RootContent[], ctx: RenderContext, at: number | undefined): RootContent[] {
+    const problem = (node: RootContent | undefined, message: string) =>
+        ctx.errors.push(`${ctx.file}:${node?.position?.start.line ?? at ?? 0}: ${message}`);
+    const blocks: Code[] = [];
+    for (const child of children) {
+        if (child.type !== "code") {
+            problem(child, "a ::: tabs group holds fenced code blocks and nothing else");
+            continue;
+        }
+        blocks.push(child);
+        const meta = (child.meta ?? "").trim();
+        if (meta && !/^skip="[^"]*\S[^"]*"$/.test(meta)) {
+            problem(child, `the fence says "${meta}", and the only option is skip="reason" with a reason`);
+        }
+    }
+    const order = blocks.map((block) => block.lang ?? "");
+    if (order.join() !== TAB_LANGS.join()) {
+        problem(children[0], `a ::: tabs group holds one block each of ${TAB_LANGS.join(", ")}, in that order`);
+    }
+    return children;
+}
+
 /** Turns `::: details Title`, `::: tip` and friends into details and callout nodes. */
-function remarkContainers() {
+function remarkContainers(ctx: RenderContext) {
     return (tree: MdastRoot) => {
         const build = (nodes: RootContent[]): RootContent[] => {
             const out: RootContent[] = [];
@@ -177,6 +206,8 @@ function remarkContainers() {
                 i = end;
                 if (kind === "details") {
                     out.push(container("details-container", { title: title || "Details" }, children));
+                } else if (kind === "tabs") {
+                    out.push(container("tabs-container", {}, checkTabs(children, ctx, node.position?.start.line)));
                 } else if (CALLOUTS[kind]) {
                     out.push(container("callout-container", { kind, title }, children));
                 } else {
@@ -203,6 +234,8 @@ interface RenderContext {
     errors: string[];
     headings: Heading[];
     highlighter: Highlighter;
+    /** Tab groups made so far, for the ids that tie a tab to its panel. */
+    tabGroups: number;
 }
 
 function rehypeGnoblin(ctx: RenderContext) {
@@ -282,8 +315,11 @@ function rehypeGnoblin(ctx: RenderContext) {
                 const source = hastToString(code).replace(/\n$/, "");
                 const known = (LANGS as readonly string[]).includes(lang);
                 if (lang && !known && lang !== "text") ctx.errors.push(`${ctx.file}: no highlighting for "${lang}"`);
+                // `plain` after the language keeps the label and leaves the code uncoloured. The generated API reference uses it:
+                // its pages hold thousands of lines, and colouring them costs minutes of build time and megabytes of page.
+                const plain = (code.data as { meta?: string } | undefined)?.meta === "plain";
                 const highlighted = ctx.highlighter.codeToHast(source, {
-                    lang: known ? lang : "text",
+                    lang: known && !plain ? lang : "text",
                     theme: "gnoblin",
                 });
                 const pre = highlighted.children[0] as Element;
@@ -295,7 +331,13 @@ function rehypeGnoblin(ctx: RenderContext) {
                     ]),
                 ]);
                 const preOut = el("pre", { tabIndex: 0, translate: "no" }, pre.children);
-                parent.children[index] = el("div", { className: ["code"] }, [head, preOut]);
+                // A plain block is reference text: out of the search index, where its generic names (`K`, `T`) answer queries that
+                // no page is about.
+                parent.children[index] = el(
+                    "div",
+                    { className: ["code"], dataLang: lang, ...(plain ? { dataPagefindIgnore: "" } : {}) },
+                    [head, preOut],
+                );
                 return "skip";
             }
 
@@ -344,6 +386,60 @@ function rehypeGnoblin(ctx: RenderContext) {
             }
             return;
         });
+
+        // Tab groups last, once their code blocks are highlighted: each block becomes a panel, and a button of the tab list
+        // names it. Every panel but the first is hidden until the page's script (actions/lang-tabs.ts) shows the reader's
+        // language; with no script the first language is the whole page.
+        visit(tree, "element", (node, index, parent) => {
+            if (node.tagName !== "tabs-container" || !parent || index === undefined) return;
+            const group = ++ctx.tabGroups;
+            const panels = node.children.filter(
+                (child): child is Element =>
+                    child.type === "element" &&
+                    ((child.properties.className as string[] | undefined) ?? []).includes("code"),
+            );
+            const buttons: Element[] = [];
+            const bodies: Element[] = [];
+            panels.forEach((panel, i) => {
+                const lang = String(panel.properties.dataLang);
+                const id = `tabs-${group}-${lang}`;
+                const selected = i === 0;
+                buttons.push(
+                    el(
+                        "button",
+                        {
+                            type: "button",
+                            role: "tab",
+                            id,
+                            ariaSelected: String(selected),
+                            ariaControls: [`${id}-panel`],
+                            tabIndex: selected ? 0 : -1,
+                            dataLang: lang,
+                        },
+                        [text(LANG_LABELS[lang] ?? lang)],
+                    ),
+                );
+                bodies.push(
+                    el(
+                        "div",
+                        {
+                            role: "tabpanel",
+                            className: ["lang-panel"],
+                            id: `${id}-panel`,
+                            ariaLabelledBy: [id],
+                            dataLang: lang,
+                            hidden: !selected,
+                        },
+                        [panel],
+                    ),
+                );
+            });
+            parent.children[index] = el("div", { className: ["lang-tabs"], dataLangTabs: "" }, [
+                el("div", { className: ["seg"], role: "tablist", ariaLabel: "Language" }, buttons),
+                ...bodies,
+            ]);
+            return "skip";
+        });
     };
 }
 
@@ -356,11 +452,12 @@ export async function renderMarkdown(
         errors: [],
         headings: [],
         highlighter: await getHighlighter(),
+        tabGroups: 0,
     };
     const processor = unified()
         .use(remarkParse)
         .use(remarkGfm)
-        .use(remarkContainers)
+        .use(remarkContainers, ctx)
         .use(remarkRehype)
         .use(rehypeGnoblin, ctx);
     const tree = (await processor.run(processor.parse(separateContainerMarkers(source)))) as HastRoot;
