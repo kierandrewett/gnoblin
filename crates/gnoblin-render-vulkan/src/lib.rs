@@ -130,10 +130,14 @@
 //! A little-endian host is assumed where a client's pixels are uploaded: the bytes of an
 //! `argb8888` word are blue, green, red, alpha, which is what `B8G8R8A8_UNORM` reads.
 
+mod capture;
 mod context;
+mod dmabuf;
 #[cfg(test)]
 mod driver_probe;
 mod error;
+mod external;
+mod formats;
 mod frame;
 #[cfg(test)]
 mod harness;
@@ -155,7 +159,10 @@ use std::time::Instant;
 use gnoblin_types::{Scale, Size};
 
 pub use context::{DeviceChoice, DeviceInfo, GpuKind, Loader, Validation, VulkanOptions};
+pub use dmabuf::DmabufError;
 pub use error::VulkanError;
+pub use external::{SYNC_READ, SYNC_WRITE, export_sync_file, import_sync_file, wait_for_writer};
+pub use formats::dmabuf_formats;
 pub use pipeline::PipelineCacheLocation;
 
 use context::VkContext;
@@ -275,6 +282,17 @@ impl VulkanDevice {
     #[must_use]
     pub fn info(&self) -> &DeviceInfo {
         &self.context.info
+    }
+
+    /// The names of the dmabuf extensions the device has and the renderer enabled: what it could import tiled buffers or export
+    /// fences with. The linear path needs none.
+    #[must_use]
+    pub fn dmabuf_extensions(&self) -> Vec<String> {
+        self.context
+            .extensions
+            .iter()
+            .map(|name| name.to_string_lossy().into_owned())
+            .collect()
     }
 
     /// Whether the device was lost, after which every output on it returns [`RenderError::Lost`].

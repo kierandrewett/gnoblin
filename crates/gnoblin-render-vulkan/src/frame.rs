@@ -1267,12 +1267,12 @@ fn wanted<'a>(frame: &'a OutputFrame, shaders: &Shaders) -> Vec<Wanted<'a>> {
                 source: Source::Bitmap(image),
                 key,
             }),
-            SurfaceSource::Dmabuf(_) => {
-                log::warn!(
-                    area = "render",
-                    "a GPU buffer reached the Vulkan renderer, which cannot import it; the layer is skipped"
-                );
-            }
+            // A linear dmabuf is mapped and read (`dmabuf.rs`); one the renderer cannot read is skipped when its shape is asked.
+            SurfaceSource::Dmabuf(dmabuf) => found.push(Wanted {
+                slot: TextureSlot::Layer(index),
+                source: Source::Dmabuf(dmabuf),
+                key,
+            }),
             SurfaceSource::View(_) => {
                 log::warn!(
                     area = "render",

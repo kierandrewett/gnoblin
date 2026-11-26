@@ -2060,6 +2060,7 @@ dependencies = [
  "gnoblin-types",
  "gpu-allocator",
  "naga",
+ "rustix 1.1.6",
  "smithay",
  "tempfile",
  "wayland-client",

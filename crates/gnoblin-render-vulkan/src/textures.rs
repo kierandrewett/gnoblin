@@ -37,9 +37,11 @@ use gnoblin_render_frame::frame::ContentKey;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm;
 use gnoblin_types::Rect;
+use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 
 use super::context::{SHM_FORMAT, TARGET_FORMAT, VkContext};
+use super::dmabuf;
 use super::memory::{Counters, VkImage};
 use super::pipeline::{LongSet, Pipelines};
 use super::plan::TextureSlot;
@@ -63,6 +65,8 @@ pub(super) enum Source<'a> {
     Bitmap(&'a Image),
     /// One premultiplied pixel: a solid layer's colour, which its shader pass reads as the layer's own.
     Pixel([u8; 4]),
+    /// A client's linear `zwp_linux_dmabuf_v1` buffer, mapped and read (`dmabuf.rs`).
+    Dmabuf(&'a Dmabuf),
 }
 
 /// How a source is laid out as a texture.
@@ -77,10 +81,10 @@ struct Shape {
 
 impl Source<'_> {
     /// The texture the source makes, from its metadata alone.
-    fn shape(&self) -> Result<Shape, shm::ShmError> {
+    fn shape(&self) -> Result<Shape, String> {
         Ok(match self {
             Self::Shm(buffer) => {
-                let shape = shm::shape(buffer)?;
+                let shape = shm::shape(buffer).map_err(|error| error.to_string())?;
                 Shape {
                     width: shape.width,
                     height: shape.height,
@@ -103,7 +107,21 @@ impl Source<'_> {
                 format: TARGET_FORMAT,
                 opaque: false,
             },
+            Self::Dmabuf(dmabuf) => {
+                let linear = dmabuf::linear(dmabuf).map_err(|error| error.to_string())?;
+                Shape {
+                    width: linear.width,
+                    height: linear.height,
+                    format: linear.layout.format,
+                    opaque: linear.layout.opaque,
+                }
+            }
         })
+    }
+
+    /// Whether the buffer is read bottom row first, which makes its damage rectangles (in buffer rows) the wrong ones.
+    fn inverted(&self) -> bool {
+        matches!(self, Self::Dmabuf(dmabuf) if dmabuf.y_inverted())
     }
 
     /// Copies `region` of the source, rows packed, into `out`, which is `region`'s area in bytes. Returns false when it
@@ -132,6 +150,16 @@ impl Source<'_> {
             Self::Pixel(pixel) => {
                 out.copy_from_slice(pixel);
                 true
+            }
+            Self::Dmabuf(dmabuf) => {
+                let read = dmabuf::linear(dmabuf).and_then(|shape| dmabuf::read_region(dmabuf, &shape, region, out));
+                match read {
+                    Ok(()) => true,
+                    Err(error) => {
+                        log::warn!(area = "render", %error, "a client's dmabuf could not be read; the layer is skipped");
+                        false
+                    }
+                }
             }
         }
     }
@@ -292,6 +320,7 @@ impl TextureCache {
             return Some((Decision::Replace, shape));
         }
         if key.commit == entry.commit + 1
+            && !wanted.source.inverted()
             && let Some(damage) = &key.damage
         {
             let rects = disjoint(damage, shape.width, shape.height);

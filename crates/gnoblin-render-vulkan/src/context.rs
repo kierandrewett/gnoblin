@@ -51,6 +51,20 @@ use crate::log;
 /// The validation layer the renderer asks for in debug builds.
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
 
+/// The device extensions dmabuf import, export and fences use (design 8.2), which the context enables when the device has them.
+///
+/// None is required: the linear path of `dmabuf.rs` maps a buffer and needs no extension, which is what a device without
+/// `VK_EXT_image_drm_format_modifier` (lavapipe) does. A device that has them can import tiled buffers as images and hand a
+/// frame's fence out as a `sync_file`; `Vulkan::dmabuf_extensions` says which it has.
+pub(super) const DMABUF_EXTENSIONS: [&CStr; 6] = [
+    c"VK_KHR_external_memory_fd",
+    c"VK_EXT_external_memory_dma_buf",
+    c"VK_EXT_image_drm_format_modifier",
+    c"VK_KHR_external_semaphore_fd",
+    c"VK_EXT_queue_family_foreign",
+    c"VK_EXT_physical_device_drm",
+];
+
 /// The format of the target a frame is drawn into and read back from.
 ///
 /// Its bytes are red, green, blue, alpha in memory, which is the order [`Image`](gnoblin_render_frame::image::Image) promises.
@@ -204,6 +218,8 @@ pub(super) struct VkContext {
     pub(super) memory: Memory,
     /// Counts the frames submitted and says which have finished.
     pub(super) timeline: Timeline,
+    /// The dmabuf extensions the device has and the context enabled (`DMABUF_EXTENSIONS`).
+    pub(super) extensions: Vec<&'static CStr>,
     #[cfg(test)]
     pub(super) faults: Faults,
 }
@@ -527,8 +543,11 @@ fn build(
         .queue_family_index(candidate.family)
         .queue_priorities(&priorities)];
     let mut features = vk::PhysicalDeviceVulkan12Features::default().timeline_semaphore(true);
+    let extensions = dmabuf_extensions(&instance, candidate.device);
+    let names: Vec<*const c_char> = extensions.iter().map(|name| name.as_ptr()).collect();
     let info = vk::DeviceCreateInfo::default()
         .queue_create_infos(&queues)
+        .enabled_extension_names(&names)
         .push_next(&mut features);
     // SAFETY: the physical device came from this instance and `info` outlives the call.
     let device = match unsafe { instance.create_device(candidate.device, &info, None) } {
@@ -569,6 +588,7 @@ fn build(
         validating,
         memory,
         timeline,
+        extensions,
         #[cfg(test)]
         faults: Faults::default(),
     })
@@ -691,4 +711,25 @@ fn formats_supported(instance: &Instance, device: vk::PhysicalDevice) -> Result<
         }
     }
     Ok(())
+}
+
+/// The extensions of [`DMABUF_EXTENSIONS`] the device has, in that order.
+///
+/// `VK_EXT_external_memory_dma_buf` needs `VK_KHR_external_memory_fd`, so it is left out without it; the others stand on
+/// Vulkan 1.2 alone.
+fn dmabuf_extensions(instance: &Instance, device: vk::PhysicalDevice) -> Vec<&'static CStr> {
+    // SAFETY: a plain query of a device this instance listed.
+    let present = unsafe { instance.enumerate_device_extension_properties(device) }.unwrap_or_default();
+    let has = |wanted: &CStr| {
+        present.iter().any(|extension| {
+            // SAFETY: the driver NUL-terminates `extension_name` within its 256 bytes.
+            unsafe { CStr::from_ptr(extension.extension_name.as_ptr()) == wanted }
+        })
+    };
+    DMABUF_EXTENSIONS
+        .iter()
+        .copied()
+        .filter(|name| has(name))
+        .filter(|name| *name != c"VK_EXT_external_memory_dma_buf" || has(c"VK_KHR_external_memory_fd"))
+        .collect()
 }

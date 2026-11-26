@@ -23,6 +23,8 @@ all = { level = "deny", priority = -1 }
 ash.workspace = true
 # Sub-allocates the images and buffers of every frame out of a few large device allocations (`memory.rs`).
 gpu-allocator.workspace = true
+# The dmabuf fence ioctls and the poll that waits for a buffer's writer (`external.rs`).
+rustix = { workspace = true, features = ["event", "fs"] }
 # The client-buffer pixels are read through Smithay's `wl_shm` mapping.
 smithay.workspace = true
 # Outputs, colours and sizes are stated in the shared primitives.

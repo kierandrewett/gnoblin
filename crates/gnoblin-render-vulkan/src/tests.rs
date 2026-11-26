@@ -32,6 +32,7 @@ use gnoblin_render_frame::image::Image;
 use gnoblin_render_software::Software;
 
 mod device;
+mod dmabuf;
 mod effects;
 mod shader;
 
