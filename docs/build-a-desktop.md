@@ -1,16 +1,16 @@
 # Build a desktop
 
 A Gnoblin desktop is a compositor plus a shell. The compositor is always the same; the shell decides what the desktop
-looks like and does. You can write the shell as a Rust library, a Python script, or a JavaScript or TypeScript file, or
-assemble a desktop from separate programs.
+looks like and does. You can write the shell in TypeScript, Python or Rust (JavaScript runs too), or assemble a desktop
+from separate programs.
 
-This page shows how the pieces fit together, builds two small Rust shells, lists the example shells, and then covers
-assembling a desktop from existing programs.
+This page shows how the pieces fit together, builds two small shells in all three languages, lists the example shells, and
+then covers assembling a desktop from existing programs.
 
 ## How the layers fit together
 
 ```text
-  your shell     a Rust library, or a Python, JavaScript or TypeScript file
+  your shell     a TypeScript, Python or Rust shell (or JavaScript)
       |
       |  optional
       v
@@ -37,63 +37,145 @@ Choose by what the shell needs:
 - **Core and std** when you want workspaces and ready-made layouts, or to write a layout and let the library place windows
   with it.
 
-An install without `libgnoblin-std` runs core-only shells. A shell that imports std there fails to load, and the message
+An install without `libgnoblin-std` runs core-only shells. A shell that uses std there fails to load, and the message
 names the library.
+
+Each language reaches the two layers the same way:
+
+| Language   | Core                                    | Std                                   | Where the file goes                              |
+| ---------- | --------------------------------------- | ------------------------------------- | ------------------------------------------------ |
+| TypeScript | `import ... from "gnoblin-core"`        | `import ... from "gnoblin-std"`       | `~/.config/gnoblin/shell.ts`                     |
+| Python     | `from gnoblin.objects.model import ...` | `from gnoblin.objects.std import ...` | `~/.config/gnoblin/shell.py`                     |
+| Rust       | the `gnoblin-core` crate                | the `gnoblin-std` crate               | a library crate: `gnoblin ./target/debug/lib.so` |
 
 ## A tiling window manager on the core alone
 
 This shell gives every window an equal column of the screen, in the order the windows opened. It needs no workspaces and no
 library other than the core.
 
-Make the project as described in [Write a shell in Rust](rust-shell.md#create-the-project), then put this in `lib.rs`, in the `src` directory:
+A TypeScript or Python shell is one file that you save under the config directory. For Rust, make the project as described
+in [Rust shell](rust-shell.md#create-the-project), then put the Rust file in `lib.rs`, in the `src` directory.
+
+::: tabs
+
+```typescript
+const GAP = 10;
+
+// Gives every window an equal column of the first output, in the order the windows opened.
+function retile(): void {
+    const output = gnoblin.outputs.at(0);
+    if (!output) return;
+    const windows = gnoblin.clients.toList().filter((client) => client.alive);
+    const width = (output.width - GAP) / Math.max(windows.length, 1) - GAP;
+    windows.forEach((client, index) => {
+        client.bounds = {
+            x: output.x + GAP + index * (width + GAP),
+            y: output.y + GAP,
+            width,
+            height: output.height - 2 * GAP,
+        };
+    });
+}
+
+retile();
+gnoblin.onClientCreated(retile);
+gnoblin.onClientClosed(retile);
+
+gnoblin.input.primary.bind("Super+Return", () => {
+    gnoblin.spawn(["foot"]);
+});
+```
+
+```python
+from gnoblin.objects.model import BindingEvent, Gnoblin, Rect
+
+gnoblin = Gnoblin.get()
+GAP = 10.0
+
+
+def retile(*_event: object) -> None:
+    """Gives every window an equal column of the first output, in the order the windows opened."""
+    output = gnoblin.outputs.at(0)
+    if output is None:
+        return
+    windows = [client for client in gnoblin.clients.to_list() if client.alive]
+    width = (output.width - GAP) / max(len(windows), 1) - GAP
+    for index, client in enumerate(windows):
+        client.bounds = Rect(
+            x=output.x + GAP + index * (width + GAP),
+            y=output.y + GAP,
+            width=width,
+            height=output.height - 2 * GAP,
+        )
+
+
+def terminal(event: BindingEvent) -> None:
+    gnoblin.spawn(["foot"])
+
+
+retile()
+gnoblin.on("client_created", retile)
+gnoblin.on("client_closed", retile)
+gnoblin.input.primary.bind("Super+Return", terminal)
+```
 
 ```rust
+use std::rc::Rc;
+
 use gnoblin_core as gnoblin;
-use gnoblin_core::{Gnoblin, Rect};
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::{ModelRoot, Rect};
 
 const GAP: f64 = 10.0;
 
-/// The first screen's rectangle, or a default before the compositor has published one.
-fn screen(g: &Gnoblin) -> Rect {
-    let find = || -> gnoblin::Result<Option<Rect>> {
-        let class = g.class("screen")?;
-        for node in g.root()?.children()? {
-            if node.class()? == class {
-                return Ok(Some(Rect::new(
-                    node.get_f64("x")?,
-                    node.get_f64("y")?,
-                    node.get_f64("width")?,
-                    node.get_f64("height")?,
-                )));
-            }
-        }
-        Ok(None)
+/// Gives every window an equal column of the first output, in the order the windows opened.
+fn retile(model: &ModelRoot) -> gnoblin::Result<()> {
+    let Some(output) = model.outputs()?.and_then(|outputs| outputs.at(0).ok().flatten()) else {
+        return Ok(());
     };
-    find().ok().flatten().unwrap_or(Rect::new(0.0, 0.0, 1920.0, 1080.0))
-}
-
-/// Gives every window an equal column of the screen, in the order the windows opened.
-fn retile(g: &Gnoblin) {
-    let result = (|| -> gnoblin::Result<()> {
-        let windows = g.windows()?;
-        let area = screen(g);
-        let width = (area.width - GAP) / windows.len().max(1) as f64 - GAP;
-        for (index, window) in windows.iter().enumerate() {
-            let x = area.x + GAP + index as f64 * (width + GAP);
-            window.set_geometry(Rect::new(x, area.y + GAP, width, area.height - 2.0 * GAP))?;
+    let Some(clients) = model.clients()? else {
+        return Ok(());
+    };
+    let mut windows = Vec::new();
+    for client in clients.to_list()? {
+        if client.alive()? {
+            windows.push(client);
         }
-        Ok(())
-    })();
-    if let Err(error) = result {
-        g.log(&format!("cannot tile the windows: {error}"));
     }
+    let (x, y, screen_width, screen_height) = (output.x()?, output.y()?, output.width()?, output.height()?);
+    let width = (screen_width - GAP) / windows.len().max(1) as f64 - GAP;
+    for (index, client) in windows.iter().enumerate() {
+        client.set_bounds(&Rect {
+            x: x + GAP + index as f64 * (width + GAP),
+            y: y + GAP,
+            width,
+            height: screen_height - 2.0 * GAP,
+        })?;
+    }
+    Ok(())
 }
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    retile(g);
-    g.on_client_created(move |_window| retile(g))?;
-    g.on_client_destroyed(move |_window| retile(g))?;
+    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    retile(&model)?;
+
+    let created = Rc::clone(&model);
+    model
+        .on_client_created(move |_client, _clients| {
+            if let Err(error) = retile(&created) {
+                g.log(&format!("cannot tile the windows: {error}"));
+            }
+        })?
+        .keep();
+    let closed = Rc::clone(&model);
+    model
+        .on_client_closed(move |_client| {
+            if let Err(error) = retile(&closed) {
+                g.log(&format!("cannot tile the windows: {error}"));
+            }
+        })?
+        .keep();
 
     g.bind("<Super>Return", move || {
         if let Err(error) = g.spawn("foot") {
@@ -104,22 +186,27 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 }
 ```
 
-Build and run it with `cargo build` and `gnoblin ./target/debug/libmyshell.so`. Press `Super+Return` twice: the two
-terminals sit side by side, and closing one gives the other the whole width.
+:::
+
+Run it with `gnoblin ./shell.ts`, `gnoblin ./shell.py`, or `cargo build` and `gnoblin ./target/debug/libmyshell.so`. Press
+`Super+Return` twice: the two terminals sit side by side, and closing one gives the other the whole width.
 
 How it works:
 
-- `g.windows()` lists the windows of the session, including ones open before the shell started.
-- `window.set_geometry(rect)` places a window. A rectangle is `x`, `y`, `width` and `height` in pixels.
-- `g.on_client_created` and `g.on_client_destroyed` call your function when a window opens or closes.
-- The screen is a node of class `screen`; its `x`, `y`, `width` and `height` properties are its rectangle.
+- The collection of windows (`gnoblin.clients`) lists the windows of the session, including ones open before the shell started.
+  A window that has closed stays readable for a moment, so the shell keeps only the windows that are `alive`.
+- Writing `bounds` places a window. A rectangle is `x`, `y`, `width` and `height` in pixels.
+- The `client_created` and `client_closed` signals call your function when a window opens or closes: `onClientCreated` and
+  `onClientClosed` in TypeScript, `on("client_created", ...)` in Python and `on_client_created(..)` in Rust.
+- An output has `x`, `y`, `width` and `height`: its place and size in the compositor's coordinates.
 
 The [`08-no-workspaces`](#the-examples) example takes this further with a master-and-stack layout and a key that chooses the
-master window.
+master window, in Rust and in Python.
 
 ## A shell that uses std
 
-Add `gnoblin-std` to `Cargo.toml` next to `gnoblin-core`:
+Add the std library to the shell. A TypeScript shell imports `gnoblin-std`, a Python shell imports `gnoblin.objects.std`, and
+a Rust shell adds `gnoblin-std` to `Cargo.toml` next to `gnoblin-core`:
 
 ```toml
 [dependencies]
@@ -128,6 +215,49 @@ gnoblin-std = { path = "/path/to/gnoblin/crates/gnoblin-std" }
 ```
 
 Then use the library's workspaces and layouts instead of placing windows yourself:
+
+::: tabs
+
+```typescript
+import { MasterStackLayout, Workspace } from "gnoblin-std";
+
+// One workspace; every window that opens joins it and the library tiles it.
+gnoblin.workspaces.add(
+    new Workspace("main", {
+        name: "Main",
+        layout: new MasterStackLayout({ ratio: 0.6 }),
+        gaps: { inner: 12, outer: 20 },
+    }),
+);
+
+gnoblin.input.primary.bind("Super+Return", () => {
+    gnoblin.spawn(["foot"]);
+});
+```
+
+```python
+from gnoblin.objects.model import BindingEvent, Gnoblin
+from gnoblin.objects.std import Gaps, MasterStackLayout, Workspace
+
+gnoblin = Gnoblin.get()
+
+# One workspace; every window that opens joins it and the library tiles it.
+gnoblin.workspaces.add(
+    Workspace(
+        "main",
+        name="Main",
+        layout=MasterStackLayout(ratio=0.6),
+        gaps=Gaps(inner=12.0, outer=20.0),
+    )
+)
+
+
+def terminal(event: BindingEvent) -> None:
+    gnoblin.spawn(["foot"])
+
+
+gnoblin.input.primary.bind("Super+Return", terminal)
+```
 
 ```rust
 use gnoblin_std::prelude::*;
@@ -152,20 +282,27 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 }
 ```
 
-| Setting                    | Accepted values                                                                                                                                                       | Effect                                                       |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `Workspace::builder(id)`   | A non-empty string                                                                                                                                                    | Names the workspace. The id is also its name by default.     |
-| `.name(text)`              | Any string                                                                                                                                                            | The name people see.                                         |
-| `.layout(layout)`          | `FloatingLayout` (default), `MasterStackLayout`, `GridLayout`, `MonocleLayout`, `DwindleLayout`, `StripLayout`, `ArcLayout`, `Carousel3dLayout`, or your own `Layout` | How windows are arranged.                                    |
-| `.gaps(inner, outer)`      | Two numbers of at least 0, in pixels                                                                                                                                  | Space between windows, then between windows and the edge.    |
-| `MasterStackLayout::ratio` | 0.1 to 0.9                                                                                                                                                            | The share of the width the master window takes. Default 0.5. |
+:::
 
-Windows that open join the workspace and the library tiles them. Your shell links `libgnoblin-std.so.1`, which links the
+| Setting                        | Accepted values                                                                                                                                                       | Effect                                                       |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| The id of a `Workspace`        | A non-empty string                                                                                                                                                    | Names the workspace. The id is also its name by default.     |
+| `name`                         | Any string                                                                                                                                                            | The name people see.                                         |
+| `layout`                       | `FloatingLayout` (default), `MasterStackLayout`, `GridLayout`, `MonocleLayout`, `DwindleLayout`, `StripLayout`, `ArcLayout`, `Carousel3dLayout`, or your own `Layout` | How windows are arranged.                                    |
+| `gaps`                         | Two numbers of at least 0, in pixels: `inner`, then `outer`                                                                                                           | Space between windows, then between windows and the edge.    |
+| `ratio` of `MasterStackLayout` | 0.1 to 0.9                                                                                                                                                            | The share of the width the master window takes. Default 0.5. |
+
+In Rust the workspace is made with `Workspace::builder(id)`, and `.gaps(inner, outer)` takes the two numbers; the
+object-model spelling `Workspace::new_with(&objects, id, WorkspaceOptions { .. })` is the same call the TypeScript and Python
+constructors make, as [Rust shell](rust-shell.md#make-an-object-with-options) shows.
+
+Windows that open join the workspace and the library tiles them. A Rust shell links `libgnoblin-std.so.1`, which links the
 core, and a session loads one copy of each. If Gnoblin is installed outside the system library path, give the shell a
 library path: see [Link to the installed libraries](rust-shell.md#link-to-the-installed-libraries).
 
-To write a layout yourself, implement the `Layout` trait: the library calls `compute` whenever the workspace changes and
-applies the rectangles you return. The [`06-rust-layout`](#the-examples) example does this.
+To write a layout yourself, implement the `Layout` interface in your language: the library calls `compute` whenever the
+workspace changes and applies the rectangles you return. The [`06-rust-layout`](#the-examples) example does this in Rust, and
+[`03-typescript-std`](#the-examples) and [`03-python-std`](#the-examples) do it in TypeScript and Python.
 
 ## The examples
 
@@ -193,17 +330,18 @@ stands. Rust ones build with `cargo build -p <package>` from the source tree; sc
 The numbers also name behaviours that are not shells of their own:
 
 - **Reload of a script (11):** edit `03-python-std/shell.py` or `03-typescript-std/shell.ts`, or a module it imports, and
-  the shell reloads in place. See the [Python shell](python-shell.md#reload) and the [TypeScript shell](typescript-shell.md).
+  the shell reloads in place. See the [Python shell](python-shell.md#reload-while-it-runs), the
+  [TypeScript shell](typescript-shell.md#reload-while-it-runs) and the [Rust shell](rust-shell.md#reload-while-it-runs).
 - **Linking the installed libraries (9):** [`09-native-linked`](#the-examples) logs the libraries its process maps and the ABI
   it was built for and finds installed. Any Rust shell that uses `gnoblin-std` links the same way. See
-  [Write a shell in Rust](rust-shell.md#link-to-the-installed-libraries).
+  [Rust shell](rust-shell.md#link-to-the-installed-libraries).
 - **Update without rebuilding (12):** a shell built for one version of the libraries keeps running when they are upgraded.
   See [ABI compatibility](abi-compatibility.md).
 - **Discovery and failures (13 to 16):** how `gnoblin` finds a shell, picks one by name, lists several and fails with none.
   See [Start Gnoblin and choose a shell](starting-gnoblin.md).
 - **Core only (17):** a shell on an install with no std library runs; one that needs std says which library is missing.
 - **Failed reload (18):** a replacement that cannot load leaves the running shell serving. See
-  [Write a shell in Rust](rust-shell.md#limits).
+  [Rust shell](rust-shell.md#limits).
 
 ## Assemble a desktop from existing programs
 
@@ -233,10 +371,13 @@ clients, and [event handlers](user-scripts.md) react to compositor events.
 
 Install a bar, launcher, notification daemon and terminal. This example uses
 Waybar, Fuzzel, Mako and Foot. They are independent applications; replace any
-of them with a component you prefer. Put this in a **new**
-`~/.config/gnoblin/shell.ts`:
+of them with a component you prefer. Put this in a **new** shell file:
+`~/.config/gnoblin/shell.ts` for TypeScript, `~/.config/gnoblin/shell.py` for Python, or the `lib.rs` of a Rust
+shell library.
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.spawn(["waybar"]);
 gnoblin.spawn(["mako"]);
 
@@ -249,16 +390,72 @@ input.bind("Super+Return", () => {
 });
 ```
 
+```python
+from gnoblin.objects.model import BindingEvent, Gnoblin
+
+gnoblin = Gnoblin.get()
+
+gnoblin.spawn(["waybar"])
+gnoblin.spawn(["mako"])
+
+
+def launcher(event: BindingEvent) -> None:
+    gnoblin.spawn(["fuzzel"])
+
+
+def terminal(event: BindingEvent) -> None:
+    gnoblin.spawn(["foot"])
+
+
+seat = gnoblin.input.primary
+seat.bind("Super+d", launcher)
+seat.bind("Super+Return", terminal)
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    model.spawn(&["waybar".to_owned()], None)?;
+    model.spawn(&["mako".to_owned()], None)?;
+
+    let Some(seat) = model.input()?.and_then(|input| input.primary().ok().flatten()) else {
+        return Ok(());
+    };
+    for (trigger, program) in [("Super+d", "fuzzel"), ("Super+Return", "foot")] {
+        let shell = Rc::clone(&model);
+        seat.bind(
+            trigger,
+            Some(move |_| {
+                shell.spawn(&[program.to_owned()], None)?;
+                Ok(true)
+            }),
+            None,
+        )?;
+    }
+    Ok(())
+}
+```
+
+:::
+
 ![Settings app open under Waybar](images/gnoblin-waybar-settings.png)
 
 _A settings app beneath Waybar._
 
 The cursor uses your system's default theme.
 
-A shell or package ships its settings as a TypeScript module that your `shell.ts` imports; there are no system
-drop-in directories.
+A shell or package ships its settings as a module of the shell's own language (a TypeScript module that your `shell.ts`
+imports, a Python module beside your `shell.py`, or a crate your Rust shell depends on); there are no system drop-in
+directories.
 
-Log in to Gnoblin. The active file is `~/.config/gnoblin/shell.ts`. Run
+Log in to Gnoblin. The active file is the shell file in `~/.config/gnoblin`. Run
 `gnoblinctl config reload` to apply edits; Gnoblin reports any
 configuration errors.
 
@@ -282,14 +479,14 @@ several languages.
 
 ### Choose the right interface
 
-| Task                                 | Interface                                                         |
-| ------------------------------------ | ----------------------------------------------------------------- |
-| Change a window from a script        | `gnoblinctl window ...`                                           |
-| Maintain a live switcher or dock     | Compositor bridge `windows` subscription                          |
-| Place a bar or dock                  | `zwlr_layer_shell_v1`                                             |
-| Capture output with a native client  | `zwlr_screencopy_manager_v1`, subject to its protocol gate        |
-| Apply per-app styling                | `gnoblin.clients.where({ ... }).style` in [`shell.ts`](/js-style) |
-| React to a window or workspace event | A listener in `shell.ts` (see [event handlers](/user-scripts))    |
+| Task                                 | Interface                                                                    |
+| ------------------------------------ | ---------------------------------------------------------------------------- |
+| Change a window from a script        | `gnoblinctl window ...`                                                      |
+| Maintain a live switcher or dock     | Compositor bridge `windows` subscription                                     |
+| Place a bar or dock                  | `zwlr_layer_shell_v1`                                                        |
+| Capture output with a native client  | `zwlr_screencopy_manager_v1`, subject to its protocol gate                   |
+| Apply per-app styling                | The `style` of `clients.where(...)` in your shell: [window style](/js-style) |
+| React to a window or workspace event | A listener in your shell (see [event handlers](/user-scripts))               |
 
 The desktop portal backend decides what each app may do. Disabling a Wayland
 protocol does not change what a portal backend allows for screen sharing or

@@ -1,24 +1,63 @@
 # Python shell
 
-Write the shell as a Python script. You install nothing from `pip` and run no build step: the shell runs the file as it is,
-and reloads it when you save it or a module it imports.
+Write the shell as one Python script, `shell.py`. You install nothing from `pip` and run no build step: the shell runs the
+file as it is, and reloads it when you save it or a module it imports.
+
+A shell can be written in [TypeScript](typescript-shell.md), [Python](python-shell.md) or [Rust](rust-shell.md). The three
+pages have the same sections, and the three languages reach the same objects: windows, workspaces, outputs, input and the
+std library. Pick the language you like. The [shell API](/shell-api/) and the [API reference](/reference) show every member in
+each of them.
+
+The session runs this shell unless you pick another: see [Where the config lives](#where-the-config-lives).
+
+## Create a shell
+
+A `shell.py` is a program. It runs top to bottom, and each line reads or changes an object of the shell. This one is
+short:
 
 ```python
-from gnoblin import gnoblin
+from gnoblin.objects.model import BindingEvent, ClientQuery, Gnoblin
+from gnoblin.objects.std import Decorations, MasterStackLayout, Workspace
+
+gnoblin = Gnoblin.get()
+
+Decorations.get().start()
+
+code = Workspace("code", name="Code", layout=MasterStackLayout(ratio=0.6, gap=12.0))
+gnoblin.workspaces.add(code)
+
+gnoblin.clients.style.corner_radius = 12
+gnoblin.clients.where(ClientQuery(app_id="firefox")).style.corner_radius = 18
+
+seat = gnoblin.input.primary
 
 
-@gnoblin.on_client_created
-def place(window):
-    window.x, window.y = 40, 40
+def terminal(event: BindingEvent) -> None:
+    gnoblin.spawn(["foot"])
 
 
-@gnoblin.bind("<Super>Return")
-def terminal():
-    gnoblin.spawn("foot")
+def close_focused(event: BindingEvent) -> None:
+    client = seat.focused_client
+    if client is not None:
+        client.close()
+
+
+seat.bind("Super+Return", terminal)
+seat.bind("Super+q", close_focused)
 ```
 
-Run it with `gnoblin ./shell.py`. It reloads when you save it or a module it imports. A chord is each modifier in angle brackets,
-then the key, as in `<Super>Return`; see [shortcuts](/guides/shortcuts) for the syntax.
+The file you write is the whole configuration. Nothing is layered under it, so a file with only the lines above has one
+workspace, no volume keys and no launcher. Save it as `~/.config/gnoblin/shell.py` (`$XDG_CONFIG_HOME/gnoblin` when that is
+set). `gnoblinctl config init` writes a starter `shell.ts` only, so a Python shell starts from this file, from the
+[recipes](/recipes) or from the shells in `examples/`.
+
+Save the file. The shell reloads it after a short pause, and the windows you have open stay where they are. A key you
+bind is live at once, and a key you delete stops working at that reload. `gnoblinctl check shell.py` checks the file before
+you save it.
+
+Python also has a thinner spelling of the compositor, `from gnoblin import gnoblin`, which works on the compositor's node
+tree with decorators (`@gnoblin.bind("<Super>Return")`, `@gnoblin.on_client_created`). It is described under
+[The `gnoblin` object](#the-gnoblin-object); the object classes above are the same ones TypeScript and Rust use.
 
 ## Run it
 
@@ -30,11 +69,30 @@ then the key, as in `<Super>Return`; see [shortcuts](/guides/shortcuts) for the 
 | Chosen in a file          | Set `[shell] path = "~/dev/tiler/shell.py"` in `~/.config/gnoblin/config.toml`        |
 | Chosen by the environment | `GNOBLIN_SHELL=~/dev/tiler/shell.py gnoblin`                                          |
 
-`gnoblin --list-shells` shows which shell would run and why. [Start Gnoblin and choose a shell](starting-gnoblin.md)
-lists every place Gnoblin looks and the errors it gives. Do not put both a `shell.py` and a `shell.ts` in the config
-directory: two equal shells stop the start with a list of both.
+`gnoblin --list-shells` shows which shell would run and why, and `gnoblin --watch ./shell.py` runs the shell and reloads it
+when its files change. Do not put both a `shell.py` and a `shell.ts` in the config directory: two equal shells stop the
+start with a list of both.
 
-## What you need
+### Where the config lives
+
+Gnoblin runs one shell, chosen once at start from seven places in order. For a Python shell the ones you use are:
+
+1. **The command line:** `gnoblin ./shell.py` runs that file, and `gnoblin --shell tiler` runs the installed shell called
+   `tiler`.
+2. **`GNOBLIN_SHELL`:** a value with a `/` is a path, anything else is the name of an installed shell.
+3. **`config.toml`:** `[shell] path = "~/dev/tiler/shell.py"` names a file, and `[shell] default = "tiler"` names an
+   installed shell. Set one of them, not both.
+4. **A file in the config directory:** `shell.py` in `~/.config/gnoblin` (or `$XDG_CONFIG_HOME/gnoblin`). `shell.ts` and
+   `shell.so` are found the same way, for a [TypeScript](typescript-shell.md) and a [Rust](rust-shell.md) shell.
+5. **Installed for your user:** a file such as `tiler.py`, a directory that holds a `shell.py`, or a launcher file
+   `tiler.toml`, in `~/.local/share/gnoblin/shells/`.
+6. **Installed for the system:** the same, in `gnoblin/shells/` under each `XDG_DATA_DIRS` directory.
+7. **The packaged default:** `<prefix>/share/gnoblin/default-shell/shell.ts`, the stock config that a fresh install runs.
+
+The first place that gives exactly one shell wins. [Start Gnoblin and choose a shell](starting-gnoblin.md) lists every place
+Gnoblin looks and the errors it gives.
+
+### What you need
 
 - **A system Python, 3.10 or newer**, with its shared library. On Debian and Ubuntu that is `libpython3.N` (the `python3`
   package pulls it in); on Fedora it is `python3-libs`. The runtime links the library of the Python it was built against, so a
@@ -58,154 +116,14 @@ Nothing of the package is installed as source or read from disk, and no director
 - The rest is Rust in `gnoblin-runtime-python`: the loader that isolates each generation, the log routing, the descriptors of the
   typed classes, the `gnoblin` object, the exceptions and the subscriptions.
 
-## Write a shell
+The shell runs inside the compositor's process, on a thread of its own. Everything you register runs on that shell thread,
+one callback at a time.
 
-A shell is an ordinary script. It runs top to bottom once, and what it registers (a listener, a key, a timer) lasts until the
-next reload replaces it.
-
-### The `gnoblin` object
-
-`from gnoblin import gnoblin` is the handle on the compositor. It is a thin spelling of the core: everything it does is one call
-of the installed `libgnoblin-core`, and it holds no desktop policy.
-
-| Use                                          | What it does                                                                      |
-| -------------------------------------------- | --------------------------------------------------------------------------------- |
-| `gnoblin.windows`                            | the windows in the tree, in stacking order (the first is the bottom)              |
-| `gnoblin.root`                               | the root of the tree; `root.children()` lists what is in it                       |
-| `gnoblin.spawn("foot", "-e", "htop")`        | starts a program (not through a shell), in a process group of its own             |
-| `gnoblin.after(500, fn)`, `every(500, fn)`   | calls `fn()` once, or every 500 ms; both return a `Subscription`                  |
-| `gnoblin.keep_state(key, data)`              | keeps bytes for the next generation of this shell; `kept_state(key)` reads them   |
-| `gnoblin.log("text", "warn")`                | writes a line to the compositor's log (`error`, `warn`, `info`, `debug`, `trace`) |
-| `gnoblin.post(fn)`                           | runs `fn()` on the shell thread; the one call that is safe from another thread    |
-| `gnoblin.request_reload()`, `request_exit()` | asks the host to reload this shell, or to end the compositor                      |
-
-### Listening
-
-A named subscription is an attribute of `gnoblin` that registers a function. Used as a decorator, it returns your function
-unchanged, so you can still call it:
-
-```python
-@gnoblin.on_client_created                  # no parameters: the function is the callback
-def place(window): ...
-
-@gnoblin.bind("<Super>q")                    # parameters first: the call returns the decorator
-def close_focused():
-    focused = next((w for w in gnoblin.windows if w.focused), None)
-    if focused:
-        focused.close()
-
-sub = gnoblin.bind("<Super>d", launcher)     # parameters and the function: returns the Subscription
-sub.unsubscribe()
-```
-
-| Subscription                                                                                                               | The function is called with                                                   |
-| -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `on_client_created`, `on_client_destroyed`                                                                                 | the window                                                                    |
-| `on_title_changed`, `on_app_id_changed`                                                                                    | the window and the new text                                                   |
-| `on_focus_changed`                                                                                                         | the window that has the keyboard, or `None`                                   |
-| `on_window_property_changed(name)`                                                                                         | the window and the new value                                                  |
-| `on_window_request`                                                                                                        | the window and a `WindowRequest` (`maximize`, `close`, ...)                   |
-| `on_node_created(class)`, `on_node_destroyed(class)`                                                                       | the node; `class` is a schema name such as `"screen"`                         |
-| `on_class_property_changed(class, name)`, `on_property_changed(node, name)`                                                | the node and the new value                                                    |
-| `on_signal(class, signal)`                                                                                                 | the node and the signal's fields                                              |
-| `on_node_event(node)`                                                                                                      | a `NodeEvent` (a key, a pointer press, the wheel)                             |
-| `on_shutdown`                                                                                                              | nothing; runs when this generation ends                                       |
-| `bind(chord)`, `bind_events(chord)`, `bind_pointer(chord)`, `bind_gesture(kind, fingers)`, `claim_pointer_buttons(device)` | nothing, a `ChordEvent`, a `PointerDrag`, a `GestureEvent`, a `PointerButton` |
-
-`gnoblin.off(fn)` removes every registration made for `fn`. You need it only to change your mind while the shell runs: a
-reload removes every registration of the old script, so a script never undoes its own listeners.
-
-Windows that were open before the shell started are not "created". List `gnoblin.windows` once at the top of the file and
-then listen.
-
-### Nodes
-
-The compositor's objects are nodes of one tree, and the classes you meet (`Window`, `Seat`, `Screen`, ...) are generated from
-the schema, so they have exactly the properties, methods and signals the schema has. A property is an attribute:
-
-```python
-window = gnoblin.windows[0]
-print(window.title, window.app_id, window.focused)   # read-only
-window.x, window.width = 100, 640                    # an int into a double property is a double
-window.maximised = True
-window.focus()                                       # a method of the schema
-```
-
-- A write is queued and leaves with the turn's other writes, in one transaction. A read sees the tree as the last batch
-  left it.
-- A node you hold is its id. Reading a window that has closed raises `NodeGoneError`; a node you kept across a reload keeps
-  working, because the node does.
-- `node.get("name")`, `node.set("name", value, seconds)` and `node.call("method", *args)` work by schema name for a member the
-  generated class does not have yet.
-- `Window.closed(fn)` listens to a signal of every window; `window.closed(fn)` to one window's.
-
-### The compositor's own verbs and signals
-
-What is not a node is the `gnoblin` namespace: the session, the idle watch, the outputs. `gnoblin.verbs` has one object for each,
-generated from the schema like the node classes, with the parameters named and typed:
-
-```python
-from gnoblin import gnoblin, verbs
-
-verbs.idle.inhibit("my-shell", on_answer=lambda result, error: gnoblin.log("held" if error is None else error, "info"))
-
-def rang(count):                # the payload is the schema's field order
-    gnoblin.log("the bell has rung %d time(s)" % count, "info")
-
-verbs.session.on_bell(rang)
-```
-
-A verb sends the call and returns. `on_answer(result, error)` runs once on the shell thread when the compositor answers:
-
-- `result` is the operation's value as JSON bytes, empty for a bare "done".
-- `error` is the compositor's error code, or `None`.
-
-A signal method returns the `Subscription` that removes it, and a reload removes what a generation registered. A call with the
-wrong arguments raises `TypeError`. A session with no owner socket raises `GnoblinError` at the first call.
-
-### Errors
-
-A failed call of the core is an exception: `GnoblinError` and its subclasses (`NodeGoneError`, `MemberError`, `RefusedError`,
-`RetiredError`, ...). A value of the wrong kind is `TypeError`.
-
-A call on an object of the library sets two attributes on the exception:
-
-- `error.code` says why: `not_found`, `already_exists`, `read_only` and so on.
-- `error.target` names the object and member, such as `Client#7.close`.
-- Both are `None` on an error that did not come from such a call.
-
-The message begins with the target. The subclass says the kind of failure and `code` says the reason, so catch `GnoblinError` and read `code`.
-
-```python
-from gnoblin.errors import GnoblinError
-
-try:
-    client.close()
-except GnoblinError as error:
-    if error.code == "not_found":
-        gnoblin.log(f"{error.target} is gone")
-```
-
-Put the file in `~/.config/gnoblin/shell.py`. Closing a window that has already closed logs its target. A bad argument raises
-`TypeError`, which has no code. `examples/39-native-errors/shell.py` shows all three. [Errors](shell-api/errors.md) lists the codes.
-
-A message does not begin with the symbol of the ABI code (`E_REFUSED: `). A write to a read-only property is a `GnoblinError` with the code
-`read_only`, and not a `TypeError`. [A shell that read the old failure](shell-api/errors.md#a-shell-that-read-the-old-failure) lists what changed.
-
-A callback that raises does not stop the shell: the traceback goes to the log, the next event is delivered, and the core
-counts the failure against the generation. `print` and the `logging` module reach the log too, with the component `python`.
-
-### Threads
-
-Everything you register runs on the shell thread, one callback at a time. A thread you start may log and call
-`gnoblin.post(fn)`; any other call from it raises `GnoblinError` that says so. The interpreter's lock is released while the
-shell waits for events, so your threads run meanwhile.
-
-## Reload
+## Reload while it runs
 
 The shell reloads when you save the script or any module it imports from its own directory, and `gnoblinctl config reload`
-does it on request. The runtime looks at those files a few times a second and asks the host, which reloads through the loader
-every language shares:
+or `gnoblinctl shell reload` does it on request. The runtime looks at those files a few times a second and asks the host,
+which reloads through the loader every language shares:
 
 1. The new generation is **staged**: the script runs again, in a fresh namespace, beside the one that serves. Nothing it
    registers receives an event yet.
@@ -238,7 +156,22 @@ What a reload does and does not do:
 `GNOBLIN_LOG=debug` shows each generation's life. The runtime logs `python: FILE changed, asking the host to reload` when it
 sees an edit.
 
-## Type declarations
+## Types and editor support
+
+### Check a file
+
+```sh
+gnoblinctl check ~/.config/gnoblin/shell.py
+```
+
+`check` runs the file in the dry-run shell, the shell's own library over an empty tree, the way the shell does. It reports a
+syntax error, an import that does not resolve, a refused value or trigger and a top-level exception at the line you
+wrote.
+
+`--types` runs a TypeScript compiler and is for `.ts` files only. To check the types of a Python shell, point `pyright` or
+`mypy` at the stubs below. See [Check and types](gnoblinctl.md#check-and-types).
+
+### Editor support
 
 An editor, `mypy` or `pyright` can check a shell without running it. The package is embedded in the runtime, so what is installed for
 the checker is a stub-only package, `<prefix>/share/gnoblin/types/python/`:
@@ -249,9 +182,11 @@ the checker is a stub-only package, `<prefix>/share/gnoblin/types/python/`:
   ABI crates;
 - `_gnoblin_core.pyi`, for the built-in module.
 
-Point the checker at `<prefix>/share/gnoblin/types/python`, or add it to `extraPaths`. The hand-written stubs live in
-`crates/gnoblin-runtime-python/stubs/`, and a test (`tests/shells.rs`, `the_stubs_of_the_package_agree_with_what_the_runtime_reflects`)
-holds them to what the runtime reflects of every public name.
+Point the checker at `<prefix>/share/gnoblin/types/python`, or add it to `extraPaths` (`python.analysis.extraPaths` in
+the Pylance and Pyright settings of an editor).
+
+The hand-written stubs live in `crates/gnoblin-runtime-python/stubs/`. A test (`tests/shells.rs`,
+`the_stubs_of_the_package_agree_with_what_the_runtime_reflects`) holds them to what the runtime reflects of every public name.
 
 `pyright` finds no error in any shell of `examples/` or in the golden shell (`tests/golden/shell.py`) against the installed stubs. The
 test (`every_python_example_type_checks_clean_against_the_installed_stubs`) runs when `pyright` is on the path or `GNOBLIN_PYRIGHT`
@@ -263,50 +198,82 @@ A stub differs from the classes at run time in two ways, on purpose:
 - A class of `gnoblin.objects` that derives from another (`Camera3D` from `SceneNode`) names it as its base, so a checker accepts it
   where the base is wanted. At run time the classes are flat, and a call takes any handle.
 
-## The desktop library: `gnoblin.std`
+## Imports and libraries
 
-`gnoblin.std` is the object model above the core: collections of clients, outputs and workspaces, layouts, pointer bindings,
-transitions, styles and scene nodes. It is **generated** from the function table of `libgnoblin-std.so.1`
-(`gnoblin-sdkgen`, at build time and never committed; [the generator](sdk-generator.md)), so it has every function of the table and none the library lacks.
+A shell imports from these modules, and each is served from a library installed with Gnoblin:
 
-`std.py` and its `std.pyi` are typed:
+| Module                  | Library                | Gives you                                                                              |
+| ----------------------- | ---------------------- | -------------------------------------------------------------------------------------- |
+| `gnoblin`               | `libgnoblin-core.so.1` | The `gnoblin` handle on the compositor's node tree, its subscriptions and `verbs`.     |
+| `gnoblin.objects.model` | `libgnoblin-core.so.1` | The core's typed objects: `Gnoblin`, clients, outputs, input, the session and timers.  |
+| `gnoblin.objects.std`   | `libgnoblin-std.so.1`  | Workspaces, layouts, styles, bindings, transitions and the UI toolkit, as classes.     |
+| `gnoblin.std`           | `libgnoblin-std.so.1`  | The function table of the std library: collections, layouts and bindings you subclass. |
+| `gnoblin.errors`        | none                   | `GnoblinError` and its subclasses.                                                     |
 
-- A record is a dataclass, and a constant group an `IntEnum` or `IntFlag`.
-- A handle is a class: `Collection`, `Workspace`, `Client`, `Transition` or `Registration`.
-- Every call goes through one native function, `_gnoblin_std.call`.
+Importing `gnoblin.std` or `gnoblin.objects.std` opens `libgnoblin-std.so.1` and raises `ImportError` where it is not
+installed: `gnoblin-std is not installed (looked for libgnoblin-std.so.1 in ...)`.
+
+That is the check a core-only install is meant to give. A shell on `gnoblin` and `gnoblin.objects.model` alone is
+complete: example 8 tiles windows with no workspace.
+
+### The root of the core: `gnoblin.objects.model`
+
+`Gnoblin.get()` returns the root of the core's model. It has the members the TypeScript library's `gnoblin` has for the core:
 
 ```python
-from gnoblin import gnoblin
-from gnoblin.std import DwindleLayout, EventKind, Layout, Placement, Workspace, clients
+from gnoblin.objects.model import Gnoblin
 
-class Columns(Layout):                      # a layout of your own: the library calls compute() when the workspace changes
-    def compute(self, cx):
-        area = cx.inset_area()
-        width = area.width / max(len(cx.children), 1)
-        return [Placement.tile(c, area.x + i * width, area.y, width, area.height) for i, c in enumerate(cx.children)]
-
-main = Workspace.create("main", layout=Columns(), gaps=(10.0, 20.0))
-clients().on(EventKind.ADDED, lambda event: gnoblin.log(f"client {event.member} opened"))
-
-other = Workspace.create("other", gaps=(6.0, 12.0))
-dwindle = other.use(DwindleLayout(ratio=0.6))   # a built-in layout: the algorithm is the library's
-dwindle.toggle_split()                          # the actions of a kind are methods, its options are properties
+gnoblin = Gnoblin.get()
+gnoblin.timers.after(40, lambda: print("later"))   # `timers.now()` is the monotonic clock in milliseconds
+print(gnoblin.version().api)                       # a method, not a property
+print(gnoblin.motion(200))                         # 200.0, or 0.0 while the seat asks for reduced motion
+print(gnoblin.compositor.user_shaders)             # what you wrote, else what the compositor read when it started
+gnoblin.compositor.user_shaders = False            # compositor.user-shaders in the shell's settings document
+gnoblin.compositor.reset("user_shaders")           # back to the default
+windows = gnoblin.find("Window", {"app_id": "foot"})   # a dict of fields, a ClientQuery, or a function
 ```
 
-- **Built-in layouts and bindings** (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `DwindleLayout`, `StripLayout`,
-  `ArcLayout`, `Carousel3dLayout`, `MoveBinding`, `ResizeBinding`, `SwapBinding`, `SplitResizeBinding`) are generated from the
-  library's own table of kinds, so each option, its default, its enumeration and each action is the library's.
-- **A layout of your own** is an object with `compute(cx)` that returns placements, and optionally `client_added`, `client_removed`,
-  `area_changed`, `clients_swapped`, `revision`, `find_split`, `set_split` and `reset_split`. `Layout` is the generated base class.
-- **Failures** are the exceptions of `gnoblin` (`RefusedError`, `StaleError`, ...), with the library's text.
-- The library is opened by `import gnoblin.std`. Where it is not installed the import raises `ImportError`: `gnoblin-std is not
-installed (looked for libgnoblin-std.so.1 in ...)`, which is the check a core-only install is meant to give. A shell on
-  `gnoblin` alone is complete: example 8 tiles windows with no workspace.
-- The only hand-written parts are `gnoblin._std_base` (the native, handles, argument conversion) and `gnoblin._std_sugar`
-  (`len(collection)`, `client.window`, `Placement.tile`, `Workspace.create`, `Workspace.use`). Both are Rust in
-  `gnoblin-runtime-python`, like the rest of the package.
+The shell commits nothing itself. After the turn that wrote it, Gnoblin lays the settings the shell wrote over the configuration the
+compositor holds and commits the result, so the next login has `compositor.user-shaders` (the setting of a device applies at once). The
+rest of the configuration is not touched, and a shell that writes no setting changes nothing.
 
-## The object classes: `gnoblin.objects.std`
+A setting stays in the configuration until a login writes another value. To go back to the default, write it
+(`gnoblin.compositor.user_shaders = True`), or call `reset("user_shaders")` in the run that wrote it. A reload whose script does not
+write a setting takes it back. A value that is not a boolean raises a `TypeError`.
+
+Gnoblin keeps the settings only for the shell the stored configuration belongs to: a shell run by another path (`gnoblin --shell ./dev.py`)
+while another shell is installed in the configuration directory commits nothing, and the log says so.
+
+`find("Window", ...)` and `find("Output", ...)` raise a `TypeError` for a kind the core does not list (`"Workspace"` in a shell that loads
+no std), naming the kinds that work, and for a field the filter lacks. `examples/35-native-root/shell.py` is this.
+
+### The members std adds to the root: `gnoblin.objects.std`
+
+The core has no workspaces, displays, scene or gestures, so its `Gnoblin` has no member of those names. Importing `gnoblin.objects.std`
+sets them on the core's class. A shell that does not import it has none: the attribute is missing.
+
+```python
+import gnoblin.objects.std                       # puts the members on `Gnoblin` and `OutputCollection`
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import TransitionOptions, Workspace
+
+gnoblin = Gnoblin.get()
+main = Workspace("main")
+gnoblin.workspaces.add(main)                     # `workspaces` is the list: `list`, `length`, `add`, `remove`, `clear`, `by_id`
+gnoblin.workspaces.show(main)                    # `show_by_id("main")` takes the id; `area` is where windows are laid out
+gnoblin.displays.replace(old, new)               # swaps a display of the shell's own for another as one validated change
+gnoblin.outputs.profiles.add(profile)            # the hardware profiles; every output collection reports the desktop's list
+gnoblin.request_transition(lambda: ..., TransitionOptions(duration=200.0))   # the same call as `Transition.request`
+print(gnoblin.scene.root, gnoblin.gestures.swipe_threshold)
+```
+
+- Each member is read through the std library of the generation that is running, so after a reload it is the new generation's.
+- A stub cannot add a member to a class of another file, so a type checker finds them on `gnoblin.objects.std.GnoblinAugment` and
+  `OutputCollectionAugment`; at run time they are on `Gnoblin` and `OutputCollection`.
+- `examples/37-native-std-root/shell.py` is this, run by `crates/gnoblin/tests/modular/native_std_root.rs` in a real session beside the
+  Rust and TypeScript shells of the same example.
+
+### The object classes: `gnoblin.objects.std`
 
 The catalog of `libgnoblin-std` (an entry model, the focus policy, and the records and enums they take) is served through the object
 protocol, and `gnoblin.objects.std` has a class for each of its types. `gnoblin.objects.model` is the same for the core's
@@ -370,63 +337,6 @@ action = FocusPolicy.focus_decision(           # a function of a service: record
 `examples/20-native-object/shell.py` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the
 Rust and TypeScript shells of the same example.
 
-### The root of the core: `gnoblin.objects.model`
-
-`Gnoblin.get()` returns the root of the core's model. It has the members the TypeScript library's `gnoblin` has for the core:
-
-```python
-from gnoblin.objects.model import Gnoblin
-
-gnoblin = Gnoblin.get()
-gnoblin.timers.after(40, lambda: print("later"))   # `timers.now()` is the monotonic clock in milliseconds
-print(gnoblin.version().api)                       # a method, not a property
-print(gnoblin.motion(200))                         # 200.0, or 0.0 while the seat asks for reduced motion
-print(gnoblin.compositor.user_shaders)             # what you wrote, else what the compositor read when it started
-gnoblin.compositor.user_shaders = False            # compositor.user-shaders in the shell's settings document
-gnoblin.compositor.reset("user_shaders")           # back to the default
-windows = gnoblin.find("Window", {"app_id": "foot"})   # a dict of fields, a ClientQuery, or a function
-```
-
-The shell commits nothing itself. After the turn that wrote it, Gnoblin lays the settings the shell wrote over the configuration the
-compositor holds and commits the result, so the next login has `compositor.user-shaders` (the setting of a device applies at once). The
-rest of the configuration is not touched, and a shell that writes no setting changes nothing.
-
-A setting stays in the configuration until a login writes another value. To go back to the default, write it
-(`gnoblin.compositor.user_shaders = True`), or call `reset("user_shaders")` in the run that wrote it. A reload whose script does not
-write a setting takes it back. A value that is not a boolean raises a `TypeError`.
-
-Gnoblin keeps the settings only for the shell the stored configuration belongs to: a shell run by another path (`gnoblin --shell ./dev.py`)
-while another shell is installed in the configuration directory commits nothing, and the log says so.
-
-`find("Window", ...)` and `find("Output", ...)` raise a `TypeError` for a kind the core does not list (`"Workspace"` in a shell that loads
-no std), naming the kinds that work, and for a field the filter lacks. `examples/35-native-root/shell.py` is this.
-
-### The members std adds to the root: `gnoblin.objects.std`
-
-The core has no workspaces, displays, scene or gestures, so its `Gnoblin` has no member of those names. Importing `gnoblin.objects.std`
-sets them on the core's class. A shell that does not import it has none: the attribute is missing.
-
-```python
-import gnoblin.objects.std                       # puts the members on `Gnoblin` and `OutputCollection`
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import TransitionOptions, Workspace
-
-gnoblin = Gnoblin.get()
-main = Workspace("main")
-gnoblin.workspaces.add(main)                     # `workspaces` is the list: `list`, `length`, `add`, `remove`, `clear`, `by_id`
-gnoblin.workspaces.show(main)                    # `show_by_id("main")` takes the id; `area` is where windows are laid out
-gnoblin.displays.replace(old, new)               # swaps a display of the shell's own for another as one validated change
-gnoblin.outputs.profiles.add(profile)            # the hardware profiles; every output collection reports the desktop's list
-gnoblin.request_transition(lambda: ..., TransitionOptions(duration=200.0))   # the same call as `Transition.request`
-print(gnoblin.scene.root, gnoblin.gestures.swipe_threshold)
-```
-
-- Each member is read through the std library of the generation that is running, so after a reload it is the new generation's.
-- A stub cannot add a member to a class of another file, so a type checker finds them on `gnoblin.objects.std.GnoblinAugment` and
-  `OutputCollectionAugment`; at run time they are on `Gnoblin` and `OutputCollection`.
-- `examples/37-native-std-root/shell.py` is this, run by `crates/gnoblin/tests/modular/native_std_root.rs` in a real session beside the
-  Rust and TypeScript shells of the same example.
-
 ### Make an object with options
 
 A constructor takes the properties its catalog names as positional arguments, then one keyword-only argument for every other writable
@@ -461,9 +371,323 @@ Python spellings are `snake_case`.
 
 `Ui.encode_paint_list` refuses the whole list when one operation cannot be encoded, with an error that names it (`draw op 2: ...`).
 
+### The desktop library: `gnoblin.std`
+
+`gnoblin.std` is the object model above the core: collections of clients, outputs and workspaces, layouts, pointer bindings,
+transitions, styles and scene nodes. It is **generated** from the function table of `libgnoblin-std.so.1`
+(`gnoblin-sdkgen`, at build time and never committed; [the generator](sdk-generator.md)), so it has every function of the table and none the library lacks.
+
+`std.py` and its `std.pyi` are typed:
+
+- A record is a dataclass, and a constant group an `IntEnum` or `IntFlag`.
+- A handle is a class: `Collection`, `Workspace`, `Client`, `Transition` or `Registration`.
+- Every call goes through one native function, `_gnoblin_std.call`.
+
+```python
+from gnoblin import gnoblin
+from gnoblin.std import DwindleLayout, EventKind, Layout, Placement, Workspace, clients
+
+class Columns(Layout):                      # a layout of your own: the library calls compute() when the workspace changes
+    def compute(self, cx):
+        area = cx.inset_area()
+        width = area.width / max(len(cx.children), 1)
+        return [Placement.tile(c, area.x + i * width, area.y, width, area.height) for i, c in enumerate(cx.children)]
+
+main = Workspace.create("main", layout=Columns(), gaps=(10.0, 20.0))
+clients().on(EventKind.ADDED, lambda event: gnoblin.log(f"client {event.member} opened"))
+
+other = Workspace.create("other", gaps=(6.0, 12.0))
+dwindle = other.use(DwindleLayout(ratio=0.6))   # a built-in layout: the algorithm is the library's
+dwindle.toggle_split()                          # the actions of a kind are methods, its options are properties
+```
+
+- **Built-in layouts and bindings** (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `DwindleLayout`, `StripLayout`,
+  `ArcLayout`, `Carousel3dLayout`, `MoveBinding`, `ResizeBinding`, `SwapBinding`, `SplitResizeBinding`) are generated from the
+  library's own table of kinds, so each option, its default, its enumeration and each action is the library's.
+- **A layout of your own** is an object with `compute(cx)` that returns placements, and optionally `client_added`, `client_removed`,
+  `area_changed`, `clients_swapped`, `revision`, `find_split`, `set_split` and `reset_split`. `Layout` is the generated base class.
+- **Failures** are the exceptions of `gnoblin` (`RefusedError`, `StaleError`, ...), with the library's text.
+- The only hand-written parts are `gnoblin._std_base` (the native, handles, argument conversion) and `gnoblin._std_sugar`
+  (`len(collection)`, `client.window`, `Placement.tile`, `Workspace.create`, `Workspace.use`). Both are Rust in
+  `gnoblin-runtime-python`, like the rest of the package.
+
+## Use the objects
+
+### The `gnoblin` object
+
+`from gnoblin import gnoblin` is the handle on the compositor. It is a thin spelling of the core: everything it does is one call
+of the installed `libgnoblin-core`, and it holds no desktop policy.
+
+| Use                                          | What it does                                                                      |
+| -------------------------------------------- | --------------------------------------------------------------------------------- |
+| `gnoblin.windows`                            | the windows in the tree, in stacking order (the first is the bottom)              |
+| `gnoblin.root`                               | the root of the tree; `root.children()` lists what is in it                       |
+| `gnoblin.spawn("foot", "-e", "htop")`        | starts a program (not through a shell), in a process group of its own             |
+| `gnoblin.after(500, fn)`, `every(500, fn)`   | calls `fn()` once, or every 500 ms; both return a `Subscription`                  |
+| `gnoblin.keep_state(key, data)`              | keeps bytes for the next generation of this shell; `kept_state(key)` reads them   |
+| `gnoblin.log("text", "warn")`                | writes a line to the compositor's log (`error`, `warn`, `info`, `debug`, `trace`) |
+| `gnoblin.post(fn)`                           | runs `fn()` on the shell thread; the one call that is safe from another thread    |
+| `gnoblin.request_reload()`, `request_exit()` | asks the host to reload this shell, or to end the compositor                      |
+
+A short shell on this object:
+
+```python
+from gnoblin import gnoblin
+
+
+@gnoblin.on_client_created
+def place(window):
+    window.x, window.y = 40, 40
+
+
+@gnoblin.bind("<Super>Return")
+def terminal():
+    gnoblin.spawn("foot")
+```
+
+A chord on `gnoblin.bind` is each modifier in angle brackets, then the key, as in `<Super>Return`; see
+[shortcuts](/guides/shortcuts) for the syntax. The seat's `input.bind("Super+Return", fn)` takes the `Super+Return`
+spelling.
+
+### Listening
+
+A named subscription is an attribute of `gnoblin` that registers a function. Used as a decorator, it returns your function
+unchanged, so you can still call it:
+
+```python
+@gnoblin.on_client_created                  # no parameters: the function is the callback
+def place(window): ...
+
+@gnoblin.bind("<Super>q")                    # parameters first: the call returns the decorator
+def close_focused():
+    focused = next((w for w in gnoblin.windows if w.focused), None)
+    if focused:
+        focused.close()
+
+sub = gnoblin.bind("<Super>d", launcher)     # parameters and the function: returns the Subscription
+sub.unsubscribe()
+```
+
+| Subscription                                                                                                               | The function is called with                                                   |
+| -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `on_client_created`, `on_client_destroyed`                                                                                 | the window                                                                    |
+| `on_title_changed`, `on_app_id_changed`                                                                                    | the window and the new text                                                   |
+| `on_focus_changed`                                                                                                         | the window that has the keyboard, or `None`                                   |
+| `on_window_property_changed(name)`                                                                                         | the window and the new value                                                  |
+| `on_window_request`                                                                                                        | the window and a `WindowRequest` (`maximize`, `close`, ...)                   |
+| `on_node_created(class)`, `on_node_destroyed(class)`                                                                       | the node; `class` is a schema name such as `"screen"`                         |
+| `on_class_property_changed(class, name)`, `on_property_changed(node, name)`                                                | the node and the new value                                                    |
+| `on_signal(class, signal)`                                                                                                 | the node and the signal's fields                                              |
+| `on_node_event(node)`                                                                                                      | a `NodeEvent` (a key, a pointer press, the wheel)                             |
+| `on_shutdown`                                                                                                              | nothing; runs when this generation ends                                       |
+| `bind(chord)`, `bind_events(chord)`, `bind_pointer(chord)`, `bind_gesture(kind, fingers)`, `claim_pointer_buttons(device)` | nothing, a `ChordEvent`, a `PointerDrag`, a `GestureEvent`, a `PointerButton` |
+
+`gnoblin.off(fn)` removes every registration made for `fn`. You need it only to change your mind while the shell runs: a
+reload removes every registration of the old script, so a script never undoes its own listeners.
+
+Windows that were open before the shell started are not "created". List `gnoblin.windows` once at the top of the file and
+then listen.
+
+### Nodes
+
+The compositor's objects are nodes of one tree, and the classes you meet (`Window`, `Seat`, `Screen`, ...) are generated from
+the schema, so they have exactly the properties, methods and signals the schema has. A property is an attribute:
+
+```python
+window = gnoblin.windows[0]
+print(window.title, window.app_id, window.focused)   # read-only
+window.x, window.width = 100, 640                    # an int into a double property is a double
+window.maximised = True
+window.focus()                                       # a method of the schema
+```
+
+- A write is queued and leaves with the turn's other writes, in one transaction. A read sees the tree as the last batch
+  left it.
+- A node you hold is its id. Reading a window that has closed raises `NodeGoneError`; a node you kept across a reload keeps
+  working, because the node does.
+- `node.get("name")`, `node.set("name", value, seconds)` and `node.call("method", *args)` work by schema name for a member the
+  generated class does not have yet.
+- `Window.closed(fn)` listens to a signal of every window; `window.closed(fn)` to one window's.
+
+### Verbs and signals by name
+
+What is not a node is the `gnoblin` namespace: the session, the idle watch, the outputs. `gnoblin.verbs` has one object for each,
+generated from the schema like the node classes, with the parameters named and typed:
+
+```python
+from gnoblin import gnoblin, verbs
+
+verbs.idle.inhibit("my-shell", on_answer=lambda result, error: gnoblin.log("held" if error is None else error, "info"))
+
+def rang(count):                # the payload is the schema's field order
+    gnoblin.log("the bell has rung %d time(s)" % count, "info")
+
+verbs.session.on_bell(rang)
+```
+
+A verb sends the call and returns. `on_answer(result, error)` runs once on the shell thread when the compositor answers:
+
+- `result` is the operation's value as JSON bytes, empty for a bare "done".
+- `error` is the compositor's error code, or `None`.
+
+A signal method returns the `Subscription` that removes it, and a reload removes what a generation registered. A call with the
+wrong arguments raises `TypeError`. A session with no owner socket raises `GnoblinError` at the first call.
+
+### Session, processes and timers
+
+- `Gnoblin.get().session` logs out, suspends, powers off and locks.
+- `Gnoblin.get().process` starts programs and reports how they end, and `Gnoblin.get().spawn([...])` starts one.
+- `Gnoblin.get().timers` runs a function later (`after`), and a `SessionListener` or `RuntimeListener` hears the session and the configuration.
+- `Gnoblin.get().idle.watch(ms, listener)` runs code when the session has had no input for a while, `authentication.add_listener(listener)`
+  watches polkit authentication requests and may refuse one, and `launches.begin(token, application)` tracks the busy state between
+  a launch and its window.
+
+See [Session and runtime](/shell-api/session-runtime), [Processes](/shell-api/processes), [Idle watches](/shell-api/idle),
+[Authentication prompts](/shell-api/authentication), [Launch feedback](/shell-api/launch-feedback) and [Events](/events/).
+
+### Outputs, window policy and animation
+
+With more than one output each shows its own workspace, and a window moves between outputs with `client.move_to_output(output)`.
+See [Outputs](/shell-api/outputs), [Window policy](/js-window-policy) and [animation](/js-transitions): both pages show every
+example in TypeScript, Python and Rust.
+
+### XR
+
+XR scripting is the one part of the shell API that exists only in TypeScript: the XR extension is part of the TypeScript
+library, and no Python class carries it. See [XR mode](/xr#scripting-xr-in-typescript).
+
+### The console
+
+`gnoblinctl console` is a JavaScript prompt, so it has nothing to attach to in a Python shell. Read and call objects with
+`gnoblinctl OBJECT list|get|watch|call`, and follow `print` and `logging` with `gnoblinctl log --follow`. See
+[Console and inspector](/js-console) for what the other tools replace it with.
+
+## Window requests
+
+A client asks the compositor for a change of its window: fullscreen, minimise, maximise, raise, activate, move, resize.
+The compositor changes nothing until the shell answers. `WindowState.get().start()` makes the shell answer every kind.
+
+The answers are the same in every language: a maximised window fills the area the bars leave, a fullscreen window covers
+the whole output, a minimised window is hidden and its focus handed on. [Window requests](typescript-shell.md#window-requests)
+has the table.
+
+A `RequestListener` with an `on_request(request)` method hears every request first. Call `request.handle()` to answer it
+yourself: the built-in answer does not run, and no later listener hears it.
+
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import ClientRequest, ClientRequestKind, RequestListener, WindowState
+
+gnoblin = Gnoblin.get()
+state = WindowState.get()
+
+
+class KeepOnTop(RequestListener):
+    def on_request(self, request: ClientRequest) -> None:
+        client = gnoblin.clients.get(request.client)
+        if client is None:
+            return
+        if request.kind == ClientRequestKind.MINIMIZE and client.app_id == "org.example.Clock":
+            request.handle()  # this window never minimises
+        elif request.kind == ClientRequestKind.MAXIMIZE:
+            request.handle()
+            state.enter_fullscreen(client)  # answer a maximise as a fullscreen
+
+
+state.add_listener(KeepOnTop())
+state.start()
+```
+
+`add_listener(listener, client)` with a window as the second argument hears only that window's requests. Those listeners
+are asked first, then the ones for every window, each in the order it was added. The first one to call `request.handle()`
+wins. A listener that raises is reported and skipped.
+
+`WindowState` is the policy the built-in answer calls. Its methods return whether they ran: `maximise`, `unmaximise`,
+`enter_fullscreen`, `leave_fullscreen`, `minimise`, `unminimise`, `present`, `raise_` and `lower`.
+
+## Troubleshooting
+
+### A failed call
+
+A failed call of the core is an exception: `GnoblinError` and its subclasses (`NodeGoneError`, `MemberError`, `RefusedError`,
+`RetiredError`, ...). A value of the wrong kind is `TypeError`.
+
+A call on an object of the library sets two attributes on the exception:
+
+- `error.code` says why: `not_found`, `already_exists`, `read_only` and so on.
+- `error.target` names the object and member, such as `Client#7.close`.
+- Both are `None` on an error that did not come from such a call.
+
+The message begins with the target. The subclass says the kind of failure and `code` says the reason, so catch `GnoblinError` and read `code`.
+
+```python
+from gnoblin.errors import GnoblinError
+
+try:
+    client.close()
+except GnoblinError as error:
+    if error.code == "not_found":
+        gnoblin.log(f"{error.target} is gone")
+```
+
+Put the file in `~/.config/gnoblin/shell.py`. Closing a window that has already closed logs its target. A bad argument raises
+`TypeError`, which has no code. `examples/39-native-errors/shell.py` shows all three. [Errors](shell-api/errors.md) lists the codes.
+
+A message does not begin with the symbol of the ABI code (`E_REFUSED: `). A write to a read-only property is a `GnoblinError` with the code
+`read_only`, and not a `TypeError`. [A shell that read the old failure](shell-api/errors.md#a-shell-that-read-the-old-failure) lists what changed.
+
+A callback that raises does not stop the shell: the traceback goes to the log, the next event is delivered, and the core
+counts the failure against the generation.
+
+### Debugging
+
+`print` and the `logging` module reach the log, with the component `python`, and `gnoblin.log("text", "warn")` writes at the level
+you name (`error`, `warn`, `info`, `debug` or `trace`). Read it with `gnoblinctl log --follow` (see [Logging](/guides/logging)),
+or run `gnoblin ./shell.py` in a terminal.
+
+```python
+import logging
+
+from gnoblin.objects.model import Client, Gnoblin
+
+gnoblin = Gnoblin.get()
+
+
+def trace(client: Client, focused: bool) -> None:
+    logging.warning("%s focus is %s", client.app_id, focused)
+
+
+gnoblin.clients.on("focus_changed", trace)
+```
+
+`GNOBLIN_LOG=debug` shows each generation's life.
+
+### Threads
+
+Everything you register runs on the shell thread, one callback at a time. A thread you start may log and call
+`gnoblin.post(fn)`; any other call from it raises `GnoblinError` that says so. The interpreter's lock is released while the
+shell waits for events, so your threads run meanwhile.
+
+### A failed load
+
+A `shell.py` that fails to load when the shell starts is a failed start: the loader's text names the file and line, and the
+session runs without a shell, on the compositor's own window management, until the file is fixed. Nothing is lost by waiting
+and nothing needs the session restarted:
+
+- the guardian logs `the shell failed to start:` and the text, `gnoblinctl shell status` prints `state: failed` with the
+  same text, and `gnoblin ./shell.py` shows it on your terminal;
+- saving the file loads it, and `gnoblinctl shell reload` loads it on request, exiting 1 with the new text while it still fails.
+
+A session with no shell file at all runs the packaged starter, which is a `shell.ts`: see [the TypeScript
+shell](typescript-shell.md#with-no-shell-ts) for what it does.
+
+If the shell stops, the compositor keeps running and answers every client: a window that maps is placed by the compositor's
+own policy, and windows the shell had moved go back to the places the compositor gave them. Starting the session again runs the
+file again.
+
 ## Examples
 
-Three small shells in `examples/` show the pieces, and a test in `crates/gnoblin-runtime-python/tests/shells.rs` runs each one
+Small shells in `examples/` show the pieces, and a test in `crates/gnoblin-runtime-python/tests/shells.rs` runs each one
 as it is:
 
 - `examples/07-script-binding/shell.py`: a key binding written entirely in Python that moves the focused window.

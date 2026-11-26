@@ -1,11 +1,16 @@
 # TypeScript shell
 
-Configure the shell with one TypeScript file, `shell.ts`. You install nothing and run no build step: the shell reads the
-file as it is, and reloads it when you save.
+Write the shell as one TypeScript file, `shell.ts`. You install nothing and run no build step: the shell reads the file as
+it is, and reloads it when you save.
+
+A shell can be written in [TypeScript](typescript-shell.md), [Python](python-shell.md) or [Rust](rust-shell.md). The three
+pages have the same sections, and the three languages reach the same objects: windows, workspaces, outputs, input and the
+std library. Pick the language you like. The [shell API](/shell-api/) and the [API reference](/reference) show every member in
+each of them.
 
 The session runs this shell unless you pick another: see [Where the config lives](#where-the-config-lives).
 
-## Write your first config
+## Create a shell
 
 A `shell.ts` is a program. It runs top to bottom, and each line reads or changes an object of the shell. This one is
 short:
@@ -73,7 +78,20 @@ Save the file. The shell reloads it after a short pause, and the windows you hav
 `Super+2` and you are on the next workspace. `gnoblinctl check --types shell.ts` checks the file before you save it, and
 `gnoblinctl console` opens a live prompt where you can try any line first.
 
-## Where the config lives
+## Run it
+
+| To run the shell          | Do this                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------- |
+| Once, from a terminal     | `gnoblin ./shell.ts`                                                                  |
+| At every start            | Save it as `~/.config/gnoblin/shell.ts`, then run `gnoblin`                           |
+| By name                   | Save it as `~/.local/share/gnoblin/shells/tiler.ts`, then run `gnoblin --shell tiler` |
+| Chosen in a file          | Set `[shell] path = "~/dev/tiler/shell.ts"` in `~/.config/gnoblin/config.toml`        |
+| Chosen by the environment | `GNOBLIN_SHELL=~/dev/tiler/shell.ts gnoblin`                                          |
+
+`gnoblin --list-shells` shows which shell would run and why. Do not put both a `shell.ts` and a `shell.py` in the config
+directory: two equal shells stop the start with a list of both.
+
+### Where the config lives
 
 Gnoblin runs one shell, chosen once at start from seven places in order. For a TypeScript shell the ones you use are:
 
@@ -115,28 +133,10 @@ Programs you start with `gnoblin.spawn` at the top level of the file start when 
 one that runs and stops one you took out of the file. A program a key binding or a listener started is left alone by a
 reload. To start something once per session, use your session's own autostart.
 
-A save reloads the file. So does `gnoblinctl config reload`, which prints the revision it committed or the error it
-refused, with the file, line and column. `GNOBLIN_JS_WATCH=0` turns the reload on save off, and then only the command
-reloads.
+### Which shell runs
 
-## The bytecode cache
-
-The shell keeps what the stock library and your config compile to, so a start loads bytecode instead of compiling it
-again: about 6 ms in place of about 40 ms for the stock library and a small `shell.ts`.
-
-- **Where.** `$XDG_CACHE_HOME/gnoblin/js/`, or `~/.cache/gnoblin/js/` without the variable. The files are private to
-  you.
-- **Why it is never stale.** Each file is named by a hash of the module's text, and the directory it is in by a hash of
-  the shell's build: the QuickJS and type stripper versions and, when the runtime is a library, its version string. An edit
-  or an upgrade reads nothing old. A file that is damaged is compiled again and replaced.
-- **Clearing and turning it off.** Delete the directory, or set `GNOBLIN_JS_CACHE=0`.
-
-## Which shell runs
-
-This build runs TypeScript and JavaScript shells, and [Where the config lives](#where-the-config-lives) says which
-one. `gnoblin ./shell.ts` runs a file you name, in the compositor's own process. `GNOBLIN_SHELL_VM` is not read.
-
-### How a script is run
+This build runs TypeScript and JavaScript shells, Python shells and Rust shells, and [Where the config lives](#where-the-config-lives)
+says which one. `gnoblin ./shell.ts` runs a file you name, in the compositor's own process. `GNOBLIN_SHELL_VM` is not read.
 
 A `.js`, `.mjs`, `.ts` or `.mts` shell is run by the JavaScript runtime. That is a library, `libgnoblin-runtime-js.so`, in
 `<libdir>/gnoblin/`, which the shell loader opens when it is asked to run such a file.
@@ -151,14 +151,95 @@ it evaluated cleanly, and logs `generation N active` as a native shell does.
   runs no script never loads them.
 - **The shell is in the compositor's process.** The runtime reaches the compositor's tree through the core library and keeps
   its own copy of it, as the script runtime always has. A script that hangs is interrupted at its budget, as before.
-- **The runtime does what the old `runtime` role did.** It owns the configuration document: what the device objects write is
-  committed to the compositor as one revision, and the guardian is told each revision with its `autostart` entries.
-  `gnoblinctl config reload` is answered by the generation the reload makes, with the revision it committed or the reason
-  it was refused, and a refused reload leaves the revision in force. There is no separate `runtime` process any more.
+- **The runtime owns the configuration document.** What the device objects write is committed to the compositor as one
+  revision, and the guardian is told each revision with its `autostart` entries. `gnoblinctl config reload` is answered by
+  the generation the reload makes, with the revision it committed or the reason it was refused, and a refused reload leaves
+  the revision in force.
 
-### The package entries are built in, and the TypeScript library is installed data
+## Reload while it runs
 
-The runtime library carries the package entries `gnoblin-core` and `gnoblin-std` and their `generated/` modules: the
+Saving `shell.ts`, or any module it imports, reloads the shell after a short pause. `gnoblinctl config reload` reloads it on
+request: see [`gnoblinctl config reload`](/gnoblinctl#config). Windows keep their identity through a reload, and the new
+config is told about every window that exists.
+
+Your keys keep working through a reload. The shortcuts, touchpad gestures, pointer chords and binding-only devices of the
+old config are given up and the new config's are taken in one step, so a key is never refused for being held.
+
+A key you removed from the file stops working at that reload and reaches the focused application again.
+
+A file that fails to load (a syntax error, a throw, a script that runs away) leaves the running config in place. The failure
+is logged once as `file:line:column: message`, in your `.ts` coordinates, and `gnoblinctl config reload` exits 1 with the
+same text.
+
+Set `GNOBLIN_JS_WATCH=0` to turn the watcher off, for a config directory on a file system that cannot be watched. The shell
+then reloads only when asked.
+
+When the JavaScript runtime library runs the file, it watches every file the running generation loaded and asks the shell
+loader for a reload when one changes.
+
+The loader evaluates the new generation beside the old one and swaps it in only when it loaded. An edit that does not load
+leaves the running shell and reports the file, line and column.
+
+### The bytecode cache
+
+The shell keeps what the stock library and your config compile to, so a start loads bytecode instead of compiling it
+again: about 6 ms in place of about 40 ms for the stock library and a small `shell.ts`.
+
+- **Where.** `$XDG_CACHE_HOME/gnoblin/js/`, or `~/.cache/gnoblin/js/` without the variable. The files are private to
+  you.
+- **Why it is never stale.** Each file is named by a hash of the module's text, and the directory it is in by a hash of
+  the shell's build: the QuickJS and type stripper versions and, when the runtime is a library, its version string. An edit
+  or an upgrade reads nothing old. A file that is damaged is compiled again and replaced.
+- **Clearing and turning it off.** Delete the directory, or set `GNOBLIN_JS_CACHE=0`.
+
+## Types and editor support
+
+### Check a file
+
+```sh
+gnoblinctl check --types ~/.config/gnoblin/shell.ts
+```
+
+`check` loads the file the way the shell does. `gnoblinctl config validate FILE` runs the same check for a `.ts` or `.js` file. It reports a syntax error, an import that does not resolve or a throw at
+the line you wrote.
+
+With `--types` it also runs a TypeScript compiler when one is installed. That catches a key that does not exist or a value
+of the wrong type. Without a compiler it says so and exits 0. See [Check and types](gnoblinctl.md#check-and-types).
+
+### Editor support
+
+`gnoblinctl config init` runs `gnoblinctl types init`. It writes:
+
+- the library's own TypeScript source and the generated declarations, into a `.gnoblin` directory beside `shell.ts`,
+- a `tsconfig.json` that extends the one inside `.gnoblin`.
+
+An editor that understands TypeScript then completes every key and underlines a wrong one. Go-to-definition on an import
+such as `gnoblin-std/scene` opens the file the shell runs.
+
+- Commit `shell.ts` and `tsconfig.json`. Do not commit `.gnoblin`: it holds a copy of the library that the command writes
+  again, and it ignores itself in a Git repository.
+- Run `gnoblinctl types init` again after an upgrade. It rewrites `.gnoblin` to the release you run and never replaces a
+  `tsconfig.json` you have.
+
+An installed prefix also carries the declarations, so a shell needs no copy of the library to be type-checked: `share/gnoblin/types/tsconfig.json`
+maps `gnoblin-core` and `gnoblin-std` to the installed library and loads the globals. Extend it from your `tsconfig.json`:
+
+```json
+{ "extends": "/usr/share/gnoblin/types/tsconfig.json", "include": ["./*.ts"] }
+```
+
+See [Editor files](gnoblinctl.md#editor-files) for what is written where.
+
+## Imports and libraries
+
+A shell imports from two packages, and each is a library installed with Gnoblin:
+
+| Package        | Library                | Gives you                                                                         |
+| -------------- | ---------------------- | --------------------------------------------------------------------------------- |
+| `gnoblin-core` | `libgnoblin-core.so.1` | Windows, outputs, input, programs, timers and the session. Starts with `gnoblin`. |
+| `gnoblin-std`  | `libgnoblin-std.so.1`  | Workspaces, layouts, styles, bindings, transitions and the UI toolkit.            |
+
+The package entries `gnoblin-core` and `gnoblin-std` and their `generated/` modules are built into the runtime library: the
 schema's classes, the ABI constants, the verbs, and the std classes and records. They are written when the runtime is
 built, so they always describe the libraries it was built with.
 
@@ -184,43 +265,23 @@ gnoblin-std is not installed (looked for libgnoblin-std.so.1 in the loader searc
 The starter is the packaged default shell, `share/gnoblin/default-shell/shell.ts` (`shells/default/shell.ts` in a source tree): it is what `gnoblin` runs on a fresh
 install and what `gnoblinctl config init` writes.
 
-## Check a file
+### Which library a shell runs on
 
-```sh
-gnoblinctl check --types ~/.config/gnoblin/shell.ts
-```
+Gnoblin reads the shell's imports before it runs any of them, and runs the whole shell on one library:
 
-`check` loads the file the way the shell does. `gnoblinctl config validate FILE` runs the same check for a `.ts` or `.js` file. It reports a syntax error, an import that does not resolve or a throw at
-the line you wrote.
+- **The native library:** a shell whose gnoblin imports are only `gnoblin-core`, `gnoblin-std`,
+  `gnoblin-core/generated/objects`, `gnoblin-core/generated/object_base` and `gnoblin-std/generated/objects`. The package
+  entries `gnoblin-core` and `gnoblin-std` re-export the generated classes, and the global `gnoblin` is the native root, so a
+  shell that imports nothing from gnoblin runs here too.
+- **The TypeScript library:** a shell where some module imports any other module of `gnoblin-core` or `gnoblin-std` (for
+  example `gnoblin-std/layout` or `gnoblin-std/focus`), reaches `gnoblin-std/extensions/xr`, or uses a dynamic `import()`.
+  A type-only import does not count.
 
-With `--types` it also runs a TypeScript compiler when one is installed. That catches a key that does not exist or a value
-of the wrong type. Without a compiler it says so and exits 0. See [Check and types](gnoblinctl.md#check-and-types).
+The generated modules import the same way on both, so a shell that mixes them with a deep module keeps working on the TypeScript library. A reload that
+would move the shell to the other library is refused: the error ends `restart gnoblin to change the stock library`, and the
+running shell keeps serving. Restart gnoblin to load the new code.
 
-## Editor support
-
-`gnoblinctl config init` runs `gnoblinctl types init`. It writes:
-
-- the library's own TypeScript source and the generated declarations, into a `.gnoblin` directory beside `shell.ts`,
-- a `tsconfig.json` that extends the one inside `.gnoblin`.
-
-An editor that understands TypeScript then completes every key and underlines a wrong one. Go-to-definition on an import
-such as `gnoblin-std/scene` opens the file the shell runs.
-
-- Commit `shell.ts` and `tsconfig.json`. Do not commit `.gnoblin`: it holds a copy of the library that the command writes
-  again, and it ignores itself in a Git repository.
-- Run `gnoblinctl types init` again after an upgrade. It rewrites `.gnoblin` to the release you run and never replaces a
-  `tsconfig.json` you have.
-
-An installed prefix also carries the declarations, so a shell needs no copy of the library to be type-checked: `share/gnoblin/types/tsconfig.json`
-maps `gnoblin-core` and `gnoblin-std` to the installed library and loads the globals. Extend it from your `tsconfig.json`:
-
-```json
-{ "extends": "/usr/share/gnoblin/types/tsconfig.json", "include": ["./*.ts"] }
-```
-
-See [Editor files](gnoblinctl.md#editor-files) for what is written where.
-
-## What the file can do
+### What the file can do
 
 Everything is an object in the [shell API](/shell-api/). The ones the starter uses are these:
 
@@ -235,65 +296,10 @@ A name that does not exist is a type error under `gnoblinctl check --types`, and
 leaves the running file in place.
 
 Some settings of the older configuration have no object in the API, so a file cannot set them. [Settings with no
-object](js-settings.md) lists them.
+object](js-settings.md#dropped-settings) lists them. [Settings in your shell](js-settings.md) shows one example for each
+object, in all three languages.
 
-## The native std binding: `gnoblin-std/native`
-
-A shell that imports `gnoblin-std/native` runs on the TypeScript library, as [Which library a shell runs on](#which-library-a-shell-runs-on) says.
-
-`import { ... } from "gnoblin-std/native"` is the **generated** binding of `libgnoblin-std.so.1`: the same collections, workspaces, layouts, bindings, transitions, styles and scene nodes the Rust and Python SDKs have, written by `gnoblin-sdkgen` (at build time, never committed) from the library's function table ([the generator](sdk-generator.md)) and calling it through `__gnoblinStd`, which the JavaScript runtime library installs.
-
-A shell that imports it fails at the import, naming `libgnoblin-std.so.1`, when the library is not installed.
-
-```ts
-import { EventKind, GridLayout, clients, createWorkspace, insetArea, tile } from "gnoblin-std/native";
-import type { Layout, LayoutContext } from "gnoblin-std/native";
-
-class Columns implements Layout {
-    compute(cx: LayoutContext) {
-        const area = insetArea(cx);
-        const width = area.width / Math.max(cx.children.length, 1);
-        return cx.children.map((client, i) => tile(client, area.x + i * width, area.y, width, area.height));
-    }
-}
-
-const main = createWorkspace("main", { layout: new Columns(), gaps: [10, 20] });
-clients().listen(EventKind.ADDED, 0, (event) => console.log(`client ${event.member} opened`));
-
-const other = createWorkspace("other");
-new GridLayout({ columns: 3 }).attach(other); // a built-in layout: the algorithm is the library's
-```
-
-Records use camelCase (`gapInner`). A record you give may leave out the fields it wants zero, and a layout may leave out the
-hooks it does not need.
-
-The engine and `gnoblin-std/native` share one tree. The core is the one holder of the compositor's link, and the engine's mirror
-is a view of the core's (`tree_link_open`/`tree_link_attach`). What the engine writes and what the library writes leave through
-that one connection, one transaction on the wire at a time.
-
-A shell may therefore use `gnoblin-core`'s objects and `gnoblin-std/native` together. The test fixture
-`crates/gnoblin-runtime-js/tests/fixtures/typed_table/shell.ts` does, and its test checks that nothing is refused.
-
-- The stock layouts of `gnoblin-std` (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `KioskLayout`, `DwindleLayout`, `StripLayout`, `ArcLayout`, `Carousel3dLayout`) are thin classes over the library's built-in layouts: the options are plain fields as before, the algorithm is `libgnoblin-std`'s (`Builtin`, made by `builtin_new`, which belongs to no workspace).
-- They need `libgnoblin-std.so.1`, like `gnoblin-std/native`; their option errors are the library's.
-- An action (`DwindleLayout.toggleSplit(workspace)`, `StripLayout.focusLeft(workspace)`) is the library's too: it runs against the workspace's windows and hands the keyboard to the window the library names.
-- `FloatingLayout` asks the library where a new window goes (`floating_place`) and keeps the host contract (see design section 25.5).
-
-- The stock drag classes (`ClientMoveBinding`, `ClientResizeBinding`, `ClientSwapBinding`, `SplitResizeBinding`) are still `PointerDragBinding` subclasses, so the engine's matcher picks the binding and a script's own subclass keeps working, but what a drag decides is the library's: each hook gives `libgnoblin-std` one step (`drag_step`) and writes back the answer.
-- `clampAxis`, `constrainRect`, `resizedRect`, `edgeZone`, `tileRect` and `gestureDirection` call the library too.
-- A script that wants the library to match the chord as well uses `Binding.drag`, `Binding.gesture` or `new MoveBinding().start()` from `gnoblin-std/native`; those start the library's desktop, so a shell that keeps its own workspaces uses the engine's `KeyBinding` and `PointerDragBinding`.
-
-- `OutputProfile` and `Display` are thin objects over the library's profiles and displays (`profile_*`, `display_*`): what a script writes is checked here, in the words of the property that is wrong, and the library applies each profile when its monitor connects and again when it returns, gives every output a display, mirrors and spans, and shows a viewport's workspace.
-- Its requests to the compositor go out as one `apply` per output, and an output with a request in flight is not asked again until the compositor has answered (the answer reaches the output's `onApplied` listeners).
-- A shell on `gnoblin-std/native` alone gets the same behaviour from `Profile` and `Display`.
-
-Example 3 (`examples/03-typescript-std/`) does not use this binding. It uses the classes of
-[`gnoblin-std/generated/objects`](#the-object-classes-gnoblin-std-generated-objects).
-
-The binding keeps a test for as long as it ships: `crates/gnoblin-runtime-js/tests/fixtures/typed_table/` holds example 3 as it
-was on this binding.
-
-## The object classes: `gnoblin-std/generated/objects`
+### The object classes: `gnoblin-std/generated/objects`
 
 - The catalog of `libgnoblin-std` (an entry model, the focus policy, and the records and enums they take) is served through the object protocol, and `gnoblin-std/generated/objects` has a class for each of its types.
 - They are **generated** from the catalog the library serves (`gnoblin-sdkgen`, at build time and never committed; [the generator](sdk-generator.md)) and embedded in the runtime library, and so are their declarations, which `gnoblinctl types init` and `gnoblinctl check --types` give the editor.
@@ -388,6 +394,9 @@ const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", he
 - Classes keep the names of the shell API: `Camera2D`, `Camera3D`, `ClientStyle`, `InputDevice`, `IdleMonitor` and
   `LaunchFeedback`. The generated Rust and Python classes use the same names.
 
+`examples/20-native-object/shell.ts` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the Rust
+and Python shells of the same example, and checked with `gnoblinctl check --types`.
+
 ### The functions of `gnoblin-std` in the generated classes
 
 A bare function of `gnoblin-std` is a function of a class here, with the same behaviour. The record arguments are plain objects, and an
@@ -408,120 +417,129 @@ argument the TypeScript function took in an options object follows the others, i
 `Ui.estimateText` is what a `Text` takes the size of its string to be when the string cannot be measured: half the font size for each
 character in the widest line, a line of one and a half font sizes for each line, and a baseline at 1.1 font sizes.
 
-`examples/20-native-object/shell.ts` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the Rust
-and Python shells of the same example, and checked with `gnoblinctl check --types`.
+### The native std binding: `gnoblin-std/native`
 
-### Which library a shell runs on
+A shell that imports `gnoblin-std/native` runs on the TypeScript library, as [Which library a shell runs on](#which-library-a-shell-runs-on) says.
 
-Gnoblin reads the shell's imports before it runs any of them, and runs the whole shell on one library:
+`import { ... } from "gnoblin-std/native"` is the **generated** binding of `libgnoblin-std.so.1`: the same collections, workspaces, layouts, bindings, transitions, styles and scene nodes the Rust and Python SDKs have, written by `gnoblin-sdkgen` (at build time, never committed) from the library's function table ([the generator](sdk-generator.md)) and calling it through `__gnoblinStd`, which the JavaScript runtime library installs.
 
-- **The native library:** a shell whose gnoblin imports are only `gnoblin-core`, `gnoblin-std`,
-  `gnoblin-core/generated/objects`, `gnoblin-core/generated/object_base` and `gnoblin-std/generated/objects`. The package
-  entries `gnoblin-core` and `gnoblin-std` re-export the generated classes, and the global `gnoblin` is the native root, so a
-  shell that imports nothing from gnoblin runs here too.
-- **The TypeScript library:** a shell where some module imports any other module of `gnoblin-core` or `gnoblin-std` (for
-  example `gnoblin-std/layout` or `gnoblin-std/focus`), reaches `gnoblin-std/extensions/xr`, or uses a dynamic `import()`.
-  A type-only import does not count.
-
-The generated modules import the same way on both, so a shell that mixes them with a deep module keeps working on the TypeScript library. A reload that
-would move the shell to the other library is refused: the error ends `restart gnoblin to change the stock library`, and the
-running shell keeps serving. Restart gnoblin to load the new code.
-
-## With no `shell.ts`
-
-A session with no `shell.ts` is not a bare shell. It runs the starter, the same file `gnoblinctl config init`
-writes:
-
-- four floating workspaces, `1` to `4` (named `Workspace 1` to `Workspace 4`);
-- `Super+1` to `Super+9` show the workspace at that position, sliding over a quarter of a second, and do nothing when
-  there is none, so `Super+1` to `Super+4` work until you declare more;
-- `Super+Left` and `Super+Right` move focus between the columns of a `StripLayout` workspace;
-- `Super` and a left drag moves a window, and `Super` and a right drag resizes it from the corner nearest the pointer;
-- a three-finger swipe slides between workspaces, and the windows follow the fingers;
-- the volume, microphone and media keys run `wpctl` and `playerctl`;
-- a titlebar on every window, with a window menu on a right click;
-- an alert with Wait and Force quit for a window that stops answering;
-- a window that asks to be maximised, minimised or made fullscreen gets it;
-- the keyboard focus follows a click, the pointer or a new window, as the seat's focus settings say;
-- `Super+space` opens a launcher entry that starts what you type.
-
-A `shell.ts` that fails to load when the shell starts is a failed start: the loader's text names the file, line and column in
-your `.ts` coordinates, and the session runs without a shell, on the compositor's own window management, until the file is
-fixed. Nothing is lost by waiting and nothing needs the session restarted:
-
-- the guardian logs `the shell failed to start:` and the text, `gnoblinctl shell status` prints `state: failed` with the
-  same text, and `gnoblin ./shell.ts` shows it on your terminal;
-- saving the file loads it (the watcher of a script covers a file that failed to start too; `GNOBLIN_JS_WATCH=0` turns it
-  off), and `gnoblinctl shell reload` loads it on request, exiting 1 with the new text while it still fails.
-
-## What it looks like
-
-A session with no `shell.ts` shows each window under its titlebar on an empty screen. The stock config has no wallpaper
-and no bar.
-
-![A terminal under the shell's titlebar on an empty screen](images/js-shell/default-desktop.png)
-
-A workspace with a layout tiles its windows. This file tiles three terminals with a master on the left and a gap of 12
-pixels. It starts the decorations because a file that leaves them out draws no titlebars:
+A shell that imports it fails at the import, naming `libgnoblin-std.so.1`, when the library is not installed.
 
 ```ts
-import { Decorations, MasterStackLayout, Workspace } from "gnoblin-std";
+import { EventKind, GridLayout, clients, createWorkspace, insetArea, tile } from "gnoblin-std/native";
+import type { Layout, LayoutContext } from "gnoblin-std/native";
 
-Decorations.get().start();
-gnoblin.workspaces.add(new Workspace("dev", { layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }));
-```
-
-![Three terminals tiled with a master on the left and a gap of 12 pixels](images/js-shell/master-stack.png)
-
-`DwindleLayout({ gap: 12 })` splits the space of the focused window in two for each new window:
-
-![Three terminals tiled by a dwindle layout](images/js-shell/dwindle.png)
-
-A split goes side by side or top to bottom by the shape of its cell, as in Hyprland's dwindle layout; the options and the
-actions that bind to keys are in [Dwindle like Hyprland](/recipes/dwindle-like-hyprland).
-
-A client that draws its own title bar, as `foot` does when decorations are off, keeps it. The window is its window
-geometry, the bar included, so a window the shell places at the top-left corner has its bar on the screen and is the
-size the shell asked for:
-
-![A terminal that draws its own title bar, at the top-left corner of the screen](images/js-shell/csd-own.png)
-
-The window menu opens on a right click on a titlebar, and with `Alt+Space`:
-
-![The window menu open under a titlebar](images/js-shell/window-menu.png)
-
-## Catch a failed call
-
-A call the library refuses throws a `GnoblinError`, which `gnoblin-core/generated/objects` and `gnoblin-std/generated/objects` export.
-
-- `error.code` says why.
-- `error.target` names the object and member, such as `Client#7.close`.
-- A bad argument throws a `TypeError` or a `RangeError` and has no code.
-
-[Errors](shell-api/errors.md) lists the codes.
-
-```ts
-import { GnoblinError } from "gnoblin-core/generated/objects";
-
-try {
-    client.close();
-} catch (error) {
-    if (error instanceof GnoblinError && error.code === "not_found") {
-        console.log(`${error.target} is gone`);
+class Columns implements Layout {
+    compute(cx: LayoutContext) {
+        const area = insetArea(cx);
+        const width = area.width / Math.max(cx.children.length, 1);
+        return cx.children.map((client, i) => tile(client, area.x + i * width, area.y, width, area.height));
     }
 }
+
+const main = createWorkspace("main", { layout: new Columns(), gaps: [10, 20] });
+clients().listen(EventKind.ADDED, 0, (event) => console.log(`client ${event.member} opened`));
+
+const other = createWorkspace("other");
+new GridLayout({ columns: 3 }).attach(other); // a built-in layout: the algorithm is the library's
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. Closing a window that has already closed logs its target instead of stopping the
-handler. `examples/39-native-errors/shell.ts` shows a taken name, a closed window and a bad argument.
+Records use camelCase (`gapInner`). A record you give may leave out the fields it wants zero, and a layout may leave out the
+hooks it does not need.
 
-A shell that tests the failure of a call the old way does not match. The old failure was a plain `Error` whose `code` was the ABI's integer.
+The engine and `gnoblin-std/native` share one tree. The core is the one holder of the compositor's link, and the engine's mirror
+is a view of the core's (`tree_link_open`/`tree_link_attach`). What the engine writes and what the library writes leave through
+that one connection, one transaction on the wire at a time.
 
-- `code` is the word, such as `"not_found"`.
-- A message does not start with `E_TYPE: ` or another ABI symbol.
-- A write to a read-only property is a `GnoblinError` with `read_only`.
+A shell may therefore use `gnoblin-core`'s objects and `gnoblin-std/native` together. The test fixture
+`crates/gnoblin-runtime-js/tests/fixtures/typed_table/shell.ts` does, and its test checks that nothing is refused.
 
-[A shell that read the old failure](shell-api/errors.md#a-shell-that-read-the-old-failure) lists what changed.
+- The stock layouts of `gnoblin-std` (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `KioskLayout`, `DwindleLayout`, `StripLayout`, `ArcLayout`, `Carousel3dLayout`) are thin classes over the library's built-in layouts: the options are plain fields as before, the algorithm is `libgnoblin-std`'s (`Builtin`, made by `builtin_new`, which belongs to no workspace).
+- They need `libgnoblin-std.so.1`, like `gnoblin-std/native`; their option errors are the library's.
+- An action (`DwindleLayout.toggleSplit(workspace)`, `StripLayout.focusLeft(workspace)`) is the library's too: it runs against the workspace's windows and hands the keyboard to the window the library names.
+- `FloatingLayout` asks the library where a new window goes (`floating_place`) and keeps the host contract (see design section 25.5).
+
+- The stock drag classes (`ClientMoveBinding`, `ClientResizeBinding`, `ClientSwapBinding`, `SplitResizeBinding`) are still `PointerDragBinding` subclasses, so the engine's matcher picks the binding and a script's own subclass keeps working, but what a drag decides is the library's: each hook gives `libgnoblin-std` one step (`drag_step`) and writes back the answer.
+- `clampAxis`, `constrainRect`, `resizedRect`, `edgeZone`, `tileRect` and `gestureDirection` call the library too.
+- A script that wants the library to match the chord as well uses `Binding.drag`, `Binding.gesture` or `new MoveBinding().start()` from `gnoblin-std/native`; those start the library's desktop, so a shell that keeps its own workspaces uses the engine's `KeyBinding` and `PointerDragBinding`.
+
+- `OutputProfile` and `Display` are thin objects over the library's profiles and displays (`profile_*`, `display_*`): what a script writes is checked here, in the words of the property that is wrong, and the library applies each profile when its monitor connects and again when it returns, gives every output a display, mirrors and spans, and shows a viewport's workspace.
+- Its requests to the compositor go out as one `apply` per output, and an output with a request in flight is not asked again until the compositor has answered (the answer reaches the output's `onApplied` listeners).
+- A shell on `gnoblin-std/native` alone gets the same behaviour from `Profile` and `Display`.
+
+Example 3 (`examples/03-typescript-std/`) does not use this binding. It uses the classes of
+[`gnoblin-std/generated/objects`](#the-object-classes-gnoblin-std-generated-objects).
+
+The binding keeps a test for as long as it ships: `crates/gnoblin-runtime-js/tests/fixtures/typed_table/` holds example 3 as it
+was on this binding.
+
+## Use the objects
+
+The shell has more than windows. Each of these is an object of the same model the Python and Rust shells reach.
+
+### Session, processes and timers
+
+- `gnoblin.session` logs out, suspends, powers off and locks.
+- `gnoblin.process` starts programs and reports how they end.
+- `gnoblin.timers` runs a function later, and a `SessionListener` or `RuntimeListener` hears the session and the configuration.
+- `gnoblin.find`, `gnoblin.focus.history` and `gnoblin.version()` read what the shell holds.
+
+See [Session and runtime](/shell-api/session-runtime), [Processes](/shell-api/processes) and [Events](/events/).
+
+### Verbs and signals by name
+
+`gnoblin-core/generated/verbs` is the compositor's `gnoblin` namespace as the schema spells it (generated, like the node-class
+types), over the core's own `call` and `subscribe`. Each object of the namespace is a member of `verbs`:
+
+```ts
+import { verbs } from "gnoblin-core/generated/verbs";
+
+verbs.idle.inhibit("my-shell", (answer) => console.log(answer.error ?? "held"));
+verbs.session.onBell((count) => console.log(`the bell has rung ${count} time(s)`));
+```
+
+A verb sends the call and returns. The optional answer function runs once on the shell thread with `{ value, error }`:
+
+- `value` is the operation's value parsed from its JSON, or `undefined` for a bare "done".
+- `error` is the compositor's error code, or `null`.
+
+A signal method returns a `VerbSubscription` whose `unsubscribe()` removes it, and a reload removes what a generation
+registered. A wrong argument is a `TypeError` that names the parameter. The functions need the JavaScript runtime library; a
+shell host without it says so at the first call.
+
+### Idle, authentication and launches
+
+`gnoblin.idle.watch(ms, { onIdle, onResume })` runs code when the session has had no input for a while,
+`gnoblin.authentication.addListener(listener)` watches polkit authentication requests and may refuse one (the compositor
+draws the password dialog and checks the password itself), and
+`gnoblin.launches.begin(token, application)` tracks the busy state between a launch and its window. See
+[Idle watches](/shell-api/idle), [Authentication prompts](/shell-api/authentication) and [Launch feedback](/shell-api/launch-feedback).
+
+### Outputs
+
+With more than one output each shows its own workspace, bars sit on one output, a window moves between outputs with
+`client.moveToOutput(output)`, and the windows of an unplugged output move to another output or wait hidden for the next.
+A dialog stays centred in its parent and goes wherever the parent goes. The page is
+[Outputs](/shell-api/outputs).
+
+[Window policy](/js-window-policy) and [animation](/js-transitions): `gnoblin.requestTransition` draws a change of state
+as one animation. Both pages show every example in TypeScript, Python and Rust.
+
+### XR
+
+`gnoblin.extensions.xr` is a member of the TypeScript library. The native library has no `gnoblin.extensions`, so a shell
+that scripts XR runs on the TypeScript library, and XR scripting is the one part of the shell API that has no Python or Rust
+classes. There, `gnoblin.extensions.xr` is `null` until the XR program has a session, so a config guards it and works without
+a headset.
+
+The stock shell builds the room and places the panels when the session starts. See
+[XR mode](/xr#scripting-xr-in-typescript) for the room, the viewport and the bindings that move and resize a panel.
+
+### Console and inspector
+
+`gnoblinctl console` opens a live prompt into the running shell, where `gnoblin.clients.toList()`,
+`gnoblin.workspaces.list` and `gnoblin.input.primary.describeBindings()` return what the shell holds. It is a
+JavaScript tool, so a Python or Rust shell has no console. See [Console and inspector](/js-console).
 
 ## Window requests
 
@@ -588,51 +606,51 @@ request with the stock behaviour of another kind:
 - `minimise` and `unminimise`
 - `present`, `raise` and `lower`
 
-## Outputs
+## Troubleshooting
 
-With more than one output each shows its own workspace, bars sit on one output, a window moves between outputs with
-`client.moveToOutput(output)`, and the windows of an unplugged output move to another output or wait hidden for the next.
-A dialog stays centred in its parent and goes wherever the parent goes. The page is
-[Outputs](/shell-api/outputs).
+### A failed call
 
-[Window policy in TypeScript](/js-window-policy).
+A call the library refuses throws a `GnoblinError`, which `gnoblin-core/generated/objects` and `gnoblin-std/generated/objects` export.
 
-[Animation in TypeScript](/js-transitions): `gnoblin.requestTransition` draws a change of state as one animation.
+- `error.code` says why.
+- `error.target` names the object and member, such as `Client#7.close`.
+- A bad argument throws a `TypeError` or a `RangeError` and has no code.
 
-## Reloading
+[Errors](shell-api/errors.md) lists the codes.
 
-Saving `shell.ts`, or any module it imports, reloads the shell after a short pause. `gnoblinctl config reload` reloads it on
-request: see [`gnoblinctl config reload`](/gnoblinctl#config). Windows keep their identity through a reload, and the new
-config is told about every window that exists.
+```ts
+import { GnoblinError } from "gnoblin-core/generated/objects";
 
-Your keys keep working through a reload. The shortcuts, touchpad gestures, pointer chords and binding-only devices of the
-old config are given up and the new config's are taken in one step, so a key is never refused for being held.
+try {
+    client.close();
+} catch (error) {
+    if (error instanceof GnoblinError && error.code === "not_found") {
+        console.log(`${error.target} is gone`);
+    }
+}
+```
 
-A key you removed from the file stops working at that reload and reaches the focused application again.
+Put the file in `~/.config/gnoblin/shell.ts`. Closing a window that has already closed logs its target instead of stopping the
+handler. `examples/39-native-errors/shell.ts` shows a taken name, a closed window and a bad argument.
 
-A file that fails to load (a syntax error, a throw, a script that runs away) leaves the running config in place. The failure
-is logged once as `file:line:column: message`, in your `.ts` coordinates, and `gnoblinctl config reload` exits 1 with the
-same text.
+A shell that tests the failure of a call the old way does not match. The old failure was a plain `Error` whose `code` was the ABI's integer.
 
-Set `GNOBLIN_JS_WATCH=0` to turn the watcher off, for a config directory on a file system that cannot be watched. The shell
-then reloads only when asked.
+- `code` is the word, such as `"not_found"`.
+- A message does not start with `E_TYPE: ` or another ABI symbol.
+- A write to a read-only property is a `GnoblinError` with `read_only`.
 
-When the JavaScript runtime library runs the file, it watches every file the running generation loaded and asks the shell
-loader for a reload when one changes.
+[A shell that read the old failure](shell-api/errors.md#a-shell-that-read-the-old-failure) lists what changed.
 
-The loader evaluates the new generation beside the old one and swaps it in only when it loaded. An edit that does not load
-leaves the running shell and reports the file, line and column.
-
-## Debugging
+### Debugging
 
 `console` is a global, so `console.log("hi")` works anywhere in your config, in a listener and in the
 [console](/js-console). `log` and `info` write at info level, `warn` at warn, `error` at error and `debug` at debug:
 
 ```ts
-import { ClientListener, gnoblin } from "gnoblin-core";
+import { ClientCollectionListener, gnoblin } from "gnoblin-core";
 import type { Client } from "gnoblin-core";
 
-class Trace extends ClientListener {
+class Trace extends ClientCollectionListener {
     onFocusChanged(client: Client, focused: boolean) {
         console.log("%s focus is %j", client.appId, focused);
         if (!focused) console.warn("lost focus:", client.title);
@@ -670,62 +688,68 @@ How much a script can print:
 The line is the line of the call. The column is the position the engine reports, rounded to the nearest token of your
 source: the last argument when it is a name, else the method (`log`). A call that spans lines reports the line it ends on.
 
-## Session, processes and timers
+### With no `shell.ts`
 
-The shell has more than windows:
+A session with no `shell.ts` is not a bare shell. It runs the starter, the same file `gnoblinctl config init`
+writes:
 
-- `gnoblin.session` logs out, suspends, powers off and locks.
-- `gnoblin.process` starts programs and reports how they end.
-- `gnoblin.timers` runs a function later, and a `SessionListener` or `RuntimeListener` hears the session and the configuration.
-- `gnoblin.find`, `gnoblin.focus.history` and `gnoblin.version()` read what the shell holds.
+- four floating workspaces, `1` to `4` (named `Workspace 1` to `Workspace 4`);
+- `Super+1` to `Super+9` show the workspace at that position, sliding over a quarter of a second, and do nothing when
+  there is none, so `Super+1` to `Super+4` work until you declare more;
+- `Super+Left` and `Super+Right` move focus between the columns of a `StripLayout` workspace;
+- `Super` and a left drag moves a window, and `Super` and a right drag resizes it from the corner nearest the pointer;
+- a three-finger swipe slides between workspaces, and the windows follow the fingers;
+- the volume, microphone and media keys run `wpctl` and `playerctl`;
+- a titlebar on every window, with a window menu on a right click;
+- an alert with Wait and Force quit for a window that stops answering;
+- a window that asks to be maximised, minimised or made fullscreen gets it;
+- the keyboard focus follows a click, the pointer or a new window, as the seat's focus settings say;
+- `Super+space` opens a launcher entry that starts what you type.
 
-See [Session and runtime](/shell-api/session-runtime), [Processes](/shell-api/processes) and [Events](/events/).
+A `shell.ts` that fails to load when the shell starts is a failed start: the loader's text names the file, line and column in
+your `.ts` coordinates, and the session runs without a shell, on the compositor's own window management, until the file is
+fixed. Nothing is lost by waiting and nothing needs the session restarted:
 
-### Verbs and signals by name
+- the guardian logs `the shell failed to start:` and the text, `gnoblinctl shell status` prints `state: failed` with the
+  same text, and `gnoblin ./shell.ts` shows it on your terminal;
+- saving the file loads it (the watcher of a script covers a file that failed to start too; `GNOBLIN_JS_WATCH=0` turns it
+  off), and `gnoblinctl shell reload` loads it on request, exiting 1 with the new text while it still fails.
 
-`gnoblin-core/generated/verbs` is the compositor's `gnoblin` namespace as the schema spells it (generated, like the node-class
-types), over the core's own `call` and `subscribe`. Each object of the namespace is a member of `verbs`:
+What the stock config looks like: a session with no `shell.ts` shows each window under its titlebar on an empty screen. The
+stock config has no wallpaper and no bar.
+
+![A terminal under the shell's titlebar on an empty screen](images/js-shell/default-desktop.png)
+
+A workspace with a layout tiles its windows. This file tiles three terminals with a master on the left and a gap of 12
+pixels. It starts the decorations because a file that leaves them out draws no titlebars:
 
 ```ts
-import { verbs } from "gnoblin-core/generated/verbs";
+import { Decorations, MasterStackLayout, Workspace } from "gnoblin-std";
 
-verbs.idle.inhibit("my-shell", (answer) => console.log(answer.error ?? "held"));
-verbs.session.onBell((count) => console.log(`the bell has rung ${count} time(s)`));
+Decorations.get().start();
+gnoblin.workspaces.add(new Workspace("dev", { layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }));
 ```
 
-A verb sends the call and returns. The optional answer function runs once on the shell thread with `{ value, error }`:
+![Three terminals tiled with a master on the left and a gap of 12 pixels](images/js-shell/master-stack.png)
 
-- `value` is the operation's value parsed from its JSON, or `undefined` for a bare "done".
-- `error` is the compositor's error code, or `null`.
+`DwindleLayout({ gap: 12 })` splits the space of the focused window in two for each new window:
 
-A signal method returns a `VerbSubscription` whose `unsubscribe()` removes it, and a reload removes what a generation
-registered. A wrong argument is a `TypeError` that names the parameter. The functions need the JavaScript runtime library; a
-shell host without it says so at the first call.
+![Three terminals tiled by a dwindle layout](images/js-shell/dwindle.png)
 
-## Console and inspector
+A split goes side by side or top to bottom by the shape of its cell, as in Hyprland's dwindle layout; the options and the
+actions that bind to keys are in [Dwindle like Hyprland](/recipes/dwindle-like-hyprland).
 
-`gnoblinctl console` opens a live prompt into the running shell, where `gnoblin.clients.toList()`,
-`gnoblin.workspaces.list` and `gnoblin.input.primary.describeBindings()` return what the shell holds. See
-[Console and inspector](/js-console).
+A client that draws its own title bar, as `foot` does when decorations are off, keeps it. The window is its window
+geometry, the bar included, so a window the shell places at the top-left corner has its bar on the screen and is the
+size the shell asked for:
 
-## Idle, authentication and launches
+![A terminal that draws its own title bar, at the top-left corner of the screen](images/js-shell/csd-own.png)
 
-`gnoblin.idle.watch(ms, { onIdle, onResume })` runs code when the session has had no input for a while,
-`gnoblin.authentication.addListener(listener)` watches polkit authentication requests and may refuse one (the compositor
-draws the password dialog and checks the password itself), and
-`gnoblin.launches.begin(token, application)` tracks the busy state between a launch and its window. See
-[Idle watches](/shell-api/idle), [Authentication prompts](/shell-api/authentication) and [Launch feedback](/shell-api/launch-feedback).
+The window menu opens on a right click on a titlebar, and with `Alt+Space`:
 
-## XR
+![The window menu open under a titlebar](images/js-shell/window-menu.png)
 
-`gnoblin.extensions.xr` is a member of the TypeScript library. The native library has no `gnoblin.extensions`, so a shell
-that scripts XR runs on the TypeScript library. There, `gnoblin.extensions.xr` is `null` until the XR program has a session,
-so a config guards it and works without a headset.
-
-The stock shell builds the room and places the panels when the session starts. See
-[XR mode](/xr#scripting-xr-in-typescript) for the room, the viewport and the bindings that move and resize a panel.
-
-## When the shell stops
+### When the shell stops
 
 The shell is a client of the compositor. If it exits or is killed, the compositor keeps running and answers every client.
 With no shell holding the tree:
@@ -736,3 +760,14 @@ With no shell holding the tree:
 The shell runs on a thread of the compositor's process, so the compositor ends no session for it; the guardian is told, and
 the log says why. Starting the session again runs the file again, so what it starts, such as a `gnoblin.spawn` call, starts
 again, and no window changes its identity.
+
+## Examples
+
+Small shells in `examples/` show the pieces, and the tests in `crates/gnoblin/tests/modular/` run each one as it is:
+
+- `examples/03-typescript-std/shell.ts`: a workspace with a layout of your own, a listener on the clients and a chord.
+- `examples/04-js-esm`: a JavaScript shell of ES modules that imports `gnoblin-core` and `gnoblin-std`.
+- `examples/05-ts-types`: a TypeScript shell of three files, where an error points at the `.ts` line that wrote it.
+- `examples/07-script-binding/shell.ts`: a key binding written in the script that moves the focused window.
+
+[Build a desktop](build-a-desktop.md#the-examples) lists every example, with its Python and Rust versions.
