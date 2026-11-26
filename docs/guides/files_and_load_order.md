@@ -129,7 +129,7 @@ Then the shell file imports the modules and calls them in order:
 
 ::: tabs
 
-```typescript
+```typescript skip="the sibling files the import names are not part of this page, so the file does not resolve on its own"
 // shell.ts
 import { styleWindows } from "./appearance.ts";
 import { bindKeys } from "./keys.ts";
@@ -138,7 +138,7 @@ styleWindows();
 bindKeys(gnoblin.input.primary);
 ```
 
-```python
+```python skip="the sibling files the import names are not part of this page, so the file does not resolve on its own"
 # shell.py
 from gnoblin import gnoblin
 from appearance import style_windows
@@ -148,7 +148,7 @@ style_windows()
 bind_keys()
 ```
 
-```rust
+```rust skip="the sibling files the import names are not part of this page, so the file does not resolve on its own"
 // lib.rs
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;

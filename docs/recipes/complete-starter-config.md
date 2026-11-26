@@ -19,6 +19,7 @@ is this, in full:
 // A shell with no `shell.ts` runs this same file, so a copy you leave unchanged behaves like the default.
 // Check changes with `gnoblinctl check --types shell.ts`; see the shell API pages for each object's details.
 
+import { gnoblin } from "gnoblin-core/generated/objects";
 import {
     Decorations,
     FloatingLayout,
@@ -31,9 +32,9 @@ import {
     WindowState,
     Workspace,
     WorkspaceSlideBinding,
-} from "gnoblin-std";
+} from "gnoblin-std/generated/objects";
 // To use the examples below, add what they name to the import above.
-// import { MasterStackLayout } from "gnoblin-std";
+// import { MasterStackLayout } from "gnoblin-std/generated/objects";
 
 // Four floating workspaces. The first is shown until another is selected.
 // Choose a layout: FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout, DwindleLayout or StripLayout.
@@ -114,9 +115,11 @@ input.bind("Super+space", () => {
 
 ```python
 from gnoblin import gnoblin
+from gnoblin.objects.model import Gnoblin
 from gnoblin.objects.std import (
     Decorations,
     FloatingLayout,
+    InputContextAugment,
     Launcher,
     MoveBinding,
     NotRespondingAlerts,
@@ -142,13 +145,15 @@ WindowMenus.get().start()
 NotRespondingAlerts.get().start()
 WindowState.get().start()
 
-input = gnoblin.input.primary
+input = Gnoblin.get().input.primary
 
 # Super+Left and Super+Right move focus between StripLayout columns on the display under the pointer. They do nothing
 # on other layouts.
 def move_column(side):
     def action(_event):
-        layout = input.active_display().viewport.content.layout
+        display = InputContextAugment.get().active_display(input)
+        viewport = display.viewport if display is not None else None
+        layout = viewport.content.layout if viewport is not None and viewport.content is not None else None
         if isinstance(layout, StripLayout):
             getattr(layout, side)()
     return action
@@ -173,14 +178,22 @@ media_keys = {
     "XF86AudioNext": ["playerctl", "next"],
     "XF86AudioPrev": ["playerctl", "previous"],
 }
+def run_command(command):
+    def action(_event):
+        gnoblin.spawn(command)
+    return action
+
 for key, command in media_keys.items():
-    input.bind(key, lambda _event, command=command: gnoblin.spawn(command))
+    input.bind(key, run_command(command))
 
 # Super+space opens the launcher, with a command entry in the middle of the screen.
-input.bind("Super+space", lambda _event: Launcher.open())
+def open_launcher(_event):
+    Launcher.open()
+
+input.bind("Super+space", open_launcher)
 
 # Add custom key bindings here. A key already bound above is refused; remove that binding first.
-# input.bind("Super+Return", lambda _event: gnoblin.spawn(["foot"]))
+# input.bind("Super+Return", run_command(["foot"]))
 # input.bind("Super+q", lambda _event: input.focused_client().close())
 
 # Set a style property to change how each window looks.
@@ -190,6 +203,7 @@ input.bind("Super+space", lambda _event: Launcher.open())
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
 use gnoblin_std::objects::{
     Decorations, FloatingLayout, Launcher, MoveBinding, MoveBindingOptions, NotRespondingAlerts, ResizeBinding,
     ResizeBindingOptions, WindowMenus, WindowState, Workspace, WorkspaceOptions, Workspaces,
@@ -201,6 +215,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
+    let model = ModelRoot::get(&g.objects()?)?;
     let workspaces = Workspaces::get(&objects)?;
     for id in ["1", "2", "3", "4"] {
         let layout = FloatingLayout::new(&objects)?.as_layout()?;
@@ -224,15 +239,25 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         .install(None)?;
 
     // Super+space opens the launcher, with a command entry in the middle of the screen.
-    if let Some(input) = g.input()?.primary()? {
-        input.bind("Super+space", Some(|_event| {
-            Launcher::open(&objects, None)?;
-            Ok(true)
-        }), None)?;
-    }
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    let Some(seat) = input.primary()? else {
+        return Ok(());
+    };
+    let library = objects.clone();
+    seat.bind("Super+space", Some(move |_event| {
+        // Return starts what you typed.
+        let shell = g.clone();
+        Launcher::open(&library, Some(move |command: String| {
+            let _ = shell.spawn(&command);
+            Ok(())
+        }))?;
+        Ok(true)
+    }), None)?;
 
     // Add custom key bindings here. A key already bound above is refused; remove that binding first.
-    // input.bind("Super+Return", Some(|_event| { g.spawn(&["foot"], None)?; Ok(true) }), None)?;
+    // input.bind("Super+Return", Some(|_event| { let _ = g.spawn("foot"); Ok(true) }), None)?;
 
     Ok(())
 }
@@ -251,15 +276,37 @@ gnoblin.input.primary.bind("Super+Return", () => {
 ```
 
 ```python
-input.bind("Super+Return", lambda _event: gnoblin.spawn(["foot"]))
+from gnoblin import gnoblin
+from gnoblin.objects.model import Gnoblin
+
+def open_terminal(_event):
+    gnoblin.spawn(["foot"])
+
+
+Gnoblin.get().input.primary.bind("Super+Return", open_terminal)
 ```
 
 ```rust
-if let Some(input) = g.input()?.primary()? {
-    input.bind("Super+Return", Some(|_event| {
-        g.spawn(&["foot".to_owned()], None)?;
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    let Some(seat) = input.primary()? else {
+        return Ok(());
+    };
+    let shell = g.clone();
+    seat.bind("Super+Return", Some(move |_event| {
+        let _ = shell.spawn("foot");
         Ok(true)
     }), None)?;
+    Ok(())
 }
 ```
 

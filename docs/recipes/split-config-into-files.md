@@ -9,7 +9,8 @@ In `appearance`, which uses the `gnoblin-std` library for `gnoblin.clients.style
 
 ```typescript
 // appearance.ts
-import "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import "gnoblin-std/generated/objects";
 
 export function styleWindows(): void {
     gnoblin.clients.style.cornerRadius = 12;
@@ -54,6 +55,8 @@ In `bindings`:
 
 ```typescript
 // bindings.ts
+import { gnoblin } from "gnoblin-core/generated/objects";
+
 export function bindKeys(): void {
     gnoblin.input.primary.bind("Super+d", () => {
         gnoblin.spawn(["fuzzel"]);
@@ -89,7 +92,7 @@ In the shell file:
 
 ::: tabs
 
-```typescript
+```typescript skip="the sibling files the import names are not part of this page, so the file does not resolve on its own"
 // shell.ts
 import { styleWindows } from "./appearance.ts";
 import { bindKeys } from "./bindings.ts";
@@ -98,7 +101,7 @@ styleWindows();
 bindKeys();
 ```
 
-```python
+```python skip="the sibling files the import names are not part of this page, so the file does not resolve on its own"
 # shell.py
 from appearance import style_windows
 from bindings import bind_keys
@@ -107,7 +110,7 @@ style_windows()
 bind_keys()
 ```
 
-```rust
+```rust skip="the sibling files the import names are not part of this page, so the file does not resolve on its own"
 // lib.rs
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;

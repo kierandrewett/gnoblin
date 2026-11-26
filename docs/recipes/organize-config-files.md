@@ -9,29 +9,24 @@ In `windows` (`windows.ts`, `windows.py` or `windows.rs`):
 
 ```typescript
 // windows.ts
-import { ClientCollectionListener } from "gnoblin-core";
-import type { Client } from "gnoblin-core";
+import { gnoblin } from "gnoblin-core/generated/objects";
 
 export function placeWindows(): void {
-    gnoblin.clients.addListener(
-        new (class extends ClientCollectionListener {
-            onAdded(client: Client) {
-                if (client.appId === "org.gnome.TextEditor") {
-                    client.maximised = true;
-                }
-            }
-        })(),
-    );
+    gnoblin.clients.on("added", (client) => {
+        if (client.appId === "org.gnome.TextEditor") {
+            client.maximised = true;
+        }
+    });
 }
 ```
 
 ```python
 # windows.py
-from gnoblin import gnoblin
+from gnoblin.objects.model import Gnoblin
 
 
 def place_windows():
-    @gnoblin.clients.on("added")
+    @Gnoblin.get().clients.on("added")
     def maximise_editor(client):
         if client.app_id == "org.gnome.TextEditor":
             client.maximised = True
@@ -44,10 +39,10 @@ use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
 
 pub fn place_windows(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?;
     let clients = ModelRoot::get(&objects)?.clients()?.expect("the model has clients");
     clients
-        .on_added(|client: Client| {
+        .on_added(|client: Client, _collection| {
             if client.app_id().unwrap_or_default() == "org.gnome.TextEditor" {
                 let _ = client.set_maximised(true);
             }
@@ -65,6 +60,8 @@ In `bindings` (`bindings.ts`, `bindings.py` or `bindings.rs`):
 
 ```typescript
 // bindings.ts
+import { gnoblin } from "gnoblin-core/generated/objects";
+
 export function bindKeys(): void {
     gnoblin.input.primary.bind("Super+d", () => {
         gnoblin.spawn(["fuzzel"]);
@@ -100,7 +97,7 @@ In the shell file (`shell.ts`, `shell.py` or `lib.rs`):
 
 ::: tabs
 
-```typescript
+```typescript skip="the sibling files the import names are not part of this page, so the file does not resolve on its own"
 // shell.ts
 import { bindKeys } from "./bindings.ts";
 import { placeWindows } from "./windows.ts";
@@ -109,7 +106,7 @@ placeWindows();
 bindKeys();
 ```
 
-```python
+```python skip="the sibling files the import names are not part of this page, so the file does not resolve on its own"
 # shell.py
 from gnoblin import gnoblin
 from windows import place_windows
@@ -119,7 +116,7 @@ place_windows()
 bind_keys()
 ```
 
-```rust
+```rust skip="the sibling files the import names are not part of this page, so the file does not resolve on its own"
 // lib.rs
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
@@ -139,7 +136,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 
 Imported files share the same `gnoblin` object and need no registration. Keep the calls in one place, the shell file, so
 you can see which file supplies each part, and in the order they run. A trigger is bound once, so bind each key from one
-file only. `gnoblin.workspaces.add` and `gnoblin.clients.addListener` accumulate across files.
+file only. `gnoblin.workspaces.add` and `gnoblin.clients.on("added", ...)` accumulate across files.
 
 Check the files with `gnoblinctl check shell.ts`, `gnoblinctl check shell.py` or `gnoblinctl check` in a Rust shell crate,
 and read [file loading and order](/guides/files_and_load_order) before adding overlapping files.
