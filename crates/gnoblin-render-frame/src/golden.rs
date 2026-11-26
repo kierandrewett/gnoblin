@@ -383,8 +383,7 @@ pub const CASES: [Case; 14] = [
     Case {
         name: "inset_shadow",
         layers: || vec![clear(Rect::new(6, 5, 20, 13), 4.0, one(inset_shadow()))],
-        // Not marked: the software renderer draws an inset shadow with a weaker edge (up to 33 levels off at the edge).
-        software: false,
+        software: true,
         tolerance: SHAPE_TOLERANCE,
         probes: |image| {
             assert_close(

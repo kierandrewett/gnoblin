@@ -270,8 +270,9 @@ impl Cast {
     /// The inset shadow `held` casts inwards from the edge of `base`, with corner `radius` (`inset_shadow.wgsl`).
     ///
     /// The hole is `base` moved by the offset and shrunk by the spread on every side. A pixel on or outside the hole's
-    /// edge has the full shadow, which falls to nothing `blur` pixels inside the edge, and the shadow is multiplied by
-    /// the shape's own coverage so nothing leaks past a rounded corner.
+    /// edge has the full shadow, which falls to nothing `blur` pixels inside the edge. The shader also multiplies it by
+    /// the shape's coverage so nothing leaks past a rounded corner; here the layer's own corner fade does that
+    /// ([`fade`], which every rounded layer is drawn through), so the shadow is not multiplied by it a second time.
     ///
     /// `fade` is the share of the layer's own opacity the shadow is drawn with: an inset shadow is part of the layer, so
     /// it fades with it, where a drop shadow behind the layer does not.
@@ -307,7 +308,7 @@ impl Cast {
                     hole.1,
                     (shape.radius - spread).max(0.0),
                 );
-                smoothstep(-self.blur, 0.0, distance) * shape.coverage(x, y)
+                smoothstep(-self.blur, 0.0, distance)
             }
         }
     }
@@ -674,23 +675,47 @@ mod tests {
         );
     }
 
+    /// The shader multiplies the inset shadow by the shape's coverage; here the corner fade supplies that factor once.
+    /// A coverage applied by both would weaken the shadow along the curve (the golden `inset_shadow` held it 33 levels
+    /// off at the corner).
     #[test]
-    fn an_inset_shadow_does_not_leak_past_a_rounded_corner() {
-        let mut picture = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
-        let cast = Cast::inset(
-            &shadow(4.0, 0.0, (0.0, 0.0)),
-            area(4, 4, 24, 24),
-            10.0,
-            1.0,
-            Scale::IDENTITY,
+    fn an_inset_shadow_meets_the_rounded_corner_through_one_coverage() {
+        let base = area(4, 4, 24, 24);
+        let shape = Shape::new(base, 10.0);
+        let before = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
+        let mut drawn = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
+        Cast::inset(&shadow(4.0, 0.0, (0.0, 0.0)), base, 10.0, 1.0, Scale::IDENTITY).draw(&mut drawn);
+        let square = pixel(&drawn, 4, 4);
+        assert!(
+            square[0] < 40,
+            "drawn square, the corner pixel is under the shadow: {square:?}"
         );
-        cast.draw(&mut picture);
+        let mut faded = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
+        faded.bytes.copy_from_slice(&drawn.bytes);
+        fade(&mut faded, &before, shape, 1.0);
         assert_eq!(
-            pixel(&picture, 4, 4),
+            pixel(&faded, 4, 4),
             [255, 255, 255, 255],
             "the square corner is outside the shape"
         );
-        assert!(pixel(&picture, 16, 4)[0] < 40, "the edge's middle is dark");
+        assert!(pixel(&faded, 16, 4)[0] < 40, "the edge's middle is dark");
+        let mut partial = 0;
+        for y in 4..14 {
+            for x in 4..14 {
+                let coverage = shape.coverage(x, y);
+                if coverage > 0.05 && coverage < 0.95 {
+                    partial += 1;
+                    let shadowed = f32::from(pixel(&drawn, x, y)[0]);
+                    let want = 255.0 + (shadowed - 255.0) * coverage;
+                    let got = f32::from(pixel(&faded, x, y)[0]);
+                    assert!(
+                        (got - want).abs() <= 1.5,
+                        "({x}, {y}) has coverage {coverage}: shadowed {shadowed}, drew {got}, wanted {want}"
+                    );
+                }
+            }
+        }
+        assert!(partial > 4, "the corner has pixels the curve cuts: {partial}");
     }
 
     #[test]
