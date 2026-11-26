@@ -55,10 +55,13 @@ def opened(client, collection):
 
 def swap_with_first(event):
     focused = next((client for client in gnoblin.clients.to_list() if client.focused), None)
-    members = main.clients.members
-    if focused is None or not members:
+    clients = main.clients
+    if focused is None or clients is None:
         return False
-    main.clients.swap(focused, members[0])
+    members = clients.members
+    if not members:
+        return False
+    clients.swap(focused, members[0])
     return True
 
 

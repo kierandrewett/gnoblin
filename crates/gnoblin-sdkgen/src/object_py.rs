@@ -7,9 +7,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type};
+use gnoblin_schema::{
+    CORE_NAMESPACE, CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type,
+};
 
-use super::object_script::{ScriptView, quote};
+use super::object_script::{ScriptView, module_of, quote};
 use super::objects::{
     ClassMember, Member, augment_finds, augments_of, check_assign, check_foreign, ctor_properties, finds_of,
     is_augment_setter, slots_of,
@@ -34,6 +36,9 @@ pub(super) const INIT_PYI: &str = r#"from dataclasses import dataclass, field
 
 class Implementor:
     """The base of the generated interface classes: a script subclasses one and defines the methods it wants to answer."""
+
+class StubMembers:
+    """The base of a class that only a stub has: the members of the root, and what a library adds to a class of the core. It is not a class at run time."""
 
 class Listener:
     """A listener of an object's signal or property. It lasts until it is stopped or the generation ends."""
@@ -468,7 +473,7 @@ const ROOT_NAMESPACE: &str = "gnoblin.model";
 const ROOT_OBJECT: &str = "gnoblin";
 const ROOT_SUFFIX: &str = "Root";
 
-fn class_name(object: &ObjectType) -> String {
+pub(super) fn class_name(object: &ObjectType) -> String {
     values::py_class(&object.name, &object.export)
 }
 
@@ -1314,10 +1319,20 @@ impl<'a> Py<'a> {
         // A class with nothing but functions is a namespace for them: it is not an object, so it has no `on` and no `destroy`.
         // At run time a class carries the members of its base (the ids number them that way), so it is flat; a stub names the base, so a type
         // checker takes a `Camera3D` where a `SceneNode` is wanted, as the library does.
+        let root = self.stub && self.is_root(object);
         let bases = if self.stub {
-            match object.base.as_deref().filter(|base| !base.contains('.')) {
-                Some(base) => format!("({})", class_name(self.view.class(base)?)),
-                None => String::new(),
+            let mut parents: Vec<String> = Vec::new();
+            if let Some(base) = object.base.as_deref().filter(|base| !base.contains('.')) {
+                parents.push(class_name(self.view.class(base)?));
+            }
+            if root {
+                parents.push("StubMembers".to_owned());
+            }
+            parents.extend(self.added_members(object)?);
+            if parents.is_empty() {
+                String::new()
+            } else {
+                format!("({})", parents.join(", "))
             }
         } else if has_instance_members {
             "(_B.Object)".to_owned()
@@ -1326,7 +1341,6 @@ impl<'a> Py<'a> {
         };
         // The root's members are a class of their own in the stub, which `Gnoblin` extends with `get`: `from gnoblin import gnoblin` has them
         // too (the runtime hands them to the root), so what the root has is written once and in the schema's words.
-        let root = self.stub && self.is_root(object);
         if root {
             c.line(format!("class {name}{ROOT_SUFFIX}{bases}:"));
             c.indent();
@@ -1850,6 +1864,128 @@ impl<'a> Py<'a> {
 }
 
 impl Py<'_> {
+    /// The name of the stub class that holds what `class`, an augment of `target`, adds to it.
+    fn members_class(&self, target: &ObjectType) -> Result<String, String> {
+        Ok(format!(
+            "{}{}Members",
+            class_name(target),
+            pascal(module_of(self.view.namespace)?)
+        ))
+    }
+
+    /// The modules of the libraries that add members to the classes of this namespace, when it is the core's: a stub of the core imports
+    /// them to extend its classes with what they add.
+    fn augmenting_namespaces(&self) -> Result<Vec<&'static str>, String> {
+        let mut found: Vec<&'static str> = Vec::new();
+        if self.view.namespace.as_str() != CORE_NAMESPACE {
+            return Ok(found);
+        }
+        for namespace in self.view.catalog.namespaces() {
+            if namespace.as_str() != CORE_NAMESPACE
+                && self
+                    .view
+                    .catalog
+                    .objects(&namespace)
+                    .any(|class| class.augment_of.is_some())
+            {
+                found.push(module_of(&namespace)?);
+            }
+        }
+        Ok(found)
+    }
+
+    /// The stub classes of other libraries that hold what they add to `object`, as the names a stub of this namespace extends.
+    fn added_members(&self, object: &ObjectType) -> Result<Vec<String>, String> {
+        let mut found = Vec::new();
+        if self.view.namespace.as_str() != CORE_NAMESPACE {
+            return Ok(found);
+        }
+        for namespace in self.view.catalog.namespaces() {
+            if namespace.as_str() == CORE_NAMESPACE {
+                continue;
+            }
+            let stem = module_of(&namespace)?;
+            for class in self.view.catalog.objects(&namespace) {
+                if class.augment_of.as_deref() == Some(object.name.as_str()) {
+                    found.push(format!("_ns_{stem}.{}{}Members", class_name(object), pascal(stem)));
+                }
+            }
+        }
+        Ok(found)
+    }
+
+    /// In a stub, the class that holds the members `class` adds to `target` of the core's module. Nothing at run time has it: the class of
+    /// the core extends it in the stub, because a stub cannot add a member to a class of another file. It is a read of what
+    /// `augment_source` installs, so a property, a method and a receiver's getter and setter are declared as they are used.
+    fn augment_stub(&self, c: &mut CodeWriter, class: &ObjectType, target: &ObjectType) -> Result<(), String> {
+        c.line(format!("class {}(StubMembers):", self.members_class(target)?));
+        c.indent();
+        c.line(format!(
+            "\"\"\"What `{}` adds to the core's `{}`: it is on the class once the module of this library is imported.\"\"\"",
+            self.view.namespace,
+            class_name(target)
+        ));
+        for property in &class.properties {
+            let ident = member_name(&property.name, &property.extras.export.py);
+            c.line("@builtins.property");
+            self.def_described(
+                c,
+                &format!("def {ident}(self) -> {}", self.ty_read(&property.ty, true)?),
+                self.view.member_doc(&class.name, &property.name),
+                "",
+                &[],
+            );
+        }
+        let getters = class.augment_getters.as_deref();
+        for method in &class.methods {
+            if is_augment_setter(class, &method.name) {
+                continue;
+            }
+            let ident = member_name(&method.name, &method.extras.export.py);
+            let returns = match &method.returns {
+                Some(ty) if method.optional => self.ty_read(ty, false)?,
+                Some(ty) => self.ty(ty, false)?,
+                None => "None".to_owned(),
+            };
+            // A receiver augment's first parameter is the object the member is used on, which `self` is.
+            let given = if getters.is_some() {
+                &method.params[1..]
+            } else {
+                &method.params[..]
+            };
+            let doc = self.view.member_doc(&class.name, &method.name);
+            if getters.is_some_and(|getters| getters.contains(&method.name)) {
+                c.line("@builtins.property");
+                self.def_described(c, &format!("def {ident}(self) -> {returns}"), doc, "", &[]);
+                if class.augment_setters.contains(&method.name) {
+                    let ty = method
+                        .returns
+                        .as_ref()
+                        .ok_or_else(|| format!("`{}`: the getter `{}` returns nothing", class.name, method.name))?;
+                    let input = self.ty(ty, true)?;
+                    let input = if method.optional {
+                        format!("{input} | None")
+                    } else {
+                        input
+                    };
+                    c.line(format!("@{ident}.setter"));
+                    self.def_described(c, &format!("def {ident}(self, value: {input}) -> None"), "", "", &[]);
+                }
+            } else {
+                let (params, _) = self.params(given)?;
+                let params = if params.is_empty() {
+                    "self".to_owned()
+                } else {
+                    format!("self, {params}")
+                };
+                self.def_described(c, &format!("def {ident}({params}) -> {returns}"), doc, "", &[]);
+            }
+        }
+        c.dedent();
+        c.blank();
+        Ok(())
+    }
+
     /// What installs the members of the class `class`, which holds an augment, on the class `target` of the core's module: each is read or
     /// called through the service of this library, made for the generation that is running when the member is used, so a member binds to
     /// the library of the generation and never to one that has retired.
@@ -1946,6 +2082,11 @@ pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String
         c.line("from typing import Any, Callable, Literal, TypeVar, overload");
         c.blank();
         c.line("from gnoblin.objects import Implementor as Implementor, Listener as Listener, Timing as Timing");
+        c.line("from gnoblin.objects import StubMembers as StubMembers");
+        // The core's classes extend what each library adds to them, so a checker finds the members without the library being named.
+        for stem in py.augmenting_namespaces()? {
+            c.line(format!("from gnoblin.objects import {stem} as _ns_{stem}"));
+        }
         for foreign in view.foreigns()? {
             c.line(format!(
                 "from gnoblin.objects.{} import {} as {}",
@@ -1999,6 +2140,10 @@ pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String
     if !stub {
         for (class, target) in augments_of(view.catalog, &view.objects)? {
             py.augment_source(&mut c, class, target)?;
+        }
+    } else {
+        for (class, target) in augments_of(view.catalog, &view.objects)? {
+            py.augment_stub(&mut c, class, target)?;
         }
     }
     Ok(c.finish())

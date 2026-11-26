@@ -77,6 +77,7 @@ def check_members(client):
     say(f"{client.title}: only the matching selections style it: {flag(only)}")
     say(f"{client.title}: keyboard move before Repositioning starts: {flag(client.move_with_keys())}")
     output = gnoblin.outputs.at(0)
+    assert output is not None, "the compositor has an output"
     say(f"{client.title}: the output shows main: {flag(id_of(output.workspace) == 'main')}")
     output.show(side)
     showed = id_of(output.workspace) == "side"
@@ -121,12 +122,15 @@ def check_members(client):
 # The library puts a window on the workspace as it appears and tells the shell of it with the core's ``Client``: the same object the core's
 # own collections give, which ``add`` and ``contains`` take as it is.
 members = main.clients
+assert members is not None, "a workspace has the list of its windows"
 
 
 @members.on("added")
 def joined(client):
-    members.add(client)
-    say(f"{client.title}: it is in main: {str(members.contains(client)).lower()}")
+    collection = main.clients
+    assert collection is not None, "a workspace has the list of its windows"
+    collection.add(client)
+    say(f"{client.title}: it is in main: {str(collection.contains(client)).lower()}")
     say(f"{client.title}: the library's client is the core's: {str(client is gnoblin.clients.get(client.id)).lower()}")
     if not checked:
         check_members(client)
@@ -144,7 +148,7 @@ def added(client, collection):
     except TypeError as error:
         say(f"{client.title}: an id is refused: {refused(error)}")
     try:
-        decorations.inset_of(gnoblin)
+        decorations.inset_of(gnoblin)  # pyright: ignore[reportArgumentType]
     except TypeError as error:
         say(f"{client.title}: another class is refused: {refused(error)}")
 

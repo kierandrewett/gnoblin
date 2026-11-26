@@ -88,10 +88,13 @@ clients = main.clients
 
 
 def joined(client):
-    say(f"client {client.id} joined {main.id}, {clients.length} windows")
+    collection = main.clients
+    count = collection.length if collection is not None else 0
+    say(f"client {client.id} joined {main.id}, {count} windows")
 
 
-clients.on("added", joined)
+if clients is not None:
+    clients.on("added", joined)
 
 context = Gnoblin.get().input.primary
 
@@ -131,7 +134,8 @@ def drag(event):
     if phase == "start":
         hit = context.hit_test(event.position)
         # The window under the press; a layout whose divider does not depend on the point is asked about the first window.
-        members = clients.members
+        collection = main.clients
+        members = collection.members if collection is not None else []
         client = hit.client if hit is not None else (members[0] if members else None)
         split = main.find_split(client, x, y) if client is not None else None
         if split is None:

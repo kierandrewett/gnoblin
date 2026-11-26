@@ -28,7 +28,9 @@ from gnoblin.objects.std import (
 style = ClientStyle.of_clients()
 style.corner_radius = CornerRadius(all=12.0)
 style.shadows = [Shadow(blur=8.0), Shadow(y=4.0, blur=20.0)]
-radius = style.corner_radius.all
+corner = style.corner_radius
+assert corner is not None, "a style that was given a corner radius has one"
+radius = corner.all
 shadows = style.shadows
 gnoblin.log(f"style: corner radius {radius}, {len(shadows)} shadows, the first blur {shadows[0].blur}")
 
@@ -75,8 +77,10 @@ gnoblin.log("style: value classes filters " + " | ".join(describe(entry) for ent
 style.corner_radius = 12
 style.backdrop_filter = [{"blur": 24}, {"saturate": 1.35}]
 style.filter = [{"shader": {"source": SHADER, "params": [2]}}]
+corner = style.corner_radius
+assert corner is not None, "a style that was given a corner radius has one"
 gnoblin.log(
-    f"style: shorthands corner {style.corner_radius.all:g}, "
+    f"style: shorthands corner {corner.all:g}, "
     + "backdrop "
     + " | ".join(describe(entry) for entry in style.backdrop_filter)
     + ", filter "

@@ -15,6 +15,7 @@ scene.add(camera)
 view = View(id="panel", size=SceneSize(width=400.0, height=300.0), position=Vec3(x=0.5, y=0.2, z=-1.4), camera=camera)
 scene.add(view)
 at = view.position
+assert at is not None, "a view that was given a position has one"
 gnoblin.log(
     f"scene: the view {view.id} is node {view.node} at {at.x} {at.y} {at.z}, the camera {camera.id} is node {camera.node} with fov {camera.fov}"
 )

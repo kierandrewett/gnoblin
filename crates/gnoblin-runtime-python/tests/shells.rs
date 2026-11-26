@@ -1472,8 +1472,9 @@ def members(node):
 
 
 for node in classes.values():
-    if (ast.get_docstring(node) or "").startswith("The members of the root"):
-        # A class of the stub alone: the members of the root, which `Gnoblin` extends. The runtime has the class `Gnoblin` and no other.
+    if any(isinstance(base, ast.Name) and base.id == "StubMembers" for base in node.bases):
+        # A class of the stub alone (the members of the root, which `Gnoblin` extends, and what a library adds to a class of the core).
+        # The runtime has the classes they extend and no other.
         continue
     if any(isinstance(base, ast.Attribute) and base.attr in ("IntEnum", "Enum") for base in node.bases):
         names = [t.id for n in node.body if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)]

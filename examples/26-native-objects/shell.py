@@ -49,6 +49,9 @@ desks = Desks.get()
 
 
 def on_added(client):
+    clients = main.clients
+    if clients is None:
+        return
     count = clients.length
     gnoblin.log(f"objects: client {client.id} joined main, {count} windows")
     if count >= 3 and phase[0] == 0:
@@ -81,5 +84,6 @@ def on_added(client):
         gnoblin.log("objects: no divider found")
 
 
-clients.on("added", on_added)
+if clients is not None:
+    clients.on("added", on_added)
 gnoblin.log("objects: running")

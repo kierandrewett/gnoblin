@@ -191,7 +191,8 @@ The hand-written stubs live in `crates/gnoblin-runtime-python/stubs/`. A test (`
 
 `pyright` finds no error in any shell of `examples/` or in the golden shell (`tests/golden/shell.py`) against the installed stubs. The
 test (`every_python_example_type_checks_clean_against_the_installed_stubs`) runs when `pyright` is on the path or `GNOBLIN_PYRIGHT`
-names it, and fails on any error. A `GNOBLIN_PYRIGHT` that names nothing is an error too.
+names it, and fails on any error. A `GNOBLIN_PYRIGHT` that names nothing is an error too. The Rust workflow installs `pyright`, so
+the check cannot go unrun in CI.
 
 A property that holds an object reads as `Client | None` in a stub, as TypeScript reads `Client | undefined` and Rust `Option<Client>`.
 The exception is a property the catalog marks `always`:
@@ -280,8 +281,10 @@ print(gnoblin.scene.root, gnoblin.gestures.swipe_threshold)
 ```
 
 - Each member is read through the std library of the generation that is running, so after a reload it is the new generation's.
-- A stub cannot add a member to a class of another file, so a type checker finds them on `gnoblin.objects.std.GnoblinAugment` and
-  `OutputCollectionAugment`; at run time they are on `Gnoblin` and `OutputCollection`.
+- The stubs declare the members on the core's classes, as the TypeScript declarations merge them. The stub of `gnoblin.objects.model`
+  extends a stub-only class for each, written by `gnoblin.objects.std` from the same catalog, so a type checker finds
+  `gnoblin.workspaces` without a further import.
+- The lowered classes (`GnoblinAugment` and the others) stay, for a call made through the service.
 - `examples/37-native-std-root/shell.py` is this, run by `crates/gnoblin/tests/modular/native_std_root.rs` in a real session beside the
   Rust and TypeScript shells of the same example.
 

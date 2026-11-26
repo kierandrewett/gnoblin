@@ -180,8 +180,9 @@ The rules:
   the generation that is running, so a member never binds to a library of another generation:
     - TypeScript: importing `gnoblin-std/generated/objects` defines the members on the prototype of the core's class, and its
       declarations merge them into it (`declare module "gnoblin-core/generated/objects"`).
-    - Python: importing `gnoblin.objects.std` sets them on the core's class. A stub cannot add a member to a class of another file, so
-      the stubs name them on the lowered classes (`GnoblinAugment`, `ClientAugment`, `InputContextAugment` and the others).
+    - Python: importing `gnoblin.objects.std` sets them on the core's class. The stub of the core extends a stub-only class for each
+      target (`GnoblinStdMembers`, `ClientStdMembers`, `InputContextStdMembers` and the others, written by `gnoblin.objects.std`), so a
+      checker finds the members as in TypeScript. The lowered classes (`GnoblinAugment` and the others) stay for calls through the service.
     - Rust: an extension trait for each target, the core's typed class and the suffix `StdExt` (`ModelRootStdExt`, `ClientStdExt`,
       `OutputStdExt`, `InputContextStdExt`, `ClientCollectionStdExt`, `OutputCollectionStdExt`), is implemented for the core's typed
       class, and `gnoblin_std::prelude` brings them in.

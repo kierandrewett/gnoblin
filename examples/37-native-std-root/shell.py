@@ -144,7 +144,9 @@ def on_changed():
     say(f"displays hold {ids()}")
     displays.replace(mine, over(profile.id, "next"))
     say(f"replaced mine with next: {ids()}")
-    say(f"removed next: {flag(displays.remove(displays.by_id('next')))}")
+    gone = displays.by_id("next")
+    assert gone is not None, "the display that replaced mine is in the list"
+    say(f"removed next: {flag(displays.remove(gone))}")
     say(f"after removing, displays hold {displays.length}")
     say(f"removed profile: {flag(profiles.remove(profile))}")
     say(f"profiles hold {profiles.length}")

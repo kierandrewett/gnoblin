@@ -44,7 +44,8 @@ def listed():
     """The displays as ``id:mode:outputs:workspace`` words, sorted."""
     words = []
     for display in manager.displays:
-        shown = display.viewport.content
+        viewport = display.viewport
+        shown = viewport.content if viewport is not None else None
         words.append(f"{display.id}:{display.mode.name.lower()}:{len(display.outputs)}:{shown.id if shown else 'none'}")
     return " ".join(sorted(words))
 
@@ -60,8 +61,11 @@ def on_changed():
     phase[0] = 1
     say(f"listed {listed()}")
     display = manager.displays[0]
-    display.viewport.content = two
-    say(f"the display {display.id} shows {display.viewport.content.id}")
+    viewport = display.viewport
+    assert viewport is not None, "the library gives a display a viewport"
+    viewport.content = two
+    shown = viewport.content
+    say(f"the display {display.id} shows {shown.id if shown else 'none'}")
     connector = display.id.removeprefix("display-")
     profile = OutputProfile(OutputMatch(connector=connector))
     profile.settings = ProfileSettings(mode="preferred", scale=1.25)

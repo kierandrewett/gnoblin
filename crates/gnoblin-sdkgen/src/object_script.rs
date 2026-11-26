@@ -880,7 +880,7 @@ new Probe(3, { count: 4 });
         let view = ScriptView::new(&spec.objects, namespace);
         let stub = object_py::render(&view, true).expect("the stub renders");
         let start = stub
-            .find("\nclass GnoblinRoot:")
+            .find("\nclass GnoblinRoot(")
             .expect("the stub has the root's members");
         let end = start
             + stub[start..]
@@ -949,6 +949,67 @@ new Probe(3, { count: 4 });
             members.contains("def on(self, event: Literal[\"clients_changed\"]"),
             "{members}"
         );
+    }
+
+    /// What std adds to a class of the core is declared on that class in the Python stubs, from the catalog: the stub of std has a stub-only
+    /// class of the members of each augment, with each property, getter and method, and the stub of the core extends it, so a checker
+    /// finds `gnoblin.workspaces` and `client.style` as TypeScript's merged declarations and Rust's extension traits do.
+    #[test]
+    fn the_python_stub_of_the_core_extends_what_std_adds_to_each_class() {
+        let spec = SdkSpec::load(&workspace_root()).expect("the specification loads");
+        let namespaces = spec.objects.namespaces();
+        let of = |name: &str| {
+            namespaces
+                .iter()
+                .find(|namespace| namespace.as_str() == name)
+                .expect("a namespace")
+        };
+        let std_view = ScriptView::new(&spec.objects, of("gnoblin.std"));
+        let core_view = ScriptView::new(&spec.objects, of("gnoblin.model"));
+        let std = object_py::render(&std_view, true).expect("the std stub renders");
+        let core = object_py::render(&core_view, true).expect("the core stub renders");
+        let augments = crate::objects::augments_of(&spec.objects, &std_view.objects).expect("the augments are found");
+        assert!(augments.len() >= 5, "std augments several classes of the core");
+        assert!(core.contains("from gnoblin.objects import std as _ns_std"), "{core}");
+        for (class, target) in augments {
+            let members = format!("{}StdMembers", object_py::class_name(target));
+            let start = std
+                .find(&format!("\nclass {members}(StubMembers):"))
+                .unwrap_or_else(|| panic!("std declares `{members}`:\n{std}"));
+            let body = &std[start + 1..];
+            let body = &body[..body.find("\nclass ").map_or(body.len(), |end| end + 1)];
+            for property in &class.properties {
+                let ident = object_py::member_name(&property.name, &property.extras.export.py);
+                assert!(
+                    body.contains(&format!("def {ident}(self)")),
+                    "`{members}` has `{ident}`:\n{body}"
+                );
+            }
+            for method in &class.methods {
+                if crate::objects::is_augment_setter(class, &method.name) {
+                    continue;
+                }
+                let ident = object_py::member_name(&method.name, &method.extras.export.py);
+                assert!(
+                    body.contains(&format!("def {ident}(self")),
+                    "`{members}` has `{ident}`:\n{body}"
+                );
+            }
+            let extended = format!("_ns_std.{members}");
+            let class_line = core
+                .lines()
+                .find(|line| {
+                    line.starts_with(&format!("class {}", object_py::class_name(target))) && line.contains(&extended)
+                })
+                .unwrap_or_else(|| panic!("the core's `{}` extends `{extended}`", target.name));
+            assert!(class_line.ends_with("):"), "{class_line}");
+        }
+        // A member the augment reads is the object, as in the other two languages, and a receiver's writable getter has its setter.
+        assert!(
+            std.contains("def scene(self) -> Scene") && !std.contains("def scene(self) -> Scene | None"),
+            "{std}"
+        );
+        assert!(std.contains("@floating.setter"), "{std}");
     }
 
     /// A catalog with a handle `thing` whose constructor names `id`, and `rest` more properties and types.
