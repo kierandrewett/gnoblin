@@ -21,11 +21,9 @@ type Comp = FakeCompositor;
 
 /// A role over `comp` and a core with the libraries loaded, as the runtime's is: the generated classes need the core's natives. The
 /// core is dropped after the role.
-fn core_role(comp: &Comp, mut config: JsRoleConfig) -> (JsRole, common::native::NativeCore) {
-    let core = common::native::NativeCore::new(comp, std::sync::Arc::clone(&config.shell.clock));
-    config.shell.js.natives.push(core.embedded().std_native());
-    config.shell.js.natives.push(core.embedded().object_native());
-    let role = JsRole::over_link(core.link(), JsRoleLinks::default(), config).expect("a role");
+fn core_role(comp: &Comp, config: JsRoleConfig) -> (JsRole, common::native::NativeCore) {
+    let mut core = common::native::NativeCore::new(comp, std::sync::Arc::clone(&config.shell.clock));
+    let role = core.role(config, JsRoleLinks::default());
     (role, core)
 }
 
@@ -974,7 +972,6 @@ fn a_role_swaps_in_a_reloaded_generation_over_the_same_windows_and_a_failed_relo
 }
 
 #[test]
-#[ignore = "vrnw: needs a failed stage's top-level writes of the generated library dropped: on a reload that stages a core generation (NativeCore::reload) the write still goes out, [(3, 999.0)]"]
 fn a_file_that_writes_and_then_throws_leaves_no_write_behind() {
     let comp = two_windows();
     let dir = tempfile::tempdir().expect("a temp dir");

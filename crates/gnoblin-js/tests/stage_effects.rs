@@ -62,12 +62,11 @@ fn role_of(init: &str) -> (JsRole, PathBuf, (tempfile::TempDir, native::NativeCo
     fs::write(root.join("shell.ts"), init).expect("shell.ts");
     let mut config = honest_role_config(&root);
     config.watch = false;
-    // The generated classes need the native library: a role over a core, as a shell runs.
+    // The first generation is staged and takes over once the entry loaded, as the loader starts a shell: the programs the entry
+    // spawns are the config's, which a reload can adopt or stop.
     let comp = FakeCompositor::new();
-    let core = native::NativeCore::new(&comp, std::sync::Arc::clone(&config.shell.clock));
-    config.shell.js.natives.push(core.embedded().std_native());
-    config.shell.js.natives.push(core.embedded().object_native());
-    let role = JsRole::over_link(core.link(), JsRoleLinks::default(), config).expect("a role");
+    let mut core = native::NativeCore::staged(&comp, std::sync::Arc::clone(&config.shell.clock));
+    let role = core.role(config, JsRoleLinks::default());
     (role, root, (dir, core))
 }
 
@@ -114,7 +113,6 @@ fn a_first_load_that_spawns_at_its_top_level_starts_one_process_and_its_handle_h
 }
 
 #[test]
-#[ignore = "vrnw: needs a generation to own the programs its top level spawns: on a reload that stages a core generation (NativeCore::reload) the same program starts a second time"]
 fn a_reload_whose_top_level_spawns_the_same_program_keeps_the_one_process() {
     let tag = "31.7003";
     let (mut role, root, mut keep) = role_of(&spawning(tag, ""));
@@ -138,7 +136,6 @@ fn a_reload_whose_top_level_spawns_the_same_program_keeps_the_one_process() {
 }
 
 #[test]
-#[ignore = "vrnw: needs a generation to own the programs its top level spawns: on a reload that stages a core generation (NativeCore::reload) a program the new file no longer spawns keeps running"]
 fn a_reload_that_no_longer_spawns_a_program_stops_it() {
     let tag = "31.7004";
     let (mut role, root, mut keep) = role_of(&spawning(tag, ""));
@@ -151,7 +148,6 @@ fn a_reload_that_no_longer_spawns_a_program_stops_it() {
 }
 
 #[test]
-#[ignore = "vrnw: needs a generation to own the programs its top level spawns: on a reload that stages a core generation (NativeCore::reload) the first program keeps running"]
 fn a_reload_that_spawns_another_program_replaces_the_first() {
     let (first, second) = ("31.7005", "31.7006");
     let (mut role, root, mut keep) = role_of(&spawning(first, ""));
