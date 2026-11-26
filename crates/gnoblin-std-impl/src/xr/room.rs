@@ -16,7 +16,7 @@ use gnoblin_core::NodeId;
 use gnoblin_object::server::Cx;
 use gnoblin_object::{Closure, Fail, Obj, Res, Val};
 
-use super::World;
+use super::XrWorld;
 use super::layout::{LayoutData, Spacing};
 use super::ring::{self, RingParams};
 use crate::animation::staging::Prop;
@@ -102,7 +102,7 @@ impl RoomData {
 ///
 /// A node could not be made or written.
 pub(crate) fn setup(
-    world: &World,
+    world: &XrWorld,
     cx: &mut Cx<'_>,
     node: u64,
     obj: Obj,
@@ -143,7 +143,7 @@ pub(crate) fn setup(
 ///
 /// A node could not be made or written.
 pub(crate) fn build(
-    world: &World,
+    world: &XrWorld,
     cx: &mut Cx<'_>,
     layout: Option<(Obj, Rc<LayoutData>)>,
     accept: Option<Closure>,
@@ -159,7 +159,7 @@ pub(crate) fn build(
 }
 
 /// What the room reads of one window.
-struct Window {
+struct RoomWindow {
     node: u64,
     secure: bool,
     minimised: bool,
@@ -173,7 +173,7 @@ struct Window {
     parent: Option<u64>,
 }
 
-impl Window {
+impl RoomWindow {
     /// The `xr_client` record `accept` is told.
     fn record(&self) -> Val {
         Val::Record {
@@ -192,13 +192,13 @@ impl Window {
 }
 
 /// The open windows, in the order they came into the tree.
-fn windows(world: &World) -> Vec<Window> {
+fn windows(world: &XrWorld) -> Vec<RoomWindow> {
     let nodes: Vec<u64> = world
         .g
         .windows()
         .map(|list| list.iter().map(|window| window.id().0).collect())
         .unwrap_or_default();
-    let read = |node: u64| -> Window {
+    let read = |node: u64| -> RoomWindow {
         let g = &world.g;
         let handle = g.node(NodeId(node));
         let parent = handle
@@ -207,7 +207,7 @@ fn windows(world: &World) -> Vec<Window> {
             .flatten()
             .map(|parent| parent.id().0)
             .filter(|parent| *parent != node && nodes.contains(parent));
-        Window {
+        RoomWindow {
             node,
             secure: crate::nodes::flag(g, node, "secure"),
             minimised: crate::nodes::flag(g, node, "minimised"),
@@ -229,7 +229,7 @@ fn windows(world: &World) -> Vec<Window> {
 }
 
 /// Makes a panel of `window` under `parent` (the room, a parent's panel or the head camera), held by the object `owner`.
-fn add_panel(world: &World, cx: &mut Cx<'_>, window: &Window, parent: u64, owner: Obj) -> Res<Panel> {
+fn add_panel(world: &XrWorld, cx: &mut Cx<'_>, window: &RoomWindow, parent: u64, owner: Obj) -> Res<Panel> {
     let (view, obj) = world.spawn_node(cx, "view", Kind::View)?;
     let made = (|| -> Res<()> {
         world.put(view, "source", Prop::Node(window.node))?;
@@ -252,13 +252,13 @@ fn add_panel(world: &World, cx: &mut Cx<'_>, window: &Window, parent: u64, owner
 }
 
 /// Whether a panel's view still shows its window.
-fn holds(world: &World, panel: &Panel) -> bool {
+fn holds(world: &XrWorld, panel: &Panel) -> bool {
     world.scene.alive(panel.view)
         && matches!(world.read(panel.view, "source"), Some(Prop::Node(source)) if source == panel.client)
 }
 
 /// Asks the room's `accept` about each window. A throw is reported once and counts as no.
-fn accepted(world: &World, room: &RoomData, all: &[Window]) -> Vec<bool> {
+fn accepted(world: &XrWorld, room: &RoomData, all: &[RoomWindow]) -> Vec<bool> {
     let accept = room.accept.borrow().clone();
     let Some(accept) = accept else {
         return vec![true; all.len()];
@@ -281,7 +281,7 @@ fn accepted(world: &World, room: &RoomData, all: &[Window]) -> Vec<bool> {
 }
 
 /// Brings the room's panels up to date with the windows and the focus, and places them. Writes only what changed.
-pub(crate) fn reconcile(world: &World, cx: &mut Cx<'_>, room: &RoomData) {
+pub(crate) fn reconcile(world: &XrWorld, cx: &mut Cx<'_>, room: &RoomData) {
     if room.layout.borrow().is_none() {
         return;
     }
@@ -492,7 +492,7 @@ pub(crate) fn reconcile(world: &World, cx: &mut Cx<'_>, room: &RoomData) {
 ///
 /// The window is gone, or a node could not be made.
 pub(crate) fn pin_to_head(
-    world: &World,
+    world: &XrWorld,
     cx: &mut Cx<'_>,
     room: &RoomData,
     client: u64,
@@ -522,7 +522,7 @@ pub(crate) fn pin_to_head(
 }
 
 /// Metres in one room unit: the head camera's.
-pub(crate) fn unit(world: &World, room: &RoomData) -> f64 {
+pub(crate) fn unit(world: &XrWorld, room: &RoomData) -> f64 {
     match world.read(room.head.get().0, "metres") {
         Some(Prop::Number(metres)) if metres > 0.0 => metres,
         _ => DEFAULT_METRES,
@@ -532,7 +532,7 @@ pub(crate) fn unit(world: &World, room: &RoomData) -> f64 {
 /// The panel the ray strikes, and where: the last of the room's views first, because the room lists them back to front. A panel that is
 /// hidden or takes no input is passed over, and a quad is one-sided, so the ray must travel towards its front.
 pub(crate) fn pick(
-    world: &World,
+    world: &XrWorld,
     room: &RoomData,
     ray: crate::math::vector::RayLine,
 ) -> Option<(Panel, crate::math::vector::Point3)> {

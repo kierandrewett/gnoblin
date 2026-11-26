@@ -16,7 +16,7 @@ const RELEASE: f64 = 0.25;
 
 /// Who holds a claim: a script, by the name it gave, or a drag of a binding.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Owner {
+pub(crate) enum ClaimOwner {
     Script(String),
     Binding(Obj),
 }
@@ -31,7 +31,7 @@ pub(crate) struct ControllerData {
     /// The buttons that are down as of the last frame, as indices into `trigger::BUTTONS`, in order.
     pub(crate) down: RefCell<Vec<usize>>,
     /// Each owner's claim; the node holds the union.
-    pub(crate) claims: RefCell<Vec<(Owner, Vec<usize>)>>,
+    pub(crate) claims: RefCell<Vec<(ClaimOwner, Vec<usize>)>>,
 }
 
 /// A number of the node, 0 when it cannot be read.
@@ -138,7 +138,7 @@ impl ControllerData {
     /// # Errors
     ///
     /// The controller is gone (`not_found`), or the compositor refused the write.
-    pub(crate) fn claim(&self, g: &Gnoblin, owner: Owner, inputs: Vec<usize>) -> Res<()> {
+    pub(crate) fn claim(&self, g: &Gnoblin, owner: ClaimOwner, inputs: Vec<usize>) -> Res<()> {
         let target = self.target();
         if !self.alive(g) {
             return Err(Fail::refused(
@@ -166,7 +166,7 @@ impl ControllerData {
     /// # Errors
     ///
     /// The compositor refused the write.
-    pub(crate) fn release(&self, g: &Gnoblin, owner: &Owner) -> Res<()> {
+    pub(crate) fn release(&self, g: &Gnoblin, owner: &ClaimOwner) -> Res<()> {
         let had = {
             let mut claims = self.claims.borrow_mut();
             let before = claims.len();

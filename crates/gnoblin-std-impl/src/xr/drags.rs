@@ -7,7 +7,7 @@
 //! off, a panel that went, a throw or the end of the session cancels it. A drag that ends leaves the panel pinned; a cancelled one gives
 //! it back to the ring unless it was pinned before. Every way a drag ends gives its claim back.
 //!
-//! A binding's hooks are its handler's where the handler defines them, and the binding's own (`Native`) otherwise. Poses are in the
+//! A binding's hooks are its handler's where the handler defines them, and the binding's own (`NativeDrag`) otherwise. Poses are in the
 //! room's placement frame.
 
 use std::rc::Rc;
@@ -17,10 +17,10 @@ use gnoblin_core_abi as abi;
 use gnoblin_object::server::Cx;
 use gnoblin_object::{MemberId, Res, Val};
 
-use super::controller::{ControllerData, Owner, inputs_of};
-use super::layout::{BindingData, CORNERS, Native, Tracking};
+use super::controller::{ClaimOwner, ControllerData, inputs_of};
+use super::layout::{BindingData, CORNERS, DragTracking, NativeDrag};
 use super::room::{self, Panel, RoomData};
-use super::{SessionData, World};
+use super::{SessionData, XrWorld};
 use crate::animation::staging::Prop;
 use crate::math::transform::PoseMatrix;
 use crate::math::vector::{Flat, Point3, RayLine};
@@ -65,7 +65,7 @@ pub(crate) enum State {
 }
 
 /// A drag that is running.
-pub(crate) struct Run {
+pub(crate) struct DragRun {
     pub(crate) controller: Rc<ControllerData>,
     pub(crate) binding: Rc<BindingData>,
     pub(crate) panel: Panel,
@@ -106,7 +106,7 @@ impl Hook {
 }
 
 /// What an event of a drag says.
-struct Event<'a> {
+struct XrDragEvent<'a> {
     now: f64,
     delta: f64,
     controller: &'a ControllerData,
@@ -121,9 +121,9 @@ fn vec3(point: Point3) -> Val {
     crate::math::vec3_val(point)
 }
 
-impl Event<'_> {
+impl XrDragEvent<'_> {
     /// The `xr_drag_event` record, each object in it handed to the shell.
-    fn record(&self, world: &World, cx: &Cx<'_>) -> Res<Val> {
+    fn record(&self, world: &XrWorld, cx: &Cx<'_>) -> Res<Val> {
         let ray = self.controller.ray(&world.g);
         Ok(Val::Record {
             class: 0,
@@ -156,7 +156,7 @@ fn member(cx: &Cx<'_>, name: &str) -> Option<MemberId> {
 }
 
 /// Runs `hook` of the handler when it defines it: `None` when it does not, the answer when it does.
-fn handler_hook(world: &World, cx: &Cx<'_>, hook: Hook, event: &Event<'_>) -> Option<Res<Val>> {
+fn handler_hook(world: &XrWorld, cx: &Cx<'_>, hook: Hook, event: &XrDragEvent<'_>) -> Option<Res<Val>> {
     let handler = event.binding.handler.borrow().clone()?;
     let member = member(cx, hook.member())?;
     if !handler.shell.has(member) {
@@ -170,12 +170,12 @@ fn handler_hook(world: &World, cx: &Cx<'_>, hook: Hook, event: &Event<'_>) -> Op
 }
 
 /// Reports a hook that threw.
-fn report(world: &World, binding: &BindingData, hook: &str, message: &str) {
+fn report(world: &XrWorld, binding: &BindingData, hook: &str, message: &str) {
     world.warn(&format!("{}.{hook} threw: {message}", binding.id.borrow()));
 }
 
 /// The inputs a drag of `binding` claims: its handler's `claims`, or its trigger's buttons.
-fn claims(world: &World, cx: &Cx<'_>, binding: &BindingData, controller: &ControllerData) -> Res<Vec<usize>> {
+fn claims(world: &XrWorld, cx: &Cx<'_>, binding: &BindingData, controller: &ControllerData) -> Res<Vec<usize>> {
     let handler = binding.handler.borrow().clone();
     if let (Some(handler), Some(member)) = (handler, member(cx, "claims"))
         && handler.shell.has(member)
@@ -193,7 +193,7 @@ fn claims(world: &World, cx: &Cx<'_>, binding: &BindingData, controller: &Contro
 }
 
 /// The binding's own start: the state its drag keeps, or none to decline.
-fn native_start(world: &World, event: &Event<'_>) -> Option<State> {
+fn native_start(world: &XrWorld, event: &XrDragEvent<'_>) -> Option<State> {
     let native = event.binding.native.borrow().clone();
     let tracked = event.controller.tracked(&world.g);
     let (Some(panel), Some(hit)) = (event.panel, event.hit) else {
@@ -203,8 +203,8 @@ fn native_start(world: &World, event: &Event<'_>) -> Option<State> {
     let start_local = world.pose(panel.view);
     let controller = event.controller.pose(&world.g);
     Some(match native {
-        Native::Plain => return None,
-        Native::Move { .. } => {
+        NativeDrag::Plain => return None,
+        NativeDrag::Move { .. } => {
             if !tracked {
                 return None;
             }
@@ -218,7 +218,7 @@ fn native_start(world: &World, event: &Event<'_>) -> Option<State> {
                 offset: start_world.position.subtract(hit),
             }
         }
-        Native::Resize { edges, .. } => {
+        NativeDrag::Resize { edges, .. } => {
             let local = start_world.inverse().transform_point(hit);
             // The panel's local y points up, so the top corners are the ones with y above the centre.
             let corner = match edges {
@@ -242,7 +242,7 @@ fn native_start(world: &World, event: &Event<'_>) -> Option<State> {
                 wanted: (width * scale, height * scale),
             }
         }
-        Native::Rotate => {
+        NativeDrag::Rotate => {
             if !tracked {
                 return None;
             }
@@ -252,7 +252,7 @@ fn native_start(world: &World, event: &Event<'_>) -> Option<State> {
                 start_controller: controller,
             }
         }
-        Native::Scale { .. } => {
+        NativeDrag::Scale { .. } => {
             if !tracked {
                 return None;
             }
@@ -278,7 +278,7 @@ fn with_rotation(pose: &PoseMatrix, rotation: [f64; 3]) -> PoseMatrix {
 }
 
 /// The binding's own update.
-fn native_update(world: &World, run: &mut Run, unit: f64) -> Res<()> {
+fn native_update(world: &XrWorld, run: &mut DragRun, unit: f64) -> Res<()> {
     let native = run.binding.native.borrow().clone();
     let view = run.panel.view;
     match (&mut run.state, native) {
@@ -290,10 +290,10 @@ fn native_update(world: &World, run: &mut Run, unit: f64) -> Res<()> {
                 offset,
                 ..
             },
-            Native::Move { tracking, keep },
+            NativeDrag::Move { tracking, keep },
         ) => {
             let target = match tracking {
-                Tracking::Controller => {
+                DragTracking::Controller => {
                     let delta = run.controller.pose(&world.g).multiply(&start_controller.inverse());
                     let moved = delta.multiply(start_world);
                     if keep {
@@ -302,7 +302,7 @@ fn native_update(world: &World, run: &mut Run, unit: f64) -> Res<()> {
                         moved
                     }
                 }
-                Tracking::Ray => {
+                DragTracking::Ray => {
                     let ray = run.controller.ray(&world.g);
                     let position = ray.origin.add(ray.direction.normalize().scale(*distance)).add(*offset);
                     PoseMatrix::new(position, start_world.rotation(), start_world.scale)
@@ -321,7 +321,7 @@ fn native_update(world: &World, run: &mut Run, unit: f64) -> Res<()> {
                 wanted,
                 ..
             },
-            Native::Resize {
+            NativeDrag::Resize {
                 min_width, min_height, ..
             },
         ) => {
@@ -351,7 +351,7 @@ fn native_update(world: &World, run: &mut Run, unit: f64) -> Res<()> {
                 start_controller,
                 ..
             },
-            Native::Rotate,
+            NativeDrag::Rotate,
         ) => {
             let hand = turn_of(&run.controller.pose(&world.g).multiply(&start_controller.inverse()));
             let rotation = hand.multiply(&turn_of(start_world)).rotation();
@@ -364,7 +364,7 @@ fn native_update(world: &World, run: &mut Run, unit: f64) -> Res<()> {
                 aim,
                 ..
             },
-            Native::Scale { min, max },
+            NativeDrag::Scale { min, max },
         ) => {
             let metres = run.controller.pose(&world.g).position.subtract(*start).dot(*aim) * unit;
             let scale = (start_world.scale + metres).max(min).min(max);
@@ -378,8 +378,8 @@ fn native_update(world: &World, run: &mut Run, unit: f64) -> Res<()> {
 }
 
 /// The binding's own end: a resize asks the window for one new size when the panel's needs it.
-fn native_end(world: &World, run: &Run, unit: f64) -> Res<()> {
-    let (State::Resize { wanted, .. }, Native::Resize { pixels_per_metre, .. }) =
+fn native_end(world: &XrWorld, run: &DragRun, unit: f64) -> Res<()> {
+    let (State::Resize { wanted, .. }, NativeDrag::Resize { pixels_per_metre, .. }) =
         (&run.state, run.binding.native.borrow().clone())
     else {
         return Ok(());
@@ -418,7 +418,7 @@ fn native_end(world: &World, run: &Run, unit: f64) -> Res<()> {
 }
 
 /// The binding's own cancel: the panel goes back to where the drag found it.
-fn native_cancel(world: &World, run: &Run) -> Res<()> {
+fn native_cancel(world: &XrWorld, run: &DragRun) -> Res<()> {
     let start = match &run.state {
         State::None => return Ok(()),
         State::Move { start_local, .. }
@@ -431,16 +431,16 @@ fn native_cancel(world: &World, run: &Run) -> Res<()> {
 
 /// Runs `hook` of a running drag: the handler's, or the binding's own. Answers whether it ran without a throw.
 fn run_hook(
-    world: &World,
+    world: &XrWorld,
     cx: &Cx<'_>,
     hook: Hook,
-    run: &mut Run,
+    run: &mut DragRun,
     session: &SessionData,
     room: &RoomData,
     now: f64,
 ) -> bool {
     let unit = room::unit(world, room);
-    let event = Event {
+    let event = XrDragEvent {
         now,
         delta: ((now - run.last).max(0.0) / 1000.0).min(MAX_DELTA),
         controller: &run.controller,
@@ -471,7 +471,15 @@ fn run_hook(
 
 /// Ends a drag with `hook` (`End` or `Cancel`): the claim goes back, the hook runs, and a cancelled drag gives its panel back to the ring
 /// unless it was pinned before.
-fn finish(world: &World, cx: &Cx<'_>, mut run: Run, hook: Hook, session: &SessionData, room: &RoomData, now: f64) {
+fn finish(
+    world: &XrWorld,
+    cx: &Cx<'_>,
+    mut run: DragRun,
+    hook: Hook,
+    session: &SessionData,
+    room: &RoomData,
+    now: f64,
+) {
     unclaim(world, &run);
     run_hook(world, cx, hook, &mut run, session, room, now);
     if hook == Hook::Cancel && !run.was_pinned {
@@ -480,14 +488,17 @@ fn finish(world: &World, cx: &Cx<'_>, mut run: Run, hook: Hook, session: &Sessio
 }
 
 /// Gives back what a drag claimed. A controller that is gone holds no claim, so only a refused write is reported.
-fn unclaim(world: &World, run: &Run) {
-    if let Err(fail) = run.controller.release(&world.g, &Owner::Binding(run.binding.obj.get())) {
+fn unclaim(world: &XrWorld, run: &DragRun) {
+    if let Err(fail) = run
+        .controller
+        .release(&world.g, &ClaimOwner::Binding(run.binding.obj.get()))
+    {
         report(world, &run.binding, "release", &fail.message);
     }
 }
 
 /// Cancels every running drag once, with its hook, and gives every claim back.
-pub(crate) fn cancel_all(world: &World, cx: &Cx<'_>) {
+pub(crate) fn cancel_all(world: &XrWorld, cx: &Cx<'_>) {
     let runs = std::mem::take(&mut world.rt.borrow_mut().runs);
     if runs.is_empty() {
         return;
@@ -509,7 +520,7 @@ pub(crate) fn cancel_all(world: &World, cx: &Cx<'_>) {
 }
 
 /// One frame of the drags of `room`.
-pub(crate) fn run(world: &World, cx: &Cx<'_>, session: &SessionData, room: &RoomData) {
+pub(crate) fn run(world: &XrWorld, cx: &Cx<'_>, session: &SessionData, room: &RoomData) {
     let now = world.now();
     let bindings: Vec<Rc<BindingData>> = room
         .layout
@@ -576,7 +587,7 @@ pub(crate) fn run(world: &World, cx: &Cx<'_>, session: &SessionData, room: &Room
         let unit = room::unit(world, room);
         let mut started = false;
         for binding in candidates {
-            let event = Event {
+            let event = XrDragEvent {
                 now,
                 delta: 0.0,
                 controller,
@@ -600,7 +611,7 @@ pub(crate) fn run(world: &World, cx: &Cx<'_>, session: &SessionData, room: &Room
                 continue;
             };
             let was_pinned = room.is_pinned(panel.view);
-            let run = Run {
+            let run = DragRun {
                 controller: Rc::clone(controller),
                 binding: Rc::clone(&binding),
                 panel,
@@ -614,7 +625,7 @@ pub(crate) fn run(world: &World, cx: &Cx<'_>, session: &SessionData, room: &Room
             // The drag owns its buttons from here: the program stops passing them to the window under the ray. A claim that cannot be made
             // ends the drag at once, so a binding never runs half-claimed.
             let claimed = claims(world, cx, &binding, controller)
-                .and_then(|inputs| controller.claim(&world.g, Owner::Binding(binding.obj.get()), inputs));
+                .and_then(|inputs| controller.claim(&world.g, ClaimOwner::Binding(binding.obj.get()), inputs));
             match claimed {
                 Ok(()) => {
                     world.rt.borrow_mut().runs.push(run);
@@ -632,9 +643,9 @@ pub(crate) fn run(world: &World, cx: &Cx<'_>, session: &SessionData, room: &Room
         }
     }
     // A controller that left the session while it held a drag.
-    let orphans: Vec<Run> = {
+    let orphans: Vec<DragRun> = {
         let mut rt = world.rt.borrow_mut();
-        let (keep, gone): (Vec<Run>, Vec<Run>) = rt.runs.drain(..).partition(|run| {
+        let (keep, gone): (Vec<DragRun>, Vec<DragRun>) = rt.runs.drain(..).partition(|run| {
             controllers
                 .iter()
                 .any(|controller| Rc::ptr_eq(controller, &run.controller))
@@ -648,7 +659,7 @@ pub(crate) fn run(world: &World, cx: &Cx<'_>, session: &SessionData, room: &Room
 }
 
 /// Whether a drag waits on the settle time, and how long until it is due, in milliseconds.
-pub(crate) fn settle_due(world: &World, session: &SessionData) -> Option<f64> {
+pub(crate) fn settle_due(world: &XrWorld, session: &SessionData) -> Option<f64> {
     let now = world.now();
     let rt = world.rt.borrow();
     session

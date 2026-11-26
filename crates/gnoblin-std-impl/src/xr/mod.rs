@@ -42,7 +42,7 @@ use gnoblin_object::server::{Cx, ShellImpl};
 use gnoblin_object::{Closure, Fail, Obj, Res, Val};
 
 use self::controller::ControllerData;
-use self::drags::Run;
+use self::drags::DragRun;
 use self::room::RoomData;
 use crate::animation::staging::Prop;
 use crate::math::transform::PoseMatrix;
@@ -92,14 +92,14 @@ const WINDOW_KEYS: [&str; 10] = [
 
 thread_local! {
     /// The XR of each generation of this thread.
-    static WORLDS: RefCell<HashMap<GnoblinCtx, Rc<World>>> = RefCell::new(HashMap::new());
+    static WORLDS: RefCell<HashMap<GnoblinCtx, Rc<XrWorld>>> = RefCell::new(HashMap::new());
     /// The generations whose seats the library watches for the program's, by their handle on the core.
     static WATCHED: RefCell<HashMap<GnoblinCtx, Gnoblin>> = RefCell::new(HashMap::new());
 }
 
 /// A listener of the sessions.
 #[derive(Clone)]
-pub(crate) struct Held {
+pub(crate) struct HeldListener {
     pub(crate) obj: Obj,
     pub(crate) shell: Rc<ShellImpl>,
 }
@@ -137,13 +137,13 @@ pub(crate) struct Options {
 #[derive(Default)]
 pub(crate) struct Runtime {
     pub(crate) options: Options,
-    pub(crate) listeners: Vec<Held>,
+    pub(crate) listeners: Vec<HeldListener>,
     pub(crate) session: Option<Rc<SessionData>>,
     /// The extension's object while there is a session, held.
     pub(crate) ext: Obj,
     /// The room the library built.
     pub(crate) stock: Obj,
-    pub(crate) runs: Vec<Run>,
+    pub(crate) runs: Vec<DragRun>,
     /// Controllers whose chord found no drag: they start none until their buttons are let go.
     pub(crate) declined: BTreeSet<u64>,
     /// The chord each controller holds and since when.
@@ -151,7 +151,7 @@ pub(crate) struct Runtime {
 }
 
 /// The XR of one generation.
-pub(crate) struct World {
+pub(crate) struct XrWorld {
     pub(crate) ctx: GnoblinCtx,
     pub(crate) g: Gnoblin,
     pub(crate) scene: Rc<SceneWorld>,
@@ -170,7 +170,7 @@ pub(crate) struct World {
 }
 
 /// The XR of the generation `ctx`, if the library follows one.
-pub(crate) fn find(ctx: GnoblinCtx) -> Option<Rc<World>> {
+pub(crate) fn find(ctx: GnoblinCtx) -> Option<Rc<XrWorld>> {
     WORLDS.with(|worlds| worlds.borrow().get(&ctx).cloned())
 }
 
@@ -239,13 +239,13 @@ fn seat_changed(ctx: GnoblinCtx) {
 /// # Errors
 ///
 /// The core refuses the attach or a subscription.
-pub(crate) fn start(ctx: GnoblinCtx) -> Res<Rc<World>> {
+pub(crate) fn start(ctx: GnoblinCtx) -> Res<Rc<XrWorld>> {
     if let Some(world) = find(ctx) {
         return Ok(world);
     }
     watch_seats(ctx)?;
     let scene = crate::scene::registry::world_for(ctx)?;
-    let world = Rc::new(World {
+    let world = Rc::new(XrWorld {
         ctx,
         g: scene.g.clone(),
         scene,
@@ -270,7 +270,7 @@ pub(crate) fn start(ctx: GnoblinCtx) -> Res<Rc<World>> {
 }
 
 /// The XR of the generation a call is for.
-pub(crate) fn world_of(cx: &Cx<'_>) -> Res<Rc<World>> {
+pub(crate) fn world_of(cx: &Cx<'_>) -> Res<Rc<XrWorld>> {
     start(cx.ctx())
 }
 
@@ -295,7 +295,7 @@ pub(crate) fn nodes_of(g: &Gnoblin, class: &str) -> Vec<u64> {
 }
 
 /// The camera the program writes the head pose onto: the one named `head`.
-pub(crate) fn head_camera(world: &World) -> Option<u64> {
+pub(crate) fn head_camera(world: &XrWorld) -> Option<u64> {
     nodes_of(&world.g, "camera")
         .into_iter()
         .find(|node| matches!(world.read(*node, "name"), Some(Prop::Text(name)) if name == "head"))
@@ -310,7 +310,7 @@ fn xr_seat(g: &Gnoblin) -> Option<u64> {
 }
 
 /// What a world follows besides the seats (`watch_seats`).
-fn subscribe(world: &Rc<World>) -> Res<()> {
+fn subscribe(world: &Rc<XrWorld>) -> Res<()> {
     let ctx = world.ctx;
     let g = &world.g;
     g.on_shutdown(move || shutdown(ctx)).map_err(core_fail)?;
@@ -370,7 +370,7 @@ fn shutdown(ctx: GnoblinCtx) {
     WORLDS.with(|worlds| worlds.borrow_mut().remove(&ctx));
 }
 
-impl World {
+impl XrWorld {
     /// Writes a line to the generation's log.
     pub(crate) fn warn(&self, message: &str) {
         #[cfg(any(test, feature = "testing"))]
@@ -531,7 +531,7 @@ impl World {
 
     /// Whether the extension can be used now: the session declared XR, or the program has a session.
     pub(crate) fn available(&self) -> bool {
-        World::declared() || self.rt.borrow().session.is_some() || xr_seat(&self.g).is_some()
+        XrWorld::declared() || self.rt.borrow().session.is_some() || xr_seat(&self.g).is_some()
     }
 
     /// One turn: follows the seat, then keeps the room and the drags current.

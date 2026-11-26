@@ -156,7 +156,7 @@ impl Triggers {
 
 /// What a move drag follows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Tracking {
+pub(crate) enum DragTracking {
     Controller,
     Ray,
 }
@@ -166,11 +166,11 @@ pub(crate) const CORNERS: [(f64, f64); 4] = [(-1.0, 1.0), (1.0, 1.0), (-1.0, -1.
 
 /// What a binding does natively: the drag of its class.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Native {
+pub(crate) enum NativeDrag {
     /// The base class: it declines every drag unless a handler takes it.
     Plain,
     Move {
-        tracking: Tracking,
+        tracking: DragTracking,
         /// Whether the panel keeps its own rotation.
         keep: bool,
     },
@@ -188,33 +188,33 @@ pub(crate) enum Native {
     },
 }
 
-impl Native {
+impl NativeDrag {
     /// The id and trigger a binding of this class has unless it is told otherwise.
     pub(crate) fn defaults(&self) -> (&'static str, &'static str) {
         match self {
-            Native::Plain => ("", ""),
-            Native::Move { .. } => ("move", "Grip+Drag"),
-            Native::Resize { .. } => ("resize", "Grip+Trigger+Drag"),
-            Native::Rotate => ("rotate", "Trigger+Thumbstick+Drag"),
-            Native::Scale { .. } => ("scale", "Grip+Thumbstick+Drag"),
+            NativeDrag::Plain => ("", ""),
+            NativeDrag::Move { .. } => ("move", "Grip+Drag"),
+            NativeDrag::Resize { .. } => ("resize", "Grip+Trigger+Drag"),
+            NativeDrag::Rotate => ("rotate", "Trigger+Thumbstick+Drag"),
+            NativeDrag::Scale { .. } => ("scale", "Grip+Thumbstick+Drag"),
         }
     }
 
     /// The name of the class, for a refusal.
     pub(crate) fn label(&self) -> &'static str {
         match self {
-            Native::Plain => "XRControllerDragBinding",
-            Native::Move { .. } => "ViewMoveBinding",
-            Native::Resize { .. } => "ViewResizeBinding",
-            Native::Rotate => "ViewRotateBinding",
-            Native::Scale { .. } => "ViewScaleBinding",
+            NativeDrag::Plain => "XRControllerDragBinding",
+            NativeDrag::Move { .. } => "ViewMoveBinding",
+            NativeDrag::Resize { .. } => "ViewResizeBinding",
+            NativeDrag::Rotate => "ViewRotateBinding",
+            NativeDrag::Scale { .. } => "ViewScaleBinding",
         }
     }
 }
 
 /// A script's hooks for a binding.
 #[derive(Clone)]
-pub(crate) struct Handler {
+pub(crate) struct BindingHandler {
     pub(crate) obj: Obj,
     pub(crate) shell: Rc<ShellImpl>,
 }
@@ -228,8 +228,8 @@ pub(crate) struct BindingData {
     pub(crate) parsed: RefCell<ControllerTrigger>,
     pub(crate) enabled: Cell<bool>,
     pub(crate) priority: Cell<f64>,
-    pub(crate) handler: RefCell<Option<Handler>>,
-    pub(crate) native: RefCell<Native>,
+    pub(crate) handler: RefCell<Option<BindingHandler>>,
+    pub(crate) native: RefCell<NativeDrag>,
 }
 
 impl BindingData {
@@ -248,11 +248,11 @@ impl BindingData {
 
 /// The bindings of a layout, in the order they were added. Each one's object is held by the collection.
 #[derive(Default)]
-pub(crate) struct Collection {
+pub(crate) struct BindingCollection {
     pub(crate) items: RefCell<Vec<Rc<BindingData>>>,
 }
 
-impl Collection {
+impl BindingCollection {
     pub(crate) fn get(&self, id: &str) -> Option<Rc<BindingData>> {
         self.items.borrow().iter().find(|item| *item.id.borrow() == id).cloned()
     }
@@ -299,5 +299,5 @@ pub(crate) struct LayoutData {
     pub(crate) triggers: RefCell<Triggers>,
     /// The collection's object, held by the layout.
     pub(crate) bindings_obj: Obj,
-    pub(crate) bindings: Rc<Collection>,
+    pub(crate) bindings: Rc<BindingCollection>,
 }

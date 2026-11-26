@@ -8,12 +8,14 @@ use gnoblin_core::NodeId;
 use gnoblin_object::server::{Builder, Cx, Inits};
 use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 
-use super::controller::{ControllerData, Owner, inputs_of};
-use super::layout::{BindingData, Collection, Handler, LayoutData, Native, SPACING, Spacing, Tracking, Triggers};
+use super::controller::{ClaimOwner, ControllerData, inputs_of};
+use super::layout::{
+    BindingCollection, BindingData, BindingHandler, DragTracking, LayoutData, NativeDrag, SPACING, Spacing, Triggers,
+};
 use super::ring::{self, RingParams};
 use super::room::{self, DEFAULT_METRES, RoomData};
 use super::trigger::{self, BUTTONS};
-use super::{Held, SessionData, World, handout_or_none, world_of};
+use super::{HeldListener, SessionData, XrWorld, handout_or_none, world_of};
 use crate::animation::staging::Prop;
 use crate::math::{pose_val, vec3_val};
 use crate::scene::Kind;
@@ -45,7 +47,7 @@ pub(crate) struct ControllerHandle(pub(crate) Rc<ControllerData>);
 /// The state of a `spatial_layout`.
 pub(crate) struct LayoutHandle(pub(crate) Rc<LayoutData>);
 /// The state of an `xr_bindings`.
-pub(crate) struct CollectionHandle(pub(crate) Rc<Collection>);
+pub(crate) struct CollectionHandle(pub(crate) Rc<BindingCollection>);
 /// The state of an `xr_drag_binding` and the classes that extend it.
 pub(crate) struct BindingHandle(pub(crate) Rc<BindingData>);
 /// The state of an `xr_viewport`.
@@ -61,7 +63,7 @@ pub(crate) struct ViewportData {
 // ---- helpers --------------------------------------------------------------------------------------------------------------------
 
 /// The scene node an object of the scene holds, checked to be of `kind` when one is named.
-fn scene_node(world: &World, obj: Obj, kind: Option<Kind>, what: &str) -> Res<u64> {
+fn scene_node(world: &XrWorld, obj: Obj, kind: Option<Kind>, what: &str) -> Res<u64> {
     let found = world
         .scene
         .entries
@@ -88,7 +90,7 @@ fn viewport_of(cx: &Cx<'_>, obj: Obj) -> Res<Rc<ViewportData>> {
 }
 
 /// The room a scene node object is, if the library set one up on it.
-fn room_of(world: &World, node: u64) -> Res<Rc<RoomData>> {
+fn room_of(world: &XrWorld, node: u64) -> Res<Rc<RoomData>> {
     world
         .rooms
         .borrow()
@@ -128,7 +130,7 @@ fn camel(name: &str) -> String {
 /// # Errors
 ///
 /// A value is not a finite number, `metres` is not above 0, or a write is refused.
-pub(crate) fn camera_setup(world: &World, node: u64, metres: f64, near: Option<f64>, far: Option<f64>) -> Res<()> {
+pub(crate) fn camera_setup(world: &XrWorld, node: u64, metres: f64, near: Option<f64>, far: Option<f64>) -> Res<()> {
     let metres = above_zero("XRCamera3D", "metres", metres)?;
     world.put(node, "name", Prop::Text("head".to_owned()))?;
     world.put(node, "projection", Prop::Text("stereo".to_owned()))?;
@@ -383,7 +385,7 @@ fn register_room(builder: &mut Builder) {
 /// # Errors
 ///
 /// A node is gone, or a write is refused.
-pub(crate) fn apply(world: &World, cx: &Cx<'_>, viewport: &ViewportData) -> Res<()> {
+pub(crate) fn apply(world: &XrWorld, cx: &Cx<'_>, viewport: &ViewportData) -> Res<()> {
     let (content, content_obj) = viewport.content;
     let (camera, camera_obj) = viewport.camera.get();
     if !world.scene.alive(content) || !world.scene.alive(camera) {
@@ -430,7 +432,13 @@ pub(crate) fn apply(world: &World, cx: &Cx<'_>, viewport: &ViewportData) -> Res<
 /// # Errors
 ///
 /// The session ended, or [`apply`] fails.
-pub(crate) fn assign(world: &World, cx: &Cx<'_>, session: &SessionData, obj: Obj, viewport: &ViewportData) -> Res<()> {
+pub(crate) fn assign(
+    world: &XrWorld,
+    cx: &Cx<'_>,
+    session: &SessionData,
+    obj: Obj,
+    viewport: &ViewportData,
+) -> Res<()> {
     if !session.alive.get() {
         return Err(Fail::refused(
             ErrorCode::InvalidState,
@@ -459,7 +467,7 @@ pub(crate) fn assign(world: &World, cx: &Cx<'_>, session: &SessionData, obj: Obj
 /// # Errors
 ///
 /// As [`assign`].
-pub(crate) fn assign_stock(world: &World, cx: &Cx<'_>, session: &SessionData, room: &RoomData) -> Res<()> {
+pub(crate) fn assign_stock(world: &XrWorld, cx: &Cx<'_>, session: &SessionData, room: &RoomData) -> Res<()> {
     let viewport = Rc::new(ViewportData {
         content: (room.node, room.obj),
         camera: Cell::new(room.head.get()),
@@ -502,7 +510,7 @@ fn triggers_of(value: &Val) -> Res<Triggers> {
 }
 
 /// Makes a binding object of `class`.
-fn make_binding(cx: &Cx<'_>, class: &str, native: Native, id: &str, text: &str) -> Res<(Obj, Rc<BindingData>)> {
+fn make_binding(cx: &Cx<'_>, class: &str, native: NativeDrag, id: &str, text: &str) -> Res<(Obj, Rc<BindingData>)> {
     let parsed = trigger::parse(text, "trigger")?;
     let data = Rc::new(BindingData {
         obj: Cell::new(0),
@@ -520,7 +528,7 @@ fn make_binding(cx: &Cx<'_>, class: &str, native: Native, id: &str, text: &str) 
 }
 
 /// Puts the stock bindings of `triggers` in `collection`.
-fn add_stock(cx: &Cx<'_>, collection: &Collection, triggers: &Triggers) -> Res<()> {
+fn add_stock(cx: &Cx<'_>, collection: &BindingCollection, triggers: &Triggers) -> Res<()> {
     for (id, text) in triggers.each() {
         if text.is_empty() {
             continue;
@@ -528,21 +536,21 @@ fn add_stock(cx: &Cx<'_>, collection: &Collection, triggers: &Triggers) -> Res<(
         let (class, native) = match id {
             "move" => (
                 "view_move_binding",
-                Native::Move {
-                    tracking: Tracking::Controller,
+                NativeDrag::Move {
+                    tracking: DragTracking::Controller,
                     keep: false,
                 },
             ),
             "resize" => (
                 "view_resize_binding",
-                Native::Resize {
+                NativeDrag::Resize {
                     pixels_per_metre: 1200.0,
                     min_width: 0.25,
                     min_height: 0.15,
                     edges: 0,
                 },
             ),
-            _ => ("view_rotate_binding", Native::Rotate),
+            _ => ("view_rotate_binding", NativeDrag::Rotate),
         };
         let (obj, data) = make_binding(cx, class, native, id, text)?;
         collection.admits(&data)?;
@@ -553,7 +561,7 @@ fn add_stock(cx: &Cx<'_>, collection: &Collection, triggers: &Triggers) -> Res<(
 }
 
 /// Takes the stock bindings out of `collection`.
-fn remove_stock(cx: &Cx<'_>, collection: &Collection) {
+fn remove_stock(cx: &Cx<'_>, collection: &BindingCollection) {
     let removed: Vec<Rc<BindingData>> = {
         let mut items = collection.items.borrow_mut();
         let (gone, keep): (Vec<_>, Vec<_>) = items
@@ -573,13 +581,13 @@ fn remove_stock(cx: &Cx<'_>, collection: &Collection) {
 ///
 /// An object could not be made.
 pub(crate) fn new_layout(
-    world: &World,
+    world: &XrWorld,
     cx: &Cx<'_>,
     spacing: Spacing,
     triggers: Triggers,
 ) -> Res<(Obj, Rc<LayoutData>)> {
     let _ = world;
-    let collection = Rc::new(Collection::default());
+    let collection = Rc::new(BindingCollection::default());
     let collection_obj = cx.spawn("xr_bindings", CollectionHandle(Rc::clone(&collection)))?;
     let layout = Rc::new(LayoutData {
         obj: Cell::new(0),
@@ -607,7 +615,7 @@ fn register_layout(builder: &mut Builder) {
             Some(value) => triggers_of(&value)?,
             None => Triggers::default(),
         };
-        let collection = Rc::new(Collection::default());
+        let collection = Rc::new(BindingCollection::default());
         let collection_obj = cx.spawn("xr_bindings", CollectionHandle(Rc::clone(&collection)))?;
         cx.set_parent(collection_obj, cx.me())?;
         add_stock(cx, &collection, &triggers)?;
@@ -708,25 +716,25 @@ fn register_layout(builder: &mut Builder) {
         });
 
     for (class, native) in [
-        ("xr_drag_binding", Native::Plain),
+        ("xr_drag_binding", NativeDrag::Plain),
         (
             "view_move_binding",
-            Native::Move {
-                tracking: Tracking::Controller,
+            NativeDrag::Move {
+                tracking: DragTracking::Controller,
                 keep: false,
             },
         ),
         (
             "view_resize_binding",
-            Native::Resize {
+            NativeDrag::Resize {
                 pixels_per_metre: 1200.0,
                 min_width: 0.25,
                 min_height: 0.15,
                 edges: 0,
             },
         ),
-        ("view_rotate_binding", Native::Rotate),
-        ("view_scale_binding", Native::Scale { min: 0.2, max: 3.0 }),
+        ("view_rotate_binding", NativeDrag::Rotate),
+        ("view_scale_binding", NativeDrag::Scale { min: 0.2, max: 3.0 }),
     ] {
         register_binding(builder, class, native);
     }
@@ -750,10 +758,10 @@ fn arrange(views: &Val, focus: Option<&Val>, ring: &RingParams) -> Res<Val> {
 }
 
 /// The options of a binding's own drag, from the constructor's inits.
-fn native_of(native: &mut Native, inits: &mut Inits) -> Res<()> {
+fn native_of(native: &mut NativeDrag, inits: &mut Inits) -> Res<()> {
     match native {
-        Native::Plain | Native::Rotate => {}
-        Native::Move { tracking, keep } => {
+        NativeDrag::Plain | NativeDrag::Rotate => {}
+        NativeDrag::Move { tracking, keep } => {
             if let Some(value) = inits.take("tracking") {
                 *tracking = tracking_of(&value)?;
             }
@@ -764,7 +772,7 @@ fn native_of(native: &mut Native, inits: &mut Inits) -> Res<()> {
                 distance(value.text()?)?;
             }
         }
-        Native::Resize {
+        NativeDrag::Resize {
             pixels_per_metre,
             min_width,
             min_height,
@@ -783,7 +791,7 @@ fn native_of(native: &mut Native, inits: &mut Inits) -> Res<()> {
                 *edges = value.enum_value()? - 1;
             }
         }
-        Native::Scale { min, max } => {
+        NativeDrag::Scale { min, max } => {
             if let Some(value) = inits.take("min_scale") {
                 *min = above_zero("ViewScaleBinding", "minScale", value.double()?)?;
             }
@@ -796,11 +804,11 @@ fn native_of(native: &mut Native, inits: &mut Inits) -> Res<()> {
     Ok(())
 }
 
-fn tracking_of(value: &Val) -> Res<Tracking> {
+fn tracking_of(value: &Val) -> Res<DragTracking> {
     Ok(if value.enum_value()? == 2 {
-        Tracking::Ray
+        DragTracking::Ray
     } else {
-        Tracking::Controller
+        DragTracking::Controller
     })
 }
 
@@ -829,7 +837,7 @@ fn set_handler(cx: &Cx<'_>, binding: &BindingData, obj: Option<Obj>) -> Res<()> 
         Some(obj) => {
             let shell = cx.shell(obj)?;
             cx.hold(obj)?;
-            Some(Handler { obj, shell })
+            Some(BindingHandler { obj, shell })
         }
         None => None,
     };
@@ -839,7 +847,7 @@ fn set_handler(cx: &Cx<'_>, binding: &BindingData, obj: Option<Obj>) -> Res<()> 
     Ok(())
 }
 
-fn register_binding(builder: &mut Builder, class: &'static str, native: Native) {
+fn register_binding(builder: &mut Builder, class: &'static str, native: NativeDrag) {
     let made = builder.class::<BindingHandle>(class).ctor(move |cx, inits| {
         let mut native = native.clone();
         native_of(&mut native, inits)?;
@@ -926,28 +934,28 @@ fn register_binding(builder: &mut Builder, class: &'static str, native: Native) 
             let _ = made
                 .get("tracking", |h, _| {
                     Ok(enumeration(match &*h.0.native.borrow() {
-                        Native::Move {
-                            tracking: Tracking::Ray,
+                        NativeDrag::Move {
+                            tracking: DragTracking::Ray,
                             ..
                         } => 2,
                         _ => 1,
                     }))
                 })
                 .set_ref("tracking", |h, _, value| {
-                    if let Native::Move { tracking, .. } = &mut *h.0.native.borrow_mut() {
+                    if let NativeDrag::Move { tracking, .. } = &mut *h.0.native.borrow_mut() {
                         *tracking = tracking_of(&value)?;
                     }
                     Ok(())
                 })
                 .get("rotation", |h, _| {
                     Ok(enumeration(match &*h.0.native.borrow() {
-                        Native::Move { keep: true, .. } => 2,
+                        NativeDrag::Move { keep: true, .. } => 2,
                         _ => 1,
                     }))
                 })
                 .set_ref("rotation", |h, _, value| {
                     let keep = value.enum_value()? == 2;
-                    if let Native::Move { keep: held, .. } = &mut *h.0.native.borrow_mut() {
+                    if let NativeDrag::Move { keep: held, .. } = &mut *h.0.native.borrow_mut() {
                         *held = keep;
                     }
                     Ok(())
@@ -961,7 +969,7 @@ fn register_binding(builder: &mut Builder, class: &'static str, native: Native) 
                 made = made
                     .get(name, move |h, _| {
                         Ok(Val::Double(match &*h.0.native.borrow() {
-                            Native::Resize {
+                            NativeDrag::Resize {
                                 pixels_per_metre,
                                 min_width,
                                 min_height,
@@ -972,7 +980,7 @@ fn register_binding(builder: &mut Builder, class: &'static str, native: Native) 
                     })
                     .set_ref(name, move |h, _, value| {
                         let value = above_zero("ViewResizeBinding", &camel(name), value.double()?)?;
-                        if let Native::Resize {
+                        if let NativeDrag::Resize {
                             pixels_per_metre,
                             min_width,
                             min_height,
@@ -987,13 +995,13 @@ fn register_binding(builder: &mut Builder, class: &'static str, native: Native) 
             let _ = made
                 .get("edges", |h, _| {
                     Ok(enumeration(match &*h.0.native.borrow() {
-                        Native::Resize { edges, .. } => edges + 1,
+                        NativeDrag::Resize { edges, .. } => edges + 1,
                         _ => 1,
                     }))
                 })
                 .set_ref("edges", |h, _, value| {
                     let place = value.enum_value()?;
-                    if let Native::Resize { edges, .. } = &mut *h.0.native.borrow_mut() {
+                    if let NativeDrag::Resize { edges, .. } = &mut *h.0.native.borrow_mut() {
                         *edges = place - 1;
                     }
                     Ok(())
@@ -1003,13 +1011,13 @@ fn register_binding(builder: &mut Builder, class: &'static str, native: Native) 
             let _ = made
                 .get("min_scale", |h, _| {
                     Ok(Val::Double(match &*h.0.native.borrow() {
-                        Native::Scale { min, .. } => *min,
+                        NativeDrag::Scale { min, .. } => *min,
                         _ => 0.0,
                     }))
                 })
                 .set_ref("min_scale", |h, _, value| {
                     let value = above_zero("ViewScaleBinding", "minScale", value.double()?)?;
-                    if let Native::Scale { min, max } = &mut *h.0.native.borrow_mut() {
+                    if let NativeDrag::Scale { min, max } = &mut *h.0.native.borrow_mut() {
                         scale_limits(value, *max)?;
                         *min = value;
                     }
@@ -1017,13 +1025,13 @@ fn register_binding(builder: &mut Builder, class: &'static str, native: Native) 
                 })
                 .get("max_scale", |h, _| {
                     Ok(Val::Double(match &*h.0.native.borrow() {
-                        Native::Scale { max, .. } => *max,
+                        NativeDrag::Scale { max, .. } => *max,
                         _ => 0.0,
                     }))
                 })
                 .set_ref("max_scale", |h, _, value| {
                     let value = above_zero("ViewScaleBinding", "maxScale", value.double()?)?;
-                    if let Native::Scale { min, max } = &mut *h.0.native.borrow_mut() {
+                    if let NativeDrag::Scale { min, max } = &mut *h.0.native.borrow_mut() {
                         scale_limits(*min, value)?;
                         *max = value;
                     }
@@ -1119,7 +1127,7 @@ fn register_extension(builder: &mut Builder) {
             }
             let shell = cx.shell(obj)?;
             cx.hold(obj)?;
-            world.rt.borrow_mut().listeners.push(Held { obj, shell });
+            world.rt.borrow_mut().listeners.push(HeldListener { obj, shell });
             Ok(Val::None)
         })
         .method("remove_listener", |_, cx, args| {
@@ -1333,12 +1341,12 @@ fn register_extension(builder: &mut Builder) {
                 .map(|name| name.text().map(str::to_owned))
                 .collect::<Res<_>>()?;
             let inputs = inputs_of(&target, &names)?;
-            h.0.claim(&world_of(cx)?.g, Owner::Script(owner.to_owned()), inputs)?;
+            h.0.claim(&world_of(cx)?.g, ClaimOwner::Script(owner.to_owned()), inputs)?;
             Ok(Val::None)
         })
         .method_ref("release", |h, cx, args| {
             let owner = args[0].text()?;
-            h.0.release(&world_of(cx)?.g, &Owner::Script(owner.to_owned()))?;
+            h.0.release(&world_of(cx)?.g, &ClaimOwner::Script(owner.to_owned()))?;
             Ok(Val::None)
         });
 }
