@@ -310,3 +310,23 @@ fn two_touch_devices_get_different_slots() {
     let harness = ConformanceSession::start().expect("the session starts");
     assert_ne!(harness.next_touch_slot(), harness.next_touch_slot());
 }
+
+/// A session dropped the moment it serves is stopped while its thread is still entering the loop. The stop was lost
+/// then and the drop waited for the thread for ever, which hung a scheduled CI run for hours in the test above.
+#[test]
+fn a_session_dropped_right_after_it_starts_ends() {
+    const ROUNDS: usize = 200;
+    // A hang fails the test on this limit instead of holding the run: the sessions are made and dropped on one thread,
+    // and the test waits for that thread.
+    const WATCHDOG: Duration = Duration::from_secs(120);
+    let (done, finished) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for _ in 0..ROUNDS {
+            drop(ConformanceSession::start().expect("the session starts"));
+        }
+        let _ = done.send(());
+    });
+    finished
+        .recv_timeout(WATCHDOG)
+        .expect("every session dropped right after it started was stopped");
+}

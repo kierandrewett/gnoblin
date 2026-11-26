@@ -38,7 +38,7 @@ use std::time::{Duration, Instant};
 
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::ping::{Ping, make_ping};
-use smithay::reexports::calloop::{Error as CalloopError, EventLoop, Interest, LoopSignal, Mode, PostAction};
+use smithay::reexports::calloop::{Error as CalloopError, EventLoop, Interest, Mode, PostAction};
 use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::backend::InitError;
 
@@ -369,7 +369,6 @@ pub struct Server {
     state: State,
     backend: Box<dyn Backend<State>>,
     socket_path: PathBuf,
-    stop: LoopSignal,
     control: Arc<Control>,
     frames: Arc<Mutex<FrameStats>>,
     clock: Arc<dyn Clock>,
@@ -594,6 +593,7 @@ impl Server {
             screenshots: Screenshots::default(),
             global_scale: Mutex::new(None),
             input_settings: Mutex::new(None),
+            stopping: std::sync::atomic::AtomicBool::new(false),
             logout: std::sync::atomic::AtomicBool::new(false),
             backend_lost: std::sync::atomic::AtomicBool::new(false),
         });
@@ -742,13 +742,11 @@ impl Server {
             })
             .map_err(|error| StartupError::EventLoop(error.into()))?;
 
-        let stop = event_loop.get_signal();
         Ok(Self {
             event_loop,
             state,
             backend,
             socket_path,
-            stop,
             control,
             frames: Arc::new(Mutex::new(FrameStats::default())),
             clock,
@@ -790,7 +788,6 @@ impl Server {
     #[must_use]
     pub fn control(&self) -> ControlHandle {
         ControlHandle {
-            stop: self.stop.clone(),
             control: Arc::clone(&self.control),
         }
     }
@@ -805,6 +802,10 @@ impl Server {
 
     /// Runs until the loop is stopped.
     ///
+    /// A stop asked for before this call, or while the loop is still being entered, ends the run before its first
+    /// turn: the request stays until the loop sees it, so a session dropped right after it started cannot be left
+    /// running.
+    ///
     /// Each iteration flushes the clients, takes the backend's input and state
     /// changes, and runs the frame hook: every output asks the scene for its
     /// damage and draws only when something changed, so an idle iteration costs no
@@ -816,7 +817,7 @@ impl Server {
     /// error is not one of them.
     pub fn run(self) -> Result<(), LoopError> {
         let socket_path = self.socket_path.clone();
-        // The closure below owns `control`; the flag it sets is read after the loop through this second handle.
+        // `control` is dropped with the loop below; the flag it sets is read after the loop through this second handle.
         let lost = Arc::clone(&self.control);
         let result = {
             let Self {
@@ -827,7 +828,6 @@ impl Server {
                 frames,
                 clock,
                 mut global_scale,
-                stop,
                 ..
             } = self;
             // The loop's own handle, so a sandbox listener created during a dispatch
@@ -837,7 +837,7 @@ impl Server {
             let mut turns = crate::clock::TurnClock::default();
             // What the backend was last told the session's clients hold the pointer to.
             let mut last_constraint = gnoblin_backend::PointerConstraint::Free;
-            event_loop.run(Duration::from_millis(100), &mut state, move |state| {
+            let mut turn = |state: &mut State| {
                 // The session clock follows the loop's real time, so idle fires without a
                 // caller having to advance it; a caller that advances it as well is jumping
                 // the same counter forwards.
@@ -908,11 +908,11 @@ impl Server {
                 // serve nothing for ever.
                 if events.iter().any(|event| matches!(event, BackendEvent::SessionEnded)) {
                     control.logout.store(true, std::sync::atomic::Ordering::SeqCst);
-                    stop.stop();
+                    control.request_stop();
                 }
                 if events.iter().any(|event| matches!(event, BackendEvent::Disconnected)) {
                     control.backend_lost.store(true, std::sync::atomic::Ordering::SeqCst);
-                    stop.stop();
+                    control.request_stop();
                 }
                 let outputs_changed = scale_changed || events.iter().any(is_output_change);
                 if outputs_changed {
@@ -941,7 +941,20 @@ impl Server {
                 // flushing them now rather than on the next wake is the difference
                 // between a client drawing at once and drawing up to a timeout later.
                 state.flush();
-            })
+            };
+            // The loop is calloop's `EventLoop::run` written out. `run` clears the loop's stop flag as it starts, so a
+            // stop that arrived between the session being built and the loop being entered was forgotten and the loop
+            // then ran for ever: a session dropped as soon as it was up never ended, and the thread joining it waited
+            // for good. The flag read here is `Control::stopping`, which nothing clears.
+            let mut ended = Ok(());
+            while !control.is_stopping() {
+                if let Err(error) = event_loop.dispatch(Duration::from_millis(100), &mut state) {
+                    ended = Err(error);
+                    break;
+                }
+                turn(&mut state);
+            }
+            ended
         };
         let _ = std::fs::remove_file(&socket_path);
         if lost.backend_lost.load(std::sync::atomic::Ordering::SeqCst) {
@@ -954,21 +967,22 @@ impl Server {
 /// What can stop a running session.
 #[derive(Clone)]
 pub struct ControlHandle {
-    stop: LoopSignal,
     control: Arc<Control>,
 }
 
 impl ControlHandle {
     /// Stops the loop after the current iteration.
+    ///
+    /// A stop asked for before [`Server::run`] starts is kept: the loop ends before its first turn.
     pub fn stop(&self) {
-        self.stop.stop();
+        self.control.request_stop();
     }
 
     /// Ends the session by logout: the loop stops after the current iteration, and
     /// [`ControlHandle::logged_out`] reports the stop as a logout.
     pub fn logout(&self) {
         self.control.logout.store(true, std::sync::atomic::Ordering::SeqCst);
-        self.stop.stop();
+        self.control.request_stop();
     }
 
     /// Whether the loop was stopped by [`ControlHandle::logout`].
@@ -1665,6 +1679,10 @@ struct Control {
     /// The `input` section a control handle asked for and the loop has not given the backend yet. Like the scale,
     /// it waits for the loop because the backend is the loop's, and a newer section replaces an older one.
     input_settings: Mutex<Option<Box<gnoblin_config::Input>>>,
+    /// Set when anything asked the loop to end. Nothing clears it: calloop's own stop flag is cleared as the loop is
+    /// entered, which loses a request made before that, and this one is read by every turn of the loop, so a request
+    /// is never lost and whoever made it can rely on the loop ending.
+    stopping: std::sync::atomic::AtomicBool,
     /// Set when a logout ends the loop, so the caller can tell a logout from a stop.
     logout: std::sync::atomic::AtomicBool,
     /// Set when the backend reports that the device driving it is gone, which ends the loop with a failure.
@@ -1678,6 +1696,18 @@ impl Control {
             .unwrap_or_else(PoisonError::into_inner)
             .push_back(command);
         self.ping.ping();
+    }
+
+    /// Asks the loop to end after the turn it is in, or before its first turn when it has not started.
+    ///
+    /// The ping wakes a loop that is waiting, so the request is seen at once rather than when the wait times out.
+    fn request_stop(&self) {
+        self.stopping.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.ping.ping();
+    }
+
+    fn is_stopping(&self) -> bool {
+        self.stopping.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     fn take_global_scale(&self) -> Option<Option<u32>> {
