@@ -1,6 +1,6 @@
 # JavaScript UI toolkit
 
-The JavaScript shell draws its own interface with a small toolkit. Import it from `gnoblin`:
+The JavaScript shell draws its own interface with a small toolkit. Import it from `gnoblin-std`:
 
 ```ts
 import { Box, Text } from "gnoblin-std";
@@ -11,25 +11,38 @@ register and no property to declare.
 
 ## Canvas
 
-A `Canvas` is a node of the compositor's tree that shows a paint list. Override `draw()` to return the ops to paint, in
-node-local pixels, later ops over earlier ones:
+A `Canvas` is a node of the compositor's tree that shows a paint list. Give it a `behaviour`, a class that extends
+`Widget`, and have its `paint()` return the ops to paint, in node-local pixels, later ops over earlier ones:
 
 ```ts
-import { Canvas } from "gnoblin-std";
+import { Canvas, Widget } from "gnoblin-std";
+import type { PaintOp } from "gnoblin-std";
 
-class Meter extends Canvas {
+class Meter extends Widget {
     level = 0.5;
 
-    draw() {
+    constructor(readonly canvas: Canvas) {
+        super();
+    }
+
+    paint(): PaintOp[] {
+        const { width, height } = this.canvas;
         return [
-            { op: "rect", x: 0, y: 0, width: this.width, height: this.height, radius: 4, fill: "#1e1e2e" },
-            { op: "rect", x: 0, y: 0, width: this.width * this.level, height: this.height, radius: 4, fill: "#89b4fa" },
+            { op: "rect", x: 0, y: 0, width, height, radius: 4, fill: "#1e1e2e" },
+            { op: "rect", x: 0, y: 0, width: width * this.level, height, radius: 4, fill: "#89b4fa" },
         ];
     }
 }
 
-const meter = new Meter({ width: 120, height: 8 });
+const canvas = new Canvas({ width: 120, height: 8 });
+const meter = new Meter(canvas);
+canvas.behaviour = meter;
+
+meter.level = 0.8;
+canvas.invalidate();
 ```
+
+`invalidate()` asks for the canvas to paint again, so a change to `level` shows on the next frame.
 
 The ops are:
 
@@ -37,23 +50,24 @@ The ops are:
 - `line`: `x1`, `y1`, `x2`, `y2`, and optionally `width` and `color`.
 - `text`: `text`, and optionally `x`, `y`, `size`, `color` and `font`.
 - `icon`: `name`, and optionally `x`, `y`, `size` and `color`.
-- `pushClip` with `x`, `y`, `width`, `height` and optionally `radius`, closed by `popClip`.
-- `pushOpacity` with `alpha`, closed by `popOpacity`.
+- `push-clip` with `x`, `y`, `width`, `height` and optionally `radius`, closed by `pop-clip`.
+- `push-opacity` with `alpha`, closed by `pop-opacity`.
 
 A colour is `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
 
-The toolkit encodes the list into the node's `content` property, and writes it only
-when it changed. An op that cannot be encoded is reported as `draw op N: ...` and the node keeps its last content. The
+The toolkit encodes the list into the node's `content` property, and writes it only when it changed. An op that cannot be encoded is reported as `draw op N: ...` and the node keeps its last content. The
 format is described in [Canvas painting](/shell-api/canvas).
 
 A canvas has these fields and methods:
 
 - `x`, `y`, `width`, `height`, `visible` and `opacity`.
 - `parent` and `children`, the tree of canvases.
-- `add(child)` puts a canvas under this one. `mount(node)` puts it under a node that is not a canvas.
+- `add(child)` puts a canvas under this one, and `remove(child)` takes it out. `mount(node)` puts it under a node that is
+  not a canvas.
 - `destroy()` ends it and everything beneath it.
-- `refresh()` runs once a frame before the children are arranged, for a canvas that reads live state.
-- `arrange()` places the children.
+- `behaviour` is the `Widget` that draws and arranges the canvas. Its `refresh()` runs once a frame before the children are
+  arranged, for a canvas that reads live state. Its `arrange()` places the children, and its `paint()` returns the ops.
+  Each method is optional.
 
 ## Box, Text, Icon and Grid
 
@@ -65,6 +79,8 @@ A `Box` is a canvas that fills itself (`fill`, `radius`) and arranges its child 
 - `grow` on a child takes its share of what is left. Every child is stretched across the other axis.
 
 ```ts
+import { Box, Icon, Text } from "gnoblin-std";
+
 const bar = new Box({ width: 300, height: 32, direction: "row", gap: 8, padding: 6, fill: "#1e1e2e" });
 bar.add(new Text({ text: "Files", grow: 1 }));
 bar.add(new Icon({ icon: "window-close-symbolic" }));
@@ -77,29 +93,33 @@ The other widgets are boxes too:
 - `Icon` draws a named icon, square at its `size`.
 - `Grid` puts its children in a near-square grid of equal cells.
 
-Give a node a `width` or `height` and that is what it has. Set one to `null` to go back to the natural size.
+Give a node a `width` or `height` and that is what it has. Call `clearWidth()` or `clearHeight()` to go back to the
+natural size.
 
-Pointer events are handled by methods on a canvas:
+A canvas handles pointer events with `onPointer`:
 
-- `onPress`, `onRelease`, `onMotion`, `onScroll`, `onEnter` and `onLeave` take the event.
-- An event goes to the canvas the pointer is over, then up through its parents until a handler calls `event.stop()`.
-- The event's `x` and `y` are in the coordinates of the canvas whose handler runs.
+- `onPointer` takes the event. Its `kind` is `press`, `release`, `motion`, `scroll`, `enter` or `leave`, and `button` is the
+  button of a press or a release.
+- An event goes to the canvas the pointer is over, then up through its parents until a handler returns `true`.
+- The event's `x` and `y` are in the coordinates of the canvas whose handler runs, and `dx` and `dy` are the distance of
+  a motion or a scroll.
 - A press on a canvas holds it until that button is released: it hears the motion and the release wherever the pointer
   goes, with `x` and `y` outside its rectangle, and nothing else hears the pointer meanwhile. A window is not held, because
   its client hears the pointer itself.
 
-A key goes to the canvas that holds the keyboard focus, then up through its parents, in `onKey(event)`:
+A key goes to the canvas that holds the keyboard focus, then up through its parents, in `onKey(event)`, which returns
+`true` to stop it:
 
 - `canvas.focus()` gives a canvas the keyboard. It receives keys only while it holds it.
 - The event has `key` (the keysym's name: `Return`, `a`), `text` (what the key types, empty for a key that types
-  nothing), `pressed` (false for the release) and `stop()`.
+  nothing) and `pressed` (false for the release).
 - `canvas.mountTop()` puts a canvas over every window, as a menu or a dialog needs.
 - `secure: true` keeps a canvas out of screen captures.
 
 ## Titlebar
 
-After `startDecorations()` a window that takes the shell's frame gets a `WindowFrame`, and the stock fill puts a `Titlebar`
-in its top outlet. The starter calls it. A file that does not call it has no titlebars. A window that draws its
+After `Decorations.get().start()` a window that takes the shell's frame gets a `WindowFrame`, and the stock fill puts a
+`Titlebar` in its top outlet. The starter calls it. A file that does not call it has no titlebars. A window that draws its
 own title bar gets none (see "Who draws the frame" below).
 
 To make a different frame, fill the outlets yourself with [the window frame](/js-window-frame). The
@@ -118,15 +138,14 @@ window:
   still there 1.5 s later, a client that asked "save changes?", is shown again. A window its client closes itself is gone
   from the compositor at once, so there is nothing to fade.
 
-Its look is plain data, `TitlebarStyle`:
+Its look is plain data, `TitlebarStyle`. A field you leave out keeps its default:
 
 ```ts
-import { Titlebar, defaultTitlebarStyle } from "gnoblin-std";
-import type { TitlebarStyle } from "gnoblin-std";
+import { Decorations } from "gnoblin-std";
 
-const style: TitlebarStyle = { ...defaultTitlebarStyle, height: 36, buttons: ["close"], focusedFill: "#223344" };
-const bar = new Titlebar(client, style);
-bar.mount(windowNode);
+const decorations = Decorations.get();
+decorations.style = { height: 36, buttons: ["close"], focusedFill: "#223344" };
+decorations.start();
 ```
 
 The style has these fields:
@@ -157,12 +176,12 @@ whose answer changes. A `client` window never shows a second bar over its own: i
 
 The shell declares that it draws decorations by writing the seat's `decorations_available`:
 
-- It is true while `startDecorations()` has run, and cleared when the shell retires.
+- It is true while `Decorations.get().start()` has run, and cleared when the shell retires.
 - The compositor also clears it when the shell's connection drops.
 - A client that asks for server-side is told so only while it is true and a shell holds the tree.
-- With no shell, or without `startDecorations()`, every client is told client-side, so a window is never left with no title bar
+- With no shell, or without `Decorations.get().start()`, every client is told client-side, so a window is never left with no title bar
   and nothing to move it by.
-- A change reaches the windows that already exist. A reload whose file does not call `startDecorations()` gives each window that asked for
+- A change reaches the windows that already exist. A reload whose file does not call `Decorations.get().start()` gives each window that asked for
   the shell's bar its own back, and a reload whose file calls it gives the bar again.
 
 ### The room round the client
@@ -189,7 +208,7 @@ The stock library gives a server-decorated window's frame room of its own instea
       layout.
     - The rectangles a window returns to follow. A fullscreen window is left alone and fitted when it leaves.
 
-To have no frame on any window, leave `startDecorations()` out of your file.
+To have no frame on any window, leave `Decorations.get().start()` out of your file.
 
 ## Entry, Clock and Bar
 
@@ -216,7 +235,7 @@ due to change: at the end of the minute, or of the second for a format that show
 `Bar` is a strip along the `top` or `bottom` of the primary screen, over the windows and as wide as the screen. It takes
 its room from them:
 
-- `gnoblin.workspaces.area` and the layouts' work area are the screen less the bars (`barInsets()`).
+- `gnoblin.workspaces.area` and the layouts' work area are the screen less the bars (`Bar.insets()`).
 - `hideWhen` hides a bar, and gives its room back, while it returns true.
 
 ## The stock shell UI
@@ -225,23 +244,25 @@ Each of these is started by the starter and has a function that starts it.
 
 ### Window menu
 
-Start it with `startWindowMenu()`. The module is `gnoblin/menus`.
+Start it with `WindowMenus.get().start()`.
 
 - The compositor asks for a window's menu as a `menu` request on the window's node: a client's `show_window_menu`, the
   window-menu key (Alt+Space) and a program's `request_menu`. The titlebar's right click asks too.
-- The shell answers every request with `windowMenu.show(client, x, y)`. Without `startWindowMenu()` the requests are left
-  unanswered: nothing opens, and the compositor waits for nothing.
+- The shell answers every request with the menu service's `show(client, x, y)`. Without `WindowMenus.get().start()` the
+  requests are left unanswered: nothing opens, and the compositor waits for nothing.
 - Entries: Restore or Maximise, Minimise, Move, Resize, Always on top, Move to workspace and Close. Move and Resize are
-  the keyboard modes, which are not ported: they are off unless the client has `moveWithKeys` and `resizeWithKeys`.
+  the keyboard modes: they are off until `Repositioning.get().start()` runs or the service has `moveWithKeys` and
+  `resizeWithKeys` functions of your own.
 - Keys: Up, Down, Home, End, Tab and Shift+Tab move over the entries that are on; a letter jumps; Return and Space run;
   Right and Left open and close the submenu; Escape closes.
 - A press outside closes the menu and is not passed on. One menu is open at a time. It closes when its window goes or
   the session locks, and the keyboard goes back to where it was.
-- Assign `windowMenu.items = (client) => [...]` to change what it offers and `windowMenu.show` to draw another.
+- Give the service a `MenuProvider` to change what it offers or to draw another: see [the window
+  menu](/guides/stock-window-menu#change-what-the-menu-offers).
 
 ### Not-responding alert
 
-Start it with `startNotRespondingAlert()`. The module is `gnoblin-std/alerts`.
+Start it with `NotRespondingAlerts.get().start()`.
 
 - A window the compositor marks `unresponsive` gets a card with Wait (the default, and Escape) and Force quit.
 - Force quit calls `client.kill()` and does nothing for the first 0.5 s. The compositor refuses its own process, init
@@ -251,15 +272,13 @@ Start it with `startNotRespondingAlert()`. The module is `gnoblin-std/alerts`.
 
 ### Launcher, toast and overview
 
-- **Launcher** (`gnoblin-std/launcher`). With no `launcher` command in the config, Super+Space opens an `Entry` on the
-  screen. Return starts what you typed (`gnoblin.spawn`) and Escape closes it. `launcher: "wofi"` runs that program on
-  the key instead.
-- **`toast(text)`** shows a message card in the top right corner for a few seconds.
-- **`overview.toggle()`** dims the windows of the workspaces that are not shown, or gives them all full strength, .
+- **`Launcher.open()`** opens an `Entry` on the screen, and the starter binds it to Super+Space. Return starts what you
+  typed (`gnoblin.spawn`) and Escape closes it. `Launcher.open(fn)` calls `fn` with the command instead of starting it.
+- **`Toast.show(text)`** shows a message card in the top right corner for a few seconds.
+- **`Overview.get().toggle()`** dims the windows of the workspaces that are not shown, or gives them all full strength.
 
-The generated classes of `gnoblin-std/generated/objects` have the same pieces as functions of a class: `Launcher.open`, `Toast.show`,
-`Ui.estimateText` (`estimateText`) and `Ui.encodePaintList` (`encodePaintList`). [The TypeScript shell page](typescript-shell.md) has the
-table.
+`Ui.estimateText` and `Ui.encodePaintList` are the toolkit's two functions that need no canvas. [The TypeScript shell
+page](typescript-shell.md) has the table of the functions the older library had and the class that now holds each.
 
 The consent and passphrase dialogs are not here: the compositor draws them, and `gnoblin.dialogs` observes them.
 

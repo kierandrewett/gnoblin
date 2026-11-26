@@ -22,7 +22,8 @@ for (const device of gnoblin.input.devices) {
 | `acceleration`  | `"default"`, `"flat"` or `"adaptive"` | The system's | `input.mouse.accel-profile`  |
 | `naturalScroll` | Boolean                               | The system's | `input.mouse.natural-scroll` |
 
-`undefined` takes a property back to the system's value. A custom acceleration curve, the double-click time, the drag
+`device.reset(name)` takes a property back to the system's value, where `name` is `"sensitivity"`, `"acceleration"` or
+`"natural_scroll"`. A custom acceleration curve, the double-click time, the drag
 threshold, middle-click emulation and the left-handed layout have no TypeScript home yet: see
 [settings with no TypeScript home yet](/js-settings#dropped-settings).
 

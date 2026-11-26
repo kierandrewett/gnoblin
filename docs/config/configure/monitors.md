@@ -1,37 +1,44 @@
 # Monitor settings
 
-A monitor's mode, scale, transform, position and power are an `OutputProfile`. A profile selects the hardware it is for
-with `match`, and the shell applies it whenever that output is connected, so it survives unplugging and hotplug.
+A monitor's mode, scale, transform, position and power are the `settings` of an `OutputProfile`. A profile selects the
+hardware with its `match`, and the shell applies it whenever that output is connected, so it survives unplugging and hotplug.
 
 ```ts
 import { OutputProfile } from "gnoblin-std";
 
 const main = new OutputProfile({
     match: { connector: "DP-1" },
-    mode: { width: 3440, height: 1440, refreshRate: 144 },
-    scale: 1.25,
-    transform: "normal",
-    position: { x: 0, y: 0 },
+    settings: {
+        mode: "3440x1440@144",
+        scale: 1.25,
+        transform: "normal",
+        position: { kind: "absolute", x: 0, y: 0 },
+    },
 });
 const side = new OutputProfile({
     match: { connector: "HDMI-A-1" },
-    mode: "preferred",
-    position: { rightOf: main, align: "top" },
+    settings: { mode: "preferred", position: { kind: "right_of", profile: main, align: "top" } },
 });
 
 gnoblin.outputs.profiles.add(main);
 gnoblin.outputs.profiles.add(side);
 ```
 
-| Option      | Values                                                                                             |
-| ----------- | -------------------------------------------------------------------------------------------------- |
-| `match`     | Required. One or more of `connector`, `make`, `model` and `serial`; every key given must match.    |
-| `mode`      | `"preferred"`, `"3440x1440@144"` or `{ width, height, refreshRate }`.                              |
-| `scale`     | A number from 0.5 to 4.                                                                            |
-| `transform` | `"normal"`. The compositor draws no rotation, so the others are refused by name.                   |
-| `position`  | `{ x, y }`, or `{ rightOf, leftOf, above, below: profile, align }` to sit against another profile. |
-| `enabled`   | `false` switches the output off.                                                                   |
-| `vrr`       | Accepted and reported as not applied: the backends have no variable refresh rate.                  |
+| Key         | Values                                                                                                     |
+| ----------- | ---------------------------------------------------------------------------------------------------------- |
+| `match`     | Required. One or more of `connector`, `make`, `model` and `serial`; every key given must match.            |
+| `id`        | An option: the profile's name. It defaults to the keys of the match.                                       |
+| `settings`  | An object holding the rest of this table. Each setting is optional.                                        |
+| `mode`      | In `settings`: `"preferred"` or `"WIDTHxHEIGHT@HERTZ"`, such as `"3440x1440@144"`.                         |
+| `scale`     | In `settings`: a number from 0.5 to 4.                                                                     |
+| `transform` | In `settings`: `"normal"`. The compositor draws no rotation, so the others are refused by name.            |
+| `position`  | In `settings`: `{ kind: "absolute", x, y }`, or `{ kind, profile, align }` to sit against another profile. |
+| `enabled`   | In `settings`: `false` switches the output off.                                                            |
+| `vrr`       | In `settings`, accepted and reported as not applied: the backends have no variable refresh rate.           |
+
+A relative `position` has a `kind` of `"right_of"`, `"left_of"`, `"above"` or `"below"`, and the `profile` it sits
+against. `align` places it along the shared edge: `"top"`, `"center"` or `"bottom"` beside another output, and `"left"`,
+`"center"` or `"right"` above or below one.
 
 A mode change on a hardware (DRM) output is off until the session starts with `GNOBLIN_DRM_MODESET=1`; see
 [what each backend applies](/shell-api/outputs#what-each-backend-applies).

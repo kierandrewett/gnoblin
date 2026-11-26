@@ -7,12 +7,14 @@ For short examples see [fill a window frame with your own parts](/recipes/window
 
 ## Make a frame
 
-`startDecorations(options)` gives every window a `WindowFrame` and fills it. `Decorations` is the class behind it. The
-options are all optional:
+`Decorations.get().start()` gives every window a `WindowFrame` and fills it. Set these members of `Decorations.get()`
+before you start it:
 
-- `frame(client, frame)` fills the frame of each window that no rule picked. Left out, the stock titlebar fills it.
-- `rules` is a list of `{ appId, title, frame }`. The first rule that matches a window decides. `appId` and `title` are a
-  string or a `RegExp`, and `frame` is a callback or `false`.
+- `frame` is a function `(client, frame)` that fills the frame of each window that no rule picked. Left out, the stock
+  titlebar fills it.
+- `rule(appId, title, test, fill)` adds a rule. The first rule that matches a window decides. `appId` and `title` are
+  exact strings, or `undefined` to match any, and `test` is an optional function of the window. `fill` is a function that
+  fills the frame, and a rule with no `fill` gives the window no frame.
 - `style` is the `TitlebarStyle` of the stock titlebar.
 - `resizeHandles` puts resize handles this many pixels outside the frame of every window the shell frames.
 
@@ -49,7 +51,6 @@ Every outlet has these fields:
 - `hideWhen(client)` does the same while it returns true, for example `(client) => client.maximised`.
 - `clear()` destroys what was added.
 - `onRefresh` runs once a frame before the outlet is placed.
-- `onAdded(node)` runs when something is added.
 
 An outlet is hidden while the window is fullscreen.
 
@@ -74,8 +75,8 @@ a glow goes in the bleed of an underlay.
 
 The room a frame takes is one rectangle, `FrameInset`: `{ top, right, bottom, left }`. These are the rules:
 
-- `client.frameInset` is that rectangle. It is all zero for a window the shell does not frame, and while the window is
-  fullscreen.
+- `client.frameInset` is that rectangle, the same as `Decorations.get().insetOf(client)`. It is all zero for a window the
+  shell does not frame, and while the window is fullscreen.
 - `client.bounds` is the content. The frame is the content with the inset round it.
 - A tile is a frame. A layout places the frame in its tile and the content is what the four edges leave.
 - A snap zone is a part of the work area for the frame. The content is the zone less the inset on every side.
@@ -117,8 +118,8 @@ application's own icon from.
 
 `Titlebar` is a `DragArea` holding a `TitleText` and the `WindowButton`s, with the look of a `TitlebarStyle`.
 
-`titlebarFill(style)` is the frame callback that puts one in the top outlet of a window the shell frames, and returns
-`false` for any other. It is the default `frame`. A callback of your own can call it, then add outlets to what it made.
+`Titlebar.install(frame, style?)` puts one in the top outlet of a window the shell frames, and returns `false` for any
+other. It is the default `frame`. A callback of your own can call it, then add outlets to what it made.
 
 ### Resize handles
 
@@ -158,7 +159,7 @@ A frame is mounted when the window is, and the compositor destroys its nodes wit
 - A callback that throws, or returns `false`, leaves no frame and no room behind.
 - `decorations.reframe(client)` decides again a rule that read the title.
 - `frame.destroy()` takes a frame away: it destroys the outlets and ends the frame's hook.
-- A reload ends the old generation's canvases and its hooks. The new generation's `startDecorations` frames every window
+- A reload ends the old generation's canvases and its hooks. The new generation's `Decorations.get().start()` frames every window
   again, and a window keeps its place: the frame's inset is kept across the reload and fitted to the new frame.
 
 ## What a window does not have

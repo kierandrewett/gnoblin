@@ -23,7 +23,7 @@ starter deletes the line it replaces.
 ## Triggers
 
 A trigger is modifiers joined to one key or button with `+`. Two spellings of one trigger are the same trigger: its
-`parseTrigger(trigger).text` is the canonical spelling.
+`Triggers.parse(trigger).text` is the canonical spelling.
 
 | Kind    | Form                                                                | Examples                                         |
 | ------- | ------------------------------------------------------------------- | ------------------------------------------------ |
@@ -42,17 +42,18 @@ A trigger is modifiers joined to one key or button with `+`. Two spellings of on
   takes no modifiers.
 - A wheel trigger parses, and binding one throws, because the compositor has no wheel claim.
 
-A bad trigger throws a `TriggerError` that names the part that is wrong. `parseTrigger` is exported by `gnoblin` if you want
-to check one yourself.
+A bad trigger throws an error that names the part that is wrong. `Triggers.parse(trigger)` returns the trigger as data, and
+`Triggers.check(trigger)` returns its canonical text, if you want to check one yourself.
 
 ## Bind from a script
 
 `gnoblin.input.primary.bind(trigger, action)` binds a trigger on the first seat and returns the `Binding`. The action is a
-function, a `Binding` object, or `false`.
+function or nothing. A class that extends `KeyBinding`, `PointerDragBinding` or `GestureBinding` goes to `bindBinding`,
+`bindDrag` or `bindGesture`.
 
 ```ts
 const binding = gnoblin.input.primary.bind("Super+x", (event) => {
-    gnoblin.spawn("foot");
+    gnoblin.spawn(["foot"]);
 });
 binding.unbind();
 ```
@@ -60,23 +61,33 @@ binding.unbind();
 - A function runs when the chord is pressed, or the button is clicked. It receives the event, which has `timestamp`. For a
   gesture trigger it runs once, when the gesture ends having gone far enough its way.
 - A function that returns `false` declines the chord, and the next binding of the same trigger has it.
-- An action of `false` claims the trigger and does nothing with it: the chord is swallowed.
-- A pointer drag trigger, such as `Super+MouseLeft+Drag`, needs a binding object, not a function: see
+- A binding made with no action claims the trigger and does nothing with it: the chord is swallowed.
+- A pointer drag trigger, such as `Super+MouseLeft+Drag`, needs a drag binding object, not a function: see
   [Input handlers](input-handlers).
 
-`bind` throws a `BindingConflictError` when another binding of the same context matches the same trigger at the same
-priority.
+`bind` throws a `GnoblinError` with code `already_exists` when another binding of the same context matches the same
+trigger at the same priority. Its third argument is an object of options:
+
+| Option      | Meaning                                             |
+| ----------- | --------------------------------------------------- |
+| `id`        | A name for the binding in its collection.           |
+| `priority`  | A number. A higher priority wins inside one tier.   |
+| `enabled`   | `false` makes the binding with the switch off.      |
+| `only`      | On a device, `true` makes the device binding-only.  |
+| `threshold` | For a gesture, how far it must go before it counts. |
 
 A `Binding` has these members:
 
-| Member     | Meaning                                                                                |
-| ---------- | -------------------------------------------------------------------------------------- |
-| `id`       | The binding's identity in its collection.                                              |
-| `trigger`  | The trigger. Assigning a new one moves the binding and cancels a drag it runs.         |
-| `enabled`  | `false` switches the binding off without removing it.                                  |
-| `priority` | A number. A higher priority wins inside one tier.                                      |
-| `parsed`   | The trigger as data: `kind`, `modifiers` and the fields of its kind.                   |
-| `unbind()` | Takes the binding away and releases the compositor's claim when nothing else needs it. |
+| Member      | Meaning                                                                                |
+| ----------- | -------------------------------------------------------------------------------------- |
+| `id`        | The binding's identity in its collection.                                              |
+| `trigger`   | The trigger. Assigning a new one moves the binding and cancels a drag it runs.         |
+| `enabled`   | `false` switches the binding off without removing it.                                  |
+| `priority`  | A number. A higher priority wins inside one tier.                                      |
+| `parsed`    | The trigger as data: `kind`, `modifiers` and the fields of its kind.                   |
+| `threshold` | For a gesture, how far it must go before it counts.                                    |
+| `tier`      | `context`, `layout` or `device`: where the binding sits.                               |
+| `unbind()`  | Takes the binding away and releases the compositor's claim when nothing else needs it. |
 
 ## Which binding runs
 

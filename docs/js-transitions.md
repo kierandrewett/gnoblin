@@ -4,20 +4,21 @@
 stages the changes; the compositor's tween player moves what is drawn from where it is to where the callback put it.
 
 ```ts
-import { gnoblin } from "gnoblin-core";
 import { MasterStackLayout } from "gnoblin-std";
 
-const workspace = gnoblin.workspaces.get("dev")!;
-const client = gnoblin.clients.get("42")!;
+const workspace = gnoblin.workspaces.byId("dev");
+const client = gnoblin.input.primary.focusedClient;
 
-gnoblin.requestTransition(
-    () => {
-        client.opacity = 0.85;
-        client.x = 120;
-        workspace.layout = new MasterStackLayout({ ratio: 0.7 });
-    },
-    { duration: 250, easing: "ease-out" },
-);
+if (workspace && client) {
+    gnoblin.requestTransition(
+        () => {
+            client.opacity = 0.85;
+            client.x = 120;
+            workspace.layout = new MasterStackLayout({ ratio: 0.7 });
+        },
+        { duration: 250, easing: "ease-out" },
+    );
+}
 ```
 
 An ordinary assignment, `client.opacity = 0.85`, stays immediate. A transition is for changes that belong together.
@@ -58,20 +59,19 @@ Any other easing name or option is a `TypeError` that names the known ones.
 
 `requestTransition` returns a `Transition`.
 
-| Member           | Meaning                                                                                                                    |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `running`        | True until it ends or is cancelled.                                                                                        |
-| `cancelled`      | True once `cancel()` or a newer transition took every property it animated, or it ran back to its start.                   |
-| `duration`       | The milliseconds it takes: the duration asked for, or 0 under reduced motion.                                              |
-| `progress`       | 0 to 1, settable (`RangeError` outside it). Moves every track to that point of its duration. Reads the last value written. |
-| `paused`         | Whether the tracks are held: `autoplay: false` until `play()` or `reverse()`, and after `pause()`.                         |
-| `reversed`       | Whether the tracks run back to their start.                                                                                |
-| `play()`         | Lets the tracks run on towards the target from where they are.                                                             |
-| `pause()`        | Holds the tracks where they are.                                                                                           |
-| `reverse()`      | Runs the tracks back towards their start from where they are.                                                              |
-| `finished`       | A promise that resolves once with `{ cancelled }` and never rejects.                                                       |
-| `onFinished(fn)` | Calls `fn({ cancelled })` once as a queued call, like any listener. Returns a subscription to stop it.                     |
-| `cancel()`       | Writes the end values of what it still animates at once, which ends the tracks. Resolves `{ cancelled: true }`.            |
+| Member               | Meaning                                                                                                                                                          |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `running`            | True until it ends or is cancelled.                                                                                                                              |
+| `state`              | `running`, `finished` or `cancelled`. `cancelled` after `cancel()`, after a newer transition took every property it animated, or after it ran back to its start. |
+| `duration`           | The milliseconds it takes: the duration asked for, or 0 under reduced motion.                                                                                    |
+| `progress`           | 0 to 1, settable (`RangeError` outside it). Moves every track to that point of its duration. Reads the last value written.                                       |
+| `paused`             | Whether the tracks are held: `autoplay: false` until `play()` or `reverse()`, and after `pause()`.                                                               |
+| `reversed`           | Whether the tracks run back to their start.                                                                                                                      |
+| `play()`             | Lets the tracks run on towards the target from where they are.                                                                                                   |
+| `pause()`            | Holds the tracks where they are.                                                                                                                                 |
+| `reverse()`          | Runs the tracks back towards their start from where they are.                                                                                                    |
+| `on("finished", fn)` | Calls `fn(cancelled)` once as a queued call, like any listener. Returns a `Listener` to stop it.                                                                 |
+| `cancel()`           | Writes the end values of what it still animates at once, which ends the tracks. `finished` runs with `cancelled` true.                                           |
 
 Cancelling puts what is drawn on the end state, which the transition committed when it began. It does not go back. The end
 is the compositor's: each track ends in a `track_ended` signal, so a transition settles when its tracks do, by the
@@ -83,19 +83,36 @@ With `autoplay: false` the tracks start held at the start value.
   drawn is the compositor's interpolation.
 - Writing `progress` moves every track to that point of its own duration at once. Hit testing follows the pose that is
   drawn.
-- A transition that runs back to its start puts the start values back and settles `{ cancelled: true }`.
+- A transition that runs back to its start puts the start values back and ends `cancelled`.
 - The tracks join a `tween` node of the compositor. A transition makes it when it has tracks and destroys it when it
   ends.
 
-## One object: `set`
+## One object
 
-`client.set(props, options)` and `workspace.set(props, options)` are one transition over one object. A key that is not a
-property with a setter is a `TypeError` before anything is written. Without `options` the change is atomic and immediate.
+To animate one window or one workspace, write only its properties in the callback:
 
 ```ts
-client.set({ opacity: 0.92, rotation: [0, 0.12, 0] }, { duration: 250, easing: "ease-out" });
-workspace.set({ layout: new MasterStackLayout({ ratio: 0.7 }) }, { duration: 300 });
+import { MasterStackLayout } from "gnoblin-std";
+
+const client = gnoblin.input.primary.focusedClient;
+const workspace = gnoblin.workspaces.byId("dev");
+
+gnoblin.requestTransition(
+    () => {
+        if (client) {
+            client.opacity = 0.92;
+            client.rotation = [0, 0.12, 0];
+        }
+        if (workspace) {
+            workspace.layout = new MasterStackLayout({ ratio: 0.7 });
+        }
+    },
+    { duration: 250, easing: "ease-out" },
+);
 ```
+
+A write the tree would refuse throws before anything is written. Without `requestTransition` a write is atomic and
+immediate.
 
 ## When transitions overlap
 
@@ -103,7 +120,7 @@ Two transitions can write one property of one node.
 
 - The one that began second owns the property, and the compositor ends the other track on it.
 - The earlier transition goes on with the properties it still owns, and ends at its own time.
-- One that has lost every property ends at once, with `{ cancelled: true }`.
+- One that has lost every property ends at once, `cancelled`.
 - A plain assignment to a property takes it from a transition the same way.
 
 ## When it fails
@@ -123,7 +140,7 @@ transition began, and an array edited in place.
 ## Reduced motion
 
 While the seat asks for reduced motion (`gnoblin.motion(1) === 0`) no write is timed: the change lands as one transaction of
-plain writes and `finished` still resolves, with `{ cancelled: false }`.
+plain writes and `finished` still runs, with `cancelled` false.
 
 ## What tweens
 
@@ -145,7 +162,7 @@ These are not built yet, in the compositor or in the shell. The shell does not f
 
 - **Effects and corner radius.** A shadow, a blur and a corner radius are not tween tracks. A style change of them lands at
   once.
-- **A camera.** `Camera2D` and `Camera3D` do not exist yet, so a projection blend has nothing to interpolate.
+- **A camera.** A `Camera2D` or `Camera3D` on a viewport is kept and not applied, so a projection blend has nothing to interpolate.
 - **The place of a running transition.** The compositor reports the end of a track and nothing before it, so `progress`
   reads what the script last wrote and not where an autoplaying track is. `finish()` (settle forward or back at once) is
   the player's (`TweenPlayer::finish`) and has no tree surface yet: a script cancels, or runs the tracks with `play()` and

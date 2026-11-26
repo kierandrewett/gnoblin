@@ -6,10 +6,10 @@ happens, such as a window opening, and runs your code.
 Create `~/.config/gnoblin/scripts/window-log.ts`:
 
 ```ts
-import { CollectionListener, gnoblin } from "gnoblin-core";
+import { ClientCollectionListener, gnoblin } from "gnoblin-core";
 import type { Client } from "gnoblin-core";
 
-class WindowLog extends CollectionListener<Client> {
+class WindowLog extends ClientCollectionListener {
     onAdded(client: Client) {
         gnoblin.spawn(["logger", "-t", "windows", `${client.appId}: ${client.title}`]);
     }

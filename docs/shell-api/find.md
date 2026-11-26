@@ -63,6 +63,8 @@ following the objects: a window that later gets the matching title joins it, and
 listen to it and style it like any collection.
 
 ```ts
+import "gnoblin-std";
+
 const terminals = gnoblin.clients.where({ appId: "foot" });
 terminals.style.opacity = 0.9;
 ```
@@ -71,18 +73,19 @@ terminals.style.opacity = 0.9;
   `{ anyAppId: ["foot", "kitty"] }`. An empty `any` list matches no member.
 - The keys depend on the collection. Windows take `id`, `appId`, `title`, `focused`, `fullscreen`, `x`, `y`, `width`,
   `height`, `anyId`, `anyAppId` and `anyTitle`. Outputs take `id`, `name`, `make`, `model`, `mode`, `scale`, `primary`,
-  `enabled`, `x`, `y`, `width`, `height`, `anyId` and `anyName`.
+  `enabled`, `x`, `y`, `width`, `height`, `anyId` and `anyName`. Workspaces have no `where`: select them with
+  `gnoblin.find("Workspace", filter)`.
 - `where` on a selection narrows it: `gnoblin.clients.where({ appId: "foot" }).where({ focused: true })`.
 - A selection's `parent` is the collection it was made from, and its `query` is the query it was made with. Both are
   `undefined` on `gnoblin.clients`, `gnoblin.outputs` and a list made with `new ClientCollection()`.
-- `where(query, { priority })` ranks the selection's `style` among the other selections that style a window: the higher
+- `where(query, priority)` ranks the selection's `style` among the other selections that style a window: the higher
   priority wins. See [window style](/js-style).
 
 ## Choosing between them
 
 - Use `find` to act once on what exists now, as a key handler does.
 - Use `where` to keep a rule true as windows come and go, such as a style for every terminal.
-- Use the collection's own `find(predicate)` and `filter(predicate)` when you want a single object or an array in plain
+- Use `toList()` on a collection, then `find` or `filter` on the array, when you want a single object or an array in plain
   JavaScript: [Windows](windows#read-windows).
 
 `gnoblin.focus.history(filter?)` returns the windows in the order they were last focused: [Focus and activation](focus-activation#focus-history).

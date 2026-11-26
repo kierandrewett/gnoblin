@@ -22,6 +22,8 @@ it keeps working when the renderer learns to draw it.
 Set the style on the scope it should reach:
 
 ```ts
+import "gnoblin-std";
+
 gnoblin.clients.style.shadows = [{ x: 0, y: 8, blur: 24, color: "#00000066" }];
 gnoblin.clients.where({ appId: "foot" }).style.opacity = 0.92;
 ```
@@ -32,6 +34,8 @@ client sits above it and wins. The scopes, the full property list and the filter
 A frosted window is a blur and a little saturation behind it:
 
 ```ts
+import "gnoblin-std";
+
 gnoblin.clients.where({ appId: "foot" }).style.backdropFilter = [{ blur: 24 }, { saturate: 1.35 }];
 ```
 

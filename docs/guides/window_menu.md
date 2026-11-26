@@ -7,29 +7,31 @@ interface and chooses which actions to show.
 
 ## Hear a request in TypeScript
 
-A menu request is one kind of request a client makes of its window. A `ClientListener` hears it in `onRequest`, with the
-anchor the menu opens at in `request.x` and `request.y`, in global logical coordinates:
+A menu request is one kind of request a client makes of its window. A `RequestListener` added to `WindowState` hears it in
+`onRequest`, with the anchor the menu opens at in `request.x` and `request.y`, in global logical coordinates:
 
 ```ts
-import { ClientListener, gnoblin } from "gnoblin-core";
-import type { Client } from "gnoblin-core";
+import { RequestListener, WindowState } from "gnoblin-std";
 import type { ClientRequest } from "gnoblin-std";
 
-class OwnMenu extends ClientListener {
-    onRequest(client: Client, request: ClientRequest<Client>) {
+class OwnMenu extends RequestListener {
+    onRequest(request: ClientRequest) {
         if (request.kind === "menu") {
             request.handle();
-            gnoblin.spawn(["notify-send", `Menu for ${client.title} at ${request.x}, ${request.y}`]);
+            const title = gnoblin.clients.get(request.client)?.title ?? "";
+            gnoblin.spawn(["notify-send", `Menu for ${title} at ${request.x}, ${request.y}`]);
         }
     }
 }
 
-gnoblin.clients.addListener(new OwnMenu());
+const state = WindowState.get();
+state.addListener(new OwnMenu());
+state.start();
 ```
 
 Put the code in `~/.config/gnoblin/shell.ts`. Right-click a titlebar: the stock menu does not open, and a notification says where
 the menu would have been. `request.handle()` takes the request, so the stock menu does not run. To change what the stock
-menu offers or draw another one, assign `windowMenu.items` or `windowMenu.show` instead.
+menu offers or draw another one, give `WindowMenus.get()` a `MenuProvider` instead.
 
 A request comes from one of these:
 

@@ -22,7 +22,10 @@ for (const device of gnoblin.input.devices) {
 | `naturalScroll` | Boolean                               | The system's | `input.touchpad.natural-scroll` |
 | `tapToClick`    | Boolean                               | The system's | `input.touchpad.tap-to-click`   |
 
-`undefined` takes a property back to the system's value. The scroll speed, tap-and-drag, disable-while-typing, click
+`device.reset(name)` takes a property back to the system's value. `name` is the property in snake case, such as
+`"tap_to_click"`.
+
+The scroll speed, tap-and-drag, disable-while-typing, click
 method and the other touchpad fields have no TypeScript home yet: see
 [settings with no TypeScript home yet](/js-settings#dropped-settings).
 

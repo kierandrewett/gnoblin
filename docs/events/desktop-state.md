@@ -5,14 +5,16 @@ attached to one of them is told what happens to it and receives the object itsel
 
 ## Listen to windows
 
-Attach a `ClientListener` to `gnoblin.clients` to hear every window, or to one window's `addListener` to hear that one.
-Every method is optional.
+Attach a `ClientCollectionListener` to `gnoblin.clients` to hear every window, or a `ClientListener` to one window's
+`addListener` to hear that one.
+
+The two have the same methods, and a collection listener adds `onAdded` and `onRemoved`. Every method is optional.
 
 ```ts
-import { ClientListener, gnoblin } from "gnoblin-core";
+import { ClientCollectionListener, gnoblin } from "gnoblin-core";
 import type { Client } from "gnoblin-core";
 
-class Titles extends ClientListener {
+class Titles extends ClientCollectionListener {
     onTitleChanged(client: Client, title: string) {
         gnoblin.spawn(["logger", "-t", "titles", `${client.appId}: ${title}`]);
     }
@@ -40,55 +42,60 @@ Save it as `shell.ts`. Open a terminal and read the lines with `journalctl --use
 | `onPointerRelease(client, event)`     | A button came up on the window.                                             |
 | `onDecorationChanged(client, mode)`   | Who draws the window's frame changed: `client`, `server` or `none`.         |
 | `onReady(client)`                     | The window finished its first setup. A window there at boot hears it once.  |
-| `onRequest(client, request)`          | The client asked for a change of its window. See below.                     |
 
 A pointer `event` has `x` and `y` in the window's own coordinates and `button`, which is 0 for every event but a press and
 a release.
 
-Each method is also a named subscription that takes just the handler and returns the function that detaches it. The
-window has them (`client.onTitleChanged(handler)`), so has every collection of windows (`gnoblin.clients.onTitleChanged(handler)`
-hears every window), and so has `gnoblin` under a longer name: `gnoblin.onClientTitleChanged(handler)`. See
-[Events](/events/#subscribe-to-one-event).
+Each method is also an event that `on` takes with just the handler, and `on` returns a `Listener` whose `stop()` detaches
+it. See [Events](/events/#subscribe-to-one-event).
+
+- A window has them: `client.on("titleChanged", handler)`.
+- Every collection of windows has them: `gnoblin.clients.on("titleChanged", handler)` hears every window.
+- `gnoblin` has them under a longer name: `gnoblin.onClientTitleChanged(handler)`.
 
 ```ts
-const stop = gnoblin.onClientFocusChanged((client, focused) => {
+const focus = gnoblin.onClientFocusChanged((client, focused) => {
     if (focused) {
         gnoblin.spawn(["logger", "-t", "focus", client.appId]);
     }
 });
+
+focus.stop(); // focus is not logged any more
 ```
 
 ### Answer a request yourself
 
 A client asks the compositor to maximise, fullscreen, minimise, close, raise or move its window, and the compositor does
-nothing until the shell answers. The stock shell answers every kind. A listener's `onRequest` hears the request first,
-and `request.handle()` answers it: the stock answer does not run. The kinds and the `windowState` policy are in
-[Windows](/shell-api/windows#window-requests).
+nothing until the shell answers. `WindowState.get().start()` makes the shell answer every kind. A `RequestListener` added
+with `WindowState.get().addListener(listener)` hears the request first, and `request.handle()` answers it: the stock
+answer does not run. The kinds and the `WindowState` policy are in [Windows](/shell-api/windows#window-requests).
 
 ## Listen to membership
 
-A `CollectionListener` on a collection hears members join and leave:
+A `ClientCollectionListener` on `gnoblin.clients` hears windows join and leave, and an `OutputCollectionListener` on
+`gnoblin.outputs` does the same for outputs:
 
-- `onAdded(member)` runs when a window, workspace or output joins.
-- `onRemoved(member)` runs when one leaves.
+- `onAdded(member, collection)` runs when a window or an output joins.
+- `onRemoved(member, collection)` runs when one leaves.
+
+`gnoblin.workspaces` has `added` and `removed` events for workspaces: `gnoblin.workspaces.on("added", handler)`.
 
 ```ts
-import { CollectionListener, gnoblin } from "gnoblin-core";
-import { toast } from "gnoblin-std";
+import { ClientCollectionListener, gnoblin } from "gnoblin-core";
+import { Toast } from "gnoblin-std";
 import type { Client } from "gnoblin-core";
 
-class Count extends CollectionListener<Client> {
+class Count extends ClientCollectionListener {
     onAdded(client: Client) {
-        toast(`${client.appId} opened: ${gnoblin.clients.length} windows`);
+        Toast.show(`${client.appId} opened: ${gnoblin.clients.length} windows`);
     }
 }
 
 gnoblin.clients.addListener(new Count());
 ```
 
-Each is also a named subscription of the collection, which takes just the handler: `gnoblin.clients.onAdded(handler)`
-runs it for every window there is now and every one that joins, and `gnoblin.onClientCreated(handler)` is the same for
-windows from `gnoblin`.
+Each is also an event of the collection: `gnoblin.clients.on("added", handler)` runs the handler for every window there is
+now and every one that joins, and `gnoblin.onClientCreated(handler)` is the same for windows from `gnoblin`.
 
 ```ts
 gnoblin.onClientCreated((client) => {
@@ -98,23 +105,24 @@ gnoblin.onClientCreated((client) => {
 
 ## Listen to outputs
 
-An `OutputListener` attached to `gnoblin.outputs`, or to one output, has these methods:
+An `OutputCollectionListener` attached to `gnoblin.outputs`, or an `OutputListener` attached to one output, has these
+methods:
 
-| Method                                | Called when                                                                 |
-| ------------------------------------- | --------------------------------------------------------------------------- |
-| `onConnected(output)`                 | An output was plugged in while the shell runs.                              |
-| `onDisconnected(output)`              | An output is gone. Its last values stay readable.                           |
-| `onModeChanged(output, mode)`         | The mode changed. `mode` is `WxH@Hz`.                                       |
-| `onScaleChanged(output, scale)`       | The scale changed.                                                          |
-| `onGeometryChanged(output, geometry)` | The output's position or size changed.                                      |
-| `onApplied(output, error)`            | An `apply` or `mirror` was answered. `error` is `null` when it took effect. |
+| Method                                | Called when                                                                |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| `onConnected(output)`                 | An output was plugged in while the shell runs.                             |
+| `onDisconnected(output)`              | An output is gone. Its last values stay readable.                          |
+| `onModeChanged(output, mode)`         | The mode changed. `mode` is `WxH@Hz`.                                      |
+| `onScaleChanged(output, scale)`       | The scale changed.                                                         |
+| `onGeometryChanged(output, geometry)` | The output's position or size changed.                                     |
+| `onApplied(output, error)`            | An `apply` or `mirror` was answered. `error` is empty when it took effect. |
 
 A listener on the collection does not hear `onConnected` for an output that was there when the shell started. See
 [Outputs](/shell-api/outputs#listen-for-plugging-and-unplugging).
 
-Each method is also a named subscription that takes just the handler:
+Each method is also an event that `on` takes with just the handler:
 
-- `output.onModeChanged(handler)` hears one output, and `gnoblin.outputs.onModeChanged(handler)` hears every output.
+- `output.on("modeChanged", handler)` hears one output, and `gnoblin.outputs.on("modeChanged", handler)` hears every output.
 - `gnoblin` has them as `gnoblin.onOutputModeChanged`, `gnoblin.onOutputConnected` and so on.
 - `gnoblin.onOutputAdded` and `gnoblin.onOutputRemoved` follow the membership of `gnoblin.outputs`.
 

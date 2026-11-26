@@ -25,24 +25,28 @@ The window menu's Move and Resize start these.
 ## Gesture actions
 
 ```ts
-const input = gnoblin.input.primary;
-input.bind(
-    "Swipe4",
-    gnoblin.gestures.onSwipe({ up: "window.toggle-maximise", left: "workspace.next", right: "workspace.previous" }),
-);
-input.bind("Pinch3", gnoblin.gestures.onPinch({ in: "window.minimise", out: (event) => console.log(event.scale) }));
+import { PinchActionBinding, SwipeActionBinding } from "gnoblin-std";
+
+const swipe = new SwipeActionBinding({ trigger: "Swipe4" });
+swipe.setAction("up", "window.toggle-maximise");
+swipe.setAction("left", "workspace.next");
+swipe.setAction("right", "workspace.previous");
+swipe.install();
+
+const pinch = new PinchActionBinding({ trigger: "Pinch3" });
+pinch.setAction("in", "window.minimise");
+pinch.setFunction("out", (event) => console.log(event.scale));
+pinch.install();
 ```
 
 A gesture is `Swipe` or `Pinch` and a finger count. An action runs once, when the fingers lift, for the direction the
 gesture went; a cancelled gesture runs nothing.
 
 - The named actions are `workspace.next`, `workspace.previous`, `window.close`, `window.minimise` and
-  `window.toggle-maximise`.
-- `gnoblin.gestures.actions` holds them as functions.
-- `onSwipe(map, threshold?)`, `onPinch(map, threshold?)` and `direction(event, threshold?)` of `gnoblin.gestures` build
-  bindings for `gnoblin.input.primary.bind`.
-- The generated classes of `gnoblin-std/generated/objects` make the same bindings: `SwipeActionBinding` and `PinchActionBinding` take
-  `setAction(way, name)` or `setFunction(way, fn)` for each way and are installed with `install()`. `Gestures.direction` gives the way a
+  `window.toggle-maximise`. `Gestures.get().actionNames` lists them, and `Gestures.get().run(name)` runs one now.
+- `setAction(way, name)` gives a way a named action and `setFunction(way, fn)` gives it a function. `clear(way)` takes
+  it away. A swipe has the ways `up`, `down`, `left` and `right`, and a pinch has `in` and `out`.
+- `threshold` is how far the gesture must go before it counts. `Gestures.direction(dx, dy, threshold?)` gives the way a
   gesture has gone.
 - A gesture bound on `Swipe3` is refused while the stock three-finger slide holds that trigger, so delete the starter's
   `Swipe3` line first.
@@ -52,7 +56,7 @@ gesture went; a cancelled gesture runs nothing.
 
 While the seat's `reduced_motion` is true, `gnoblin.motion(duration)` is 0.
 
-- Workspace slides and `Client.set` with a duration take no time.
+- Workspace slides and a `requestTransition` with a duration passed through `gnoblin.motion` take no time.
 - The titlebar's close fade is skipped.
 - The slide back of a short swipe is instant.
 

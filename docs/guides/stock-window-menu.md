@@ -2,7 +2,7 @@
 
 The stock shell draws two small dialogs that belong to a window: the window menu, and the alert for a window that has
 stopped answering. Both are the shell's own interface, so a config can change what they offer or draw its own. Each has a
-switch: leave `startWindowMenu()` or `startNotRespondingAlert()` out of your `shell.ts`.
+switch: leave `WindowMenus.get().start()` or `NotRespondingAlerts.get().start()` out of your `shell.ts`.
 
 ## The window menu
 
@@ -54,70 +54,77 @@ Return keeps the new place and Escape puts the window back. The window stays ins
 
 ## Change what the menu offers
 
-Assign `windowMenu.items` in your `shell.ts`. It is a function that takes the window and returns a list of entries. Each
-entry is an object with a `label` and any of these:
+Give the menu a `MenuProvider` in your `shell.ts`. Its `items(client)` method takes a window, as its id in text, and
+returns the list of entries to show. Each entry is a `MenuEntry`: a `label` and any of these:
 
-| Field       | Meaning                                                                                           |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| `run`       | A function that receives the window. It runs after the menu has closed.                           |
-| `enabled`   | `false` shows the entry dim, and the keyboard skips it.                                           |
-| `checked`   | `true` shows a tick.                                                                              |
-| `submenu`   | A list of entries, or a function that takes the window and returns them. Use it instead of `run`. |
-| `separator` | `true` draws a rule between groups. An entry with `separator` has no label.                       |
+| Field            | Meaning                                                                       |
+| ---------------- | ----------------------------------------------------------------------------- |
+| `run`            | A function that receives the window's id. It runs after the menu has closed.  |
+| `enabled`        | `false` shows the entry dim, and the keyboard skips it.                       |
+| `checked`        | `true` shows a tick.                                                          |
+| `submenu`        | A list of entries. Use it instead of `run`.                                   |
+| `submenuEntries` | A function that takes the window's id and returns the entries of the submenu. |
+| `separator`      | `true` draws a rule between groups. An entry with `separator` has no label.   |
 
 ```ts
-import { windowMenu } from "gnoblin-std";
-import type { Client } from "gnoblin-core";
+import { MenuEntry, MenuProvider, WindowMenus } from "gnoblin-std";
 
-const stock = windowMenu.items.bind(windowMenu);
+const menus = WindowMenus.get();
 
-windowMenu.items = (client) => {
-    const entries = stock(client);
-    entries.splice(entries.length - 1, 0, {
-        label: "Copy title",
-        run: (window) => gnoblin.spawn(["wl-copy", (window as Client).title]),
-    });
-    return entries;
-};
+class CopyTitle extends MenuProvider {
+    items(id: string): MenuEntry[] {
+        const window = gnoblin.clients.get(id);
+        const entries = window === undefined ? [] : menus.defaultItems(window);
+        const copy = new MenuEntry("Copy title");
+        copy.run = (target: string) => {
+            gnoblin.spawn(["wl-copy", gnoblin.clients.get(target)?.title ?? ""]);
+        };
+        entries.splice(entries.length - 1, 0, copy);
+        return entries;
+    }
+}
+
+menus.provider = new CopyTitle();
+menus.start();
 ```
 
-Put this in `~/.config/gnoblin/shell.ts`, after `startWindowMenu()` or in a module you import. Right-click a titlebar
-and Copy title sits above Close. The entry runs `wl-copy`, so install it first.
+Put this in `~/.config/gnoblin/shell.ts`, or in a module you import. `defaultItems(client)` is the stock list, so a provider
+can add to it. Right-click a titlebar and Copy title sits above Close. The entry runs `wl-copy`, so install it first.
 
 ## Draw your own menu
 
-Every request ends in `windowMenu.show(client, x, y)`, with the anchor in global coordinates. Assign it to draw something
-else:
+Every request ends in the provider's `show(client, x, y)`, with the anchor in global coordinates. Give a provider a `show`
+method to draw something else in place of the library's card:
 
 ```ts
-import { Box, Text, windowMenu } from "gnoblin-std";
+import { Box, MenuProvider, Text, WindowMenus } from "gnoblin-std";
 
-windowMenu.show = (client, x = 0, y = 0) => {
-    const card = new Box({ x, y, width: 160, height: 36, radius: 8, fill: "#1e1e2e", secure: client.secure });
-    card.add(new Text({ text: "Close", size: 14 }));
-    card.onPress = (event) => {
-        event.stop();
-        card.destroy();
-        client.close();
-    };
-    card.mountTop();
-    return null;
-};
+class OwnMenu extends MenuProvider {
+    show(id: string, x: number, y: number): void {
+        const client = gnoblin.clients.get(id);
+        if (client === undefined) return;
+        const card = new Box({ x, y, width: 160, height: 36, radius: 8, fill: "#1e1e2e", secure: client.secure });
+        card.add(new Text({ text: "Close", size: 14 }));
+        card.onPointer = (event) => {
+            if (event.kind === "press") {
+                card.destroy();
+                client.close();
+            }
+            return true;
+        };
+        card.mountTop();
+    }
+}
+
+const menus = WindowMenus.get();
+menus.provider = new OwnMenu();
+menus.start();
 ```
 
 A menu you draw yourself should take the keyboard, close on a press elsewhere, and be `secure` when the window is, as the
-stock menu does. Without `startWindowMenu()` the compositor still sends the requests and nothing answers them.
+stock menu does. Without `WindowMenus.get().start()` the compositor still sends the requests and nothing answers them.
 
-## The same menu from the generated classes
-
-A shell in Rust, TypeScript or Python reaches the window menu through the generated classes, and the library draws the card and runs the
-keyboard. Start the service with `WindowMenus.get().start()`.
-
-Change what the menu offers by giving the service a `MenuProvider`:
-
-- `items(client)` answers the entries of a window's menu in place of the stock ones. A window is its node number as text.
-- `defaultItems(client)` is the stock list, so a provider can add to it.
-- `show(client, x, y)` opens the menu in place of the library's card.
+## Keyboard modes and the open card
 
 The stock Move and Resize entries start a keyboard mode, where the arrow keys move or resize the window, Return keeps the place and Escape puts the window back. The entries are dim until a mode can start. Start the library's own modes with `Repositioning.get().start()`, or give the service a function of your own:
 
@@ -148,5 +155,5 @@ The stock shell looks at the windows once a second and opens an alert for each o
 The alert takes the keyboard and gives it back when it closes. It is `secure` when the window is. It closes by itself when the
 window answers again or goes, and no alert opens while the session is locked.
 
-To turn it off, leave `startNotRespondingAlert()` out of your `shell.ts`. To draw your own alert, turn it off and read `client.unresponsive`
+To turn it off, leave `NotRespondingAlerts.get().start()` out of your `shell.ts`. To draw your own alert, turn it off and read `client.unresponsive`
 yourself. `client.kill()` is the call behind Force quit.

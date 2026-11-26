@@ -4,14 +4,14 @@ Set shared defaults first, then override them for selected windows. Later statem
 Put this in `~/.config/gnoblin/shell.ts`. It imports `gnoblin-std`, which provides `gnoblin.clients.style`:
 
 ```ts
-import { CollectionListener } from "gnoblin-core";
+import { ClientCollectionListener } from "gnoblin-core";
 import "gnoblin-std";
 import type { Client } from "gnoblin-core";
 
 gnoblin.clients.style.opacity = 1;
 
 gnoblin.clients.addListener(
-    new (class extends CollectionListener {
+    new (class extends ClientCollectionListener {
         onAdded(client: Client) {
             client.maximised = false;
             if (client.appId === "org.gnome.TextEditor") {

@@ -4,11 +4,11 @@
 panel, lock the screen or suspend the machine after a pause. It returns an `IdleWatch`.
 
 ```ts
-import { toast } from "gnoblin-std";
+import { Toast } from "gnoblin-std";
 
 gnoblin.idle.watch(300_000, {
     onIdle: () => gnoblin.session.lock(),
-    onResume: () => toast("Welcome back"),
+    onResume: () => Toast.show("Welcome back"),
 });
 ```
 
@@ -33,11 +33,11 @@ An `IdleListener` is a class with optional methods, or an object that has some o
 | ------------------------- | --------------------------------------------------------------------- |
 | `watch.id`                | `"idle-"` and a number.                                               |
 | `watch.ms`                | The idle time you asked for.                                          |
-| `watch.idle`              | `true` while the session is idle for `ms` and nothing holds it awake. |
+| `watch.isIdle`            | `true` while the session is idle for `ms` and nothing holds it awake. |
 | `watch.alive`             | `true` until `cancel()`.                                              |
 | `watch.cancel()`          | Ends the watch. `onClosed(watch, "cancelled")` runs once.             |
-| `gnoblin.idle.idleMs`     | Milliseconds since the last input at the last reading, or `null`.     |
-| `gnoblin.idle.inhibitors` | How many holds keep the session awake, or `null`.                     |
+| `gnoblin.idle.idleMs`     | Milliseconds since the last input at the last reading.                |
+| `gnoblin.idle.inhibitors` | How many holds keep the session awake.                                |
 | `gnoblin.idle.watches`    | The live watches, oldest first.                                       |
 
 The compositor publishes the time since the last input and the number of holds, and a watch is a threshold over that

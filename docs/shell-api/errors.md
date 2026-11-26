@@ -5,10 +5,8 @@ shell, whether a listener, a handler or a timer, runs under a time budget and ma
 
 ```ts
 gnoblin.input.primary.bind("Super+Shift+q", () => {
-    gnoblin.session.logout().onComplete((value, error) => {
-        if (error) {
-            gnoblin.spawn(["notify-send", `Logout refused: ${error.code}`]);
-        }
+    gnoblin.session.logout().catch((error, code) => {
+        gnoblin.spawn(["notify-send", `Logout refused: ${code}: ${error}`]);
     });
 });
 ```
@@ -18,27 +16,28 @@ refuses.
 
 ## Operations
 
-An `Operation` settles once, with a value or with a typed error. Its callbacks run as queued calls under the same time
+An `Operation` settles once, with success or with a typed error. Its callbacks run as queued calls under the same time
 budget as every listener: one that throws is reported, and the next callback still runs.
 
-| Member           | Meaning                                                                                                               |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `id`, `method`   | The operation's number and the name of the call that made it.                                                         |
-| `status`         | `pending`, `succeeded` or `failed`.                                                                                   |
-| `value`          | The result of a success. `undefined` otherwise.                                                                       |
-| `error`          | `{ code, message }` of a failure. `undefined` otherwise.                                                              |
-| `onComplete(fn)` | Calls `fn(value, error)` once, when the operation settles. Returns a subscription.                                    |
-| `map(fn)`        | A new operation with `fn(value)` as its value. A throw in `fn` fails it `internal`.                                   |
-| `timeout(ms)`    | A new operation that fails `timed_out` if this one has not settled in `ms` milliseconds. It does not cancel this one. |
-| `cancel()`       | Fails the operation with `cancelled`. Returns `false` when it had already settled.                                    |
+| Member              | Meaning                                                                       |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `status`            | `pending`, `succeeded` or `failed`.                                           |
+| `error`             | The words of a failure. Empty otherwise.                                      |
+| `errorCode`         | The code of a failure, from the table below. Empty otherwise.                 |
+| `then(fn)`          | Calls `fn()` once, when the operation succeeds.                               |
+| `catch(fn)`         | Calls `fn(error, code)` once, when the operation fails.                       |
+| `on("settled", fn)` | Calls `fn(operation)` once, when it settles either way. Returns a `Listener`. |
 
-`onComplete` returns a subscription with `unsubscribe()`, which stops the callback before it runs.
+A call that has a result, such as `Process.wait()`, leaves it on the object that made the operation: read `process.exit`
+inside `then`. To stop waiting for an operation after a time, start a timer:
 
 ```ts
-const done = gnoblin.process.spawn(["sleep", "30"]).wait().timeout(5000);
-done.onComplete((exit, error) => {
-    if (error?.code === "timed_out") {
+const sleep = gnoblin.process.spawn(["sleep", "30"]);
+sleep.wait().then(() => gnoblin.spawn(["notify-send", "sleep ended"]));
+gnoblin.timers.after(5000, () => {
+    if (sleep.alive) {
         gnoblin.spawn(["notify-send", "sleep took too long"]);
+        sleep.kill();
     }
 });
 ```
@@ -49,7 +48,7 @@ A bad argument is not an operation failure: the call throws a `TypeError` or a `
 
 One set of codes covers every failure of the API, and the codes are snake_case.
 
-- An `Operation` that fails carries `{ code, message }`.
+- An `Operation` that fails carries an `error` and an `errorCode`.
 - A call that cannot be made throws a `GnoblinError` with a code from the same set.
 - Its `target` names the object and member, such as `Client#7.x`, and its message begins with the target.
 
@@ -69,16 +68,15 @@ One set of codes covers every failure of the API, and the codes are snake_case.
 | `internal`         | An unexpected error occurred, such as a throw inside `map`.                |
 | `config_rejected`  | The configuration document refused a value, or a reload was refused.       |
 
-A `TypeError` or a `RangeError` is the script's own mistake in a value, and it has no code. Three classes carry one so
-a script can branch on `error.code`:
-
-- `TriggerError` is a `TypeError` with the code `invalid_argument`.
-- `BindingConflictError` has the code `already_exists`.
-- `SceneError` is a `GnoblinError`.
+A `TypeError` or a `RangeError` is the script's own mistake in a value, and it has no code. A call the library refuses is a
+`GnoblinError`, which `gnoblin-core` exports, so a script can branch on `error.code`:
 
 ```ts
+import { GnoblinError } from "gnoblin-core";
+import { Workspace } from "gnoblin-std";
+
 try {
-    gnoblin.workspaces.add(new Workspace({ id: "main" }));
+    gnoblin.workspaces.add(new Workspace("main"));
 } catch (error) {
     if (error instanceof GnoblinError && error.code === "already_exists") {
         gnoblin.spawn(["notify-send", "There is a workspace with that id already"]);
@@ -108,8 +106,8 @@ sets it where it refuses the call.
 | A generation a reload has replaced                                      | `invalid_state`                 |
 | A value of the wrong kind or out of range                               | none: `TypeError`, `RangeError` |
 
-`cancelled` and `config_rejected` come from `Operation` and the configuration, and `timed_out` from `timeout(ms)` and logind. A
-call on an object does not raise them.
+`cancelled` and `config_rejected` come from `Operation` and the configuration, and `timed_out` from logind. A call on an object
+does not raise them.
 
 The `target` is `Class#id.member`, such as `Client#7.close`, where `id` is the object's `id` property. A class function, a
 constructor or an object with no readable `id` gives `Class.member`, such as `InputContext.new`. The message begins with the
@@ -135,17 +133,14 @@ The ABI integer is not part of the script API. A shell that needs it reads `abi`
 | Member                 | Meaning                                                              |
 | ---------------------- | -------------------------------------------------------------------- |
 | `timer.pending`        | `true` until the timer ran or was cancelled.                         |
-| `timer.at`             | When it runs, in milliseconds on the monotonic clock.                |
-| `timer.cancel()`       | Stops the timer. Returns `false` when it had already run.            |
-| `gnoblin.timers.size`  | How many timers are waiting.                                         |
+| `timer.cancel()`       | Stops the timer. Nothing happens when it had already run.            |
 | `gnoblin.timers.now()` | The monotonic clock in milliseconds. Only differences mean anything. |
 
-- At most 1024 timers wait at once.
 - A timer that throws is reported, and the next one still runs.
 - A reload cancels the timers of the old configuration, and they do not delay it.
 
 ```ts
-const timer = gnoblin.timers.after(2000, () => gnoblin.show("2"));
+const timer = gnoblin.timers.after(2000, () => gnoblin.workspaces.showById("2"));
 timer.cancel();
 ```
 

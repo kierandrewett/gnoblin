@@ -21,23 +21,22 @@ Put the file in `~/.config/gnoblin/shell.ts`. `Super+l` locks the session. `Supe
 `gnoblin.session` talks to the compositor over a connection the shell holds for it. With no connection the status is
 `unavailable` and every verb fails with the code `unavailable`.
 
-| Member        | Returns                  | Meaning                                                               |
-| ------------- | ------------------------ | --------------------------------------------------------------------- |
-| `status()`    | `SessionStatus`          | The session as the compositor last published it. Read on each call.   |
-| `logout()`    | `Operation<Accepted>`    | Ends the session once the compositor confirms.                        |
-| `poweroff()`  | `Operation<Accepted>`    | Powers the machine off once the init system accepts. Does not prompt. |
-| `reboot()`    | `Operation<Accepted>`    | Reboots, with the contract of `poweroff()`.                           |
-| `suspend()`   | `Operation<Accepted>`    | Suspends to RAM. The session locks first.                             |
-| `hibernate()` | `Operation<Accepted>`    | Hibernates. Fails with `unsupported` when the machine cannot.         |
-| `lock()`      | `Operation<LockRequest>` | Asks the compositor to lock. Read `status()` to see the locked state. |
+| Member        | Returns         | Meaning                                                               |
+| ------------- | --------------- | --------------------------------------------------------------------- |
+| `status`      | `SessionStatus` | The session as the compositor last published it. Read on each access. |
+| `logout()`    | `Operation`     | Ends the session once the compositor confirms.                        |
+| `poweroff()`  | `Operation`     | Powers the machine off once the init system accepts. Does not prompt. |
+| `reboot()`    | `Operation`     | Reboots, with the contract of `poweroff()`.                           |
+| `suspend()`   | `Operation`     | Suspends to RAM. The session locks first.                             |
+| `hibernate()` | `Operation`     | Hibernates. Fails with `unsupported` when the machine cannot.         |
+| `lock()`      | `Operation`     | Asks the compositor to lock. Read `status` to see the locked state.   |
 
-Each verb returns an `Operation`: see [Operations, errors and timers](errors). `logout`, `poweroff`, `reboot`, `suspend` and
-`hibernate` succeed with `{ accepted: true }`. `lock` succeeds with `{ dispatched }`, which says the request went out and
-does not prove the session is locked.
+Each verb returns an `Operation`: see [Operations, errors and timers](errors). A success of `lock` says the request went out
+and does not prove the session is locked.
 
 ### Session status
 
-`status()` returns these fields:
+`status` holds these fields:
 
 | Field           | Values                                       | Meaning                                                            |
 | --------------- | -------------------------------------------- | ------------------------------------------------------------------ |
@@ -60,22 +59,18 @@ A refused power verb fails with one of these codes, and the message names the D-
 - `timed_out`: logind did not answer in time.
 
 ```ts
-gnoblin.session.suspend().onComplete((value, error) => {
-    if (error) {
-        gnoblin.spawn(["notify-send", `Suspend failed: ${error.code}`]);
-    }
+gnoblin.session.suspend().catch((error, code) => {
+    gnoblin.spawn(["notify-send", `Suspend failed: ${code}: ${error}`]);
 });
 ```
 
 ## Reload
 
 `gnoblin.runtime.reloadConfig()` asks for the reload `gnoblinctl config reload` asks for. It returns an
-`Operation<ReloadResult>`. A success carries these fields:
+`Operation`, and a success leaves a `ReloadResult` in `gnoblin.runtime.lastReload` with these fields:
 
 | Field              | Meaning                                                                                                     |
 | ------------------ | ----------------------------------------------------------------------------------------------------------- |
-| `ok`               | Always `true` in a success.                                                                                 |
-| `action`           | `"config reload"`.                                                                                          |
 | `settingsRevision` | The revision the compositor committed.                                                                      |
 | `warnings`         | The problems of the sections the reload dropped.                                                            |
 | `notApplied`       | Settings accepted without effect, each a sentence. See [Lifecycle events](/events/lifecycle#configuration). |

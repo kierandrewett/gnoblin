@@ -9,18 +9,18 @@ listener to `gnoblin.clients` and decide in a function, or you style a selection
 This places every editor window on workspace `dev` and maximises it:
 
 ```ts
-import { CollectionListener } from "gnoblin-core";
+import { ClientCollectionListener } from "gnoblin-core";
 import { FloatingLayout, Workspace } from "gnoblin-std";
 import type { Client } from "gnoblin-core";
 
-gnoblin.workspaces.add(new Workspace({ id: "web", layout: new FloatingLayout() }));
-gnoblin.workspaces.add(new Workspace({ id: "dev", layout: new FloatingLayout() }));
+gnoblin.workspaces.add(new Workspace("web", { layout: new FloatingLayout() }));
+gnoblin.workspaces.add(new Workspace("dev", { layout: new FloatingLayout() }));
 
 gnoblin.clients.addListener(
-    new (class extends CollectionListener {
+    new (class extends ClientCollectionListener {
         onAdded(client: Client) {
             if (client.appId === "org.example.Editor") {
-                const dev = gnoblin.workspaces.get("dev");
+                const dev = gnoblin.workspaces.byId("dev");
                 if (dev !== undefined) {
                     client.moveToWorkspace(dev);
                 }
@@ -67,11 +67,11 @@ Compare with `===` for a whole id, or use a `RegExp` for a part. A `RegExp` is t
 and `$` to match the whole value. Both are case-sensitive.
 
 ```ts
-import { CollectionListener } from "gnoblin-core";
+import { ClientCollectionListener } from "gnoblin-core";
 import type { Client } from "gnoblin-core";
 
 gnoblin.clients.addListener(
-    new (class extends CollectionListener {
+    new (class extends ClientCollectionListener {
         onAdded(client: Client) {
             if (client.appId === "org.gnome.Nautilus") {
                 client.maximised = true;
@@ -94,6 +94,8 @@ react to a change, add `onTitleChanged(client, title)` or `onAppIdChanged(client
 Appearance does not need a listener. `where` selects windows by property, live, and the selection has its own style:
 
 ```ts
+import "gnoblin-std";
+
 const nautilus = gnoblin.clients.where({ appId: "org.gnome.Nautilus" });
 nautilus.style.opacity = 0.9;
 ```
@@ -103,23 +105,23 @@ A window that stops matching the query goes back to the style it inherits. The s
 
 ## Workspaces {#workspaces}
 
-Declare the workspaces yourself with `new Workspace({ id, layout })` and `gnoblin.workspaces.add`, and fetch one by its
-id with `gnoblin.workspaces.get("code")`. It returns `undefined` for an id you did not declare, so test it before you
+Declare the workspaces yourself with `new Workspace(id, { layout })` and `gnoblin.workspaces.add`, and fetch one by its
+id with `gnoblin.workspaces.byId("code")`. It returns `undefined` for an id you did not declare, so test it before you
 move a window:
 
 ```ts
-import { CollectionListener } from "gnoblin-core";
+import { ClientCollectionListener } from "gnoblin-core";
 import { FloatingLayout, Workspace } from "gnoblin-std";
 import type { Client } from "gnoblin-core";
 
 for (const id of ["code", "web"]) {
-    gnoblin.workspaces.add(new Workspace({ id, layout: new FloatingLayout() }));
+    gnoblin.workspaces.add(new Workspace(id, { layout: new FloatingLayout() }));
 }
 
 gnoblin.clients.addListener(
-    new (class extends CollectionListener {
+    new (class extends ClientCollectionListener {
         onAdded(client: Client) {
-            const target = client.appId === "org.example.Editor" ? gnoblin.workspaces.get("code") : undefined;
+            const target = client.appId === "org.example.Editor" ? gnoblin.workspaces.byId("code") : undefined;
             if (target !== undefined) {
                 client.moveToWorkspace(target);
             }
@@ -135,7 +137,27 @@ To act on the windows already on a workspace, read `workspace.clients`, a collec
 Code runs in the order you wrote it. A later statement overrides what an earlier one set, so put the general rule first
 and the one for a single app after it. A later `maximised = false` beats an earlier `maximised = true`.
 
-## What a rule cannot do yet
+## Window flags
 
-`floating`, `secure` and skip-focus have no writable property on a client, so a listener cannot set them. A window rule is not re-applied for you when a window's title or focus changes: a handler that should react
-to one attaches its own `onTitleChanged` or `onFocusChanged`.
+A listener sets `client.secure` to keep a window out of screen captures, and `client.floating = true` to mark a window
+floating, so a tiling layout leaves it where it is. Skip-focus has no writable property.
+
+```ts
+import { ClientCollectionListener } from "gnoblin-core";
+import "gnoblin-std"; // gives a window its `floating` member
+import type { Client } from "gnoblin-core";
+
+gnoblin.clients.addListener(
+    new (class extends ClientCollectionListener {
+        onAdded(client: Client) {
+            if (client.appId === "org.example.Player") {
+                client.secure = true;
+                client.floating = true;
+            }
+        }
+    })(),
+);
+```
+
+A window rule is not re-applied for you when a window's title or focus changes: a handler that should react to one
+attaches its own `onTitleChanged` or `onFocusChanged`.

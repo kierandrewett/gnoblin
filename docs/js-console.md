@@ -13,7 +13,7 @@ gnoblin> gnoblin.clients.length
 2
 gnoblin> gnoblin.clients.focused?.title
 "Terminal"
-gnoblin> gnoblin.workspaces.map((ws) => [ws.id, ws.clients.length])
+gnoblin> gnoblin.workspaces.list.map((ws) => [ws.id, ws.clients.length])
 [ [ "1", 2 ], [ "2", 0 ], [ "3", 0 ], [ "4", 0 ] ]
 ```
 
@@ -37,7 +37,7 @@ adds arrow-key history. These lines are commands of the prompt, not expressions:
 An error prints as a block with the message, where in the expression it happened and a hint, and the prompt goes on:
 
 ```text
-gnoblin> gnoblin.clients.map(
+gnoblin> gnoblin.clients.toList().map(
 ... )
 error: unexpected token in expression: ')'
 why:   at <console>:2:1
@@ -52,7 +52,7 @@ When standard input is not a terminal there are no prompts, so a script can pipe
 `--eval` evaluates one expression, prints its value as JSON and exits:
 
 ```sh
-gnoblinctl console --eval 'gnoblin.clients.map((c) => c.appId)'
+gnoblinctl console --eval 'gnoblin.clients.toList().map((c) => c.appId)'
 ```
 
 ```text
@@ -66,7 +66,7 @@ With `--json` the whole reply is printed instead. It has `ok`, then either `type
 `error`.
 
 ```sh
-gnoblinctl --json console --eval 'gnoblin.clients.at(0)'
+gnoblinctl --json console --eval 'gnoblin.clients.at(0)?.title'
 ```
 
 ## What an expression can do
@@ -76,8 +76,8 @@ gnoblinctl --json console --eval 'gnoblin.clients.at(0)'
 - **Define variables.** A `var`, a `let` or a `const` at the prompt, or an assignment to an undeclared name, is a global
   of the running generation and stays for the next expression, from any console connection. To redefine a `let` or a
   `const`, use `var` or assign to it.
-- **Use the helpers.** `inspect` is a global in the console; see below. In `shell.ts` import it:
-  `import { inspect } from "gnoblin-core"`.
+- **Read plain data.** `gnoblin.clients.toList()` and `gnoblin.workspaces.list` are arrays, so `map`, `filter` and
+  `find` work on them: see [Read state](#read-state).
 - **Return objects.** A value whose first character is `{` is read as an object literal: `{a: 1}` is the object.
   A promise that has already settled shows its result.
 
@@ -95,11 +95,9 @@ generation, so the shell does not restart over it.
 
 ### How values print
 
-- A client prints as its kind and id, then its fields: `Client#3 { appId: "foot", title: "Terminal", ... }`. A
-  workspace prints the same way.
-- A collection prints as an array of summaries: `gnoblin.clients` is `Collection(2) [ Client#3 { ... }, ... ]`, with
-  each client's app id and title only. In JSON each is `{"$class": "Client", "id": "3", "appId": "foot", ...}`.
-- A function prints as `[Function name]`, a class as `[class Name]`, a cycle as `[Circular]`.
+- A number, a string, a boolean, an array and a plain object print as JSON. A function prints as its source text.
+- A library object, such as a `Client`, has members of its own and no JSON form, so read the members you want:
+  `gnoblin.clients.toList().map((c) => ({ id: c.id, appId: c.appId, title: c.title }))`.
 - A value that does not fit the size cap (64 KiB of text) is cut, and the reply says `"truncated": true`; the prompt
   prints a warning. Ask for less with `.map` or `.slice`.
 
@@ -113,7 +111,7 @@ the prompt the lines an expression prints come out before its value:
 - With `--eval` all of them go to standard error, so standard output stays the value alone.
 
 ```text
-gnoblin> gnoblin.clients.forEach((c) => console.log("%s: %s", c.appId, c.title)); gnoblin.clients.length
+gnoblin> gnoblin.clients.toList().forEach((c) => console.log("%s: %s", c.appId, c.title)); gnoblin.clients.length
 foot: Terminal
 firefox: Mozilla Firefox
 2
@@ -122,29 +120,28 @@ firefox: Mozilla Firefox
 The same lines are in the log, as the section on [debugging](typescript-shell.md#debugging) says. The prompt shows only
 what the expression you just ran printed; lines that a listener printed meanwhile are in the log only.
 
-## The inspector helpers
+## Read state
 
-`inspect` returns plain data: numbers, strings, booleans, arrays and objects of those, nothing live. Keep a result
-without holding a native object.
+The state the shell holds is plain to read from an expression:
 
-| Call                   | Returns                                                                                          |
-| ---------------------- | ------------------------------------------------------------------------------------------------ |
-| `inspect.clients()`    | Every client: `id`, `appId`, `title`, `focused`, `fullscreen`, `floating`, geometry, `workspace` |
-| `inspect.workspaces()` | Every workspace: `id`, `name`, `index`, `active`, `layout` (class name), `clients` (ids)         |
-| `inspect.bindings()`   | Every binding registered on a seat: see below                                                    |
+| Expression                                 | Returns                                                                       |
+| ------------------------------------------ | ----------------------------------------------------------------------------- |
+| `gnoblin.clients.toList()`                 | Every window. Read `id`, `appId`, `title`, `focused`, `fullscreen`, `x`, `y`. |
+| `gnoblin.workspaces.list`                  | Every workspace. Read `id`, `name`, `index`, `active` and `clients.length`.   |
+| `gnoblin.input.primary.describeBindings()` | Every binding registered on the seat: see below.                              |
 
-`gnoblin.clients.focused` is the client that holds the keyboard focus, or `null`.
+`gnoblin.clients.focused` is the window that holds the keyboard focus, or `undefined`.
 
-Each entry of `inspect.bindings()` says which binding is registered, who owns it and where it ranks:
+Each entry of `describeBindings()` says which binding is registered, who owns it and where it ranks:
 
 ```text
-gnoblin> inspect.bindings().filter((b) => b.trigger === "Super+MouseLeft")
-[ { context: "seat0", id: "floating.move", trigger: "Super+MouseLeft", kind: "pointer",
-    owner: "layout", layout: "FloatingLayout", device: null, priority: 0, enabled: true, rank: 1 } ]
+gnoblin> gnoblin.input.primary.describeBindings().filter((b) => b.trigger === "Super+MouseLeft+Drag")
+[ { context: "seat0", id: "move", trigger: "Super+MouseLeft+Drag", kind: "pointer",
+    owner: "context", priority: 0, enabled: true, rank: 1 } ]
 ```
 
 - `owner` is who bound it: `context` (the seat's own bindings, such as the stock keys), `layout` (a layout attached to
-  the seat; `layout` names its class) or `device` (one input device; `device` names it).
+  the seat; `layout` names it) or `device` (one input device; `device` names it).
 - `rank` orders the bindings of one trigger the way a press does: a device's binding before a layout's before the
   context's, then the higher `priority`, then the one registered first. Rank 1 runs first; a binding that declines hands
   the press to rank 2.

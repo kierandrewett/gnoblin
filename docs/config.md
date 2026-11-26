@@ -9,7 +9,7 @@ A file replaces the stock setup, and a statement you delete is gone after the ne
 ```ts
 import { FloatingLayout, Workspace } from "gnoblin-std";
 
-gnoblin.workspaces.add(new Workspace({ id: "main", layout: new FloatingLayout() }));
+gnoblin.workspaces.add(new Workspace("main", { layout: new FloatingLayout() }));
 gnoblin.input.primary.bind("Super+Return", () => {
     gnoblin.spawn(["foot"]);
 });
