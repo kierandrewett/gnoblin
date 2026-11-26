@@ -218,21 +218,20 @@ whole.
 
 ## Properties
 
-| Property         | Accepts                                   | Default | Drawn                                                    |
-| ---------------- | ----------------------------------------- | ------- | -------------------------------------------------------- |
-| `opacity`        | a number from 0 to 1                      | 1       | by every renderer                                        |
-| `shadows`        | a list of `Shadow`, at most 8             | none    | outer and inset: GLES, Vulkan and software               |
-| `backdropFilter` | a list of filters, at most 8              | none    | a blur: GLES and software                                |
-| `cornerRadius`   | a number of at least 0, or one per corner | 0       | one radius: GLES, software and Vulkan                    |
-| `borders`        | a list of `Border`, at most 8             | none    | GLES, Vulkan and software                                |
-| `filter`         | a list of filters, at most 8              | none    | shaders: GLES, Vulkan; grades: all; blur: GLES, software |
-| `background`     | a colour or the empty text                | none    | GLES, Vulkan and software                                |
+| Property         | Accepts                                   | Default | Drawn                                       |
+| ---------------- | ----------------------------------------- | ------- | ------------------------------------------- |
+| `opacity`        | a number from 0 to 1                      | 1       | by every renderer                           |
+| `shadows`        | a list of `Shadow`, at most 8             | none    | outer and inset: GLES, Vulkan and software  |
+| `backdropFilter` | a list of filters, at most 8              | none    | a blur: all                                 |
+| `cornerRadius`   | a number of at least 0, or one per corner | 0       | one radius: GLES, software and Vulkan       |
+| `borders`        | a list of `Border`, at most 8             | none    | GLES, Vulkan and software                   |
+| `filter`         | a list of filters, at most 8              | none    | shaders: GLES, Vulkan; grades and blur: all |
+| `background`     | a colour or the empty text                | none    | GLES, Vulkan and software                   |
 
 A colour is `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
 
 A style element the active renderer does not draw is still written to the window's node, and the node's `skipped` list
-names it. GLES, Vulkan and the software renderer draw the grades of a `filter`, and GLES and the software renderer draw
-its blur; GLES, Vulkan and the software renderer draw a `background` and an inset shadow. See "What is drawn" below.
+names it. GLES and Vulkan draw every kind; the software renderer draws all but a shader. See "What is drawn" below.
 
 ### Shadow
 
@@ -499,13 +498,11 @@ as follows:
 
 `seat.effect_kinds` lists the kinds the renderer draws.
 
-GLES draws all of these kinds and lists them in `seat.effect_kinds`, and so does the software renderer, bar `shader`. A
-renderer that does not draw a kind names it in the node's `skipped` list and leaves it out of `seat.effect_kinds`: the
-software renderer a `shader`, and Vulkan the `blur`.
+GLES draws all of these kinds and lists them in `seat.effect_kinds`, and so does Vulkan. The software renderer lists all
+but `shader`. A renderer that does not draw a kind names it in the node's `skipped` list and leaves it out of
+`seat.effect_kinds`.
 
-A `filter` on Vulkan is drawn graded: its blur is not drawn yet, and the node's `skipped` list names it as
-`filter: unsupported-filter-blur`. The style reports as `not applied: style.<property>: <reason>` only what a limit of the
-tree changes. A per-corner radius is not applied yet: the largest of the four is drawn.
+The style reports as `not applied: style.<property>: <reason>` only what a limit of the tree changes. A per-corner radius is not applied yet: the largest of the four is drawn.
 
 A window holds at most 16 effects in all, whatever their kinds.
 

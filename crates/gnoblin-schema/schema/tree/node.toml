@@ -172,9 +172,9 @@ default = []
 # The effects in `effects` that are not drawn, one text each as `<kind>: <reasons>`, in list
 # order; empty when every effect is drawn. Three reasons exist. `unsupported-by-renderer`: the
 # active renderer draws no effect of that kind (an inset shadow is the kind `inset-shadow`; `seat.effect_kinds`
-# lists what is drawn: GLES draws every kind, the software renderer every kind but `shader`, and Vulkan every kind but
-# `blur`, until each draws the rest). `unsupported-filter-blur`: the renderer draws a
-# `filter`'s grade and not its blur, so a `filter` that blurs is drawn graded only. `unsupported-effect-on-3d`:
+# lists what is drawn: GLES draws every kind, the software renderer every kind but `shader`, and Vulkan every kind).
+# `unsupported-filter-blur`: the renderer draws a `filter`'s grade and not its blur, so a `filter` that blurs is drawn
+# graded only; no renderer does this today. `unsupported-effect-on-3d`:
 # a blur, shadow or border on a node whose placement carries depth (a rotation about x or y, a
 # `z`, or a perspective `Camera` above it) is not drawn, because the renderer has no depth
 # pass for backdrop and shadow passes. An effect with several reasons names all of them on one text,

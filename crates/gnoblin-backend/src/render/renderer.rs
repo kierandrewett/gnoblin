@@ -82,9 +82,9 @@ impl RendererKind {
     /// software renderer draws a blur, a shadow (outer and inset), a border, a background and a filter (its grade and
     /// its blur) by computing the pixels on the CPU (`gnoblin-render-software`'s `layers` module): the blur is the GLES
     /// kernel, reduction and grade, the shadows' falloff and the border's edge are the shaders' own arithmetic, and a
-    /// filter is drawn as GLES draws it. The Vulkan renderer draws a shadow, an inset shadow, a border, a background and a
-    /// filter's grade, and leaves the backdrop blur and the filter's blur to a later change, so `blur` is not listed and
-    /// a filter that blurs is drawn graded and not blurred.
+    /// filter is drawn as GLES draws it. The Vulkan renderer draws a blur, a shadow, an inset shadow, a border, a
+    /// background and a filter (its grade and its blur) with the same shaders as GLES, the blur into images drawn before
+    /// the frame.
     ///
     /// The `shader` kind (a shell's own pass, accepted by the tree while `compositor.user-shaders` is on) is drawn by
     /// the GLES and Vulkan renderers. The software renderer has no WGSL interpreter, so a node's shader pass is named in
@@ -102,7 +102,15 @@ impl RendererKind {
                 "shader",
             ],
             Self::Software => &["blur", "shadow", "inset-shadow", "border", "background", "filter"],
-            Self::Vulkan => &["shadow", "border", "background", "inset-shadow", "filter", "shader"],
+            Self::Vulkan => &[
+                "blur",
+                "shadow",
+                "border",
+                "background",
+                "inset-shadow",
+                "filter",
+                "shader",
+            ],
         }
     }
 
@@ -110,7 +118,7 @@ impl RendererKind {
     /// false. A filter that blurs is then named in the node's `skipped` list as `unsupported-filter-blur`.
     #[must_use]
     pub const fn draws_filter_blur(self) -> bool {
-        matches!(self, Self::Gles | Self::Software)
+        matches!(self, Self::Gles | Self::Software | Self::Vulkan)
     }
 
     /// Whether this renderer draws a View's source subtree into a texture on the GPU: GLES and Vulkan do, and the software
@@ -735,6 +743,17 @@ mod tests {
         for kind in gnoblin_render::Pass::NAMES {
             assert!(RendererKind::Gles.effect_kinds().contains(kind), "GLES draws {kind}");
         }
+    }
+
+    #[test]
+    fn the_vulkan_renderer_lists_every_kind_and_blurs_a_filter() {
+        for kind in gnoblin_render::Pass::NAMES {
+            assert!(
+                RendererKind::Vulkan.effect_kinds().contains(kind),
+                "Vulkan draws {kind}"
+            );
+        }
+        assert!(RendererKind::Vulkan.draws_filter_blur());
     }
 
     #[cfg(not(feature = "vulkan"))]

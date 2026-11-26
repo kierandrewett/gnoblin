@@ -4162,9 +4162,7 @@ fn an_inset_shadow_a_background_and_a_filter_are_skipped_by_a_renderer_that_does
 
     // Each renderer names the kinds of the chain it does not list, in list order: one that draws none of the three names
     // all of them, one that draws an inset shadow and a background but not a filter names the filter; the software, GLES
-    // and Vulkan renderers draw all three (Vulkan grades a filter and does not blur it, which the
-    // `unsupported-filter-blur` code reports, not this list). A list that has not changed since the last publication is
-    // not published again.
+    // and Vulkan renderers draw all three. A list that has not changed since the last publication is not published again.
     let mut last: Option<Vec<String>> = None;
     for (name, kinds) in [
         ("a renderer with none of the three", &["shadow"][..]),
