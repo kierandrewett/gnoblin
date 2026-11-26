@@ -24,7 +24,7 @@ before you start it:
 ::: tabs
 
 ```typescript
-import { Decorations, Titlebar } from "gnoblin-std";
+import { Decorations, Titlebar } from "gnoblin-std/generated/objects";
 
 const decorations = Decorations.get();
 decorations.resizeHandles = 6;
@@ -91,7 +91,7 @@ A rule picks a frame for the windows it matches:
 ::: tabs
 
 ```typescript
-import { Decorations } from "gnoblin-std";
+import { Decorations } from "gnoblin-std/generated/objects";
 
 const decorations = Decorations.get();
 decorations.rule(
@@ -99,8 +99,10 @@ decorations.rule(
     undefined,
     (client) => !client.fullscreen,
     (client, frame) => {
-        frame.top.size = 8; // a thin strip in place of the titlebar
-        frame.top.fill = "#2a2b3c";
+        const { top } = frame;
+        if (!top) return false;
+        top.size = 8; // a thin strip in place of the titlebar
+        top.fill = "#2a2b3c";
         return true;
     },
 );
@@ -176,6 +178,9 @@ An outlet is a `Box`. Its `fill`, `padding`, `gap`, `radius` and `grow` work, an
 Python spells the corners `top_left` and so on. In Rust each outlet is a method of the frame that returns an `Option`, such
 as `frame.top()?`.
 
+In TypeScript an outlet is typed as possibly `undefined`, because a frame that draws no edges has none, so test it
+before you use it, as the examples here do.
+
 Every outlet has these fields:
 
 - `hidden` hides the outlet and gives its room back while it is true.
@@ -188,15 +193,17 @@ An outlet is hidden while the window is fullscreen.
 ::: tabs
 
 ```typescript
-import { Decorations, Titlebar } from "gnoblin-std";
+import { Decorations, Titlebar } from "gnoblin-std/generated/objects";
 
 const decorations = Decorations.get();
 decorations.frame = (client, frame) => {
     if (!frame.server) return false;
     Titlebar.install(frame);
-    frame.bottom.size = 4;
-    frame.bottom.fill = "#7c3aed";
-    frame.bottom.hideWhen = (window) => window.maximised; // no strip on a maximised window
+    const { bottom } = frame;
+    if (!bottom) return false;
+    bottom.size = 4;
+    bottom.fill = "#7c3aed";
+    bottom.hideWhen = (window) => window.maximised; // no strip on a maximised window
     return true;
 };
 decorations.start();
@@ -285,7 +292,8 @@ The room a frame takes is one rectangle, `FrameInset`: `{ top, right, bottom, le
 ::: tabs
 
 ```typescript
-import { Decorations } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { Decorations } from "gnoblin-std/generated/objects";
 
 const client = gnoblin.clients.focused;
 if (client) {
@@ -377,7 +385,7 @@ other. It is the default `frame`. A callback of your own can call it, then add o
 ::: tabs
 
 ```typescript
-import { Decorations, Titlebar } from "gnoblin-std";
+import { Decorations, Titlebar } from "gnoblin-std/generated/objects";
 
 const decorations = Decorations.get();
 decorations.frame = (client, frame) => {

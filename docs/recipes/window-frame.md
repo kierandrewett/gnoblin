@@ -22,19 +22,20 @@ The window buttons in the traffic-light order, the title in the middle, and a ba
 ::: tabs
 
 ```typescript
-import { Decorations, DragArea, TitleText, WindowButtons } from "gnoblin-std";
+import { Decorations, DragArea, TitleText, WindowButtons } from "gnoblin-std/generated/objects";
 
 const decorations = Decorations.get();
 decorations.frame = (_client, frame) => {
-    if (!frame.server) return false;
-    frame.top.size = 34;
-    frame.top.fill = "#2a2b3c";
+    const { top, start, center } = frame;
+    if (!frame.server || !top || !start || !center) return false;
+    top.size = 34;
+    top.fill = "#2a2b3c";
     // `start` is the left end of the top edge. It is as wide as what it holds.
-    frame.start.add(new WindowButtons(frame, ["close", "minimise", "maximise"], { gap: 8 }));
+    start.add(new WindowButtons(frame, ["close", "minimise", "maximise"], { gap: 8 }));
     // `center` takes the rest. A drag area moves the window, and a double click on it does what the seat says.
     const bar = new DragArea(frame, { grow: 1, direction: "row" });
     bar.add(new TitleText(frame));
-    frame.center.add(bar);
+    center.add(bar);
     return true;
 };
 decorations.start();
@@ -65,8 +66,10 @@ decorations.start()
 ```
 
 ```rust
+use gnoblin_std::objects::{Decorations, Direction, DragArea, TitleText, WindowButtonName, WindowButtons};
 use gnoblin_std::prelude::*;
 
+#[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
     let decorations = Decorations::get(&objects)?;
@@ -88,7 +91,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         frame.center()?.expect("the frame has a center").add(&bar.as_canvas()?)?;
         Ok(true)
     })?;
-    decorations.start()
+    decorations.start()?;
+    Ok(())
 }
 ```
 
@@ -107,15 +111,17 @@ frame and nothing is taken from it.
 ::: tabs
 
 ```typescript
-import { Decorations, FrameBorder, FrameGlow } from "gnoblin-std";
+import { Decorations, FrameBorder, FrameGlow } from "gnoblin-std/generated/objects";
 
 const decorations = Decorations.get();
 decorations.frame = (_client, frame) => {
+    const { underlay, overlay } = frame;
+    if (!underlay || !overlay) return false;
     // The underlay is behind the window and reaches 24 pixels past it. It takes no room and no pointer.
-    frame.underlay.bleed = 24;
-    frame.underlay.add(new FrameGlow({ color: "#000000", strength: 0.45, radius: 12 }));
+    underlay.bleed = 24;
+    underlay.add(new FrameGlow({ color: "#000000", strength: 0.45, radius: 12 }));
     // The overlay is in front of the window and as large as its frame.
-    frame.overlay.add(
+    overlay.add(
         new FrameBorder(frame, {
             thickness: 2,
             radius: 12,
@@ -154,14 +160,16 @@ decorations.start()
 ```
 
 ```rust
+use gnoblin_std::objects::{Decorations, FrameBorder, FrameClient, FrameGlow};
 use gnoblin_std::prelude::*;
 
+#[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
     let decorations = Decorations::get(&objects)?;
     decorations.set_frame(move |_client, frame| {
         // The underlay is behind the window and reaches 24 pixels past it. It takes no room and no pointer.
-        let underlay = frame.underlay()?;
+        let underlay = frame.underlay()?.expect("the frame has an underlay");
         underlay.set_bleed(24.0)?;
         let glow = FrameGlow::new(&objects)?;
         glow.set_color("#000000")?;
@@ -176,7 +184,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         frame.overlay()?.expect("the frame has an overlay").add(&border.as_canvas()?)?;
         Ok(true)
     })?;
-    decorations.start()
+    decorations.start()?;
+    Ok(())
 }
 ```
 
@@ -195,37 +204,42 @@ resizes it.
 ::: tabs
 
 ```typescript
-import { Decorations, ResizeHandle, Text, Titlebar } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { Decorations, ResizeHandle, Text, Titlebar } from "gnoblin-std/generated/objects";
 
 const decorations = Decorations.get();
 decorations.frame = (_client, frame) => {
     // The stock titlebar fills the top edge, then this callback adds its own outlets.
     if (!Titlebar.install(frame)) return false;
+    const { bottom, right } = frame;
+    if (!bottom || !right) return false;
     const status = new Text({ grow: 1, size: 11, color: "#a6adc8" });
-    frame.bottom.size = 22;
-    frame.bottom.fill = "#181825";
-    frame.bottom.padding = 4;
-    frame.bottom.hideWhen = (window) => window.maximised;
+    bottom.size = 22;
+    bottom.fill = "#181825";
+    bottom.padding = 4;
+    bottom.hideWhen = (window) => window.maximised;
     // `onRefresh` runs once a frame, so the text follows the window.
-    frame.bottom.onRefresh = () => {
+    bottom.onRefresh = () => {
         const window = gnoblin.clients.get(frame.client);
         if (window !== undefined) {
             status.text = `${window.appId}  ${Math.round(window.width)} x ${Math.round(window.height)}`;
         }
     };
-    frame.bottom.add(status);
+    bottom.add(status);
     // The right edge is 12 pixels of frame that belongs to the handle. It is inside the frame, so it takes room.
-    frame.right.size = 12;
-    frame.right.fill = "#313244";
-    frame.right.add(new ResizeHandle(frame, "right", { grow: 1 }));
+    right.size = 12;
+    right.fill = "#313244";
+    right.add(new ResizeHandle(frame, "right", { grow: 1 }));
     return true;
 };
 decorations.start();
 ```
 
 ```python
-from gnoblin import gnoblin
+from gnoblin.objects.model import Gnoblin
 from gnoblin.objects.std import Decorations, ResizeHandle, ResizeSide, Text, Titlebar
+
+gnoblin = Gnoblin.get()
 
 decorations = Decorations.get()
 
@@ -260,12 +274,17 @@ decorations.start()
 ```
 
 ```rust
+use std::rc::Rc;
+
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{Decorations, FrameClient, ResizeHandle, ResizeSide, Text, Titlebar};
 use gnoblin_std::prelude::*;
 
+#[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
-    let model = ModelRoot::get(&objects)?;
-    let clients = model.clients()?.expect("the model has clients");
+    let model = ModelRoot::get(&g.objects()?)?;
+    let clients = Rc::new(model.clients()?.expect("the model has clients"));
     let decorations = Decorations::get(&objects)?;
     decorations.set_frame(move |_client, frame| {
         // The stock titlebar fills the top edge, then this callback adds its own outlets.
@@ -283,7 +302,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         bottom.set_hide_when(|window: FrameClient| Ok(window.maximised))?;
         bottom.add(&status.as_canvas()?)?;
         // `on_refresh` runs once a frame, so the text follows the window.
-        let id = frame.client()?;
+        let (id, clients) = (frame.client()?, Rc::clone(&clients));
         bottom.set_on_refresh(move || {
             if let Some(window) = clients.get_by_id(&id)? {
                 status.set_text(&format!("{}  {:.0} x {:.0}", window.app_id()?, window.width()?, window.height()?))?;
@@ -299,7 +318,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         right.add(&handle.as_canvas()?)?;
         Ok(true)
     })?;
-    decorations.start()
+    decorations.start()?;
+    Ok(())
 }
 ```
 
