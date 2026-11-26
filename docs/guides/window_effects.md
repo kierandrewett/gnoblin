@@ -5,8 +5,8 @@ truth is the code, not this page.
 
 ## What each renderer draws
 
-GLES draws every effect. Vulkan draws all but the blurs. The software renderer draws everything but a `filter` and
-cannot run user shaders.
+GLES draws every effect. Vulkan draws all but the blurs. The software renderer draws every effect but your own shader,
+which needs a WGSL compiler and a GPU that it does not have; a window with a shader is drawn without it.
 
 | Effect                                           | GLES                          | Vulkan                        | Software                      |
 | ------------------------------------------------ | ----------------------------- | ----------------------------- | ----------------------------- |
@@ -18,8 +18,8 @@ cannot run user shaders.
 | Borders (several, offset)                        | Drawn                         | Drawn                         | Drawn, anti-aliased           |
 | Backdrop blur                                    | Drawn                         | Not drawn                     | Drawn                         |
 | Backdrop grades (saturate, brightness, contrast) | Drawn                         | Not drawn                     | Drawn                         |
-| Filter grades on the window                      | Drawn                         | Drawn                         | Not drawn                     |
-| Filter blur on the window                        | Drawn, one layer              | Not drawn                     | Not drawn                     |
+| Filter grades on the window                      | Drawn                         | Drawn                         | Drawn                         |
+| Filter blur on the window                        | Drawn, one layer              | Not drawn                     | Drawn, one layer              |
 | Background                                       | Drawn                         | Drawn                         | Drawn                         |
 | Your own shader                                  | Drawn                         | Drawn                         | Not drawn: no shader compiler |
 
@@ -33,8 +33,12 @@ A few notes on the table:
   borders. A window drawn as several layers (a titlebar child over the content) grades the layer that carries the effect.
   The filter's blur is drawn from a picture of that layer and spills past its edge.
 - Vulkan grades the same things, and does not draw the filter's `blur` yet: a filter that blurs is drawn graded and not
-  blurred there, and the node's `skipped` list says `filter: unsupported-filter-blur`. The software renderer stores the
-  filter and draws nothing; use a shader if you need it there.
+  blurred there, and the node's `skipped` list says `filter: unsupported-filter-blur`. The software renderer draws the
+  filter as GLES does, from a picture of the layer, and a filter's picture is made in full whatever part of the frame
+  changed, so a large filtered layer costs its whole area each frame.
+- The software renderer blurs and reduces by `downscale` with the same steps as GLES, so a blur looks the same on both
+  to within the golden tolerance. A reduced blur reads the whole region around its window, not only the part that
+  changed.
 - On Vulkan an outer shadow fades with the window's opacity, as in CSS. A background, an inset shadow and a border take
   the window's tint as well.
 
