@@ -467,15 +467,15 @@ The tree has six effect kinds (blur, shadow, border, background, filter and shad
   effect blurs and grades everything the window paints, and its blur spills past the window's edge. A value over its
   limit is drawn as the limit and reported `not applied: style.filter: ...`.
 
-| Kind or property | GLES                   | Software                         | Vulkan                 |
-| ---------------- | ---------------------- | -------------------------------- | ---------------------- |
-| `corner_radius`  | yes                    | yes (hard edge)                  | yes                    |
-| `shadow`         | yes                    | yes (hard edge, stepped falloff) | no, reported `skipped` |
-| `border`         | yes                    | yes (hard edge)                  | no, reported `skipped` |
-| `blur`           | yes                    | no, reported `skipped`           | no, reported `skipped` |
-| `inset-shadow`   | no, reported `skipped` | no, reported `skipped`           | no, reported `skipped` |
-| `background`     | no, reported `skipped` | no, reported `skipped`           | no, reported `skipped` |
-| `filter`         | no, reported `skipped` | no, reported `skipped`           | no, reported `skipped` |
+| Kind or property | GLES                   | Software               | Vulkan                 |
+| ---------------- | ---------------------- | ---------------------- | ---------------------- |
+| `corner_radius`  | yes                    | yes (anti-aliased)     | yes                    |
+| `shadow`         | yes                    | yes (smooth falloff)   | no, reported `skipped` |
+| `border`         | yes                    | yes (anti-aliased)     | no, reported `skipped` |
+| `blur`           | yes                    | yes (drawn on the CPU) | no, reported `skipped` |
+| `inset-shadow`   | no, reported `skipped` | no, reported `skipped` | no, reported `skipped` |
+| `background`     | no, reported `skipped` | no, reported `skipped` | no, reported `skipped` |
+| `filter`         | no, reported `skipped` | no, reported `skipped` | no, reported `skipped` |
 
 Two decorated windows on the GLES renderer with `cornerRadius: 12`, a 2 pixel inset border and a shadow. The corners are
 cut from the frame, the titlebar included, the border runs over the titlebar's top edge and round the arc, and the shadow

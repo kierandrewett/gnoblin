@@ -4260,11 +4260,8 @@ fn a_shader_pass_on_the_software_renderer_is_accepted_and_listed_skipped() {
     composer.publish_skipped_effects();
     assert_eq!(
         queued_skipped(&mut composer, node),
-        Some(vec![
-            "blur: unsupported-by-renderer".to_owned(),
-            "shader: unsupported-by-renderer".to_owned(),
-        ]),
-        "the software renderer has no compiler: the shader is left undrawn and named, like the blur"
+        Some(vec!["shader: unsupported-by-renderer".to_owned()]),
+        "the software renderer has no compiler: the shader is left undrawn and named, and the blur it draws is not"
     );
 }
 

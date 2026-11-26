@@ -11,13 +11,13 @@ simpler effects and cannot run user shaders.
 | Effect                                           | GLES                          | Vulkan    | Software                      |
 | ------------------------------------------------ | ----------------------------- | --------- | ----------------------------- |
 | Opacity                                          | Drawn                         | Drawn     | Drawn                         |
-| Rounded corners (window clip)                    | Drawn                         | Drawn     | Drawn, clipped by centre      |
-| Rounded corners (shadow shape)                   | Drawn                         | Not drawn | Drawn, stepped and hard-edged |
-| Outer shadow                                     | Drawn, with spread and colour | Not drawn | Partial: stepped, not smooth  |
+| Rounded corners (window clip)                    | Drawn                         | Drawn     | Drawn, anti-aliased           |
+| Rounded corners (shadow shape)                   | Drawn                         | Not drawn | Drawn                         |
+| Outer shadow                                     | Drawn, with spread and colour | Not drawn | Drawn, with spread and colour |
 | Inset shadow                                     | Not drawn                     | Not drawn | Not drawn                     |
-| Borders (several, offset)                        | Drawn                         | Not drawn | Drawn, hard edge              |
-| Backdrop blur                                    | Drawn                         | Not drawn | Not drawn                     |
-| Backdrop grades (saturate, brightness, contrast) | Drawn                         | Not drawn | Not drawn                     |
+| Borders (several, offset)                        | Drawn                         | Not drawn | Drawn, anti-aliased           |
+| Backdrop blur                                    | Drawn                         | Not drawn | Drawn                         |
+| Backdrop grades (saturate, brightness, contrast) | Drawn                         | Not drawn | Drawn                         |
 | Filter grades on the window                      | Not drawn                     | Not drawn | Not drawn                     |
 | Background                                       | Not drawn                     | Not drawn | Not drawn                     |
 | Your own shader                                  | Drawn                         | Drawn     | Not drawn: no shader compiler |
@@ -26,7 +26,8 @@ A few notes on the table:
 
 - Rounded corners on a shader window are drawn by the shader wrapper on GLES and Vulkan, and not on software, which has
   no shader.
-- A grade on the backdrop takes effect only with a blur behind the window, and only GLES draws that blur.
+- A grade on the backdrop takes effect only with a blur behind the window, and only GLES and the software renderer
+  draw that blur.
 - Filter grades on the window itself (`blur`, `saturate`, `brightness`, `contrast`) are stored and not drawn by any
   renderer. Use a shader if you need them.
 

@@ -720,9 +720,10 @@ fn a_views_fps_is_an_unsigned_count_and_a_negative_or_fractional_one_is_refused(
     session.stop().expect("the session stops cleanly");
 }
 
-/// The headless session draws with the software renderer, which draws no blur: the node says so in `skipped`.
+/// The headless session draws with the software renderer, which draws a blur, a shadow and a border but has no shader
+/// compiler: the node says so in `skipped`, and only for the shader.
 #[test]
-fn a_blur_on_the_software_renderer_is_reported_skipped_by_the_renderer() {
+fn a_shader_on_the_software_renderer_is_reported_skipped_by_the_renderer() {
     let session = Session::start();
     let mut wire = Wire::connect(session.socket());
     let (attached, _) = attach_and_snapshot(&mut wire, 1);
@@ -755,6 +756,7 @@ fn a_blur_on_the_software_renderer_is_reported_skipped_by_the_renderer() {
                 colour: "#ffffffff".to_owned(),
                 ..Default::default()
             },
+            shader_effect(TINT_SHADER, &[0.5]),
         ],
         ..Default::default()
     });
@@ -794,8 +796,8 @@ fn a_blur_on_the_software_renderer_is_reported_skipped_by_the_renderer() {
     assert_eq!(skipped.value_kind, "list_text");
     assert_eq!(
         skipped.value_texts,
-        vec!["blur: unsupported-by-renderer".to_owned()],
-        "the software renderer draws a shadow and a border but no blur, and a node with a blur says so"
+        vec!["shader: unsupported-by-renderer".to_owned()],
+        "the software renderer draws a blur, a shadow and a border but not a shader, and a node with a shader says so"
     );
     session.stop().expect("the session stops cleanly");
 }

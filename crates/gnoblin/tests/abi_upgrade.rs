@@ -426,22 +426,18 @@ fn run_effects_golden(install: &Install) -> String {
     let line = wait_running(&mut session, "golden-effects-shell");
     let mut mapper = Mapper::connect(&session.wayland());
     mapper.map_window("dressed", "Dressed");
-    session.wait_log("the shell writes its effect list", |line| {
+    // The software renderer draws a blur, a shadow and a border, so nothing is skipped and the node's `skipped` list stays
+    // empty: the proof that the compositor read all four records, in order, is that it took the list. A core that read the
+    // array at the wrong stride would find a garbage kind in the second record and refuse the list, and the shell would log
+    // the refusal instead of the write.
+    let written = session.wait_log("the shell writes its effect list", |line| {
         line.contains("golden-effects-shell: wrote 4 effects on window")
             || line.contains("golden-effects-shell: cannot write effects")
     });
-    // A software session draws a shadow and a border and leaves a blur undrawn, so the node's `skipped` names the two blurs and
-    // nothing else: the compositor read all four records, in order, and every one of them as the shell wrote it.
-    let skipped = session.wait_log("the compositor lists what it cannot draw", |line| {
-        line.contains("golden-effects-shell: skipped on window")
-            || line.contains("golden-effects-shell: cannot write effects")
-    });
     assert!(
-        skipped
-            .text
-            .contains("[blur: unsupported-by-renderer; blur: unsupported-by-renderer]"),
-        "the compositor did not read the four records the shell wrote: {}\n{}",
-        skipped.text,
+        written.text.contains("wrote 4 effects on window"),
+        "the compositor did not take the four records the shell wrote: {}\n{}",
+        written.text,
         session.log_text()
     );
     assert!(
