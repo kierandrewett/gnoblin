@@ -218,8 +218,8 @@ fn a_python_shell_that_loads_no_std_has_none_of_the_members() {
     assert!(line.contains("profiles=false"), "{line}");
 }
 
-/// A shell whose only stock import is `gnoblin-std/generated/objects` runs on the generated library and not on the TypeScript one: the
-/// TypeScript library installs the global `gnoblin`, the generated classes do not, and the std class it names works.
+/// A shell whose only stock import is `gnoblin-std/generated/objects` runs on the generated library: the std class it names works and
+/// the global `gnoblin` is the generated core's root (before the flip only the TypeScript library installed that global).
 #[test]
 fn a_typescript_shell_whose_only_stock_import_is_the_std_module_runs_on_the_generated_library() {
     let dir = tempfile::tempdir().expect("a directory for the shell");
@@ -236,8 +236,8 @@ fn a_typescript_shell_whose_only_stock_import_is_the_std_module_runs_on_the_gene
         .wait_log("the shell read the list", |line| line.contains("stdonly: "))
         .text;
     assert!(
-        line.contains("global gnoblin is undefined"),
-        "it ran on the TypeScript library: {line}"
+        line.contains("global gnoblin is object"),
+        "the global gnoblin is the generated core's root: {line}"
     );
     assert!(!line.contains("workspaces NaN"), "{line}");
     assert!(session.exited().is_none(), "{}", session.log_text());

@@ -182,6 +182,7 @@ impl Shell {
                 let rig = super::core_rig::CoreRig::new(Arc::clone(&config.shell.clock))
                     .expect("a core with the std library");
                 config.shell.js.natives.push(rig.std_native());
+                config.shell.js.natives.push(rig.object_native());
                 let mut role =
                     JsRole::connect_through(&env, config, |link| rig.take_over(link)).expect("the shell attaches");
                 let mut problems = Vec::new();
@@ -527,6 +528,7 @@ impl Driven {
         config.shell.frame_budget = Duration::from_secs(60);
         let rig = super::core_rig::CoreRig::new(Arc::clone(&config.shell.clock)).expect("a core with the std library");
         config.shell.js.natives.push(rig.std_native());
+        config.shell.js.natives.push(rig.object_native());
         let link = rig.take_over(Box::new(link)).expect("the core takes the link");
         let role = JsRole::over_link(link, JsRoleLinks::default(), config).expect("the shell attaches");
         Self {
@@ -584,6 +586,19 @@ impl Driven {
         let ticked = self.role.tick();
         self.rig.dispatch(self.role.shell_mut());
         ticked
+    }
+
+    /// Frames until one fails, which is the end of a role as a crash is, or until `window` has passed. A hook that throws runs in
+    /// the frame that next runs the toolkit, which is not the frame that follows the script that set it.
+    pub fn tick_until_failure(&mut self, window: Duration) -> Option<JsShellError> {
+        let deadline = Instant::now() + window;
+        while Instant::now() < deadline {
+            if let Err(error) = self.try_tick() {
+                return Some(error);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        None
     }
 }
 
@@ -646,6 +661,13 @@ pub fn tree_holds(ipc: &Path, needle: &str) -> bool {
         })
     })
 }
+
+/// The entry of a shell that draws the stock lock screen and runs the stock focus policy, as importing the std library did before the
+/// native classes: making a `LockScreen` is what puts the screen to work (a shell that makes none, as one that imports only
+/// `gnoblin-core` does, leaves the compositor's card in charge), and the policy gives a window that arrives the keyboard.
+pub const LOCK_SCREEN_SHELL: &str = "import { FocusPolicy, LockScreen } from \"gnoblin-std\";\n\
+    (globalThis as any).screen = new LockScreen(LockScreen.defaultLockStyle());\n\
+    FocusPolicy.get().start();\n";
 
 // ---- a shell that imports only gnoblin-core ----------------------------------------------------------------------------
 

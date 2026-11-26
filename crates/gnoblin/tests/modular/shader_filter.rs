@@ -234,7 +234,7 @@ fn a_python_shell_tints_a_window_with_a_shader_filter_by_default() {
 #[test]
 fn a_typescript_config_that_switches_user_shaders_off_has_them_refused_from_the_next_login() {
     let example = fs::read_to_string(repo_root().join("examples/19-shader-tint/shell.ts")).expect("the example");
-    let text = format!("{example}\ngnoblin.compositor.userShaders = false;\n");
+    let text = format!("{example}\ngnoblin.compositor.userShaders = false;\n{REPORT_STYLE_WARNINGS}");
     let (mut first, source) = first_login_that_switches_user_shaders_off(&text);
     // The first login: this compositor started with the default, so the shader is drawn while the setting is committed and kept.
     let mut mapper = Mapper::connect(&first.wayland());
@@ -270,10 +270,24 @@ fn shadow_and_shader_shell(shader: &str) -> String {
     )
 }
 
+/// The end of a script that says why a window's style was not applied, as a shell reads it: the library keeps the reasons on the window
+/// (`styleWarnings`), and a window that is not yet styled has none, so the script looks again until it has some.
+const REPORT_STYLE_WARNINGS: &str = "gnoblin.clients.on(\"added\", (client) => {\n\
+     \x20   const look = (left: number): void => {\n\
+     \x20       const warnings = client.styleWarnings;\n\
+     \x20       if (warnings.length > 0) {\n\
+     \x20           warnings.forEach((warning) => console.log(`style: ${warning}`));\n\
+     \x20       } else if (left > 0) {\n\
+     \x20           gnoblin.timers.after(250, () => look(left - 1));\n\
+     \x20       }\n\
+     \x20   };\n\
+     \x20   look(80);\n\
+     });\n";
+
 #[test]
 fn with_the_setting_switched_off_a_shader_filter_is_not_written_and_the_rest_of_the_style_is() {
     let off = format!(
-        "{}\ngnoblin.compositor.userShaders = false;\n",
+        "{}\ngnoblin.compositor.userShaders = false;\n{REPORT_STYLE_WARNINGS}",
         shadow_and_shader_shell(WORKING_JS)
     );
     let (first, source) = first_login_that_switches_user_shaders_off(&off);

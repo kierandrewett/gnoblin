@@ -57,7 +57,7 @@ fn a_typescript_shell_claims_the_plus_form_and_the_chord_reaches_it() {
     std::fs::write(
         &shell,
         "import { gnoblin } from \"gnoblin-core\";\n\n\
-         gnoblin.input.primary.bind(\"Super+Return\", () => {\n    gnoblin.spawn(\"foot\");\n});\n\
+         gnoblin.input.primary.bind(\"Super+Return\", () => {\n    gnoblin.spawn([\"foot\"]);\n});\n\
          console.log(\"typescript shell claimed Super+Return\");\n",
     )
     .expect("the shell");

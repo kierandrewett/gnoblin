@@ -128,7 +128,7 @@ fn within_the_bound(what: &str, bound: Duration, took: &[Duration]) {
 fn the_card_takes_the_password_within_the_documented_bound_after_the_last_healthy_beat() {
     let mut measured = Vec::new();
     for run in 0..runs() {
-        let (session, _config, shell) = locked_with_a_driven_shell("import \"gnoblin-std\";\nexport {};\n");
+        let (session, _config, shell) = locked_with_a_driven_shell(LOCK_SCREEN_SHELL);
         let beat = *shell
             .forged
             .borrow()
@@ -160,11 +160,12 @@ fn the_card_takes_the_password_within_the_documented_bound_after_the_keyboard_le
     const INIT: &str = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\n\
                         const { gnoblin: _runtime, ...exported } = lib;\n\
                         Object.assign(globalThis, exported);\n\
+                        (globalThis as any).screen = new LockScreen(LockScreen.defaultLockStyle());\n\
                         const thief = new Box({ width: 10, height: 10 });\n\
                         thief.mountTop();\n\
                         let stealing = false;\n\
                         (globalThis as any).steal = () => { stealing = true; };\n\
-                        onUiFrame(() => { if (stealing) thief.focus(); });\n";
+                        Ui.onFrame(() => { if (stealing) thief.focus(); });\n";
     let mut measured = Vec::new();
     for run in 0..runs() {
         let (session, _config, mut shell) = locked_with_a_driven_shell(INIT);

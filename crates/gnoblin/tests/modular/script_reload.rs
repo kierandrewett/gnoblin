@@ -26,14 +26,14 @@ const TYPESCRIPT: Language = Language {
     module: "place.ts",
     shell_text: |tag, marker| {
         format!(
-            r#"import {{ CollectionListener, gnoblin }} from "gnoblin-core";
+            r#"import {{ ClientCollectionListener, gnoblin }} from "gnoblin-core";
 import type {{ Client }} from "gnoblin-core";
 
 import {{ place }} from "./place.ts";
 
 // Every window the listener hears of adds a line to the marker file, so a listener that outlives its generation shows as a
 // second line for one window.
-class Tiler extends CollectionListener<Client> {{
+class Tiler extends ClientCollectionListener {{
     onAdded(client: Client): void {{
         gnoblin.spawn(["sh", "-c", "echo {tag}:" + client.appId + " >> {marker}"]);
         place();
@@ -56,7 +56,7 @@ export function place(): void {
     if (output === undefined) {
         return;
     }
-    const windows = [...gnoblin.clients];
+    const windows = gnoblin.clients.toList();
     const gap = 24;
     const height = (output.height - gap * (windows.length - 1)) / windows.length;
     windows.forEach((client, at) => {
@@ -73,7 +73,7 @@ export function place(): void {
     if (output === undefined) {
         return;
     }
-    const windows = [...gnoblin.clients];
+    const windows = gnoblin.clients.toList();
     const width = output.width / windows.length;
     windows.forEach((client, at) => {
         client.bounds = { x: output.x + at * width, y: output.y, width, height: output.height };
