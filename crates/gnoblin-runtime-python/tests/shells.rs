@@ -1463,7 +1463,7 @@ for node in tree.body:
         continue
     if any(isinstance(base, ast.Attribute) and base.attr in ("IntEnum", "Enum") for base in node.bases):
         names = [t.id for n in node.body if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)]
-    elif (ast.get_docstring(node) or "").startswith("The interface"):
+    elif any(isinstance(base, ast.Name) and base.id == "Implementor" for base in node.bases):
         names = ["<interface>"]
     elif decorated_as(node, "dataclass"):
         names = [n.target.id for n in node.body if isinstance(n, ast.AnnAssign)]

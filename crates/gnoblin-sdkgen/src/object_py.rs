@@ -24,13 +24,16 @@ pub(super) const INIT_PY: &str = r#""""The classes of the libraries' object prot
 libraries serve. This package holds what they share.
 """
 
-from ._base import Listener, Timing
+from ._base import Implementor, Listener, Timing
 
-__all__ = ["Listener", "Timing"]
+__all__ = ["Implementor", "Listener", "Timing"]
 "#;
 
 /// `gnoblin/objects/__init__.pyi`.
 pub(super) const INIT_PYI: &str = r#"from dataclasses import dataclass, field
+
+class Implementor:
+    """The base of the generated interface classes: a script subclasses one and defines the methods it wants to answer."""
 
 class Listener:
     """A listener of an object's signal or property. It lasts until it is stopped or the generation ends."""
@@ -48,7 +51,7 @@ class Timing:
     tween: int = 0
     samples: list[float] = field(default_factory=list)
 
-__all__ = ["Listener", "Timing"]
+__all__ = ["Implementor", "Listener", "Timing"]
 "#;
 
 /// `gnoblin/objects/_base.py`: the runtime the generated classes share.
@@ -1701,7 +1704,7 @@ impl<'a> Py<'a> {
         }
         c.line(format!(
             "class {name}{}:",
-            if self.stub { "" } else { "(_B.Implementor)" }
+            if self.stub { "(Implementor)" } else { "(_B.Implementor)" }
         ));
         c.indent();
         self.class_doc(c, self.view.class_doc(&object.name), || {
@@ -1881,7 +1884,7 @@ pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String
         c.line("import enum");
         c.line("from typing import Any, Callable, Literal, TypeVar, overload");
         c.blank();
-        c.line("from gnoblin.objects import Listener as Listener, Timing as Timing");
+        c.line("from gnoblin.objects import Implementor as Implementor, Listener as Listener, Timing as Timing");
         for foreign in view.foreigns()? {
             c.line(format!(
                 "from gnoblin.objects.{} import {} as {}",
