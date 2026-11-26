@@ -6,6 +6,7 @@
 
 use gnoblin_object::server::Cx;
 use gnoblin_object::{Fail, Res, Val};
+use gnoblin_tree_client::session::TreeSession;
 
 use crate::catalog;
 use crate::session;
@@ -42,6 +43,40 @@ pub(super) fn nodes_of(class: &str) -> Vec<u64> {
         nodes.sort_unstable();
         nodes
     })
+}
+
+/// The windows back to front as this tick's tree stacks them: those under the root in tree order, then the ones the compositor made
+/// without a parent, by node number (the order they were mapped in). The compositor leaves a window it maps unparented and owns where it
+/// goes until a shell parents it, so a window nobody has raised is still a window of the stack, above every window under the root.
+pub(super) fn stacked_windows(tree: &TreeSession) -> Vec<u64> {
+    let is_window = |node: u64| tree.class_of(node).as_deref() == Some("window");
+    let mut order: Vec<u64> = tree
+        .children_of(tree.root())
+        .unwrap_or_default()
+        .iter()
+        .copied()
+        .filter(|node| is_window(*node))
+        .collect();
+    let mut orphans: Vec<u64> = tree
+        .mirror()
+        .ids()
+        .filter(|node| is_window(*node) && tree.parent_of(*node).is_none_or(|parent| parent == 0))
+        .collect();
+    orphans.sort_unstable();
+    order.extend(orphans);
+    order
+}
+
+/// Gives every window the compositor made without a parent, but `skip`, the root as its parent in the order the tree stacks them, so what
+/// is put under or over them afterwards lands where it was asked to.
+pub(super) fn adopt_windows(tree: &mut TreeSession, skip: u64) -> Result<(), gnoblin_tree_client::session::WriteError> {
+    let root = tree.root();
+    for node in stacked_windows(tree) {
+        if node != skip && tree.parent_of(node).is_none_or(|parent| parent == 0) {
+            tree.insert(node, root, -1)?;
+        }
+    }
+    Ok(())
 }
 
 /// What a property reads as before anything wrote it.

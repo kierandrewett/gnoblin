@@ -1482,7 +1482,6 @@ gnoblin.clients.addListener({
 }
 
 #[test]
-#[ignore = "vrnw: needs a Super+MouseLeft+Drag on a real window to reach the library's drag binding: the windows now start at (300, 200) as the script put them, but after the press (which the client never hears) the window never moves, and a trace in the library's pointer_event saw no call"]
 fn a_super_drag_takes_the_window_on_top_where_two_overlap() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
@@ -1514,7 +1513,6 @@ fn a_super_drag_takes_the_window_on_top_where_two_overlap() {
 }
 
 #[test]
-#[ignore = "vrnw: needs a Super+MouseLeft+Drag on a real window to reach the library's drag binding: the windows now start at (300, 200) as the script put them, but after the press (which the client never hears) the window never moves, and a trace in the library's pointer_event saw no call"]
 fn super_drags_move_and_resize_a_real_window_through_the_pointer_chord_stream() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
@@ -1709,7 +1707,7 @@ new SwapBinding({ trigger: "Super+MouseLeft+Drag" }).install();
 new SplitResizeBinding({ trigger: "Super+MouseRight+Drag" }).install();
 
 (globalThis as unknown as { probe: () => string }).probe = () =>
-    JSON.stringify({ order: gnoblin.workspaces.byId("desk")?.clients?.toList().map((client) => client.appId) });
+    JSON.stringify({ order: gnoblin.workspaces.byId("desk")?.clients?.members.map((client) => client.appId) });
 "#,
     )
     .expect("shell.ts");
@@ -1731,7 +1729,6 @@ fn tiled_span(start: f64, extent: f64) -> (f64, f64) {
 }
 
 #[test]
-#[ignore = "vrnw: needs SwapBinding to swap the tiles of a MasterStackLayout on a real Super+MouseLeft+Drag: the tiles never trade places (and SplitResizeBinding is ignored in gnoblin-js/tests/tiling_bindings.rs for not moving a divider)"]
 fn super_drags_swap_two_real_tiles_and_move_the_master_stack_divider_through_the_pointer_chord_stream() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
@@ -5964,7 +5961,6 @@ fn check_claims_of_round(
 }
 
 #[test]
-#[ignore = "vrnw: needs a Super+MouseLeft+Drag on a real window to reach the library's drag binding: the windows now start at (300, 200) as the script put them, but after the press (which the client never hears) the window never moves, and a trace in the library's pointer_event saw no call"]
 fn a_reload_hands_every_seat_claim_over_so_each_shortcut_fires_once_and_a_removed_one_is_released() {
     // Six reloads in a row, each adding a key and taking away the last one's, and the sixth also taking `Super+y` away.
     const LAST: u32 = 6;

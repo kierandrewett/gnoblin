@@ -124,9 +124,13 @@ impl Drag {
         Drag { claim, chord, from }
     }
 
-    /// The pointer moves to `to`, and the shell gets one frame to answer.
+    /// The pointer moves to `to`, and the shell gets two frames to answer.
     fn to(&self, rig: &mut Rig, to: (f64, f64)) {
         rig.comp.pointer_chord(self.claim, self.chord, "update", self.from, to);
+        let diagnostics = frame(rig);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        // The core's matcher takes the sample in one turn and the library lays the divider out in the next, so the frame after the
+        // pointer's is the one whose rectangles show it.
         let diagnostics = frame(rig);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
@@ -259,7 +263,7 @@ fn a_floating_window_does_not_take_part_in_a_swap() {
 // ---- resizing a split ----------------------------------------------------------------------------------------------
 
 #[test]
-#[ignore = "vrnw: needs SplitResizeBinding to move a layout's divider: a drag from the divider leaves every rectangle where it was"]
+#[ignore = "vrnw: needs a way to count a native layout's computes: the divider follows the pointer (the rectangles match), but `counted` patches the JS object, the library's own layout never calls the patch and `computes` stays where it was (0, expected 1)"]
 fn dragging_the_master_stack_divider_changes_the_ratio_live_and_keeps_it_on_release() {
     let mut rig = world(2, "counted(new MasterStackLayout())");
     assert_eq!(rect(&rig, 3), "0,0,500,800");
@@ -286,7 +290,6 @@ fn dragging_the_master_stack_divider_changes_the_ratio_live_and_keeps_it_on_rele
 }
 
 #[test]
-#[ignore = "vrnw: needs SplitResizeBinding to move a layout's divider: a drag from the divider leaves every rectangle where it was"]
 fn the_ratio_stays_within_the_layouts_limits_and_a_cancel_restores_it() {
     let mut rig = world(2, "new MasterStackLayout()");
     let drag = Drag::press(&mut rig, RESIZE, (500.0, 400.0));
@@ -311,7 +314,6 @@ fn the_ratio_stays_within_the_layouts_limits_and_a_cancel_restores_it() {
 }
 
 #[test]
-#[ignore = "vrnw: needs SplitResizeBinding to move a layout's divider: a drag from the divider leaves every rectangle where it was"]
 fn the_divider_follows_the_pointer_on_the_right_and_across_a_gap() {
     // Master on the right: moving the pointer right shrinks it.
     let mut rig = world(2, "new MasterStackLayout({ orientation: \"right\" })");
@@ -390,7 +392,7 @@ fn a_layout_with_no_divider_declines_a_resize() {
 }
 
 #[test]
-#[ignore = "vrnw: needs SplitResizeBinding to move a layout's divider: a drag from the divider leaves every rectangle where it was"]
+#[ignore = "vrnw: needs a way to count a native layout's computes: the divider follows the pointer (the rectangles match), but `counted` patches the JS object, the library's own layout never calls the patch and `computes` stays where it was (0, expected 1)"]
 fn dragging_a_dwindle_split_moves_that_split_alone() {
     // Window 3 on the left, 4 above 5 on the right: the outer split is vertical (a divider at x = 500) and the inner
     // is horizontal (a divider at y = 400).
@@ -427,7 +429,6 @@ fn dragging_a_dwindle_split_moves_that_split_alone() {
 }
 
 #[test]
-#[ignore = "vrnw: needs SplitResizeBinding to move a layout's divider: a drag from the divider leaves every rectangle where it was"]
 fn a_cancelled_dwindle_drag_gives_the_split_back_to_the_layouts_ratio() {
     let mut rig = world(3, "new DwindleLayout()");
     let drag = Drag::press(&mut rig, RESIZE, (700.0, 450.0));
@@ -444,7 +445,6 @@ fn a_cancelled_dwindle_drag_gives_the_split_back_to_the_layouts_ratio() {
 }
 
 #[test]
-#[ignore = "vrnw: needs SplitResizeBinding to move a layout's divider: a drag from the divider leaves every rectangle where it was"]
 fn dwindle_with_smart_resizing_off_moves_both_dividers_that_bound_the_tile() {
     // Hyprland's `smart_resizing = false` resizes by the window's tiling position: the split above the window and the
     // nearest one of the other direction above that both follow the pointer, each along its own axis. Window 3 sits left
@@ -467,7 +467,6 @@ fn dwindle_with_smart_resizing_off_moves_both_dividers_that_bound_the_tile() {
 }
 
 #[test]
-#[ignore = "vrnw: needs SplitResizeBinding to move a layout's divider: a drag from the divider leaves every rectangle where it was"]
 fn dwindle_with_smart_resizing_on_moves_the_divider_nearest_the_press_alone() {
     let mut rig = world(3, "new DwindleLayout({ smartResizing: true })");
     let drag = Drag::press(&mut rig, RESIZE, (900.0, 700.0));

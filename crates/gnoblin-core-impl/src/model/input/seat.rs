@@ -147,7 +147,7 @@ pub(super) fn stack(cx: &Cx<'_>) -> Vec<Obj> {
         session
             .tree_ref()
             .ok()
-            .and_then(|tree| tree.children_of(tree.root()).map(<[u64]>::to_vec))
+            .map(super::super::values::stacked_windows)
             .unwrap_or_default()
     });
     nodes.into_iter().filter_map(|node| client_of(cx, node)).collect()
