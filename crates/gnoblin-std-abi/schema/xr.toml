@@ -1,0 +1,1421 @@
+# The `xr` module of `gnoblin.std`: what a shell sees of a headset, and the room of panels the library builds for it.
+#
+# The XR program (`gnoblin-xr`) is a separate process. What the shell sees of it is nodes of the tree: the seat named `xr`, which is the
+# session, the camera named `head`, whose pose the program writes, and a `controller` node for each hand. While the seat exists the
+# library has a session (`gnoblin.extensions.xr`): it builds a node named `room` under the tree's root with the `head` camera and one
+# `view` for each window, places the views on a ring round the viewer, and runs the drags that move, resize, turn and scale a panel.
+# When the seat goes the session ends and the room goes with it; the windows were never moved.
+#
+# Distances are millimetres in the tree (the room's unit) and metres where a script gives them (a layout's radius, a camera's near and
+# far, a head panel's offset). Every pose is in the room's placement frame, y up, as a View's and a controller's are.
+#
+# A dialog is a window of its own. It gets a panel of its own, anchored to its parent's: placed in front of the parent's panel where the
+# dialog sits on the parent window, turned and scaled as that panel is, and moved with it. The room never assumes a window lies inside
+# another window's node.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# Where an extension is in its life: `ready` while it serves a session, `unloaded` while it is absent.
+[[enum]]
+name = "extension_status"
+since = "0.2.0"
+values = ["ready", "unloaded"]
+
+# How the headset draws the panels of a room: as flat layers (`auto`, `layers`) or through the head camera as projection layers
+# (`projection`, which gives every panel of the room the head camera as its `camera`).
+[[enum]]
+name = "xr_composition"
+since = "0.2.0"
+values = ["auto", "layers", "projection"]
+
+# Whether any controller of a session is tracked. The tree does not say whether the head is.
+[[enum]]
+name = "xr_tracking"
+since = "0.2.0"
+values = ["tracked", "untracked"]
+
+# What a panel that a move drags follows: the hand (`controller`, six degrees of freedom) or where the ray points (`ray`).
+[[enum]]
+name = "view_tracking"
+since = "0.2.0"
+values = ["controller", "ray"]
+
+# Whether a moved panel turns with the hand (`follow`) or keeps its own rotation (`keep`).
+[[enum]]
+name = "view_rotation"
+since = "0.2.0"
+values = ["follow", "keep"]
+
+# The corner a resize pulls: the one nearest where the ray struck (`quadrant`), or always one corner.
+[[enum]]
+name = "resize_corner"
+since = "0.2.0"
+values = ["quadrant", "top-left", "top-right", "bottom-left", "bottom-right"]
+
+# Whether a window gets a panel in the stock room. A secure window never does, whatever this answers. It runs once a frame, so a window
+# comes in when it starts to answer true.
+[[callback]]
+name = "xr_accept"
+since = "0.2.0"
+returns = "bool"
+
+[[callback.param]]
+name = "client"
+type = "object:xr_client"
+
+# ---- records ---------------------------------------------------------------------------------------------------------------------
+
+# What `xr_accept` is told of a window.
+[[object]]
+name = "xr_client"
+export = { js = "XRClient", py = "XRClient" }
+since = "0.2.0"
+kind = "record"
+
+# The window's node number as text: the id of its `Client`.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+
+# The application the window belongs to; empty when it has none.
+[[object.property]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+# The window's title.
+[[object.property]]
+name = "title"
+type = "string"
+since = "0.2.0"
+
+# The width in pixels.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+
+# The height in pixels.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+
+# Whether the window is minimised.
+[[object.property]]
+name = "minimised"
+type = "bool"
+since = "0.2.0"
+
+# Whether the window is a dialog: one with a parent window.
+[[object.property]]
+name = "dialog"
+type = "bool"
+since = "0.2.0"
+
+# An extension the shell knows, as `gnoblin.extensions.list` lists it.
+[[object]]
+name = "extension_info"
+since = "0.2.0"
+kind = "record"
+
+# The extension's id, such as `xr`.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+
+# Where the extension is in its life.
+[[object.property]]
+name = "status"
+type = "enum:extension_status"
+since = "0.2.0"
+
+# The triggers of the bindings a `spatial_layout` makes, by id. An empty trigger leaves that binding out.
+[[object]]
+name = "spatial_triggers"
+since = "0.2.0"
+kind = "record"
+
+# The trigger of `move`, a `view_move_binding`.
+[[object.property]]
+name = "move"
+type = "string"
+since = "0.2.0"
+default = "Grip+Drag"
+
+# The trigger of `resize`, a `view_resize_binding`.
+[[object.property]]
+name = "resize"
+type = "string"
+since = "0.2.0"
+default = "Grip+Trigger+Drag"
+
+# The trigger of `rotate`, a `view_rotate_binding`.
+[[object.property]]
+name = "rotate"
+type = "string"
+since = "0.2.0"
+default = "Trigger+Thumbstick+Drag"
+
+# What the stock shell builds for a session (`gnoblin.extensions.configure("xr", options)`).
+[[object]]
+name = "xr_options"
+export = { js = "XROptions", py = "XROptions" }
+since = "0.2.0"
+kind = "record"
+
+# Whether the library builds a room when a session starts. A room already in the tree (a node named `room`) is the shell's, and no
+# room is built beside it.
+[[object.property]]
+name = "room"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# The ring and the bindings of the stock room.
+[[object.property]]
+name = "layout"
+type = "object:spatial_layout"
+since = "0.2.0"
+optional = true
+
+# A panel fixed to the head: where it is in front of the eyes, in metres, and its size.
+[[object]]
+name = "head_panel_options"
+since = "0.2.0"
+kind = "record"
+
+# Metres to the right of the head.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Metres above the head.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Metres in front of the head: negative z is forward.
+[[object.property]]
+name = "z"
+type = "double"
+since = "0.2.0"
+default = -1.2
+
+# Millimetres of panel for one pixel of window; left out, the ring's.
+[[object.property]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The dimensions of a ring of panels, in millimetres and radians.
+[[object]]
+name = "ring_params"
+since = "0.2.0"
+kind = "record"
+
+# The distance from the viewer to the centre of a panel.
+[[object.property]]
+name = "radius"
+type = "double"
+since = "0.2.0"
+default = 1600.0
+
+# The height of a panel's centre above the room's floor.
+[[object.property]]
+name = "eye"
+type = "double"
+since = "0.2.0"
+default = 1400.0
+
+# One window pixel is this many millimetres.
+[[object.property]]
+name = "mm_per_px"
+type = "double"
+since = "0.2.0"
+default = 0.75
+
+# The focused panel is this much larger ...
+[[object.property]]
+name = "focus_scale"
+type = "double"
+since = "0.2.0"
+default = 1.15
+
+# ... and this much closer to the viewer.
+[[object.property]]
+name = "focus_pull"
+type = "double"
+since = "0.2.0"
+default = 100.0
+
+# The angle between neighbouring panels.
+[[object.property]]
+name = "gap"
+type = "double"
+since = "0.2.0"
+default = 0.05235987755982988
+
+# The most the panels reach to either side of the front: panels shrink together to fit.
+[[object.property]]
+name = "half_arc"
+type = "double"
+since = "0.2.0"
+default = 2.6179938779914944
+
+# Panels on the ring; the rest stack behind it.
+[[object.property]]
+name = "max_panels"
+type = "double"
+since = "0.2.0"
+default = 12.0
+
+# Each tier of stacked panels is this much further back.
+[[object.property]]
+name = "stack_step"
+type = "double"
+since = "0.2.0"
+default = 250.0
+
+# The pixel size of one panel to place on a ring.
+[[object]]
+name = "ring_view"
+since = "0.2.0"
+kind = "record"
+
+# The window's width in pixels.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+
+# The window's height in pixels.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+
+# Where a panel goes on the ring.
+[[object]]
+name = "ring_pose"
+since = "0.2.0"
+kind = "record"
+
+# Millimetres to the right.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+# Millimetres up.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+# Millimetres back: the panels in front are at negative z.
+[[object.property]]
+name = "z"
+type = "double"
+since = "0.2.0"
+
+# The turn about y, in radians, that makes the panel face the viewer.
+[[object.property]]
+name = "yaw"
+type = "double"
+since = "0.2.0"
+
+# Millimetres of panel for one pixel of window.
+[[object.property]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+
+# Whether this is the focused panel.
+[[object.property]]
+name = "focused"
+type = "bool"
+since = "0.2.0"
+
+# 0 on the ring, and the tier (1, 2, ...) of a panel stacked behind it.
+[[object.property]]
+name = "behind"
+type = "uint"
+since = "0.2.0"
+
+# What `arrange_ring` answers: a pose for each view, in the views' order, and the order to list the views in, farthest first.
+[[object]]
+name = "ring_result"
+since = "0.2.0"
+kind = "record"
+
+# One pose for each view given.
+[[object.property]]
+name = "poses"
+type = "list<object:ring_pose>"
+since = "0.2.0"
+
+# The indices of the views from the farthest to the nearest: the room lists its views in this order, because nothing depth-tests.
+[[object.property]]
+name = "order"
+type = "list<uint>"
+since = "0.2.0"
+
+# The reading of an XR trigger: `Grip+Drag`, `Right.Grip+Drag`, `Trigger+Grip+Drag`.
+[[object]]
+name = "controller_trigger"
+since = "0.2.0"
+kind = "record"
+
+# The trigger in its one canonical spelling: the hand, then the buttons in the order Trigger, Grip, Thumbstick, Primary, Secondary, then
+# `Drag`.
+[[object.property]]
+name = "text"
+type = "string"
+since = "0.2.0"
+
+# Always `controller`.
+[[object.property]]
+name = "kind"
+type = "string"
+since = "0.2.0"
+
+# `Left`, `Right`, or empty for either hand.
+[[object.property]]
+name = "hand"
+type = "string"
+since = "0.2.0"
+
+# The buttons, in canonical order.
+[[object.property]]
+name = "buttons"
+type = "list<string>"
+since = "0.2.0"
+
+# What a hook of an XR drag is told.
+[[object]]
+name = "xr_drag_event"
+export = { js = "XRDragEvent", py = "XRDragEvent" }
+since = "0.2.0"
+kind = "record"
+
+# The time of the frame, in milliseconds on the core's clock.
+[[object.property]]
+name = "timestamp"
+type = "double"
+since = "0.2.0"
+
+# Seconds since the hook last ran for this drag, at most 0.1; 0 for `on_start`.
+[[object.property]]
+name = "delta_time"
+type = "double"
+since = "0.2.0"
+
+# The controller that holds the drag.
+[[object.property]]
+name = "controller"
+type = "object:xr_controller"
+since = "0.2.0"
+
+# The panel the ray struck when the drag started; it does not change for the drag. Left out when the ray struck none.
+[[object.property]]
+name = "view"
+type = "object:view"
+since = "0.2.0"
+optional = true
+
+# The controller's aim ray, in the room's frame.
+[[object.property]]
+name = "ray"
+type = "object:ray"
+since = "0.2.0"
+
+# Where the ray struck the panel when the drag started, in the room's frame; left out when it struck none.
+[[object.property]]
+name = "hit"
+type = "object:vec3"
+since = "0.2.0"
+optional = true
+
+# The controller's hand, `left` or `right`.
+[[object.property]]
+name = "hand"
+type = "string"
+since = "0.2.0"
+
+# The binding's trigger, as written.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+
+# The room that holds the panel.
+[[object.property]]
+name = "room"
+type = "object:xr_room"
+since = "0.2.0"
+
+# Metres in one room unit.
+[[object.property]]
+name = "unit"
+type = "double"
+since = "0.2.0"
+
+# ---- the extension ---------------------------------------------------------------------------------------------------------------
+
+# Hears a session begin and end. A listener that throws is reported, and the next listener is still told.
+[[object]]
+name = "xr_listener"
+export = { js = "XRListener", py = "XRListener" }
+since = "0.2.0"
+kind = "interface"
+
+# A session began: the program made the `xr` seat. The stock room is built after the listeners have heard.
+[[object.method]]
+name = "on_session_started"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "session"
+type = "object:xr_session"
+
+# The session ended: the seat is gone. `session.alive` is already false.
+[[object.method]]
+name = "on_session_ended"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "session"
+type = "object:xr_session"
+
+# The optional native extensions, each absent until it can serve: `gnoblin.extensions`.
+[[object]]
+name = "extensions"
+since = "0.2.0"
+kind = "service"
+
+# The XR extension while the program has a session; none otherwise.
+[[object.property]]
+name = "xr"
+type = "object:xr_extension"
+since = "0.2.0"
+readonly = true
+
+# The extensions the shell knows, with where each is in its life. The XR extension is `ready` while it has a session and `unloaded`
+# otherwise.
+[[object.property]]
+name = "list"
+type = "list<object:extension_info>"
+since = "0.2.0"
+readonly = true
+
+# Says what the stock shell builds for the extension `name` (only `xr`): `room: false` builds no room of the library's; `layout` is the
+# stock room's ring and bindings; `accept` chooses the windows that get a panel. It takes effect for the next session.
+[[object.method]]
+name = "configure"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+[[object.method.param]]
+name = "options"
+type = "object:xr_options"
+
+[[object.method.param]]
+name = "accept"
+type = "callback:xr_accept"
+optional = true
+
+# Throws unless the extension `name` can be used now: the session declared XR (`GNOBLIN_XR=1`), or the program has a session. The message
+# says how to guard a use with `gnoblin.extensions.xr`.
+[[object.method]]
+name = "require"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+# Adds a listener of the sessions. One that is added already is not added again.
+[[object.method]]
+name = "add_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:xr_listener"
+
+# Removes a listener. One that is not added is ignored.
+[[object.method]]
+name = "remove_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:xr_listener"
+
+# `gnoblin.extensions.xr`: present while the program has a session.
+[[object]]
+name = "xr_extension"
+export = { js = "XRExtension", py = "XRExtension" }
+since = "0.2.0"
+
+# Whether the extension is available: true while it exists.
+[[object.property]]
+name = "available"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The sessions the extension knows: the live one.
+[[object.property]]
+name = "sessions"
+type = "list<object:xr_session>"
+since = "0.2.0"
+readonly = true
+
+# The live session, or none.
+[[object.property]]
+name = "session"
+type = "object:xr_session"
+since = "0.2.0"
+readonly = true
+
+# The room the headset shows: the stock one the library built, or the one a shell's viewport named. None when there is neither.
+[[object.property]]
+name = "room"
+type = "object:xr_room"
+since = "0.2.0"
+readonly = true
+
+# One headset session: the seat the program made, its head and its controllers.
+[[object]]
+name = "xr_session"
+export = { js = "XRSession", py = "XRSession" }
+since = "0.2.0"
+
+# The seat's node number as text.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# False once the session ended (the seat is gone). An ended session refuses writes.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether the program is connected: the same as `alive`, because the seat is the session.
+[[object.property]]
+name = "connected"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether a controller is tracked.
+[[object.property]]
+name = "tracking"
+type = "enum:xr_tracking"
+since = "0.2.0"
+readonly = true
+
+# The seat the program made, as an input context of the core: the gaze and the ray arrive there as pointer input. None once the session
+# ended.
+[[object.property]]
+name = "input"
+type = "object:gnoblin.model.input_context"
+since = "0.2.0"
+readonly = true
+
+# The layers the headset can carry in one frame, as the program reported on the head camera; 0 until it has.
+[[object.property]]
+name = "layer_budget"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# What the headset shows. Assigning a viewport names its room `room` and its camera `head` for the program, puts the camera under the
+# room, and replaces the stock room. Refused once the session ended.
+[[object.property]]
+name = "viewport"
+type = "object:xr_viewport"
+since = "0.2.0"
+
+# The head.
+[[object.property]]
+name = "head"
+type = "object:xr_tracked_pose"
+since = "0.2.0"
+readonly = true
+
+# The controllers of the session, in the order they appeared. The library brings the list up to date once a frame.
+[[object.property]]
+name = "controllers"
+type = "list<object:xr_controller>"
+since = "0.2.0"
+readonly = true
+
+# How long, in milliseconds, a chord must have been held before a drag starts and claims its buttons: 50 by default, at most 60. The
+# program holds a press back from the window for 150 ms to wait for a claim, and a claim needs about as long again as the settle time
+# to reach it, so a larger value reads back as 60. A value below 0 reads back as 0; one that is not a number is refused.
+[[object.property]]
+name = "chord_settle_ms"
+type = "double"
+since = "0.2.0"
+default = 50.0
+
+# The controller whose id (its node number as text) is `id`, or none.
+[[object.method]]
+name = "controller"
+since = "0.2.0"
+returns = "object:xr_controller"
+optional = true
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# A controller joined the session.
+[[object.signal]]
+name = "controller_added"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "controller"
+type = "object:xr_controller"
+
+# A controller left the session. It still says which hand it was.
+[[object.signal]]
+name = "controller_removed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "controller"
+type = "object:xr_controller"
+
+# The head: the pose the program writes onto the camera named `head`.
+[[object]]
+name = "xr_tracked_pose"
+export = { js = "XRTrackedPose", py = "XRTrackedPose" }
+since = "0.2.0"
+
+# Whether a camera named `head` exists for the program to write.
+[[object.property]]
+name = "available"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The head's pose in the room's placement frame, in room units, or none with no head camera. The program writes the camera with the
+# scene's y mirrored and the turns about x and z reversed; this reads it back the right way up.
+[[object.property]]
+name = "pose"
+type = "object:pose"
+since = "0.2.0"
+readonly = true
+
+# One tracked hand: a `controller` node the program writes. A script reads it, and claims its inputs.
+[[object]]
+name = "xr_controller"
+export = { js = "XRController", py = "XRController" }
+since = "0.2.0"
+
+# The controller's node number as text.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Whether the controller node still exists.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# `left` or `right`; a controller that is gone still says which.
+[[object.property]]
+name = "hand"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Whether the controller is tracked. An untracked controller starts no drag and cancels its own.
+[[object.property]]
+name = "tracked"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The pose of the aim ray in the room's placement frame, in room units.
+[[object.property]]
+name = "pose"
+type = "object:pose"
+since = "0.2.0"
+readonly = true
+
+# The aim ray: from the pose's position along its negative z.
+[[object.property]]
+name = "ray"
+type = "object:ray"
+since = "0.2.0"
+readonly = true
+
+# How far the trigger is pulled, 0 to 1.
+[[object.property]]
+name = "trigger"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# How far the grip is squeezed, 0 to 1.
+[[object.property]]
+name = "grip"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The thumbstick's sideways position, -1 to 1.
+[[object.property]]
+name = "thumbstick_x"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The thumbstick's forward position, -1 to 1, up positive.
+[[object.property]]
+name = "thumbstick_y"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The buttons that are down as of the last frame, in canonical order: `Trigger`, `Grip`, `Thumbstick`, `Primary`, `Secondary`. A
+# trigger or a grip goes down at 0.75 and up at 0.25, so a half pull neither presses nor chatters.
+[[object.property]]
+name = "buttons"
+type = "list<string>"
+since = "0.2.0"
+readonly = true
+
+# The inputs the shell withholds from the window under the ray, in the order `trigger`, `grip`, `thumbstick`, `primary`, `secondary`: the
+# union of every owner's claim.
+[[object.property]]
+name = "claimed"
+type = "list<string>"
+since = "0.2.0"
+readonly = true
+
+# Claims `inputs` for the owner named `owner`, in place of that owner's earlier claim; other owners' claims stand. A name that is not
+# one of the five inputs in lower case is refused, and so is an empty owner; a controller that is gone refuses with `not_found`.
+[[object.method]]
+name = "claim"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "owner"
+type = "string"
+
+[[object.method.param]]
+name = "inputs"
+type = "list<string>"
+
+# Drops the claim of `owner`. Nothing is done for an owner with none, or a controller that is gone.
+[[object.method]]
+name = "release"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "owner"
+type = "string"
+
+# ---- the room ----------------------------------------------------------------------------------------------------------------------
+
+# The camera that follows the headset: a stereo `camera3d` named `head`, in millimetres. Given to the constructor, `near` and `far` are
+# metres; read back, they are the camera's units.
+[[object]]
+name = "xr_camera3d"
+export = { js = "XRCamera3D", py = "XRCamera3D", rust = "XrCamera3D" }
+since = "0.2.0"
+base = "camera3d"
+retained = true
+
+# The head the camera follows.
+[[object.property]]
+name = "tracking"
+type = "object:xr_tracked_pose"
+since = "0.2.0"
+
+# The tracking space: only `local`, the one OpenXR space the program runs.
+[[object.property]]
+name = "reference_space"
+type = "string"
+since = "0.2.0"
+default = "local"
+
+# The room: a node named `room` with the `head` camera and a `view` for each window, which the program reads. Panels follow their windows:
+# a window that closes or turns secure loses its panel, a minimised one's is hidden, and a panel that was moved stays where it was put
+# until `unpin`. The room never changes a window.
+[[object]]
+name = "xr_room"
+export = { js = "XRRoom", py = "XRRoom" }
+since = "0.2.0"
+base = "scene_node"
+retained = true
+
+# The camera the program writes the head pose onto.
+[[object.property]]
+name = "head"
+type = "object:camera3d"
+since = "0.2.0"
+readonly = true
+
+# The ring and the bindings of the room, or none to leave the panels where they are.
+[[object.property]]
+name = "layout"
+type = "object:spatial_layout"
+since = "0.2.0"
+
+# Takes the layout away: the ring places no panel and no drag runs until a layout is set again.
+[[object.method]]
+name = "clear_layout"
+since = "0.2.0"
+
+# Whether a window gets a panel; left out, every window does. A secure window never does.
+[[object.property]]
+name = "accept"
+type = "callback:xr_accept"
+since = "0.2.0"
+
+# Metres in one room unit: the head camera's.
+[[object.property]]
+name = "unit"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The panels of the room's windows, in the order the windows gained them.
+[[object.property]]
+name = "views"
+type = "list<object:view>"
+since = "0.2.0"
+readonly = true
+
+# The panel that shows `client`, or none.
+[[object.method]]
+name = "view_of"
+since = "0.2.0"
+returns = "object:view"
+optional = true
+
+[[object.method.param]]
+name = "client"
+type = "object:gnoblin.model.client"
+
+# Keeps a panel where it is: the ring leaves it alone until `unpin`.
+[[object.method]]
+name = "pin"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "view"
+type = "object:view"
+
+# Lets the ring place the panel again.
+[[object.method]]
+name = "unpin"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "view"
+type = "object:view"
+
+# Whether the ring leaves the panel alone.
+[[object.method]]
+name = "is_pinned"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "view"
+type = "object:view"
+
+# Shows `client` in a panel under the head camera, so it stays in front of the eyes. The window keeps its panel in the ring as well. The
+# panel follows the window's size, and goes when the window closes or turns secure.
+[[object.method]]
+name = "pin_to_head"
+since = "0.2.0"
+returns = "object:view"
+
+[[object.method.param]]
+name = "client"
+type = "object:gnoblin.model.client"
+
+[[object.method.param]]
+name = "options"
+type = "object:head_panel_options"
+optional = true
+
+# What the headset shows: a room and the camera it is seen through. Assigned to `session.viewport`, it names them for the program.
+[[object]]
+name = "xr_viewport"
+export = { js = "XRViewport", py = "XRViewport" }
+since = "0.2.0"
+ctor = ["content", "camera"]
+
+# The room: fixed when the viewport is made.
+[[object.property]]
+name = "content"
+type = "object:scene_node"
+since = "0.2.0"
+readonly = true
+
+# The camera the room is seen through.
+[[object.property]]
+name = "camera"
+type = "object:camera3d"
+since = "0.2.0"
+
+# How the headset draws the panels.
+[[object.property]]
+name = "composition"
+type = "enum:xr_composition"
+since = "0.2.0"
+default = "auto"
+
+# ---- the ring and the drags ------------------------------------------------------------------------------------------------------
+
+# Places a room's panels on a ring round the viewer and holds the bindings that act on the panel under a controller's ray. Distances
+# given here are metres; `ring` reads them back in millimetres. A value that is not a number above 0 is refused.
+[[object]]
+name = "spatial_layout"
+since = "0.2.0"
+
+# The distance from the viewer to the centre of a panel, in metres.
+[[object.property]]
+name = "radius"
+type = "double"
+since = "0.2.0"
+default = 1.6
+
+# The height of a panel's centre above the room's floor, in metres.
+[[object.property]]
+name = "eye"
+type = "double"
+since = "0.2.0"
+default = 1.4
+
+# The angle between neighbouring panels, in radians.
+[[object.property]]
+name = "spacing"
+type = "double"
+since = "0.2.0"
+default = 0.05235987755982988
+
+# The metres of panel for one pixel of window.
+[[object.property]]
+name = "metres_per_pixel"
+type = "double"
+since = "0.2.0"
+default = 0.00075
+
+# How much larger the focused panel is.
+[[object.property]]
+name = "focus_scale"
+type = "double"
+since = "0.2.0"
+default = 1.15
+
+# How many metres closer the focused panel is.
+[[object.property]]
+name = "focus_pull"
+type = "double"
+since = "0.2.0"
+default = 0.1
+
+# The most the panels reach to either side of the front, in radians.
+[[object.property]]
+name = "half_arc"
+type = "double"
+since = "0.2.0"
+default = 2.6179938779914944
+
+# Panels on the ring; the rest stack behind it.
+[[object.property]]
+name = "max_panels"
+type = "double"
+since = "0.2.0"
+default = 12.0
+
+# Each tier of stacked panels is this many metres further back.
+[[object.property]]
+name = "stack_step"
+type = "double"
+since = "0.2.0"
+default = 0.25
+
+# The triggers of the stock bindings. Set when the layout is made, it makes `move`, `resize` and `rotate` with them; set later, it
+# replaces those three in `bindings`.
+[[object.property]]
+name = "triggers"
+type = "object:spatial_triggers"
+since = "0.2.0"
+
+# The ring in millimetres and radians.
+[[object.property]]
+name = "ring"
+type = "object:ring_params"
+since = "0.2.0"
+readonly = true
+
+# The bindings that act on the room's panels: remove one to turn it off, or add another in its place.
+[[object.property]]
+name = "bindings"
+type = "object:xr_bindings"
+since = "0.2.0"
+readonly = true
+
+# Places `views` on this layout's ring; `focus` is the index of the focused view.
+[[object.method]]
+name = "arrange"
+since = "0.2.0"
+returns = "object:ring_result"
+
+[[object.method.param]]
+name = "views"
+type = "list<object:ring_view>"
+
+[[object.method.param]]
+name = "focus"
+type = "int"
+optional = true
+
+# Places `views` on a ring of `ring` (the defaults when left out). The focused view (`focus`, an index) is at the front, larger and
+# closer, with its neighbours in order on either side, wrapping round; with no focus, or an index that names no view, the first is at the
+# front. Panels that would reach past `half_arc` shrink together until they fit, and views past `max_panels` stack behind the ring.
+[[object.method]]
+name = "arrange_ring"
+since = "0.2.0"
+function = true
+returns = "object:ring_result"
+
+[[object.method.param]]
+name = "views"
+type = "list<object:ring_view>"
+
+[[object.method.param]]
+name = "focus"
+type = "int"
+optional = true
+
+[[object.method.param]]
+name = "ring"
+type = "object:ring_params"
+optional = true
+
+# The bindings of a spatial layout. Ids are unique, and two bindings of one chord and one priority are refused.
+[[object]]
+name = "xr_bindings"
+since = "0.2.0"
+
+# How many bindings there are.
+[[object.property]]
+name = "length"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The bindings, in the order they were added.
+[[object.property]]
+name = "list"
+type = "list<object:xr_drag_binding>"
+since = "0.2.0"
+readonly = true
+
+# Adds `binding`. Refused when its id is taken, or when another binding has its chord and its priority.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "binding"
+type = "object:xr_drag_binding"
+
+# Removes the binding `id` and answers whether there was one. A drag it holds is cancelled.
+[[object.method]]
+name = "remove"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# The binding `id`, or none.
+[[object.method]]
+name = "find"
+since = "0.2.0"
+returns = "object:xr_drag_binding"
+optional = true
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# Whether there is a binding `id`.
+[[object.method]]
+name = "has"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# Removes every binding.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+# What a script implements to follow an XR drag. Each method it defines runs in place of the binding's own; one it leaves out runs the
+# binding's (a plain `xr_drag_binding` declines in `on_start` and does nothing in the others).
+[[object]]
+name = "xr_drag_handler"
+export = { js = "XRDragHandler", py = "XRDragHandler" }
+since = "0.2.0"
+kind = "interface"
+
+# The chord has been held for the session's settle time over the panel `event.view`. Answer `false` to decline; anything else takes the
+# drag. A drag that is taken pins the panel, claims the buttons and runs `on_update` once a frame.
+[[object.method]]
+name = "on_start"
+since = "0.2.0"
+returns = "bool"
+default = "native"
+optional = true
+
+[[object.method.param]]
+name = "event"
+type = "object:xr_drag_event"
+
+# Once a frame while the chord is held, with that frame's pose. A throw is reported and cancels the drag.
+[[object.method]]
+name = "on_update"
+since = "0.2.0"
+default = "native"
+
+[[object.method.param]]
+name = "event"
+type = "object:xr_drag_event"
+
+# The chord was let go. The panel stays where it was put, pinned.
+[[object.method]]
+name = "on_end"
+since = "0.2.0"
+default = "native"
+
+[[object.method.param]]
+name = "event"
+type = "object:xr_drag_event"
+
+# The hand was lost, the binding removed or disabled, the panel gone, the session ended or the shell reloaded. A panel that was not
+# pinned before the drag goes back to the ring after this.
+[[object.method]]
+name = "on_cancel"
+since = "0.2.0"
+default = "native"
+
+[[object.method.param]]
+name = "event"
+type = "object:xr_drag_event"
+
+# The inputs the drag takes from the window under the ray while it runs: the trigger's buttons in lower case by default.
+[[object.method]]
+name = "claims"
+since = "0.2.0"
+returns = "list<string>"
+default = "native"
+
+# A binding that follows a controller from the press of a chord to its release: the base of the four stock bindings and of a script's
+# own, which gives its hooks as `handler`.
+[[object]]
+name = "xr_drag_binding"
+export = { js = "XRControllerDragBinding", py = "XRControllerDragBinding" }
+since = "0.2.0"
+
+# The binding's id in its collection.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+default = ""
+
+# The chord: the buttons held together, then `Drag`, with an optional `Left.` or `Right.` hand (`Right.Grip+Drag`). Writing it reads
+# it again; a bad one is refused with the token named.
+[[object.property]]
+name = "trigger"
+type = "string"
+since = "0.2.0"
+default = ""
+
+# The reading of `trigger`.
+[[object.property]]
+name = "parsed"
+type = "object:controller_trigger"
+since = "0.2.0"
+readonly = true
+
+# Whether the binding answers its chord. Turning it off cancels its drag.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# Among the bindings of one chord the higher priority is asked first.
+[[object.property]]
+name = "priority"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The script's hooks, run in place of the binding's own.
+[[object.property]]
+name = "handler"
+type = "object:xr_drag_handler"
+since = "0.2.0"
+
+# The inputs the binding's drags claim: the handler's `claims`, or the trigger's buttons in lower case.
+[[object.method]]
+name = "claims"
+since = "0.2.0"
+returns = "list<string>"
+
+# Reads an XR trigger: the buttons are `Trigger`, `Grip`, `Thumbstick`, `Primary` and `Secondary` (any case), joined by `+`, optionally
+# prefixed `Left.` or `Right.`, and it ends in `Drag`. A bad trigger is refused with the token that is wrong named.
+[[object.method]]
+name = "parse_trigger"
+since = "0.2.0"
+function = true
+returns = "object:controller_trigger"
+
+[[object.method.param]]
+name = "trigger"
+type = "string"
+
+# Moves the panel under the ray with the controller, and never changes the window. It is `move` on `Grip+Drag` unless told otherwise.
+[[object]]
+name = "view_move_binding"
+since = "0.2.0"
+base = "xr_drag_binding"
+
+# What the panel follows.
+[[object.property]]
+name = "tracking"
+type = "enum:view_tracking"
+since = "0.2.0"
+default = "controller"
+
+# Whether the panel turns with the hand.
+[[object.property]]
+name = "rotation"
+type = "enum:view_rotation"
+since = "0.2.0"
+default = "follow"
+
+# How a ray drag keeps the panel's distance: only `preserve`, the distance at which the ray struck it.
+[[object.property]]
+name = "distance"
+type = "string"
+since = "0.2.0"
+default = "preserve"
+
+# Resizes the panel under the ray by a corner, keeping the opposite corner still. While the hand moves the panel grows or shrinks evenly
+# and the window is asked nothing; on release the window is asked for one new size, and only if the size drawn changes the aspect by more
+# than 2% or leaves the window's picture under 85% of the pixels the new size shows. It is `resize` on `Grip+Trigger+Drag` unless told
+# otherwise.
+[[object]]
+name = "view_resize_binding"
+since = "0.2.0"
+base = "xr_drag_binding"
+
+# Window pixels for one metre of panel, for the size asked for on release.
+[[object.property]]
+name = "pixels_per_metre"
+type = "double"
+since = "0.2.0"
+default = 1200.0
+
+# The narrowest the panel may be made, in metres.
+[[object.property]]
+name = "min_width"
+type = "double"
+since = "0.2.0"
+default = 0.25
+
+# The lowest the panel may be made, in metres.
+[[object.property]]
+name = "min_height"
+type = "double"
+since = "0.2.0"
+default = 0.15
+
+# The corner the drag pulls.
+[[object.property]]
+name = "edges"
+type = "enum:resize_corner"
+since = "0.2.0"
+default = "quadrant"
+
+# Turns the panel under the ray about its own centre by what the hand turned since the drag began. It is `rotate` on
+# `Trigger+Thumbstick+Drag` unless told otherwise.
+[[object]]
+name = "view_rotate_binding"
+since = "0.2.0"
+base = "xr_drag_binding"
+
+# Adds to the panel's scale the metres the hand pushed along the way it pointed when the drag began, within the limits. It is `scale` on
+# `Grip+Thumbstick+Drag` unless told otherwise, and no layout makes one.
+[[object]]
+name = "view_scale_binding"
+since = "0.2.0"
+base = "xr_drag_binding"
+
+# The smallest scale a drag may leave.
+[[object.property]]
+name = "min_scale"
+type = "double"
+since = "0.2.0"
+default = 0.2
+
+# The largest scale a drag may leave.
+[[object.property]]
+name = "max_scale"
+type = "double"
+since = "0.2.0"
+default = 3.0
+
+# The optional extensions are `gnoblin.extensions` of the core's root once this library is loaded.
+[[augment]]
+target = "core.gnoblin"
+since = "0.2.0"
+
+# The optional native extensions.
+[[augment.property]]
+name = "extensions"
+type = "object:extensions"
+since = "0.2.0"
+readonly = true

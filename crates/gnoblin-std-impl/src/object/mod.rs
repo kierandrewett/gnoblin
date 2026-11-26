@@ -57,6 +57,7 @@ fn build() -> Library {
     crate::frame::register(&mut builder);
     crate::shell::register(&mut builder);
     crate::lock::register(&mut builder);
+    crate::xr::register(&mut builder);
     crate::augment::register(&mut builder);
     builder.finish(HOOKS)
 }
@@ -130,8 +131,13 @@ fn log(ctx: GnoblinCtx, level: u32, message: &str) {
 }
 
 /// `object_api(ctx, namespace, out)`: the table of `gnoblin.std`.
+///
+/// Opening the protocol is when a shell loads the library, so the library watches the generation's seats for the XR program's then
+/// (`xr::watch`), as the TypeScript library did when the package was loaded: the stock room is built when the program's seat appears,
+/// with no line of the shell's. Until it appears the watch is three subscriptions. A generation that cannot attach to the tree (a
+/// configuration check) has no XR, and its table is served all the same.
 pub(crate) unsafe extern "C" fn object_api(
-    _ctx: GnoblinCtx,
+    ctx: GnoblinCtx,
     namespace: abi::GnoblinStr,
     out: *mut *const GnoblinObjectApi,
 ) -> i32 {
@@ -148,6 +154,7 @@ pub(crate) unsafe extern "C" fn object_api(
         let out =
             unsafe { out.as_mut() }.ok_or_else(|| crate::error::Fail::err("object_api: a null output pointer"))?;
         *out = &raw const API;
+        let _ = crate::xr::watch(ctx);
         Ok(abi::E_OK)
     })
 }

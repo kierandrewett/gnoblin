@@ -1,7 +1,7 @@
 //! The classes of nodes: `scene_node`, and `camera3d` and `camera2d`, which add to it. Every one holds a [`NodeHandle`] and reads and
 //! writes the node through the checked path of the scene (`SceneState`), so a write is what the TypeScript scene wrote.
 
-use gnoblin_object::server::{Builder, ClassBuilder, Cx};
+use gnoblin_object::server::{Builder, ClassBuilder, Cx, Inits};
 use gnoblin_object::{Fail, Res, Val};
 
 use super::bindings::bindings_val;
@@ -13,7 +13,7 @@ use crate::math::transform::PoseMatrix;
 use crate::math::vector::Point3;
 use crate::math::{given_of, pose_val, triple_val, vec3_of};
 
-type Class<'a> = ClassBuilder<'a, NodeHandle>;
+pub(crate) type Class<'a> = ClassBuilder<'a, NodeHandle>;
 
 /// The places of `input_mode`, counted from one.
 const FORWARD: u32 = 1;
@@ -29,7 +29,7 @@ pub(super) fn enumeration(value: u32) -> Val {
 
 impl NodeHandle {
     /// How an error path names the node.
-    pub(super) fn label(&self) -> String {
+    pub(crate) fn label(&self) -> String {
         if self.root {
             format!("SceneRoot#{}", self.node)
         } else {
@@ -38,7 +38,7 @@ impl NodeHandle {
     }
 
     /// A property of the node: the staged value while a transition stages, the tree's otherwise.
-    pub(super) fn read(&self, key: &str) -> Res<Option<Prop>> {
+    pub(crate) fn read(&self, key: &str) -> Res<Option<Prop>> {
         self.world
             .state
             .borrow()
@@ -47,7 +47,7 @@ impl NodeHandle {
     }
 
     /// A write of one property, checked.
-    pub(super) fn put(&self, key: &str, prop: Prop) -> Res<()> {
+    pub(crate) fn put(&self, key: &str, prop: Prop) -> Res<()> {
         self.world
             .state
             .borrow_mut()
@@ -67,7 +67,7 @@ impl NodeHandle {
         }
     }
 
-    pub(super) fn number(&self, key: &str) -> Res<f64> {
+    pub(crate) fn number(&self, key: &str) -> Res<f64> {
         Ok(match self.read(key)? {
             Some(Prop::Number(value)) => value,
             _ => 0.0,
@@ -331,22 +331,35 @@ fn camera_number<'a>(class: Class<'a>, name: &'static str) -> Class<'a> {
 
 /// Registers the class `name` that makes a node of `kind`, with the members of every node.
 pub(super) fn node_class<'a>(builder: &'a mut Builder, name: &str, kind: Kind) -> Class<'a> {
-    let made = builder.class::<NodeHandle>(name).ctor(move |cx, _inits| {
+    node_class_with(builder, name, kind, |_, _, _| Ok(()))
+}
+
+/// As [`node_class`], with `init` run on the new node before the constructor answers: it takes what it handles of the inits, and a
+/// refusal ends the node.
+pub(crate) fn node_class_with<'a>(
+    builder: &'a mut Builder,
+    name: &str,
+    kind: Kind,
+    init: impl Fn(&NodeHandle, &mut Cx<'_>, &mut Inits) -> Res<()> + 'static,
+) -> Class<'a> {
+    let made = builder.class::<NodeHandle>(name).ctor(move |cx, inits| {
         let world = world_of(cx)?;
         let node = world.make(kind)?;
         world.adopt(node, cx.me(), kind, false);
-        Ok(NodeHandle {
+        let handle = NodeHandle {
             world,
             node,
             root: false,
-        })
+        };
+        init(&handle, cx, inits)?;
+        Ok(handle)
     });
     node_members(made)
 }
 
-pub(super) fn register(builder: &mut Builder) {
-    let _ = node_class(builder, "scene_node", Kind::Node);
-    let camera = node_class(builder, "camera3d", Kind::Camera3D)
+/// The members a `camera3d` adds to a node's, for it and for the classes that extend it.
+pub(crate) fn camera_members(class: Class<'_>) -> Class<'_> {
+    let camera = class
         .get("projection", |h, _| {
             let held = h.text("projection")?;
             let place = PROJECTIONS.iter().position(|name| *name == held).map_or(1, |at| at + 1);
@@ -366,7 +379,12 @@ pub(super) fn register(builder: &mut Builder) {
     let camera = camera_number(camera, "far");
     let camera = camera_number(camera, "fov");
     let camera = camera_number(camera, "ipd");
-    let _ = camera_number(camera, "size");
+    camera_number(camera, "size")
+}
+
+pub(super) fn register(builder: &mut Builder) {
+    let _ = node_class(builder, "scene_node", Kind::Node);
+    let _ = camera_members(node_class(builder, "camera3d", Kind::Camera3D));
     let _ = node_class(builder, "camera2d", Kind::Camera2D)
         .get("zoom", |h, _| Ok(Val::Double(h.number("zoom")?)))
         .set("zoom", |h, _, value| h.put("zoom", Prop::Number(value.double()?)))

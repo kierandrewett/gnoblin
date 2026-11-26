@@ -14,7 +14,7 @@ pub(crate) mod vector;
 
 use gnoblin_object::server::Builder;
 
-pub(crate) use classes::{given_of, pose_of, pose_val, triple_val, vec3_of};
+pub(crate) use classes::{given_of, pose_of, pose_val, triple_val, vec3_of, vec3_val};
 
 /// Implements the classes of the module.
 pub(crate) fn register(builder: &mut Builder) {

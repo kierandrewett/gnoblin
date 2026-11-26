@@ -11,6 +11,7 @@
 //! | `gnoblin.displays` | the service `displays` (the list, `replace`) |
 //! | `gnoblin.scene` | the service `scene` |
 //! | `gnoblin.gestures` | the service `gestures` |
+//! | `gnoblin.extensions` | the service `extensions` (`xr`, the list, `configure`, `require`, the session listeners) |
 //! | `gnoblin.requestTransition` | the same call as `transition.request` |
 //! | `gnoblin.outputs.profiles` | the service `output_profiles` |
 //! | `input.activeDisplay` | the display under the context's pointer (`display_objects::manager`) |
@@ -46,6 +47,7 @@ pub(crate) fn register(builder: &mut Builder) {
         .get("displays", |_, cx| cx.service("displays"))
         .get("scene", |_, cx| cx.service("scene"))
         .get("gestures", |_, cx| cx.service("gestures"))
+        .get("extensions", |_, cx| cx.service("extensions"))
         .method("request_transition", |_, cx, args| {
             crate::animation::objects::request(cx, args)
         })

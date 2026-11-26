@@ -26,6 +26,7 @@
 //! - `style`: scopes of style (every client, a workspace's, a selection's, one client's), the cascade, and what a resolved style
 //!   becomes on a node: effects (shadows, borders, the backdrop blur), opacity and corner radius.
 //! - `scene` and `camera`: nodes, views, `Camera3D` and the flat `Camera2D`, with the checks of the TypeScript scene.
+//! - `xr`: the headset's session (the seat named `xr`), its room of panels on a ring, and the controller drags that move them.
 //!
 //! The library reaches the compositor only through the installed core, as the shell's guest: it holds the same handle on the
 //! generation that the shell does, made by `gnoblin_core::private::gnoblin_for`. It names the core SDK and the two ABI crates and
@@ -71,6 +72,7 @@ mod turn;
 mod ui;
 mod workspace;
 mod workspace_objects;
+mod xr;
 
 pub use exports::{gnoblin_std_abi_version, gnoblin_std_get_api, gnoblin_std_last_error};
 

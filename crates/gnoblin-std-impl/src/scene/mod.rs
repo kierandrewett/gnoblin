@@ -20,7 +20,7 @@ pub(crate) mod bindings;
 pub(crate) mod camera;
 mod classes;
 pub(crate) mod mirror;
-mod node;
+pub(crate) mod node;
 pub(crate) mod registry;
 pub(crate) mod table;
 mod view;
