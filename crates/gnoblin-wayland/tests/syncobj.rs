@@ -362,17 +362,18 @@ fn a_session_on_a_software_vulkan_device_does_not_serve_syncobj() {
         }
     };
     // A software driver (lavapipe) names no DRM render node; the offer must follow the device.
-    let node = Backend::<State>::dmabuf(&mut backend).and_then(|support| support.main_device);
+    let support = Backend::<State>::dmabuf(&mut backend);
+    let node = support.as_ref().and_then(|support| support.main_device);
     let expected = ExplicitSync::on_node(node).is_ok();
-    if node.is_some() {
-        println!(
-            "the Vulkan device names a render node ({node:?}), so the lavapipe case is not exercised here: \
-             explicit sync is offered when the kernel supports it ({expected})"
-        );
-    } else {
+    println!(
+        "the Vulkan session reports dmabuf support {} and render node {node:?}; explicit sync should be served: {expected}",
+        if support.is_some() { "yes" } else { "none" }
+    );
+    if node.is_none() {
         assert!(!expected, "a device with no DRM node is offered explicit sync");
     }
     let served = session(backend, |client| advertises_syncobj(&client));
+    println!("the session advertises {MANAGER}: {served}");
     assert_eq!(served, expected, "the session's offer differs from the device's");
 }
 
