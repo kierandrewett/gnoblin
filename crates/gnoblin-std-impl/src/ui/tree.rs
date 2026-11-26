@@ -29,6 +29,17 @@ pub(crate) fn all() -> Vec<Rc<Ui>> {
     UIS.with(|uis| uis.borrow().values().cloned().collect())
 }
 
+/// Whether the decorations of a generation other than `ctx` are started. The toolkit of a generation that ended is gone, so this
+/// asks only the generations that are still there: the one a reload commits before the old one ends, and the one a failed reload
+/// left staged beside the running one.
+pub(crate) fn decorations_started_besides(ctx: GnoblinCtx) -> bool {
+    UIS.with(|uis| {
+        uis.borrow()
+            .iter()
+            .any(|(other, ui)| *other != ctx && ui.frames.borrow().deco.started)
+    })
+}
+
 /// Takes a generation's toolkit away, once it has ended.
 pub(crate) fn forget(ctx: GnoblinCtx) {
     UIS.with(|uis| uis.borrow_mut().remove(&ctx));

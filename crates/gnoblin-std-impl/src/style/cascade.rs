@@ -9,6 +9,7 @@
 //! effects (shadows, borders, the backdrop blur), its opacity and its corner radius are written to its node. What the tree cannot
 //! express is kept as a note the client reports (`style_notes`), never faked.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 
 use gnoblin_core::{Effect, EffectKind, NodeId};
@@ -29,6 +30,32 @@ pub(crate) enum Scope {
 
 /// A client's node id.
 pub(crate) type NodeId64 = u64;
+
+/// What a generation wrote to a window's node and left there: the opacity and the corner radius it set when they are not what a window
+/// with no style holds, and whether it left effects. This is what the generation that takes over may take off, no more.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Left {
+    opacity: Option<f64>,
+    corner: Option<f64>,
+    effects: bool,
+}
+
+impl Left {
+    /// Whether the node holds `wrote` still: a value somebody else wrote since is not this style's to take off. The tolerance is the
+    /// compositor's single-precision storage of a double.
+    fn holds(read: Result<f64, gnoblin_core::CoreError>, wrote: f64) -> bool {
+        read.is_ok_and(|read| (read - wrote).abs() <= 1e-6 * wrote.abs().max(1.0))
+    }
+}
+
+thread_local! {
+    /// The windows a generation that retired left styled, with what it left on each, for the generation that takes over. A reload
+    /// commits the new generation before the old one retires, and the new one's first turn comes after, so the old one hands its
+    /// windows over here. An owning successor writes the style it holds for each of them, an empty one included; one with no style of
+    /// its own takes off what the old one wrote and the node still holds. The set is the shell thread's, as every generation of the
+    /// shell is. Compositor node ids are never handed out twice in a session, so an entry that is never taken costs one write at most.
+    static HANDOVER: RefCell<HashMap<NodeId64, Left>> = RefCell::new(HashMap::new());
+}
 
 /// A scalar a scope sets.
 #[derive(Clone, Debug, PartialEq)]
@@ -59,6 +86,18 @@ struct Applied {
     corner: Option<f64>,
 }
 
+impl Applied {
+    /// What this application wrote and the node still carries: an effect, an opacity other than 1 or a corner radius.
+    fn left_on_node(&self) -> Option<Left> {
+        let left = Left {
+            opacity: self.opacity.filter(|opacity| *opacity != 1.0),
+            corner: self.corner.filter(|corner| *corner != 0.0),
+            effects: self.effects.as_ref().is_some_and(|effects| !effects.is_empty()),
+        };
+        (left.opacity.is_some() || left.corner.is_some() || left.effects).then_some(left)
+    }
+}
+
 /// What every style of a generation shares.
 #[derive(Debug, Default)]
 pub(crate) struct StyleState {
@@ -74,6 +113,11 @@ pub(crate) struct StyleState {
     /// ran, or this generation is a reload): the tree's effects cannot be read back, so the first application of a window writes its
     /// list, an empty one included. A first start has nothing to take off, and writes nothing for an empty list.
     inherited: bool,
+    /// The windows an earlier generation left styled (`HANDOVER`), with what it wrote to each, that this generation has not dealt with
+    /// yet. A generation that holds styles writes its own for each, an empty list included. One that holds none takes off what the
+    /// earlier one wrote and the node still holds, so a reload that drops the styles takes them off the windows and leaves a value the
+    /// new generation wrote itself.
+    carried: HashMap<NodeId64, Left>,
     /// Goes up by one for every accepted change of any style; the application compares it between turns.
     pub(crate) epoch: u64,
     clients: HashMap<u64, Applied>,
@@ -360,15 +404,31 @@ impl State {
         self.styles.epoch += 1;
     }
 
-    /// Writes the resolved style of every client whose style or layers changed since it was last applied.
-    pub(crate) fn apply_styles(&mut self) {
+    /// Writes the resolved style of every client whose style or layers changed since it was last applied. `takes_over` is the turn of a
+    /// generation that serves: only it takes the windows an earlier generation handed over. A pass that runs inside a script's call
+    /// (`settle`) may be a generation that is only staged, and one that fails must leave the windows to the one that serves.
+    pub(crate) fn apply_styles(&mut self, takes_over: bool) {
+        if takes_over {
+            self.styles
+                .carried
+                .extend(HANDOVER.with(|left| std::mem::take(&mut *left.borrow_mut())));
+        }
         // A shell that keeps its styles itself (a native one, which has made no scope here) has this pass leave its windows alone: the
-        // first scope made here, or `style_reset`, is what makes the library the styles' owner.
-        if self.styles.by_scope.is_empty() && !self.styles.owned {
+        // first scope made here, or `style_reset`, is what makes the library the styles' owner. The windows an earlier generation left
+        // styled are the exception: whoever takes over restyles them, and with nothing to say that is taking the style off.
+        let owning = !self.styles.by_scope.is_empty() || self.styles.owned;
+        if !owning && self.styles.carried.is_empty() {
             return;
         }
         let epoch = self.styles.epoch;
         for client in self.clients.clone() {
+            let carried = self.styles.carried.remove(&client);
+            if !owning {
+                if let Some(left) = carried {
+                    self.take_off(client, &left);
+                }
+                continue;
+            }
             let layers = self.client_layers(client);
             let key = layers
                 .iter()
@@ -391,11 +451,71 @@ impl State {
             seen.epoch = epoch;
             seen.layers = key;
             let computed = self.resolve_style(&layers);
-            self.apply_client_style(client, computed);
+            self.apply_client_style(client, computed, carried.is_some());
+        }
+        // Every window this generation knows has had its turn: a handed-over window it never meets is gone.
+        self.styles.carried.clear();
+    }
+
+    /// The generation ends. A window it left styled (an effect, an opacity other than 1 or a corner radius on the node, or one it was
+    /// handed and never restyled) is the next generation's to restyle when `successor` says one is open: it is handed over, so a
+    /// reload that keeps the style writes it once more and one that drops it takes it off. With no generation to take over (a
+    /// shutdown, or a reload to a shell that does not use the library) the style comes off the windows now. Whether windows were
+    /// handed over.
+    pub(crate) fn retire_styles(&mut self, successor: bool) -> bool {
+        let mut left: HashMap<NodeId64, Left> = std::mem::take(&mut self.styles.carried);
+        // What this generation applied is newer than what it was handed, and a window it applied bare has nothing left.
+        for (client, applied) in &self.styles.clients {
+            match applied.left_on_node() {
+                Some(now) => {
+                    left.insert(*client, now);
+                }
+                None if applied.applied => {
+                    left.remove(client);
+                }
+                None => {}
+            }
+        }
+        // A window that is gone has no style to hand on or take off.
+        left.retain(|client, _| crate::nodes::alive(&self.g, *client));
+        if left.is_empty() {
+            return false;
+        }
+        if successor {
+            HANDOVER.with(|handed| handed.borrow_mut().extend(left));
+            return true;
+        }
+        for (client, left) in left {
+            self.take_off(client, &left);
+        }
+        false
+    }
+
+    /// Puts back what a window with no style holds, for what `left` says an earlier generation wrote: an opacity or a corner radius
+    /// only while the node still holds it (somebody else's later write stays), and the effects, which the tree cannot be read back
+    /// for, when the earlier generation left any. A window whose opacity a running transition plays keeps it: that is the script's own.
+    fn take_off(&self, client: NodeId64, left: &Left) {
+        if !crate::nodes::alive(&self.g, client) {
+            return;
+        }
+        let node = self.g.node(NodeId(client));
+        if left.effects {
+            let _ = node.set_effects(&[]);
+        }
+        if let Some(wrote) = left.opacity
+            && !self.plays(client, "opacity")
+            && Left::holds(node.get_f64("opacity"), wrote)
+        {
+            let _ = node.set("opacity", 1.0);
+        }
+        if let Some(wrote) = left.corner
+            && Left::holds(node.get_f64("corner_radius"), wrote)
+        {
+            let _ = node.set("corner_radius", 0.0);
         }
     }
 
-    fn apply_client_style(&mut self, client: NodeId64, computed: Computed) {
+    fn apply_client_style(&mut self, client: NodeId64, computed: Computed, carried: bool) {
         let g = self.g.clone();
         let node = g.node(NodeId(client));
         // The seat says whether the compositor accepts a shader effect (`compositor.user-shaders`); a tree with no seat, or a seat
@@ -412,10 +532,11 @@ impl State {
             ));
         } else {
             // A window an earlier generation styled keeps its effects: the first application clears them when the style has none. The
-            // tree's effects cannot be read back, so over a library that is a reload or holds an earlier script's state (`inherited`)
-            // the first application writes even an empty list; at a first start an empty list is what the window has.
+            // tree's effects cannot be read back, so over a library that is a reload or holds an earlier script's state (`inherited`),
+            // and for a window an earlier generation handed over (`carried`), the first application writes even an empty list; at a
+            // first start an empty list is what the window has.
             let unchanged = match &applied.effects {
-                None => !self.styles.inherited && mapping.effects.is_empty(),
+                None => !(self.styles.inherited || carried) && mapping.effects.is_empty(),
                 Some(written) => *written == mapping.effects,
             };
             if !unchanged {

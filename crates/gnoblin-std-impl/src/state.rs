@@ -412,6 +412,15 @@ pub(crate) fn retire(ctx: GnoblinCtx) {
     let std = OPEN.with(|open| open.borrow_mut().remove(&ctx));
     RETIRED.with(|retired| retired.borrow_mut().insert(ctx));
     if let Some(std) = std {
+        // The windows this generation styled are the next one's to restyle, or come clean now when none is open: a reload commits the
+        // new generation before the old one retires, so the new one's first pass comes after this and writes over what it hands on.
+        let successors: Vec<Rc<Std>> = OPEN.with(|open| open.borrow().values().cloned().collect());
+        let handed = std.st.borrow_mut().retire_styles(!successors.is_empty());
+        if handed {
+            for next in &successors {
+                crate::turn::schedule(next);
+            }
+        }
         // Each binding's `drop_user` runs while the shell's code is still mapped.
         crate::bindings::retire(&std);
         crate::workspace_objects::retired(std.st.borrow().ctx);

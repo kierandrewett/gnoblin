@@ -1305,7 +1305,7 @@ fn a_tiled_window_is_placed_again_by_its_layout_when_its_bar_comes_or_goes() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the seat's decorations_available withdrawn when a generation retires"]
+#[ignore = "vrnw: compositor-owned on exit: closing the native generation queues the seat's decorations_available write (false), and nothing sends it once no generation serves; the compositor clears it when the shell's connection drops (docs/js-ui.md). A reload's withdrawal is checked in window_frame.rs `a_reload_takes_the_decorations_declaration_back_unless_the_new_generation_declares_it`"]
 fn the_shell_declares_that_it_draws_decorations_on_the_seat_and_takes_it_back_when_it_retires() {
     let mut rig = world(0, DECORATED);
     assert!(declared(&rig), "the seat's decorations_available is written at boot");

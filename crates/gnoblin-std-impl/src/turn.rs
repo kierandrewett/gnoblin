@@ -85,7 +85,7 @@ pub(crate) fn turn(std: &Rc<Std>) {
     }
     std.drain();
     layout_pass(std, &g);
-    std.st.borrow_mut().apply_styles();
+    std.st.borrow_mut().apply_styles(true);
     std.st.borrow_mut().publish_active_workspace();
     crate::display_objects::frame(std);
     let wrote = std::mem::take(&mut std.st.borrow_mut().placements_written);
@@ -122,7 +122,7 @@ pub(crate) fn settle(std: &Rc<Std>) {
     std.st.borrow_mut().scan_all = true;
     layout_pass(std, &g);
     std.st.borrow_mut().scan_all = true;
-    std.st.borrow_mut().apply_styles();
+    std.st.borrow_mut().apply_styles(false);
 }
 
 /// A slide the pass started: the windows have been moved to where it begins, and these are the writes that carry them home.

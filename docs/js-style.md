@@ -220,5 +220,12 @@ gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];
 
 ## Reload
 
-A reload runs the new config in a fresh generation. Style lines you removed are gone: the new generation takes the
-effects and the opacity off the windows the old one styled.
+A reload runs the new config in a fresh generation. Style lines you removed are gone:
+
+- The new generation takes the effects, the opacity and the corner radius off the windows the old one styled, with no style
+  line of its own to do it.
+- A style the new config sets again is written for each window once, with the new value.
+- A new config with no style of its own takes off only what the old style wrote and the window still holds: an opacity or a
+  corner radius the new config wrote to the window itself stays.
+- A new config that never uses the library leaves no generation to take over, so the old generation's end takes the style
+  off the windows itself.

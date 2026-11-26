@@ -8,7 +8,8 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::Value;
+use gnoblin_core::{Gnoblin, Value};
+use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::{Closure, Fail, Obj, Res, Val};
 
 use super::client::Win;
@@ -18,7 +19,7 @@ use crate::floating::Inset;
 use crate::nodes;
 use crate::object::record::record;
 use crate::object::with_lib;
-use crate::ui::tree::find;
+use crate::ui::tree::{decorations_started_besides, find};
 use crate::ui::widget::Ui;
 
 /// The state of the `decorations` object: the generation's toolkit.
@@ -74,10 +75,19 @@ fn fill_for(ui: &Rc<Ui>, node: u64) -> Result<Fill, String> {
 
 /// Writes the seat's `decorations_available`: whether this shell draws window decorations, so a client that asks for server-side is
 /// told so.
-fn declare(ui: &Ui, available: bool) {
-    if let Some(seat) = nodes::seat(&ui.g) {
+fn declare(g: &Gnoblin, available: bool) {
+    if let Some(seat) = nodes::seat(g) {
         // A seat that is going away, or a tree that refuses, is not an error of the decorations.
         let _ = seat.set("decorations_available", Value::Bool(available));
+    }
+}
+
+/// Takes back the declaration of the generation `ctx`, unless another generation's decorations are started: a reload commits the new
+/// generation before the old one retires, so a new generation that started its decorations has declared already and the old one's end
+/// must not undo that, and a generation that was staged and failed must not undo the running one's.
+fn withdraw(g: &Gnoblin, ctx: GnoblinCtx) {
+    if !decorations_started_besides(ctx) {
+        declare(g, false);
     }
 }
 
@@ -111,21 +121,16 @@ pub(crate) fn start(ui: &Rc<Ui>) -> Res<()> {
                 .map_err(refuse)?,
         );
     }
-    // The window the compositor takes a frame for stops being framed when this shell goes: the declaration is taken back.
-    listening.push(
-        g.on_shutdown(move || {
-            if let Some(ui) = find(ctx) {
-                declare(&ui, false);
-            }
-        })
-        .map_err(refuse)?,
-    );
+    // The window the compositor takes a frame for stops being framed when this shell goes: the declaration is taken back. The toolkit
+    // of the generation is gone by the time this runs (its own hook is registered first), so the hook holds the handle itself.
+    let farewell = g.clone();
+    listening.push(g.on_shutdown(move || withdraw(&farewell, ctx)).map_err(refuse)?);
     {
         let mut world = ui.frames.borrow_mut();
         world.deco.listening = listening;
         world.deco.started = true;
     }
-    declare(ui, true);
+    declare(&ui.g, true);
     ui.schedule();
     Ok(())
 }
@@ -152,7 +157,7 @@ pub(crate) fn stop(ui: &Rc<Ui>) {
         destroy(ui, frame);
     }
     send(ui);
-    declare(ui, false);
+    withdraw(&ui.g, ui.ctx);
 }
 
 /// Makes the frame of the window `node` for the kind of frame it takes: the object, its actions, and what fills it.
