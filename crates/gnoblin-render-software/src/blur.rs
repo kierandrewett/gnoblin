@@ -11,6 +11,17 @@
 //! by its alpha, then the grain, using `gnoblin_render_frame::grade`, the same function the GPU's shader is checked
 //! against, so a graded backdrop has the same colours on every renderer.
 //!
+//! # Downscale
+//!
+//! A blur with `downscale` d below 1 is the GLES blur's own reduction (`effects.rs`, "The backdrop blur's downscale and
+//! grain"). The region the blur reads, which is the layer's rectangle grown by the kernel's reach and clipped to the
+//! output, is halved through a bilinear tap (half, rounded up, never below the goal) until it is `ceil(size * d)` on a
+//! side. The sweeps run there with the tap step `radius / 3 * d`, and the result is read back up to the region's pixels
+//! through a bilinear tap at each pixel's centre, where it is graded. Every bilinear tap keeps its fraction in 1/256, as
+//! a GPU does, and every picture is rounded to bytes, as the GPU's targets are. The picture the sweeps run on is the
+//! region's own, so a downscaled blur is a function of the region and not of the damage; [`Blur::reduces`] says when the
+//! caller must hand [`Blur::run`] the whole region.
+//!
 //! # Cost
 //!
 //! A sweep is a handful of multiply-adds a channel a pixel, written as loops over whole rows so the compiler can
@@ -54,10 +65,10 @@ fn kernel(step: f32) -> Vec<(i32, f32)> {
 pub(crate) struct Blur {
     /// How many times the pair of sweeps runs.
     pub(crate) passes: u32,
-    /// The distance between taps, in pixels of the picture the sweeps run on: a third of the radius, at least half a pixel.
-    step: f32,
-    /// How many times the backdrop is halved before the sweeps run, so they run on `1 / 2^levels` of the width and height.
-    levels: u32,
+    /// The blur radius in physical pixels, at full resolution.
+    radius: f32,
+    /// The fraction of full resolution the sweeps run at, in `MIN_BLUR_DOWNSCALE..=1`.
+    downscale: f32,
     /// The grade of the result: saturate, brightness, contrast and the grain.
     pub(crate) grade: Grade,
     /// A colour mixed over the graded result by its alpha.
@@ -65,38 +76,63 @@ pub(crate) struct Blur {
 }
 
 impl Blur {
-    /// The blur of a layer with the given radius in physical pixels, `passes` passes, the grade and the tint.
-    ///
-    /// `downscale` is the fraction of full resolution the sweeps may run at. The backdrop is halved as many times as keeps
-    /// it at or above that fraction, and no further than leaves the radius at three pixels or more: a small blur is cheap,
-    /// and halving it would change what it looks like. A blur at a fraction of the resolution is a blur of the same
-    /// radius, so the radius is divided with the picture.
+    /// The blur of a layer with the given radius in physical pixels, `passes` passes, the grade and the tint, at
+    /// `downscale` of full resolution.
     pub(crate) fn new(radius: f32, passes: u32, downscale: f32, grade: Grade, tint: Color) -> Self {
-        let wanted = (1.0 / downscale.clamp(MIN_BLUR_DOWNSCALE, 1.0)).log2().floor() as u32;
-        let affordable = (radius / 3.0).max(1.0).log2().floor() as u32;
-        let levels = wanted.min(affordable);
         Self {
             passes,
-            step: (radius / (1 << levels) as f32 / 3.0).max(0.5),
-            levels,
+            radius,
+            downscale: downscale.clamp(MIN_BLUR_DOWNSCALE, 1.0),
             grade,
             tint,
         }
     }
 
-    /// How far a sweep reaches either side of a pixel, in pixels of the picture it runs on.
+    /// The same blur with its downscale undone, for a caller that hands [`Blur::run`] a patch that is not the whole region.
+    pub(crate) fn at_full_resolution(self) -> Self {
+        Self { downscale: 1.0, ..self }
+    }
+
+    /// The picture the sweeps run on for a region of `size`: `ceil(size * downscale)` on a side, at least a pixel and at
+    /// most the region's own size.
+    fn small(&self, size: (usize, usize)) -> (usize, usize) {
+        let scaled = |side: usize| ((side as f32 * self.downscale).ceil() as usize).clamp(1, side.max(1));
+        (scaled(size.0), scaled(size.1))
+    }
+
+    /// Whether the sweeps run on a picture smaller than a region of `size`. Such a blur is a function of the whole
+    /// region, so the caller reads [`Blur::region`] and not less.
+    pub(crate) fn reduces(&self, size: (i32, i32)) -> bool {
+        let size = (size.0.max(0) as usize, size.1.max(0) as usize);
+        self.small(size) != size
+    }
+
+    /// The tap step of the sweeps, in pixels of the picture they run on: a third of the radius, at least half a pixel,
+    /// and in a reduced picture scaled with it so the blur's width on the output does not depend on the downscale.
+    fn step(&self, reduced: bool) -> f32 {
+        let step = (self.radius / 3.0).max(0.5);
+        if reduced { step * self.downscale } else { step }
+    }
+
+    /// The region the GLES renderer copies out for a layer at `rect`, which lies inside `bounds`: `rect` grown by the
+    /// reach of every sweep, clipped to `bounds`.
+    pub(crate) fn region(&self, rect: Area, bounds: Area) -> Option<Area> {
+        let reach = self.passes as i32 * ((self.radius / 3.0 * 4.0).ceil() as i32 + 1);
+        crate::raster::grown(rect, reach).intersection(bounds)
+    }
+
+    /// How far a sweep reaches either side of a pixel at full resolution, in pixels.
     fn reach(&self) -> i32 {
-        kernel(self.step)
+        kernel(self.step(false))
             .iter()
             .map(|(offset, _)| offset.abs())
             .max()
             .unwrap_or(0)
     }
 
-    /// How far the blur of a pixel depends on pixels around it, in output pixels: every sweep reaches as far again, and
-    /// the halving and the sampling back up each read a texel beyond the pixel's own block.
+    /// How far the blur of a pixel depends on pixels around it at full resolution: every sweep reaches as far again.
     pub(crate) fn margin(&self) -> i32 {
-        (self.reach() * self.passes as i32 + 2) << self.levels
+        self.reach() * self.passes as i32 + 2
     }
 
     /// Blurs `patch` and writes the result into the pixels of `keep`, which must lie inside it; the pixels of the patch
@@ -104,50 +140,66 @@ impl Blur {
     ///
     /// `origin` is the layer's top-left corner on the output: the grain is a function of the distance from it.
     ///
-    /// The picture the sweeps run on is a grid of blocks aligned to the output's own origin, not to the patch's, so the
-    /// blur of a pixel is the same whatever part of the frame is being redrawn.
+    /// At full resolution the blur of a pixel is the same whatever part of the frame is being redrawn, as long as the
+    /// patch holds [`Blur::margin`] pixels around `keep`. A reduced blur is the blur of the patch as a whole.
     pub(crate) fn run(&self, patch: &mut Patch, keep: Area, origin: (i32, i32)) {
-        let (width, height) = (patch.rect.size.w as usize, patch.rect.size.h as usize);
-        if width == 0 || height == 0 {
+        let size = (patch.rect.size.w as usize, patch.rect.size.h as usize);
+        if size.0 == 0 || size.1 == 0 {
             return;
         }
-        let factor = 1_i32 << self.levels;
-        let low = Grid::of(patch.rect, factor);
-        let mut current = low.reduce(patch);
-        let mut next = vec![0.0_f32; current.len()];
-        let taps = kernel(self.step);
-        let mut padded = vec![0.0_f32; (low.width + 2 * self.reach() as usize) * 4];
-        for _ in 0..self.passes {
-            horizontal(&current, &mut next, (low.width, low.height), &taps, &mut padded, true);
-            vertical(&next, &mut current, (low.width, low.height), &taps, true);
+        let small = self.small(size);
+        let mut current: Vec<f32> = patch.bytes.iter().map(|byte| f32::from(*byte)).collect();
+        let mut at = size;
+        while at != small {
+            let next = (halved(at.0, small.0), halved(at.1, small.1));
+            current = resample(&current, at, next);
+            at = next;
         }
-        self.finish(patch, &low, &current, keep, origin);
+        let taps = kernel(self.step(small != size));
+        let pad = taps
+            .iter()
+            .map(|(offset, _)| offset.unsigned_abs() as usize)
+            .max()
+            .unwrap_or(0);
+        let mut next = vec![0.0_f32; current.len()];
+        let mut padded = vec![0.0_f32; (at.0 + 2 * pad) * 4];
+        for _ in 0..self.passes {
+            horizontal(&current, &mut next, at, &taps, &mut padded, true);
+            vertical(&next, &mut current, at, &taps, true);
+        }
+        self.finish(patch, &current, at, keep, origin);
     }
 
-    /// Samples the blurred picture back up to the pixels of `keep`, grades them, and stores them in `patch`.
-    fn finish(&self, patch: &mut Patch, low: &Grid, blurred: &[f32], keep: Area, origin: (i32, i32)) {
+    /// Samples the blurred picture, `small` texels across and down, back up to the pixels of `keep`, grades them, and
+    /// stores them in `patch`.
+    fn finish(&self, patch: &mut Patch, blurred: &[f32], small: (usize, usize), keep: Area, origin: (i32, i32)) {
         let width = patch.rect.size.w as usize;
+        let height = patch.rect.size.h as usize;
         let graded = !self.grade.is_identity();
         let tinted = self.tint.a > 0.0;
         let grained = self.grade.noise > 0.0;
-        let factor = (1_i32 << self.levels) as f32;
+        let (left_of_keep, top_of_keep) = (
+            (keep.loc.x - patch.rect.loc.x) as usize,
+            (keep.loc.y - patch.rect.loc.y) as usize,
+        );
         // Where each column of `keep` reads the blurred picture: the two texels either side of its centre and the share
         // of the second. The rows are worked out as they come.
-        let columns: Vec<(usize, usize, f32)> = (keep.loc.x..keep.loc.x + keep.size.w)
-            .map(|x| low.locate(x as f32 + 0.5 - low.x as f32, factor, low.width))
+        let columns: Vec<(usize, usize, f32)> = (0..keep.size.w as usize)
+            .map(|column| axis_at(small.0, width, left_of_keep + column))
             .collect();
         // The row of the blurred picture a row of `keep` reads, mixed down from the two texel rows either side of it.
-        let mut line = vec![0.0_f32; low.width * 4];
-        for y in keep.loc.y..keep.loc.y + keep.size.h {
-            let (top, bottom, share_y) = low.locate(y as f32 + 0.5 - low.y as f32, factor, low.height);
+        let mut line = vec![0.0_f32; small.0 * 4];
+        for row in 0..keep.size.h as usize {
+            let y = keep.loc.y + row as i32;
+            let (top, bottom, share_y) = axis_at(small.1, height, top_of_keep + row);
             let (upper, lower) = (
-                &blurred[top * low.width * 4..(top + 1) * low.width * 4],
-                &blurred[bottom * low.width * 4..(bottom + 1) * low.width * 4],
+                &blurred[top * small.0 * 4..(top + 1) * small.0 * 4],
+                &blurred[bottom * small.0 * 4..(bottom + 1) * small.0 * 4],
             );
             for ((mixed, above), below) in line.iter_mut().zip(upper).zip(lower) {
                 *mixed = (above + (below - above) * share_y) / 255.0;
             }
-            let start = ((y - patch.rect.loc.y) as usize * width + (keep.loc.x - patch.rect.loc.x) as usize) * 4;
+            let start = ((top_of_keep + row) * width + left_of_keep) * 4;
             let out = &mut patch.bytes[start..start + columns.len() * 4];
             for ((x, (left, right, share_x)), pixel_out) in
                 (keep.loc.x..).zip(&columns).zip(out.as_chunks_mut::<4>().0.iter_mut())
@@ -183,79 +235,69 @@ impl Blur {
     }
 }
 
-/// The grid of blocks the sweeps run on: each texel stands for a `factor` by `factor` block of the output, and the
-/// grid's corner is a multiple of `factor` on the output.
-struct Grid {
-    /// The output coordinates of the grid's top-left corner.
-    x: i32,
-    y: i32,
-    /// The grid's size in texels.
-    width: usize,
-    height: usize,
-    factor: i32,
-    /// The patch the grid covers, which holds the pixels the blocks are made of.
-    source: Area,
+/// The size one halving of `size` reaches towards `goal`: half, rounded up, but not below the goal.
+fn halved(size: usize, goal: usize) -> usize {
+    if size > goal { size.div_ceil(2).max(goal) } else { size }
 }
 
-impl Grid {
-    /// The grid over `patch`, grown outwards to whole blocks.
-    fn of(patch: Area, factor: i32) -> Self {
-        let x = patch.loc.x.div_euclid(factor) * factor;
-        let y = patch.loc.y.div_euclid(factor) * factor;
-        let right = (patch.loc.x + patch.size.w + factor - 1).div_euclid(factor) * factor;
-        let bottom = (patch.loc.y + patch.size.h + factor - 1).div_euclid(factor) * factor;
-        Self {
-            x,
-            y,
-            width: ((right - x) / factor) as usize,
-            height: ((bottom - y) / factor) as usize,
-            factor,
-            source: patch,
-        }
-    }
+/// Where texel `index` of a picture `to` texels long reads a picture `from` texels long along one axis, through a
+/// bilinear tap at its centre: the two texels either side of that point, clamped to the picture, and the share of the
+/// second, kept in 1/256 as a GPU keeps it.
+fn axis_at(from: usize, to: usize, index: usize) -> (usize, usize, f32) {
+    let at = (index as f32 + 0.5) * from as f32 / to as f32 - 0.5;
+    let first = at.floor();
+    let share = ((at - first) * 256.0).round() / 256.0;
+    let last = from as i32 - 1;
+    (
+        (first as i32).clamp(0, last) as usize,
+        (first as i32 + 1).clamp(0, last) as usize,
+        share,
+    )
+}
 
-    /// The mean of each block of the patch, in the patch's 0 to 255 scale. A block that reaches past the patch repeats
-    /// the patch's edge pixels, which is the clamp the sweeps would have made.
-    fn reduce(&self, patch: &Patch) -> Vec<f32> {
-        let (width, height) = (patch.rect.size.w, patch.rect.size.h);
-        let factor = self.factor;
-        let weight = 1.0 / (factor * factor) as f32;
-        let mut out = vec![0.0_f32; self.width * self.height * 4];
-        let mut sums = vec![0_u32; self.width * 4];
-        for (row, texels) in out.chunks_exact_mut(self.width * 4).enumerate() {
-            sums.fill(0);
-            for dy in 0..factor {
-                let y = ((self.y - self.source.loc.y) + row as i32 * factor + dy).clamp(0, height - 1) as usize;
-                let line = &patch.bytes[y * width as usize * 4..(y + 1) * width as usize * 4];
-                for (column, total) in sums.as_chunks_mut::<4>().0.iter_mut().enumerate() {
-                    let first = (self.x - self.source.loc.x) + column as i32 * factor;
-                    for dx in 0..factor {
-                        let x = (first + dx).clamp(0, width - 1) as usize;
-                        for (sum, byte) in total.iter_mut().zip(&line[x * 4..x * 4 + 4]) {
-                            *sum += u32::from(*byte);
-                        }
-                    }
+/// `source`, `from` texels across and down, as a picture of `to` texels read through a bilinear tap at the centre of each
+/// of its texels and rounded to bytes: one step of the GLES blur's reduction.
+fn resample(source: &[f32], from: (usize, usize), to: (usize, usize)) -> Vec<f32> {
+    let mut out = vec![0.0_f32; to.0 * to.1 * 4];
+    if from.0 == to.0 * 2 && from.1 == to.1 * 2 {
+        // An exact halving taps the middle of every 2x2 block, which is the block's mean.
+        let stride = from.0 * 4;
+        for (row, texels) in out.chunks_exact_mut(to.0 * 4).enumerate() {
+            let upper = &source[2 * row * stride..(2 * row + 1) * stride];
+            let lower = &source[(2 * row + 1) * stride..(2 * row + 2) * stride];
+            for ((texel, above), below) in texels
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(upper.as_chunks::<8>().0)
+                .zip(lower.as_chunks::<8>().0)
+            {
+                for (channel, value) in texel.iter_mut().enumerate() {
+                    let sum = above[channel] + above[channel + 4] + below[channel] + below[channel + 4];
+                    *value = (sum * 0.25 + 0.5) as i32 as f32;
                 }
             }
-            for (texel, sum) in texels.iter_mut().zip(&sums) {
-                *texel = *sum as f32 * weight;
+        }
+        return out;
+    }
+    let columns: Vec<(usize, usize, f32)> = (0..to.0).map(|index| axis_at(from.0, to.0, index)).collect();
+    // The row of the source a row of the result reads, mixed down from the two rows either side of it.
+    let mut line = vec![0.0_f32; from.0 * 4];
+    for (row, texels) in out.chunks_exact_mut(to.0 * 4).enumerate() {
+        let (top, bottom, share_y) = axis_at(from.1, to.1, row);
+        let upper = &source[top * from.0 * 4..(top + 1) * from.0 * 4];
+        let lower = &source[bottom * from.0 * 4..(bottom + 1) * from.0 * 4];
+        for ((mixed, above), below) in line.iter_mut().zip(upper).zip(lower) {
+            *mixed = above + (below - above) * share_y;
+        }
+        for ((left, right, share_x), texel) in columns.iter().zip(texels.as_chunks_mut::<4>().0.iter_mut()) {
+            let (a, b) = (&line[left * 4..left * 4 + 4], &line[right * 4..right * 4 + 4]);
+            for (channel, value) in texel.iter_mut().enumerate() {
+                *value = (a[channel] + (b[channel] - a[channel]) * share_x + 0.5) as i32 as f32;
             }
         }
-        out
     }
-
-    /// Where a pixel centre `position` pixels from the grid's corner reads the blurred picture along one axis: the
-    /// two texels either side of it, clamped to the grid, and the share of the second.
-    fn locate(&self, position: f32, factor: f32, texels: usize) -> (usize, usize, f32) {
-        let at = position / factor - 0.5;
-        let first = at.floor();
-        let last = texels as i32 - 1;
-        (
-            (first as i32).clamp(0, last) as usize,
-            (first as i32 + 1).clamp(0, last) as usize,
-            at - first,
-        )
-    }
+    out
 }
 
 /// The most taps a sweep's filter has: nine taps, each reading two whole-pixel offsets.
@@ -515,16 +557,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_small_blur_is_not_downscaled() {
-        assert_eq!(Blur::new(4.0, 2, 0.25, Grade::IDENTITY, Color::TRANSPARENT).levels, 0);
-        assert_eq!(Blur::new(12.0, 2, 0.5, Grade::IDENTITY, Color::TRANSPARENT).levels, 1);
-        assert_eq!(Blur::new(48.0, 2, 0.25, Grade::IDENTITY, Color::TRANSPARENT).levels, 2);
-        assert_eq!(Blur::new(48.0, 2, 1.0, Grade::IDENTITY, Color::TRANSPARENT).levels, 0);
-    }
-
     /// The blur of a pixel does not depend on how much of the frame is redrawn around it: a patch cut to a small damage
-    /// and the same pixels of a patch of the whole picture are the same, whichever grid the damage falls on.
+    /// and the same pixels of a patch of the whole picture are the same.
     #[test]
     fn the_blur_of_a_pixel_does_not_depend_on_the_patch_it_is_made_in() {
         let whole = area(0, 0, 160, 40);
@@ -536,30 +570,28 @@ mod tests {
                 255,
             ]
         };
-        for downscale in [1.0, 0.5, 0.25] {
-            let blur = Blur::new(36.0, 2, downscale, Grade::IDENTITY, Color::TRANSPARENT);
-            let mut full = patch(whole, pixel);
-            blur.run(&mut full, whole, (0, 0));
-            for keep in [
-                area(71, 9, 13, 11),
-                area(64, 8, 8, 8),
-                area(0, 0, 5, 5),
-                area(150, 30, 10, 10),
-            ] {
-                let grown = Rectangle::new(
-                    (keep.loc.x - blur.margin(), keep.loc.y - blur.margin()).into(),
-                    (keep.size.w + 2 * blur.margin(), keep.size.h + 2 * blur.margin()).into(),
-                )
-                .intersection(whole)
-                .expect("overlaps");
-                let mut part = patch(grown, |x, y| pixel(x + grown.loc.x, y + grown.loc.y));
-                blur.run(&mut part, keep, (0, 0));
-                for y in keep.loc.y..keep.loc.y + keep.size.h {
-                    for x in keep.loc.x..keep.loc.x + keep.size.w {
-                        let a = &full.bytes[((y * 160 + x) * 4) as usize..][..4];
-                        let b = &part.bytes[(((y - grown.loc.y) * grown.size.w + x - grown.loc.x) * 4) as usize..][..4];
-                        assert_eq!(a, b, "downscale {downscale}, pixel ({x}, {y}) of the damage {keep:?}");
-                    }
+        let blur = Blur::new(36.0, 2, 1.0, Grade::IDENTITY, Color::TRANSPARENT);
+        let mut full = patch(whole, pixel);
+        blur.run(&mut full, whole, (0, 0));
+        for keep in [
+            area(71, 9, 13, 11),
+            area(64, 8, 8, 8),
+            area(0, 0, 5, 5),
+            area(150, 30, 10, 10),
+        ] {
+            let grown = Rectangle::new(
+                (keep.loc.x - blur.margin(), keep.loc.y - blur.margin()).into(),
+                (keep.size.w + 2 * blur.margin(), keep.size.h + 2 * blur.margin()).into(),
+            )
+            .intersection(whole)
+            .expect("overlaps");
+            let mut part = patch(grown, |x, y| pixel(x + grown.loc.x, y + grown.loc.y));
+            blur.run(&mut part, keep, (0, 0));
+            for y in keep.loc.y..keep.loc.y + keep.size.h {
+                for x in keep.loc.x..keep.loc.x + keep.size.w {
+                    let a = &full.bytes[((y * 160 + x) * 4) as usize..][..4];
+                    let b = &part.bytes[(((y - grown.loc.y) * grown.size.w + x - grown.loc.x) * 4) as usize..][..4];
+                    assert_eq!(a, b, "pixel ({x}, {y}) of the damage {keep:?}");
                 }
             }
         }

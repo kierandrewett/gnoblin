@@ -370,11 +370,13 @@ fn shadows(
 
 /// Replaces the pixels behind the layer with their blur: the sweeps, then the grade, the tint and the grain.
 ///
-/// The blur reads the layer's rectangle grown by the reach of the kernel, so the pixels at the layer's edge are blurred
-/// with what lies beyond it, and writes only the layer's own damaged pixels.
+/// At full resolution the blur reads the layer's damaged part grown by the reach of the kernel, so the pixels at the
+/// layer's edge are blurred with what lies beyond it, and writes only the layer's own damaged pixels. A blur with a
+/// `downscale` is a blur of the whole region the GLES renderer copies (the layer grown by every sweep's reach, clipped
+/// to the output), reduced and swept as that picture, and so reads all of it whatever the damage.
 fn blur_backdrop(canvas: &mut Canvas<'_, '_>, held: &BlurParams, need: Area, dst: Area) -> Result<(), RenderError> {
     let radius = (held.radius * canvas.scale.as_f64() as f32).clamp(1.0, MAX_RADIUS);
-    let blur = Blur::new(
+    let mut blur = Blur::new(
         radius,
         held.passes.clamp(1, MAX_BLUR_PASSES),
         held.downscale,
@@ -386,8 +388,20 @@ fn blur_backdrop(canvas: &mut Canvas<'_, '_>, held: &BlurParams, need: Area, dst
         },
         held.tint,
     );
-    let Some(region) = raster::grown(need, blur.margin()).intersection(canvas.bounds()) else {
-        return Ok(());
+    let bounds = canvas.bounds();
+    let whole = dst
+        .intersection(bounds)
+        .and_then(|rect| blur.region(rect, bounds))
+        .filter(|region| blur.reduces((region.size.w, region.size.h)));
+    let region = match whole {
+        Some(region) => region,
+        None => {
+            blur = blur.at_full_resolution();
+            let Some(region) = raster::grown(need, blur.margin()).intersection(bounds) else {
+                return Ok(());
+            };
+            region
+        }
     };
     let mut patch = canvas.read(region)?;
     blur.run(&mut patch, need, (dst.loc.x, dst.loc.y));

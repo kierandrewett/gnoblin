@@ -39,7 +39,9 @@
 //!   arithmetic of the GLES shaders and written over the damaged pixels. A shadow falls off by the shader's smoothstep
 //!   (an inset one by its reflection), a border's band is anti-aliased at both its edges and at a rounded corner, and
 //!   the blur is the shader's nine-tap Gaussian, swept `passes` times, then graded by `gnoblin_render_frame::grade`, the
-//!   function the GPU shaders are checked against, so the colours agree. The shared goldens
+//!   function the GPU shaders are checked against, so the colours agree. A blur with a `downscale` is reduced and
+//!   swept as the GLES blur is: the region it reads (the layer grown by the sweeps' reach) halved through a bilinear tap
+//!   to `ceil(size * downscale)`, swept there and read back up through a bilinear tap (`blur.rs`). The shared goldens
 //!   (`tests/golden.rs`) hold all of it to the GPU pictures.
 //!
 //! What it does not draw, and why:
@@ -50,8 +52,6 @@
 //! - **A `filter`**, the grade and blur of everything the layer paints. It needs the layer drawn into a picture of its
 //!   own and this renderer draws into the output only, so the node's `skipped` list names `filter` and the log says why once.
 //! - **Effects on a layer placed in depth** (a `model` matrix). The layer is drawn flat, as before, without its effects.
-//! - **A blur's `downscale`.** The blur runs at full resolution, as the GLES blur does; the parameter is not honoured
-//!   there either. The cost is in `tests/effect_cost.rs`.
 //! - **Four different corner radii**, which the node cannot state yet.
 //!
 //! # Failure modes

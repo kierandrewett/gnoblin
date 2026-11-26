@@ -488,8 +488,7 @@ pub const CASES: [Case; 14] = [
                 glass_of(Rect::new(8, 13, 16, 10), blur(0.25)),
             ]
         },
-        // Not marked: the software renderer blurs the quarter-resolution glass differently (up to 17 levels off).
-        software: false,
+        software: true,
         tolerance: BLUR_TOLERANCE,
         probes: |image| {
             for y in [5, 17] {
