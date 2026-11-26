@@ -71,6 +71,29 @@ shell. `bits` is the handle in that library and `ptr`/`len` is that library's na
 - A client asks `table_has` before it calls `retain`. A library built before the field has no `retain`, and another library cannot pass its
   objects on.
 
+### The write stage field
+
+`GnoblinApi` has a function `set_write_stage(ctx, stage, peek, user)`, appended after `object_api` within ABI 1.0. The table grew from 472 to
+480 bytes. It installs, or clears, one hook on the shell thread that holds the writes an object's setter makes:
+
+- The core offers the plain write of a window property (`client.opacity = 0.5`, `x`, `rotation`) to `stage(user, node, key, value)` before
+  it sends it. When the hook returns nonzero the core sends nothing, and the hook's owner sends the write itself through the node API
+  (`write_set`, `write_set_timed`), which is never offered.
+- A read of such a property asks `peek(user, node, key, out)` first, so the code that wrote reads back what it wrote.
+- A timed write through the object protocol (`set_timed`) is never offered. The core sends it with the seconds, delay, `tween` node and
+  curve of its timing.
+- `libgnoblin-std` installs the hook for as long as it stages a `requestTransition` callback, and clears it on every way out: a commit,
+  an abort and a callback that failed. Clearing with `stage` null never fails and only clears the hook `user` installed.
+
+The old-table rule is the rule for every appended field:
+
+- The SDK asks `table_has` before it calls the function. `Gnoblin::stage_writes` in `gnoblin-core` answers `Unsupported` on a table that ends
+  before the field.
+- A std library on a core built before the field loads and works. A `requestTransition` callback on that core stages the writes the
+  library itself makes (layout rectangles, styles, `Transition.set`) and the writes of a window's properties through the object stay plain:
+  immediate, untimed and not rolled back, as they were before the field.
+- A shell built before the field never calls it, so the golden shells run as they did.
+
 ## The object protocol
 
 A class of the desktop or of the object model is not a function of a table. Both libraries serve their classes through
@@ -117,8 +140,8 @@ The rules a shell and a library keep, which the table's documentation states in 
 
 - `cargo xtask gen-sdks --check` proves the catalogs of the two libraries and their locks.
 - The golden shells prove the tables did not move what they were built against. B1 appended `object_api` to `GnoblinApi` and
-  `GnoblinStdApi`. Later changes appended fields to `GnoblinObjectApi` (`track` in B1.1, then `last_error_code` and `retain`), and no
-  function was moved.
+  `GnoblinStdApi`, and `set_write_stage` was appended to `GnoblinApi` later. Later changes appended fields to `GnoblinObjectApi` (`track` in
+  B1.1, then `last_error_code` and `retain`), and no function was moved.
 
 ## What a shell sees
 

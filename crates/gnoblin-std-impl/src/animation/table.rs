@@ -185,7 +185,7 @@ pub(crate) fn commit_staged(std: &Rc<state::Std>) -> Res<state::Id> {
     }
     std.st.borrow_mut().compute_failed = None;
     crate::turn::settle(std);
-    let entries = staging::end();
+    let entries = std.st.borrow_mut().transition_end_staging();
     let failed = std.st.borrow_mut().compute_failed.take();
     if let Some(message) = failed {
         // A layout that fails fails the transition: nothing staged is sent, and the shell puts back what it changed.

@@ -4,7 +4,7 @@
 //! when it went once it is gone. A write is a write of the node's property, checked here so the failure names the member.
 
 use gnoblin_core_abi as abi;
-use gnoblin_object::server::{Builder, ClassBuilder};
+use gnoblin_object::server::{Builder, ClassBuilder, Cx};
 use gnoblin_object::{ErrorCode, Fail, Res, Val};
 use gnoblin_tree_client::tree_mirror::{MirrorValue, TxAnimation};
 
@@ -12,6 +12,8 @@ use super::values::{self, enum_name, fields_of, finite, nodes_of, rect, size};
 use super::world::{ClientState, detached, gone, write_fail};
 use super::{handout, listener, properties, with_world};
 use crate::session;
+use crate::stage;
+use crate::tree::{LINEAR, timed_animation};
 
 type Class<'a> = ClassBuilder<'a, ClientState>;
 
@@ -21,17 +23,34 @@ impl ClientState {
         gone("Client", self.node, member, "client")
     }
 
-    /// Writes a property of the node.
-    fn write(&self, key: &str, value: MirrorValue) -> Res<()> {
+    /// Writes a property of the node. A plain write is offered to the write stage hook first (a `requestTransition` callback's writes
+    /// are held by it and sent together when the callback completes), and goes to the tree when no hook keeps it. A timed write
+    /// (`cx.timing()`) is sent with the animation its timing says and is never offered.
+    fn write(&self, cx: &Cx<'_>, key: &str, value: MirrorValue) -> Res<()> {
         if !self.alive {
             return Err(self.gone(key));
         }
+        let timing = cx.timing();
+        if timing.is_none() && stage::offer(self.node, key, &value) {
+            return Ok(());
+        }
         session::with(|session| {
-            session
-                .tree()
-                .map_err(detached)?
-                .set(self.node, key, value, TxAnimation::default())
-                .map_err(|error| write_fail(&format!("Client#{}.{key}", self.node), &error))
+            let tree = session.tree().map_err(detached)?;
+            let target = format!("Client#{}.{key}", self.node);
+            let animation = match timing {
+                None => TxAnimation::default(),
+                Some(timing) => {
+                    let samples = if timing.samples.is_empty() {
+                        &LINEAR[..]
+                    } else {
+                        &timing.samples[..]
+                    };
+                    timed_animation(tree, &target, timing.seconds, timing.delay, timing.tween, samples)
+                        .map_err(Fail::type_error)?
+                }
+            };
+            tree.set(self.node, key, value, animation)
+                .map_err(|error| write_fail(&target, &error))
         })
     }
 
@@ -77,8 +96,8 @@ fn flag<'a>(class: Class<'a>, name: &'static str, key: &'static str) -> Class<'a
 }
 
 fn flag_rw<'a>(class: Class<'a>, name: &'static str, key: &'static str) -> Class<'a> {
-    flag(class, name, key).set(name, move |state, _, value| {
-        state.write(key, MirrorValue::Bool(value.bool()?))
+    flag(class, name, key).set(name, move |state, cx, value| {
+        state.write(cx, key, MirrorValue::Bool(value.bool()?))
     })
 }
 
@@ -87,8 +106,8 @@ fn number<'a>(class: Class<'a>, name: &'static str, key: &'static str) -> Class<
 }
 
 fn number_rw<'a>(class: Class<'a>, name: &'static str, key: &'static str) -> Class<'a> {
-    number(class, name, key).set(name, move |state, _, value| {
-        state.write(key, state.number(key, &value)?)
+    number(class, name, key).set(name, move |state, cx, value| {
+        state.write(cx, key, state.number(key, &value)?)
     })
 }
 
@@ -99,9 +118,9 @@ fn triple_rw<'a>(class: Class<'a>, name: &'static str, key: &'static str) -> Cla
                 state.read(key).numbers().into_iter().map(Val::Double).collect(),
             ))
         })
-        .set(name, move |state, _, value| {
+        .set(name, move |state, cx, value| {
             let parts = state.triple(key, &value)?;
-            state.write(key, MirrorValue::List(parts))
+            state.write(cx, key, MirrorValue::List(parts))
         })
 }
 
@@ -236,7 +255,7 @@ pub(super) fn register(builder: &mut Builder) {
         })
         .set("frame_policy", |state, cx, value| {
             let word = enum_name(cx, &value)?;
-            state.write("frame_policy", MirrorValue::Text(word))
+            state.write(cx, "frame_policy", MirrorValue::Text(word))
         })
         .get("bounds", |state, cx| {
             rect(
@@ -256,7 +275,7 @@ pub(super) fn register(builder: &mut Builder) {
                 return Err(state.gone("bounds"));
             }
             for (name, number) in parts {
-                state.write(name, MirrorValue::Double(number))?;
+                state.write(cx, name, MirrorValue::Double(number))?;
             }
             Ok(())
         })
@@ -278,10 +297,10 @@ pub(super) fn register(builder: &mut Builder) {
                     .collect(),
             ))
         })
-        .set("position", |state, _, value| {
+        .set("position", |state, cx, value| {
             let parts = state.triple("position", &value)?;
             for (key, number) in ["x", "y", "z"].into_iter().zip(parts) {
-                state.write(key, MirrorValue::Double(number))?;
+                state.write(cx, key, MirrorValue::Double(number))?;
             }
             Ok(())
         })

@@ -77,6 +77,16 @@ abi_callbacks! {
     /// A read of a property, told to the tracker a library holds (`GnoblinObjectApi::track`): the object, its class and the member that
     /// was read. It is the library's own code calling the tracker's, on the shell thread, inside the `get` that made the read.
     pub type GnoblinTrackFn = unsafe extern "C" fn(user: *mut c_void, obj: GnoblinObj, class: GnoblinClassId, member: GnoblinMemberId);
+    /// A write of a property of an object of the core's object model (`gnoblin.model`), offered to the write stage hook
+    /// (`GnoblinApi::set_write_stage`) before the core sends it: the node the object stands for, the node's property key and the value, borrowed
+    /// for the call. A nonzero return says the hook kept the write, and the core does not send it; zero lets the write go on as if no
+    /// hook were installed. It is the core's own code calling the hook's, on the shell thread, inside the object call that made the write.
+    pub type GnoblinWriteStageFn = unsafe extern "C" fn(user: *mut c_void, node: GnoblinNode, key: GnoblinStr, value: *const GnoblinValue) -> i32;
+    /// A read of a property of an object of the core's object model, offered to the write stage hook before the core answers from
+    /// its tree: the node and the property key. A nonzero return says the hook holds a value for it, which the callee has written to
+    /// `out` and keeps valid until its next call; the core copies it and answers with it. Zero leaves `out` alone and the core
+    /// answers from its tree.
+    pub type GnoblinWriteStagePeekFn = unsafe extern "C" fn(user: *mut c_void, node: GnoblinNode, key: GnoblinStr, out: *mut GnoblinValue) -> i32;
 }
 
 abi_consts! {
@@ -1427,6 +1437,18 @@ abi_structs! {
         /// table is static, the same for every context, and valid for the life of the process. `E_NO_SUCH_MEMBER` for a namespace
         /// this library does not serve. Shell thread.
         pub object_api: unsafe extern "C" fn(ctx: GnoblinCtx, namespace: GnoblinStr, out: *mut *const GnoblinObjectApi) -> i32,
+
+        /// Installs the write stage hook of this thread, or clears it. With `stage` set, every write of a property that an object of the
+        /// core's object model (`gnoblin.model`: a client's `opacity`, `x`, `rotation` and the like) makes to a node is first offered to
+        /// `stage(user, node, key, value)`; when it returns nonzero the core does not send the write. Reads of those properties ask
+        /// `peek` first (when it is not null) and answer with the value it holds, so a caller reads back what it staged. A timed write
+        /// (`set_timed`) is never offered, and neither are the writes the node API makes (`write_set`, `write_set_timed`): the hook
+        /// stages the writes of an object's setter, and what it staged it sends itself through the node API. `user` is borrowed: the caller
+        /// keeps it alive until it clears the hook. A second hook replaces the first. With `stage` null the call clears the hook when
+        /// `user` is the one that installed it, and does nothing otherwise; it never fails, so a caller may clear on any path, even after
+        /// its context retired. The hook must not call into the object library that called it. A table too short to hold this field
+        /// (`table_has`) belongs to a core built before it, whose object writes cannot be staged. Shell thread.
+        pub set_write_stage: unsafe extern "C" fn(ctx: GnoblinCtx, stage: Option<GnoblinWriteStageFn>, peek: Option<GnoblinWriteStagePeekFn>, user: *mut c_void) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the core started.
         #[cfg(feature = "next-minor")]

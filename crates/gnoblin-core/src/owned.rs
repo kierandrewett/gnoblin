@@ -103,6 +103,15 @@ impl Value {
 
     /// Calls `f` with the value as the ABI struct, borrowing from `self` for the call.
     pub(crate) fn with_raw<R>(&self, f: impl FnOnce(&GnoblinValue) -> R) -> R {
+        // The arrays a list points into live in these locals until `f` returns.
+        let (mut numbers, mut strings) = (Vec::new(), Vec::new());
+        let raw = self.fill(&mut numbers, &mut strings);
+        f(&raw)
+    }
+
+    /// The value as the ABI struct. A list points into `numbers` or `strings`, and text, bytes and the strings of a list of texts
+    /// into `self`: the struct is valid while all three stay where they are.
+    fn fill(&self, numbers: &mut Vec<GnoblinValue>, strings: &mut Vec<GnoblinStr>) -> GnoblinValue {
         let mut raw = GnoblinValue {
             size: size_of::<GnoblinValue>() as u32,
             kind: 0,
@@ -112,9 +121,6 @@ impl Value {
             ptr: core::ptr::null::<c_void>(),
             len: 0,
         };
-        // The arrays a list points into live in these locals until `f` returns.
-        let numbers: Vec<GnoblinValue>;
-        let strings: Vec<GnoblinStr>;
         match self {
             Value::Bool(value) => {
                 raw.kind = abi::VALUE_BOOL;
@@ -147,7 +153,7 @@ impl Value {
                 raw.len = bytes.len();
             }
             Value::List(list) => {
-                numbers = list
+                *numbers = list
                     .iter()
                     .map(|number| GnoblinValue {
                         size: size_of::<GnoblinValue>() as u32,
@@ -164,13 +170,40 @@ impl Value {
                 raw.len = numbers.len();
             }
             Value::Texts(list) => {
-                strings = list.iter().map(|text| GnoblinStr::borrowed(text)).collect();
+                *strings = list.iter().map(|text| GnoblinStr::borrowed(text)).collect();
                 raw.kind = abi::VALUE_TEXTS;
                 raw.ptr = strings.as_ptr().cast();
                 raw.len = strings.len();
             }
         }
-        f(&raw)
+        raw
+    }
+}
+
+/// A value lent across the ABI for longer than one call: it owns the value and the arrays the struct points into, and the struct is
+/// valid until the `Lent` is dropped or replaced. The vectors' buffers stay where they are when it moves.
+pub(crate) struct Lent {
+    raw: GnoblinValue,
+    _value: Value,
+    _numbers: Vec<GnoblinValue>,
+    _strings: Vec<GnoblinStr>,
+}
+
+impl Lent {
+    pub(crate) fn new(value: Value) -> Lent {
+        let (mut numbers, mut strings) = (Vec::new(), Vec::new());
+        let raw = value.fill(&mut numbers, &mut strings);
+        Lent {
+            raw,
+            _value: value,
+            _numbers: numbers,
+            _strings: strings,
+        }
+    }
+
+    /// The value as the ABI struct.
+    pub(crate) fn raw(&self) -> GnoblinValue {
+        GnoblinValue { ..self.raw }
     }
 }
 

@@ -156,7 +156,6 @@ fn a_transition_does_not_make_the_library_a_second_desktop_beside_the_shells_own
 }
 
 #[test]
-#[ignore = "vrnw: needs the writes of a requestTransition callback sent as timed writes (seconds and easing samples) in one transaction; the generated requestTransition sends none timed"]
 fn the_callback_runs_once_and_its_writes_are_one_transaction_of_timed_writes_with_the_easings_samples() {
     // AN1: "callback invoked exactly once; N writes yield exactly one tree transaction".
     let mut rig = two("new Layout()");
@@ -383,7 +382,6 @@ fn a_window_with_no_place_just_appears_while_the_others_tween() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the writes of a requestTransition callback sent as timed writes (opacity, rotation, scale, z); only opacity is sent, untimed"]
 fn opacity_rotation_scale_and_style_opacity_tween_and_a_style_effect_lands_at_once() {
     let mut rig = two("new Layout()");
     let mark = rig.comp.sent_count();

@@ -31,13 +31,13 @@ member | client.frame_rate | property double rw | 0.2.0
 member | client.from_launcher | property bool ro | 0.2.0
 member | client.fullscreen | property bool rw | 0.2.0
 member | client.geometry_changed | signal (client:object:client, geometry:object:rect) | 0.2.0
-member | client.height | property double rw | 0.2.0
+member | client.height | property double rw,animated | 0.2.0
 member | client.id | property string ro | 0.2.0
 member | client.kill | method () | 0.2.0
 member | client.lower | method () | 0.2.0
 member | client.maximised | property bool rw | 0.2.0
 member | client.minimised | property bool rw | 0.2.0
-member | client.opacity | property double rw | 0.2.0
+member | client.opacity | property double rw,animated | 0.2.0
 member | client.parent_window | property object:client ro | 0.2.0
 member | client.pointer_enter | signal (client:object:client, event:object:pointer_event) | 0.2.0
 member | client.pointer_leave | signal (client:object:client, event:object:pointer_event) | 0.2.0
@@ -51,18 +51,18 @@ member | client.raise | method () | 0.2.0
 member | client.ready | signal (client:object:client) | 0.2.0
 member | client.remove_listener | method (listener:object:client_listener) | 0.2.0
 member | client.report_presented | property bool rw | 0.2.0
-member | client.rotation | property list<double> rw | 0.2.0
-member | client.scale | property list<double> rw | 0.2.0
+member | client.rotation | property list<double> rw,animated | 0.2.0
+member | client.scale | property list<double> rw,animated | 0.2.0
 member | client.secure | property bool rw | 0.2.0
 member | client.tiled | property bool rw | 0.2.0
 member | client.title | property string ro | 0.2.0
 member | client.title_changed | signal (client:object:client, title:string) | 0.2.0
 member | client.unresponsive | property bool ro | 0.2.0
 member | client.visible | property bool rw | 0.2.0
-member | client.width | property double rw | 0.2.0
-member | client.x | property double rw | 0.2.0
-member | client.y | property double rw | 0.2.0
-member | client.z | property double rw | 0.2.0
+member | client.width | property double rw,animated | 0.2.0
+member | client.x | property double rw,animated | 0.2.0
+member | client.y | property double rw,animated | 0.2.0
+member | client.z | property double rw,animated | 0.2.0
 member | gnoblin.authentication | property object:authentication ro | 0.2.0
 member | gnoblin.client_app_id_changed | signal (client:object:client, app_id:string) | 0.2.0
 member | gnoblin.client_closed | signal (client:object:client) | 0.2.0
