@@ -506,6 +506,7 @@
 - Adds a deterministic test for the portal's IPC thread deferral, confirming consent offers are served before a deadline and that queued graph events and dialog answers are applied in the order they were read.
 - Fixes the EIS real-client pointer tests so they target the window's drawn rectangle rather than its configured geometry, so pointer events land on the surface again.
 - Flaky shell VM tests now wait for the state they assert instead of fixed frame counts or the shell's `placed` flag before reading results.
+- Fixed the `gnoblin` process suites failing with `Text file busy` when they ran a copy of the binary they had just made. A child that another test thread forked while the copy was open holds the copy's write descriptor until it execs, and the kernel refuses to exec a file that anything holds open for writing. `Gnoblin::launch`, the guardian start of `js_guardian` and the `startup` runs of a prefix's binary now try again while the start fails that way, for up to ten seconds (`RunCopy` in `tests/support/native_shell.rs`).
 
 ### Removed
 

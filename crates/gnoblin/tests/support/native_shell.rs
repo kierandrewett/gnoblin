@@ -12,12 +12,12 @@
 #![allow(dead_code)]
 
 use std::fs;
-use std::io::{BufRead as _, BufReader};
+use std::io::{self, BufRead as _, BufReader};
 use std::os::fd::AsFd as _;
 use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -39,6 +39,52 @@ pub const PATIENCE: Duration = Duration::from_secs(60);
 
 /// How often a wait looks at the state again.
 pub const POLL: Duration = Duration::from_millis(25);
+
+/// How long a copy of the binary may stay busy before a test gives up on it.
+const BUSY_PATIENCE: Duration = Duration::from_secs(10);
+
+/// Runs a binary that was copied a moment ago, and tries again while the kernel says it is busy.
+///
+/// A test copies `gnoblin` into a private prefix and runs the copy at once. Its own descriptor for the copy is closed by then,
+/// but the other threads of the test binary start processes too, and a child forked while the copy was open holds that
+/// descriptor until it execs: the descriptor is close-on-exec, which acts at the exec and not before. The kernel refuses to exec
+/// a file that any descriptor holds open for writing (`ETXTBSY`, "Text file busy"), so the start fails for the milliseconds the
+/// other child needs to reach its exec, and the copy is fine after that. Go's `os/exec` and Cargo's own tests wait the same way.
+///
+/// The copy is private to the test, so nothing else writes to it and the wait ends. A copy still busy after [`BUSY_PATIENCE`]
+/// has a writer that is not a forked child, and the error is returned for the test to report.
+pub trait RunCopy {
+    /// [`Command::spawn`], waiting while the binary is busy.
+    fn spawn_copy(&mut self) -> io::Result<Child>;
+
+    /// [`Command::output`], waiting while the binary is busy.
+    fn output_copy(&mut self) -> io::Result<Output>;
+}
+
+impl RunCopy for Command {
+    fn spawn_copy(&mut self) -> io::Result<Child> {
+        while_busy(|| self.spawn())
+    }
+
+    fn output_copy(&mut self) -> io::Result<Output> {
+        while_busy(|| self.output())
+    }
+}
+
+/// Runs `attempt` until it does not fail with "Text file busy", or [`BUSY_PATIENCE`] has passed.
+fn while_busy<T>(mut attempt: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    let deadline = Instant::now() + BUSY_PATIENCE;
+    let mut wait = Duration::from_millis(1);
+    loop {
+        match attempt() {
+            Err(error) if error.kind() == io::ErrorKind::ExecutableFileBusy && Instant::now() < deadline => {
+                std::thread::sleep(wait);
+                wait = (wait * 2).min(Duration::from_millis(50));
+            }
+            result => return result,
+        }
+    }
+}
 
 // ---- the shells -----------------------------------------------------------------------------------------------------
 
@@ -895,7 +941,7 @@ impl Gnoblin {
         for (key, value) in &launch.env {
             command.env(key, value);
         }
-        let mut child = command.spawn().expect("gnoblin starts");
+        let mut child = command.spawn_copy().expect("gnoblin starts");
         let lines: Arc<Mutex<Vec<Line>>> = Arc::default();
         for stream in [
             child

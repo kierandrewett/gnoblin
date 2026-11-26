@@ -19,7 +19,7 @@ use rustix::process::{Pid, Signal};
 use tempfile::TempDir;
 
 mod support;
-use support::native_shell::{BIN, Prefix, script_environment};
+use support::native_shell::{BIN, Prefix, RunCopy as _, script_environment};
 use support::{Mapper, ids, scene, spots};
 
 /// How long a test waits for a state before it fails.
@@ -118,7 +118,7 @@ impl Session {
         for (name, value) in env {
             command.env(name, value);
         }
-        let guardian = command.spawn().expect("the guardian starts");
+        let guardian = command.spawn_copy().expect("the guardian starts");
         Self {
             directory,
             config_home,

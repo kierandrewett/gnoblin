@@ -126,7 +126,7 @@ fn example_14_a_system_installed_shell_is_run_by_name_and_listed_with_its_row() 
     let listing = home
         .command(&prefix.binary())
         .arg("--list-shells")
-        .output()
+        .output_copy()
         .expect("the binary runs");
     assert_eq!(listing.status.code(), Some(0), "{}", stderr(&listing));
     let module = prefix.module_dir().join("libtiler.so");
@@ -168,7 +168,7 @@ fn a_name_that_is_not_installed_says_so_and_starts_nothing() {
     let output = home
         .command(&prefix.binary())
         .args(["--shell", "linez"])
-        .output()
+        .output_copy()
         .expect("the binary runs");
     assert_eq!(output.status.code(), Some(1));
     let message = stderr(&output);
@@ -219,7 +219,7 @@ fn example_15_two_equal_candidates_are_an_error_that_lists_them_and_where_it_loo
     let home = Home::new();
     let lines = home.copy(&shells().minimal, "data/gnoblin/shells/lines.so");
     let tiler = home.copy(&shells().tiler, "data/gnoblin/shells/tiler.so");
-    let output = home.command(&prefix.binary()).output().expect("the binary runs");
+    let output = home.command(&prefix.binary()).output_copy().expect("the binary runs");
     assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
     assert!(!home.root().join("ipc.sock").exists(), "no compositor was started");
     let expected = format!(
@@ -251,7 +251,7 @@ fn example_15_a_shell_named_default_wins_and_a_config_default_overrides_it() {
     let listing = home
         .command(&prefix.binary())
         .arg("--list-shells")
-        .output()
+        .output_copy()
         .expect("the binary runs");
     assert_eq!(listing.status.code(), Some(0));
     let table = stdout(&listing);
@@ -297,7 +297,7 @@ fn example_15_the_list_is_in_tier_order_and_marks_the_one_that_would_run() {
     let listing = home
         .command(&prefix.binary())
         .arg("--list-shells")
-        .output()
+        .output_copy()
         .expect("the binary runs");
     assert_eq!(listing.status.code(), Some(0), "{}", stderr(&listing));
     assert_eq!(
@@ -322,7 +322,7 @@ fn example_15_the_list_is_in_tier_order_and_marks_the_one_that_would_run() {
 fn example_16_with_no_shell_anywhere_gnoblin_says_where_it_looked_and_starts_no_compositor() {
     let prefix = Prefix::new();
     let home = Home::new();
-    let output = home.command(&prefix.binary()).output().expect("the binary runs");
+    let output = home.command(&prefix.binary()).output_copy().expect("the binary runs");
     assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
     assert_eq!(stdout(&output), "", "the failure is on standard error");
     let expected = format!(
@@ -347,7 +347,7 @@ fn a_bare_word_that_is_not_a_file_asks_whether_a_name_was_meant() {
     let output = home
         .command(&prefix.binary())
         .arg("tiler")
-        .output()
+        .output_copy()
         .expect("the binary runs");
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
@@ -366,7 +366,7 @@ fn a_fresh_install_runs_the_packaged_default_found_beside_the_launcher() {
     let listing = home
         .command(&prefix.binary())
         .arg("--list-shells")
-        .output()
+        .output_copy()
         .expect("the binary runs");
     assert_eq!(
         stdout(&listing),
@@ -384,7 +384,7 @@ fn a_fresh_install_runs_the_packaged_default_found_beside_the_launcher() {
     let output = Home::new()
         .command(&prefix.binary())
         .args(["--shell", "default", "--list-shells"])
-        .output()
+        .output_copy()
         .expect("the binary runs");
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
 }
@@ -414,7 +414,7 @@ fn an_unreadable_config_toml_ends_the_start_when_it_decides_and_only_warns_when_
     let prefix = Prefix::new();
     let home = Home::new();
     home.write("config/gnoblin/config.toml", "[shell\n");
-    let output = home.command(&prefix.binary()).output().expect("the binary runs");
+    let output = home.command(&prefix.binary()).output_copy().expect("the binary runs");
     assert_eq!(output.status.code(), Some(1));
     assert!(stderr(&output).contains("config.toml"), "{}", stderr(&output));
 
@@ -511,4 +511,52 @@ fn isolate_runs_the_shell_in_a_process_of_its_own_and_a_crash_in_it_does_not_tak
         "second",
         |window| window.x >= 60.0,
     );
+}
+
+// ---- a copy of the binary that a forked child still holds open ------------------------------------------------------------------
+
+/// A copy that something still holds open for writing is refused by the kernel as "Text file busy" until it lets go. That is what a
+/// binary copied into a prefix looks like to the thread that runs it when another thread has just forked: the child holds the copy's
+/// descriptor until it execs. The copy here is held by a thread that lets go after a while, so the wait is forced and not hoped for.
+#[test]
+fn a_copy_that_is_held_open_for_writing_runs_once_it_is_released() {
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::time::{Duration, Instant};
+
+    const HELD_FOR: Duration = Duration::from_millis(150);
+
+    let home = Home::new();
+    let script = home.write("bin/copied", "#!/bin/sh\nexit 0\n");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("the copy's mode");
+    let writer = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&script)
+        .expect("a write descriptor on the copy");
+    // Whether this kernel refuses at all: one that does not has nothing to wait for, and the test then only runs the copy.
+    let refused = match std::process::Command::new(&script).spawn() {
+        Ok(mut child) => {
+            child.wait().expect("the probe ends");
+            false
+        }
+        Err(error) => error.kind() == std::io::ErrorKind::ExecutableFileBusy,
+    };
+    let released = Instant::now() + HELD_FOR;
+    let holder = std::thread::spawn(move || {
+        std::thread::sleep(HELD_FOR);
+        drop(writer);
+    });
+
+    let status = std::process::Command::new(&script)
+        .spawn_copy()
+        .expect("the copy starts once it is released")
+        .wait()
+        .expect("the copy ends");
+    assert!(status.success(), "the copy ran: {status}");
+    if refused {
+        assert!(
+            Instant::now() >= released,
+            "the copy was refused while it was held and started only after it was released"
+        );
+    }
+    holder.join().expect("the holder");
 }
