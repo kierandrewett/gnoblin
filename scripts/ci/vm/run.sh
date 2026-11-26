@@ -21,6 +21,10 @@
 # and checked with wev, which prints what a client receives. A check named in EXPECTED_FAILURES below is a known bug: its failure is
 # reported and allowed, and its passing fails the run so the entry is removed with the fix.
 #
+# vulkan-check.sh then runs a session on the Vulkan renderer (`compositor.renderer = "vulkan"`, lavapipe in the guest) on the card
+# and on the kernel's `vkms` display: vulkan-foot, vulkan-foot-pixels, vkms-vulkan, vkms-flips and vkms-screenshot, each a row
+# of its own. A kernel without `vkms` skips the last three with the reason in the summary.
+#
 # Images are downloaded once into CI_VM_CACHE (default ~/.cache/gnoblin-ci-vm) and verified against the distribution's
 # published checksums. The guest disk is a throwaway overlay in OUTDIR.
 set -euo pipefail
@@ -43,20 +47,20 @@ case "$distro" in
         image_url=https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-43-1.6.x86_64.qcow2
         sums_url=https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/Fedora-Cloud-43-1.6-x86_64-CHECKSUM
         seat_group=seat
-        install="sudo dnf -y -q --setopt=install_weak_deps=False install seatd libseat mesa-dri-drivers mesa-libgbm mesa-libEGL egl-utils libinput libxkbcommon pipewire-libs libwacom libgudev pixman dbus-daemon foot gtk4-devel-tools gtk3-devel firefox xorg-x11-server-Xwayland xterm xeyes xwininfo wev"
+        install="sudo dnf -y -q --setopt=install_weak_deps=False install seatd libseat mesa-dri-drivers mesa-libgbm mesa-libEGL egl-utils mesa-vulkan-drivers vulkan-loader libinput libxkbcommon pipewire-libs libwacom libgudev pixman dbus-daemon foot grim gtk4-devel-tools gtk3-devel firefox xorg-x11-server-Xwayland xterm xeyes xwininfo wev"
         ;;
     arch)
         image_url=https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2
         sums_url=$image_url.SHA256
         seat_group=seat
-        install="sudo pacman -Syu --noconfirm --needed seatd mesa mesa-utils libinput libxkbcommon pipewire libwacom libgudev pixman dbus foot gtk4-demos gtk3-demos firefox xorg-xwayland xterm xorg-xeyes xorg-xwininfo wev ttf-dejavu"
+        install="sudo pacman -Syu --noconfirm --needed seatd mesa mesa-utils vulkan-swrast vulkan-icd-loader libinput libxkbcommon pipewire libwacom libgudev pixman dbus foot grim gtk4-demos gtk3-demos firefox xorg-xwayland xterm xorg-xeyes xorg-xwininfo wev ttf-dejavu"
         ;;
     debian-13)
         # The generic image, not genericcloud: the cloud kernel has no DRM drivers, so it would have no /dev/dri.
         image_url=https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2
         sums_url=https://cloud.debian.org/images/cloud/trixie/latest/SHA512SUMS
         seat_group=video
-        install="sudo DEBIAN_FRONTEND=noninteractive apt-get -qq update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y -qq install --no-install-recommends seatd libseat1 libgl1-mesa-dri libegl-mesa0 libgbm1 mesa-utils libinput10 libxkbcommon0 libpipewire-0.3-0t64 libwacom9 libgudev-1.0-0 libpixman-1-0 dbus-daemon foot gtk-4-examples gtk-3-examples firefox-esr xwayland xterm x11-apps x11-utils wev fonts-dejavu-core"
+        install="sudo DEBIAN_FRONTEND=noninteractive apt-get -qq update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y -qq install --no-install-recommends seatd libseat1 libgl1-mesa-dri libegl-mesa0 libgbm1 mesa-utils mesa-vulkan-drivers libvulkan1 libinput10 libxkbcommon0 libpipewire-0.3-0t64 libwacom9 libgudev-1.0-0 libpixman-1-0 dbus-daemon foot grim gtk-4-examples gtk-3-examples firefox-esr xwayland xterm x11-apps x11-utils wev fonts-dejavu-core"
         ;;
     opensuse-tumbleweed)
         image_url=https://download.opensuse.org/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2
@@ -64,7 +68,7 @@ case "$distro" in
         seat_group=seat
         # seatd-systemd carries seatd.service and the sysusers entry for the seat group; --no-recommends skips it.
         # The widget factories are in gtk4-devel-tools and gtk3-devel, not in gtk4-tools and gtk3-tools.
-        install="sudo zypper --non-interactive --gpg-auto-import-keys install --no-recommends seatd seatd-systemd libseat1 Mesa-dri Mesa-libEGL1 libgbm1 Mesa-demo-egl libinput10 libxkbcommon0 libpipewire-0_3-0 libwacom-data libgudev-1_0-0 libpixman-1-0 dbus-1-daemon foot gtk4-devel-tools gtk3-devel MozillaFirefox xwayland xterm xeyes xwininfo wev dejavu-fonts"
+        install="sudo zypper --non-interactive --gpg-auto-import-keys install --no-recommends seatd seatd-systemd libseat1 Mesa-dri Mesa-libEGL1 libgbm1 Mesa-demo-egl libvulkan1 libvulkan_lvp libinput10 libxkbcommon0 libpipewire-0_3-0 libwacom-data libgudev-1_0-0 libpixman-1-0 dbus-1-daemon foot grim gtk4-devel-tools gtk3-devel MozillaFirefox xwayland xterm xeyes xwininfo wev dejavu-fonts"
         ;;
     *)
         echo "[vm] unknown distribution '$distro' (fedora-43, arch, debian-13, opensuse-tumbleweed)" >&2
@@ -284,6 +288,14 @@ while IFS='|' read -r check outcome detail; do
     record "$check" "$outcome" "$detail"
 done <"$out/input-results.txt"
 [ -s "$out/input-results.txt" ] || record input-check fail "the input checks produced no result (see input-check.txt)"
+
+# The Vulkan renderer on the same backend, on the card and on vkms (scripts/ci/vm/vulkan-check.sh): its results are rows of their own.
+GUEST_CMD="ssh -i $out/run/key -p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5 -o BatchMode=yes ci@127.0.0.1" \
+    CI_VM_MODE=$mode "$here/vulkan-check.sh" "$qmp" "$shell_path" "$out" >"$out/vulkan-check.txt" 2>&1 || true
+while IFS='|' read -r check outcome detail; do
+    record "$check" "$outcome" "$detail"
+done <"$out/vulkan-results.txt"
+[ -s "$out/vulkan-results.txt" ] || record vulkan-check fail "the Vulkan checks produced no result (see vulkan-check.txt)"
 
 guest 'sudo systemctl poweroff' >/dev/null 2>&1 || true
 for _ in $(seq 1 30); do
