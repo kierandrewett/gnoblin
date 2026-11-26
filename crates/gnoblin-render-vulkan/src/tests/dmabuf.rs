@@ -32,6 +32,10 @@ fn dmabuf(edge: u32, fourcc: Fourcc) -> Option<Dmabuf> {
     match allocator.create_buffer(edge, edge, fourcc, &[Modifier::Linear]) {
         Ok(buffer) => Some(buffer),
         Err(error) => {
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "CI is set but udmabuf refused a buffer ({error})"
+            );
             println!("skipping: udmabuf refused a buffer ({error})");
             None
         }
