@@ -2,6 +2,14 @@
 #
 # Gnoblin is GPL-2.0-or-later for the whole workspace (matching COPYING). A dependency is allowed only when its licence can
 # be combined with that outbound licence; `just deny` runs this on every change.
+
+# Gnoblin is a Linux desktop (Wayland, DRM, systemd, PipeWire) and its packages are built for x86_64 and aarch64 glibc. The crates that only
+# build for Windows, macOS or Hermit (`windows-sys`, `windows-targets` and their `windows_*` target crates, `hermit-abi`) are never compiled
+# into a Gnoblin binary, so the graph is the one of those two targets: a licence or a duplicate version of a crate no build links is not
+# something a change can act on.
+[graph]
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
+
 [advisories]
 version = 2
 # A pulled advisory release is a fixable supply-chain bug: fail the build.
@@ -22,7 +30,29 @@ wildcards = "deny"
 # wildcard rule would otherwise reject.
 allow-wildcard-paths = true
 deny = []
-skip = []
+# A duplicate version is warned about, so every one that is left is recorded here with the crates that ask for each version and why no
+# release makes them agree. Each entry skips the older version, and goes when its crate has a single version again (cargo-deny then warns
+# that the skip matched nothing), so the list does not outlive its reasons. A `cargo update --dry-run` was read against every pair: the
+# only duplicate a compatible release removes is `itertools` 0.14 (prost-build 0.14.6), which the lock now takes.
+skip = [
+    # Smithay's pinned revision (`allow-git` below) takes `drm` 0.14 and `pixman` 0.2. `drm` 0.15 exists, but no revision of Smithay we pin does.
+    { crate = "rustix@0.38.44", reason = "drm 0.14.1 (smithay's pinned revision, through gbm 0.18) takes rustix ^0.38 beside the workspace's rustix 1" },
+    { crate = "linux-raw-sys@0.4.15", reason = "rustix 0.38.44, above" },
+    { crate = "linux-raw-sys@0.9.4", reason = "drm-sys 0.8.1 (drm-ffi 0.9.1, drm 0.14.1) takes linux-raw-sys ^0.9 beside rustix 1's 0.12" },
+    { crate = "thiserror@1.0.69", reason = "pixman 0.2.1 (smithay's pixman renderer) takes thiserror ^1.0.50 beside the workspace's thiserror 2" },
+    { crate = "thiserror-impl@1.0.69", reason = "thiserror 1.0.69, above" },
+    # Build-time crates whose latest release asks for the older version.
+    { crate = "hashbrown@0.15.5", reason = "petgraph 0.8.3, which prost-build 0.14 builds its message graph with, takes hashbrown ^0.15 beside indexmap's 0.17; petgraph 0.8.3 is its latest release" },
+    { crate = "foldhash@0.1.5", reason = "hashbrown 0.15.5, above" },
+    { crate = "itertools@0.13.0", reason = "bindgen 0.72.1 (libspa-sys and pipewire-sys 0.10.1, which ask for ^0.72) takes itertools <0.14 beside egui's and oxc's 0.15" },
+    { crate = "shlex@1.3.0", reason = "bindgen 0.72.1, above, takes shlex ^1 beside cc 1.11's ^2" },
+    { crate = "nom@7.1.3", reason = "cexpr 0.6.0 (bindgen 0.72.1, above) takes nom ^7 beside libspa 0.10.1's ^8" },
+    { crate = "syn@2.0.119", reason = "proc-macro crates that still derive with syn 2 (bindgen, logos-codegen, miette-derive, prost-derive, thiserror-impl 1 and others) beside serde_derive, thiserror-impl 2 and others on syn 3" },
+    # Libraries of the workspace's own dependencies whose latest release asks for the older version.
+    { crate = "rustc-hash@1.1.0", reason = "naga 30.0.1 (naga 30.0.2 as well) takes rustc-hash ^1.1 beside the oxc crates' 2" },
+    { crate = "miniz_oxide@0.8.9", reason = "png 0.18.1, its latest release, takes miniz_oxide ^0.8 beside flate2's and oxc-browserslist's ^0.9" },
+    { crate = "unicode-width@0.1.14", reason = "miette 7.6.0 (protox, at build time), its latest release, takes unicode-width ^0.1.11 beside textwrap's and codespan's 0.2" },
+]
 skip-tree = []
 
 [licenses]
