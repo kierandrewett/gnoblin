@@ -222,7 +222,6 @@ fn the_starters_examples_do_what_they_say_when_switched_on() {
 }
 
 #[test]
-#[ignore = "vrnw: shells/default/shell.ts line 47 is 121 characters, over this test's 120 limit (not a file of this lane)"]
 fn the_starter_is_a_short_readable_ascii_file() {
     let lines = STARTER_CONFIG.lines().count();
     assert!((60..=140).contains(&lines), "{lines} lines");

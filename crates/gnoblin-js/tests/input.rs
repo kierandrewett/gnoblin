@@ -1862,7 +1862,6 @@ fn with_no_entry_the_stock_config_runs_four_floating_workspaces_and_claims_the_s
 }
 
 #[test]
-#[ignore = "vrnw: the stock config (shells/default/shell.ts) installs no MoveBinding or ResizeBinding, and the generated FloatingLayout has none of its own; needs a stock floating layout (or stock config) that claims Super+MouseLeft/MouseRight drags"]
 fn the_stock_config_claims_the_floating_layouts_move_and_resize() {
     let comp = world(false);
     let (mut shell, _dir) = bare_shell(&comp);

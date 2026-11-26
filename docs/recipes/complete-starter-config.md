@@ -16,32 +16,33 @@ is this, in full:
 // Check changes with `gnoblinctl check --types shell.ts`; see the shell API pages for each object's details.
 
 import {
+    Decorations,
     FloatingLayout,
+    Launcher,
+    MoveBinding,
+    NotRespondingAlerts,
+    ResizeBinding,
     StripLayout,
+    WindowMenus,
     Workspace,
     WorkspaceSlideBinding,
-    openLauncher,
-    startDecorations,
-    startNotRespondingAlert,
-    startWindowMenu,
 } from "gnoblin-std";
 // To use the examples below, add what they name to the import above.
 // import { MasterStackLayout } from "gnoblin-std";
 
 // Four floating workspaces. The first is shown until another is selected.
-// Choose a layout: FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout, DwindleLayout, KioskLayout or
-// StripLayout.
+// Choose a layout: FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout, DwindleLayout or StripLayout.
 for (const id of ["1", "2", "3", "4"]) {
-    gnoblin.workspaces.add(new Workspace({ id, name: `Workspace ${id}`, layout: new FloatingLayout() }));
+    gnoblin.workspaces.add(new Workspace(id, { name: `Workspace ${id}`, layout: new FloatingLayout() }));
 }
 
-// gnoblin.workspaces.add(new Workspace({ id: "work", name: "Work", layout: new MasterStackLayout() }));
+// gnoblin.workspaces.add(new Workspace("work", { name: "Work", layout: new MasterStackLayout() }));
 
 // Add a titlebar to each window, the window menu and the not-responding alert.
 // Remove a call to disable that part.
-startDecorations();
-startWindowMenu();
-startNotRespondingAlert();
+Decorations.get().start();
+WindowMenus.get().start();
+NotRespondingAlerts.get().start();
 
 const input = gnoblin.input.primary;
 
@@ -49,25 +50,30 @@ const input = gnoblin.input.primary;
 // workspace does nothing.
 for (let position = 1; position <= 9; position++) {
     input.bind(`Super+${position}`, () => {
-        const target = gnoblin.workspaces.at(position - 1);
+        const target = gnoblin.workspaces.list[position - 1];
         if (target !== undefined) {
             gnoblin.workspaces.show(target, { duration: 250 });
         }
     });
 }
 
-// Super+Left and Super+Right move focus between StripLayout columns. They do nothing on other layouts.
+// Super+Left and Super+Right move focus between StripLayout columns on the display under the pointer. They do nothing
+// on other layouts.
 const moveColumn = (side: "focusLeft" | "focusRight") => {
-    const shown = (input.activeDisplay as { viewport: { content: Workspace | null } } | null)?.viewport.content;
-    if (shown?.layout instanceof StripLayout) {
-        shown.layout[side](shown);
+    const layout = input.activeDisplay?.viewport?.content?.layout;
+    if (layout instanceof StripLayout) {
+        layout[side]();
     }
 };
 input.bind("Super+Left", () => moveColumn("focusLeft"));
 input.bind("Super+Right", () => moveColumn("focusRight"));
 
 // Three-finger sideways swipes switch workspaces.
-input.bind("Swipe3", new WorkspaceSlideBinding());
+new WorkspaceSlideBinding({ trigger: "Swipe3" }).install();
+
+// Super with the left button drags a window, and Super with the right button resizes it from the nearest corner.
+new MoveBinding().install();
+new ResizeBinding().install();
 
 // Volume, microphone and media player keys: each key runs one command.
 const mediaKeys: Record<string, string[]> = {
@@ -87,7 +93,7 @@ for (const [key, command] of Object.entries(mediaKeys)) {
 
 // Super+space opens the launcher, with a command entry in the middle of the screen.
 input.bind("Super+space", () => {
-    openLauncher();
+    Launcher.open();
 });
 
 // Add custom key bindings here. A key already bound above is refused; remove that binding first.
