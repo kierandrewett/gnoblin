@@ -609,6 +609,65 @@ impl OutputFrame {
         }
     }
 
+    /// Grows the damage so that a layer with a backdrop blur is redrawn whole whenever anything near it is.
+    ///
+    /// A blur reads the pixels behind its layer, and a renderer redraws only the damage, so the pixels it reads outside the
+    /// damage are the ones the last frame left there: the layer's own blurred output, not the backdrop. Blurring those again
+    /// seams the picture along the damage's edge. A blurred layer is therefore damaged in full when the damage reaches the
+    /// layer or the margin its blur reads around it, and since that can bring another blurred layer into reach, it repeats
+    /// until none is left. The damage may be larger than what changed and never smaller.
+    ///
+    /// The margin is stated in the frame's logical pixels and is generous: the passes of a blur each reach a third of a
+    /// radius four times over, and a downscaled blur reads a whole block more.
+    pub fn expand_damage_for_blur(&mut self) {
+        let blurred: Vec<(Rect, i32)> = self
+            .layers
+            .iter()
+            .filter_map(|layer| {
+                let (dst, effects) = match layer {
+                    Layer::Surface(surface) => (surface.dst, &surface.effects),
+                    Layer::Solid(solid) => (solid.dst, &solid.effects),
+                    Layer::Overlay(_) => return None,
+                };
+                let reach = effects
+                    .passes()
+                    .iter()
+                    .filter_map(|pass| match pass {
+                        Pass::Blur(blur) if blur.radius > 0.0 => {
+                            Some((blur.passes as f32 * (blur.radius * 4.0 / 3.0 + 3.0) + 16.0).ceil() as i32)
+                        }
+                        _ => None,
+                    })
+                    .max()?;
+                Some((dst, reach))
+            })
+            .collect();
+        if blurred.is_empty() {
+            return;
+        }
+        loop {
+            let mut grew = false;
+            for (rect, reach) in &blurred {
+                if self.damage.iter().any(|damaged| rect.is_inside(*damaged)) {
+                    continue;
+                }
+                let reads = Rect::new(
+                    rect.x.saturating_sub(*reach),
+                    rect.y.saturating_sub(*reach),
+                    rect.width.saturating_add(2 * *reach as u32),
+                    rect.height.saturating_add(2 * *reach as u32),
+                );
+                if self.damage.iter().any(|damaged| damaged.intersects(reads)) {
+                    self.damage.push(*rect);
+                    grew = true;
+                }
+            }
+            if !grew {
+                return;
+            }
+        }
+    }
+
     /// Whether nothing has to be drawn.
     #[must_use]
     pub fn is_empty(&self) -> bool {
@@ -840,6 +899,77 @@ mod tests {
             Color::new(0.0, 0.0, 0.0, f32::NAN),
         )));
         assert!(frame.layers().is_empty(), "nothing to draw, nothing described");
+    }
+
+    fn glass(rect: Rect, radius: f32) -> Layer {
+        use gnoblin_render::BlurParams;
+        let mut solid = Solid::new(rect, Color::TRANSPARENT);
+        solid
+            .effects
+            .push(Pass::Blur(BlurParams {
+                radius,
+                passes: 2,
+                ..BlurParams::default()
+            }))
+            .expect("a blur");
+        Layer::Solid(solid)
+    }
+
+    #[test]
+    fn damage_that_touches_a_blurred_layer_grows_to_the_whole_layer() {
+        let glass_rect = Rect::new(100, 100, 200, 120);
+        let mut frame = OutputFrame::new();
+        frame.push_layer(glass(glass_rect, 8.0));
+        frame.push_damage(Rect::new(150, 150, 4, 4));
+        frame.expand_damage_for_blur();
+        assert!(
+            frame.damage().iter().any(|damaged| glass_rect.is_inside(*damaged)),
+            "damage inside the layer becomes the layer: {:?}",
+            frame.damage()
+        );
+        // Damage outside the layer but inside what its blur reads is just as stale.
+        let mut near = OutputFrame::new();
+        near.push_layer(glass(glass_rect, 8.0));
+        near.push_damage(Rect::new(90, 150, 4, 4));
+        near.expand_damage_for_blur();
+        assert!(near.damage().iter().any(|damaged| glass_rect.is_inside(*damaged)));
+    }
+
+    #[test]
+    fn damage_out_of_reach_of_a_blurred_layer_is_left_alone() {
+        let mut frame = OutputFrame::new();
+        frame.push_layer(glass(Rect::new(100, 100, 200, 120), 8.0));
+        frame.push_damage(Rect::new(600, 500, 4, 4));
+        frame.expand_damage_for_blur();
+        assert_eq!(frame.damage(), &[Rect::new(600, 500, 4, 4)]);
+        let mut none = OutputFrame::new();
+        none.push_layer(glass(Rect::new(100, 100, 200, 120), 8.0));
+        none.expand_damage_for_blur();
+        assert!(none.damage().is_empty(), "no damage stays none");
+    }
+
+    #[test]
+    fn a_layer_the_growth_brings_into_reach_of_another_grows_too() {
+        let (first, second) = (Rect::new(100, 100, 100, 100), Rect::new(230, 100, 100, 100));
+        let mut frame = OutputFrame::new();
+        frame.push_layer(glass(first, 8.0));
+        frame.push_layer(glass(second, 8.0));
+        frame.push_damage(Rect::new(110, 110, 2, 2));
+        frame.expand_damage_for_blur();
+        assert!(
+            frame.damage().iter().any(|damaged| second.is_inside(*damaged)),
+            "the second layer is within reach of the first: {:?}",
+            frame.damage()
+        );
+    }
+
+    #[test]
+    fn a_layer_without_a_blur_does_not_grow_the_damage() {
+        let mut frame = OutputFrame::new();
+        frame.push_layer(Layer::Solid(Solid::new(Rect::new(0, 0, 100, 100), Color::WHITE)));
+        frame.push_damage(Rect::new(10, 10, 4, 4));
+        frame.expand_damage_for_blur();
+        assert_eq!(frame.damage(), &[Rect::new(10, 10, 4, 4)]);
     }
 
     #[test]

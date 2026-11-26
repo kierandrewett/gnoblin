@@ -5031,3 +5031,41 @@ fn presentation_is_stamped_only_on_a_window_the_shell_asked_about_and_only_when_
         "a window the composer does not hold"
     );
 }
+
+/// A blur reads pixels around its damage, and only the backdrop may fill them, so the frame damages a blurred layer whole
+/// whenever the damage reaches it or the margin its blur reads (`OutputFrame::expand_damage_for_blur`).
+#[test]
+fn damage_near_a_blurred_layer_becomes_the_whole_layer() {
+    let (mut composer, output) = screen();
+    let glass = NodeId::new(2);
+    let glass_rect = Rect::new(100, 100, 40, 50);
+    add_canvas(&mut composer, glass, None, glass_rect, Some(fill_list(40.0, 50.0, 77)));
+    composer.with_scene(|scene| {
+        let mut chain = Effects::new();
+        chain
+            .push(Pass::Blur(gnoblin_render::BlurParams {
+                radius: 8.0,
+                passes: 2,
+                ..gnoblin_render::BlurParams::default()
+            }))
+            .expect("a blur");
+        scene.set_effects(glass, chain).expect("the effects");
+    });
+    damage_of(&mut composer, output);
+
+    // Something changes beside the glass, within what its blur reads: the glass is redrawn in full.
+    composer.with_scene(|scene| scene.damage_rect(Rect::new(90, 110, 4, 4)));
+    let damage = damage_of(&mut composer, output).expect("the change damages");
+    assert!(
+        damage.iter().any(|rect| glass_rect.is_inside(*rect)),
+        "the blurred layer is damaged whole: {damage:?}"
+    );
+
+    // A change far from it is not a reason to redraw it.
+    composer.with_scene(|scene| scene.damage_rect(Rect::new(600, 400, 4, 4)));
+    let damage = damage_of(&mut composer, output).expect("the change damages");
+    assert!(
+        !damage.iter().any(|rect| glass_rect.intersects(*rect)),
+        "a change out of the blur's reach leaves the layer alone: {damage:?}"
+    );
+}

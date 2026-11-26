@@ -3221,6 +3221,8 @@ impl Composer {
         }
         // A shader source the watchdog has switched off is left out, so its node draws without it.
         self.drop_switched_shaders(frame);
+        // A blurred layer reads pixels around its damage, which only the backdrop may fill: it is redrawn whole.
+        frame.expand_damage_for_blur();
         !frame.is_empty()
     }
 
