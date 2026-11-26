@@ -136,7 +136,10 @@ impl JsShell {
             return Ok(JsFrame::default());
         }
         let mut backlog = self.take_backlog();
-        let diagnostics = std::mem::take(&mut backlog.diagnostics);
+        let mut diagnostics = std::mem::take(&mut backlog.diagnostics);
+        // What the libraries' callbacks did between frames (the core's dispatch) is reported here: a call that ran out its budget was
+        // stopped and counted as a strike where it ran, and is named beside the frame's own.
+        diagnostics.extend(self.take_stopped_calls());
         let worked = self.take_script_ran()
             || !incoming.is_empty()
             || !backlog.api.is_empty()
@@ -579,9 +582,12 @@ impl JsShell {
         Ok(())
     }
 
-    pub(super) fn count_strike(&mut self, error: &JsError) {
-        if matches!(error.kind, JsErrorKind::Budget | JsErrorKind::Memory) {
-            self.strikes = self.strikes.saturating_add(1);
+    /// Counts `error` as a strike against the generation when it is a budget or memory trip, and says whether it was one.
+    pub(super) fn count_strike(&self, error: &JsError) -> bool {
+        let struck = matches!(error.kind, JsErrorKind::Budget | JsErrorKind::Memory);
+        if struck {
+            self.strikes.set(self.strikes.get().saturating_add(1));
         }
+        struck
     }
 }

@@ -748,7 +748,6 @@ gnoblin.clients.addListener({
 "#;
 
 #[test]
-#[ignore = "vrnw: needs a listener that never returns to be interrupted by its budget and the generation restaged: 60 s after the spin no strike is reported and the generation never changes (diagnostics stay empty)"]
 fn a_handler_that_never_returns_is_interrupted_the_compositor_keeps_answering_and_the_generation_restarts() {
     let session = Session::start();
     let mut mapper = Mapper::connect(&session.wayland());
@@ -810,7 +809,6 @@ fn a_handler_that_never_returns_is_interrupted_the_compositor_keeps_answering_an
 }
 
 #[test]
-#[ignore = "vrnw: needs a listener that never returns to be interrupted by its budget and the generation restaged: 60 s after the spin no strike is reported and the supervisor never degrades (diagnostics stay empty)"]
 fn a_handler_that_always_hangs_exhausts_the_restarts_and_the_last_generation_keeps_running() {
     let session = Session::start();
     let mut mapper = Mapper::connect(&session.wayland());
@@ -843,7 +841,6 @@ gnoblin.clients.addListener({
     .expect("shell.ts");
     let shell = Shell::start(&session, config.path(), |config| {
         config.shell.entry_budget = RUNAWAY_CALL;
-        // The restaged generation replays the hanging window while it loads, so staging is what runs out.
         config.shell.js.stage_budget = RUNAWAY_STAGE;
     });
     let ipc = session.ipc();
@@ -854,10 +851,9 @@ gnoblin.clients.addListener({
         &shell,
         || spots(&scene(&ipc)).get("org.example.first") == Some(&(700.0, 600.0)),
     );
-    let booted = shell.generation();
 
-    // Three strikes in 30 s latch the supervisor: the first is the handler in the running generation, the next two
-    // are the restages that hang while they load. The generation that was running stays.
+    // Three strikes in 30 s latch the supervisor: the first is the handler in the running generation, the next two are
+    // the handlers of the two generations it restaged, each of which is told of the window in its first turn and hangs.
     mapper.map_window("org.example.spin", "Spin");
     wait_for(
         "three strikes latch the supervisor",
@@ -869,11 +865,24 @@ gnoblin.clients.addListener({
             shell.degraded()
         },
     );
-    assert_eq!(
-        shell.generation(),
-        booted,
-        "no restage could take over: the last generation stays"
-    );
+    let last = shell.generation();
+
+    // The latch stops the restaging: another runaway is stopped and reported, and the last generation stays.
+    let stopped = |shell: &Shell| {
+        shell
+            .diagnostics()
+            .iter()
+            .filter(|text| text.contains("a listener call was stopped"))
+            .count()
+    };
+    let before = stopped(&shell);
+    mapper.map_window("org.example.spin", "Spin again");
+    wait_for("the runaway is stopped", &session, &mut mapper, &shell, || {
+        let _ = scene(&ipc);
+        stopped(&shell) > before
+    });
+    assert_eq!(shell.generation(), last, "no restage once the supervisor has latched");
+    assert!(shell.degraded(), "the supervisor stays latched");
 
     mapper.map_window("org.example.fourth", "Fourth");
     wait_for("the scene still updates", &session, &mut mapper, &shell, || {
@@ -3163,7 +3172,6 @@ fn a_dialog_listener_that_declines_a_consent_request_refuses_it_and_one_it_leave
 }
 
 #[test]
-#[ignore = "vrnw: needs a dialog request to reach the built-in dialog when its listener runs out its budget: the request is Refused (expected Asked)"]
 fn a_dialog_listener_that_runs_out_its_budget_is_skipped_and_the_built_in_dialog_opens() {
     let session = Session::start();
     let mut mapper = Mapper::connect(&session.wayland());

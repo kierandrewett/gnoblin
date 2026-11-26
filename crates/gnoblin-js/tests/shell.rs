@@ -603,7 +603,6 @@ fn a_listener_that_throws_does_not_stop_its_siblings_and_is_reported_once_per_si
 }
 
 #[test]
-#[ignore = "vrnw: needs the generated listeners' throws and budget stops reported in the frame's diagnostics and counted as strikes"]
 fn a_listener_that_never_returns_is_stopped_counts_a_strike_and_the_others_still_run() {
     let comp = two_windows();
     let init = with_log(
@@ -620,6 +619,8 @@ fn a_listener_that_never_returns_is_stopped_counts_a_strike_and_the_others_still
     let link = comp.clone();
     link.external_set(3, "focused", MirrorValue::Bool(false));
     link.external_set(4, "focused", MirrorValue::Bool(true));
+    // The core's dispatch, which follows the frame, runs the listeners and stops the two runaways; the next frame names them.
+    rig.frame();
     let diagnostics = rig.frame();
     assert_eq!(diagnostics.len(), 2, "each stopped call is named: {diagnostics:?}");
     assert!(diagnostics.iter().all(|d| d.contains("budget")), "{diagnostics:?}");

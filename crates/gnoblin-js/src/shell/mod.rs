@@ -31,7 +31,7 @@
 //! refusal sent again), `links` holds the links beside the tree (dialogs, idle, session, host API) and `document`
 //! the configuration document.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -216,8 +216,12 @@ pub struct JsShell {
     tx: TxGate,
     /// How many times each failure site was seen. The first is reported, the rest only counted.
     reported: HashMap<String, u64>,
-    /// How many times a call ran past its wall-clock or memory budget in this generation.
-    strikes: u32,
+    /// How many times a call ran past its wall-clock or memory budget in this generation. A cell because a call the libraries make
+    /// into the script ([`call_script`](Self::call_script)) counts here too, and it runs on a shared shell.
+    strikes: Cell<u32>,
+    /// The reports of the calls [`call_script`](Self::call_script) stopped, which no frame was running to report: the next frame
+    /// returns them with its diagnostics.
+    stopped: RefCell<Vec<String>>,
     /// How many queued listener calls ran (`dispatches`).
     dispatches: u64,
     /// The shell's connection for slots, and the observation of the compositor's own dialogs on it.
@@ -275,7 +279,8 @@ impl JsShell {
             boot_ready: Some(boot_ready),
             tx: TxGate::new(),
             reported: HashMap::new(),
-            strikes: 0,
+            strikes: Cell::new(0),
+            stopped: RefCell::new(Vec::new()),
             dispatches: 0,
             dialogs: JsDialogs::new(),
             idle: JsIdle::new(),
@@ -391,6 +396,10 @@ impl JsShell {
     /// Runs `f` in the running generation under the listener budget, as a listener would run. A library that calls script back from
     /// outside a frame (the std library's layouts and listeners, driven by the core's dispatch) enters the generation this way.
     ///
+    /// A call that runs out its budget is stopped, counted as a strike against the generation and reported in the diagnostics of the
+    /// next frame, exactly as a listener call the frame runs itself: the supervisor of the role then restages the generation or
+    /// degrades it.
+    ///
     /// # Errors
     ///
     /// The script threw, or ran past its budget.
@@ -399,7 +408,20 @@ impl JsShell {
         f: impl for<'js> FnOnce(&rquickjs::Ctx<'js>) -> rquickjs::Result<R>,
     ) -> Result<R, JsError> {
         self.note_script_ran();
-        self.generation.call_budgeted(self.entry_budget, f)
+        let outcome = self.generation.call_budgeted(self.entry_budget, f);
+        if let Err(error) = &outcome
+            && self.count_strike(error)
+        {
+            self.stopped
+                .borrow_mut()
+                .push(format!("a listener call was stopped: {error}"));
+        }
+        outcome
+    }
+
+    /// The reports of the calls [`call_script`](Self::call_script) stopped since the last frame, oldest first.
+    pub(super) fn take_stopped_calls(&self) -> Vec<String> {
+        std::mem::take(&mut *self.stopped.borrow_mut())
     }
 
     /// `stack` with every frame of a module the running generation loaded rewritten to the file and position that wrote it (a
@@ -424,8 +446,8 @@ impl JsShell {
     }
 
     /// How many times a call ran past its wall-clock or memory budget in this generation.
-    pub const fn strikes(&self) -> u32 {
-        self.strikes
+    pub fn strikes(&self) -> u32 {
+        self.strikes.get()
     }
 
     /// How many queued listener calls the frames have run in all: the work a script's handlers did. A transition the
@@ -656,7 +678,7 @@ impl SwapHost for ShellSwap<'_> {
             stock.note_serving(generation.runtime());
         }
         self.shell.generation = generation;
-        self.shell.strikes = 0;
+        self.shell.strikes.set(0);
         self.shell.reported.clear();
         self.shell.boot_ready = Some(bindings::parents_first(&self.shell.state.borrow().mirror));
     }

@@ -44,15 +44,18 @@ pub enum AfterGrace {
 /// installed a dialog policy and has gone: a session in which none ever did holds no claim, and the built-in dialog serves as it always has.
 pub const AFTER_GRACE: AfterGrace = AfterGrace::Deny;
 
-/// How long the connection holds a request the shell has not answered before it refuses it itself, and how long it keeps a claim that
-/// no generation observes.
+/// How long the connection holds a request that no generation has taken up before it refuses it itself, and how long it keeps a claim
+/// that no generation observes.
 ///
-/// The connection never lets silence reach the built-in dialog: a request the shell does not answer within `hold` is answered `deny`, so
-/// the gap between one generation's end and the next one's start is closed, not open. A claim nobody observes for `grace` is given back,
-/// because the shell that held the policy is gone.
+/// The connection never lets silence reach the built-in dialog: a request that no generation takes up within `hold` is answered `deny`, so
+/// the gap between one generation's end and the next one's start is closed, not open. A request a generation took up
+/// ([`SlotConnection::taken`]) is the generation's: its verdict, `pass` or `deny`, is what is sent, and a generation that gives none
+/// because its listener ran out its budget leaves the request to the compositor, whose own window then ends and whose built-in dialog
+/// asks the user. A generation that ends with the request in hand refuses it. A claim nobody observes for `grace` is given back, because
+/// the shell that held the policy is gone.
 #[derive(Clone, Copy, Debug)]
 pub struct SlotTimings {
-    /// How long an offered request waits for the shell's verdict. The compositor's own window is 250 ms.
+    /// How long an offered request waits for a generation to take it up. The compositor's own window is 250 ms.
     pub hold: Duration,
     /// How long a claim is kept while no generation observes the slot.
     pub grace: Duration,
@@ -123,6 +126,8 @@ enum SlotCommand {
     },
     /// No generation observes the slot now (`true`), or one does again (`false`).
     Gap(bool),
+    /// A generation took `request` up: it is shown to the listeners, and the verdict is the generation's to give.
+    Taken(u64),
 }
 
 /// The slot link and its thread, as a session holds them.
@@ -178,6 +183,13 @@ impl SlotConnection {
         self.send(SlotCommand::Gap(gap));
     }
 
+    /// Says that a generation took `request` up: the listeners are being told of it. From then on the hold is not what answers it, the
+    /// generation's verdict is, and one that never comes (a listener ran out its budget and was stopped) leaves the request to the
+    /// compositor's own window.
+    pub(crate) fn taken(&self, request: u64) {
+        self.send(SlotCommand::Taken(request));
+    }
+
     /// Answers `request`: `deny` refuses it by policy, anything else is `pass`, which leaves it to the built-in dialog.
     pub(crate) fn answer(&self, request: u64, deny: bool) {
         self.send(SlotCommand::Answer {
@@ -202,7 +214,7 @@ fn publish(notice: SlotNotice) {
 }
 
 /// The thread's loop: make the link, then serve commands and forward what the compositor offers until the link fails or the connection is
-/// dropped. A request the shell does not answer within `timings.hold` is refused here.
+/// dropped. A request no generation takes up within `timings.hold` is refused here.
 fn serve(
     provider: &dyn SlotLinkProvider,
     commands: &Receiver<SlotCommand>,
@@ -255,6 +267,9 @@ fn serve(
                     }
                 }
                 SlotCommand::Gap(gap) => gap_since = gap.then(Instant::now),
+                SlotCommand::Taken(request) => {
+                    unanswered.remove(&request);
+                }
             }
         }
         match link.poll() {
@@ -300,7 +315,7 @@ fn serve(
                 return;
             }
         }
-        // Silence is not consent: a request nobody answered in time is refused, never left to the built-in dialog.
+        // Silence is not consent: a request no generation took up in time is refused, never left to the built-in dialog.
         let late: Vec<u64> = unanswered
             .iter()
             .filter(|(_, offered)| offered.elapsed() >= timings.hold)

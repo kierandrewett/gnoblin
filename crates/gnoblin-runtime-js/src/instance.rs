@@ -329,6 +329,7 @@ pub(crate) fn turn(ctx: GnoblinCtx, timeout_ms: u32) -> Result<i32, String> {
                     abi::LOG_WARN,
                     &format!("the reload that was asked for was refused ({code})"),
                 );
+                instance.role.reload_refused();
                 if requested {
                     let reason = format!("the host refused the reload ({code})");
                     if let Err(error) = instance.role.reject_config_reload(&reason) {

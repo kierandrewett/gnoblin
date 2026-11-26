@@ -73,6 +73,15 @@ pub struct ReloadReport<K> {
     pub health: Health,
 }
 
+/// What one restage of a recovery did ([`Reloader::restage`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Restaged<K> {
+    /// What the restage did. When it failed, the errors say how.
+    pub report: ReloadReport<K>,
+    /// Whether the restage was itself interrupted and the supervisor allows another one.
+    pub retry: bool,
+}
+
 /// Where a failed stage went wrong, in the language runtime's own terms.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Located<K> {
@@ -225,24 +234,57 @@ where
     /// suspect one; a restage that is itself interrupted is another strike. When the strikes run out the suspect
     /// generation is left running as the last good one, if there is one, and the report says so. A restage that fails any
     /// other way is not retried: the files on disk would fail the same way.
+    ///
+    /// A host that stages generations itself, so that a restage is not this reloader's to make inline, counts the fault with
+    /// [`count_fault`](Self::count_fault) and stages with [`restage`](Self::restage).
     pub fn recover(&mut self, fault: GenerationFault) -> ReloadReport<S::Kind> {
-        let mut fault = fault;
+        if self.count_fault(fault) == FaultAction::GiveUp {
+            return self.gave_up();
+        }
         loop {
-            match self.supervisor.record_fault(fault) {
-                FaultAction::GiveUp => return self.gave_up(),
-                FaultAction::Restage => match self.stage_and_commit() {
-                    Ok(()) => return self.report(Vec::new(), Vec::new()),
-                    Err(failure) => {
-                        let next = match &failure {
-                            StageFailure::Runtime(failure) => S::fault(failure),
-                            StageFailure::Rejected(_) => None,
-                        };
-                        match next {
-                            Some(next) => fault = next,
-                            None => return self.report(vec![self.diagnostic(&failure)], Vec::new()),
-                        }
-                    }
-                },
+            let step = self.restage();
+            if !step.retry {
+                return step.report;
+            }
+        }
+    }
+
+    /// Counts `fault` against the running generation and says what to do about it, without staging anything: the first half of
+    /// [`recover`](Self::recover), for a host that makes the restage itself.
+    ///
+    /// On [`FaultAction::GiveUp`] the running generation stays and [`gave_up`](Self::gave_up) is the report.
+    pub fn count_fault(&mut self, fault: GenerationFault) -> FaultAction {
+        self.supervisor.record_fault(fault)
+    }
+
+    /// Stages from disk once, as the restage of a recovery the supervisor allowed ([`count_fault`](Self::count_fault)): unlike
+    /// [`reload_now`](Self::reload_now) it is not a deliberate retry, so the strikes stay. A restage that is itself interrupted
+    /// is another strike, and [`Restaged::retry`] says whether the supervisor allows one more.
+    pub fn restage(&mut self) -> Restaged<S::Kind> {
+        match self.stage_and_commit() {
+            Ok(()) => Restaged {
+                report: self.report(Vec::new(), Vec::new()),
+                retry: false,
+            },
+            Err(failure) => {
+                let next = match &failure {
+                    StageFailure::Runtime(failure) => S::fault(failure),
+                    StageFailure::Rejected(_) => None,
+                };
+                match next.map(|fault| self.count_fault(fault)) {
+                    Some(FaultAction::Restage) => Restaged {
+                        report: self.report(vec![self.diagnostic(&failure)], Vec::new()),
+                        retry: true,
+                    },
+                    Some(FaultAction::GiveUp) => Restaged {
+                        report: self.gave_up(),
+                        retry: false,
+                    },
+                    None => Restaged {
+                        report: self.report(vec![self.diagnostic(&failure)], Vec::new()),
+                        retry: false,
+                    },
+                }
             }
         }
     }
@@ -304,7 +346,9 @@ where
         }
     }
 
-    fn gave_up(&self) -> ReloadReport<S::Kind> {
+    /// The report of a recovery the supervisor gave up on: the running generation stays, and nothing restages until the
+    /// cool-down passes or the user reloads.
+    pub fn gave_up(&self) -> ReloadReport<S::Kind> {
         let kept = match self.stager.current_id() {
             Some(id) => format!("generation {id} stays as the last good one"),
             None => "no generation is running".to_owned(),
@@ -740,6 +784,66 @@ mod tests {
             "the files on disk would fail the same way"
         );
         assert_eq!(report.generation, Some(1));
+    }
+
+    #[test]
+    fn a_host_that_stages_for_itself_counts_the_fault_and_restages_without_clearing_the_strikes() {
+        let (mut reloader, _clock) = reloader(vec![Script::Good], accept_all());
+        assert!(reloader.reload_now().ok);
+        // The supervisor allows the first restage and the host makes it: it is not a deliberate retry, so the strike stays.
+        assert_eq!(reloader.count_fault(GenerationFault::Budget), FaultAction::Restage);
+        let step = reloader.restage();
+        assert!(step.report.ok, "{:?}", step.report);
+        assert!(!step.retry);
+        assert_eq!(step.report.generation, Some(2));
+        // Two strikes more, with the first still counted, latch the supervisor.
+        assert_eq!(reloader.count_fault(GenerationFault::Budget), FaultAction::Restage);
+        assert_eq!(reloader.count_fault(GenerationFault::Budget), FaultAction::GiveUp);
+        assert!(matches!(reloader.health(), Health::Degraded { .. }));
+        let report = reloader.gave_up();
+        assert!(!report.ok);
+        assert_eq!(report.generation, Some(2), "the last generation stays");
+        assert!(
+            report.errors[0]
+                .message
+                .contains("generation 2 stays as the last good one")
+        );
+    }
+
+    #[test]
+    fn a_restage_that_is_interrupted_again_is_another_strike_and_says_whether_to_try_again() {
+        let (mut reloader, _clock) = reloader(vec![Script::Good, broken(Kind::Budget)], accept_all());
+        assert!(reloader.reload_now().ok);
+        assert_eq!(reloader.count_fault(GenerationFault::Budget), FaultAction::Restage);
+        // The restage trips the budget: the second strike, and the supervisor still allows one more.
+        let step = reloader.restage();
+        assert!(!step.report.ok);
+        assert!(step.retry, "{:?}", step.report);
+        assert_eq!(step.report.errors[0].kind, Some(Kind::Budget));
+        assert_eq!(step.report.generation, Some(1));
+        // The next one is the third: the supervisor gives up, and the generation that runs stays.
+        let step = reloader.restage();
+        assert!(!step.retry);
+        assert!(
+            step.report.errors[0]
+                .message
+                .contains("generation 1 stays as the last good one"),
+            "{:?}",
+            step.report
+        );
+        assert!(matches!(step.report.health, Health::Degraded { .. }));
+    }
+
+    #[test]
+    fn a_restage_that_fails_another_way_is_not_a_strike_and_not_retried_by_a_host_either() {
+        let (mut reloader, _clock) = reloader(vec![Script::Good, broken(Kind::Syntax)], accept_all());
+        assert!(reloader.reload_now().ok);
+        assert_eq!(reloader.count_fault(GenerationFault::Budget), FaultAction::Restage);
+        let step = reloader.restage();
+        assert!(!step.report.ok);
+        assert!(!step.retry, "the files on disk would fail the same way");
+        assert_eq!(step.report.errors[0].kind, Some(Kind::Syntax));
+        assert_eq!(step.report.health, Health::Healthy);
     }
 
     // ---- the rollback mark ------------------------------------------------------------------------------------------
