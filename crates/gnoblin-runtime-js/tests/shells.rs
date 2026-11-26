@@ -590,6 +590,169 @@ fn a_broken_edit_is_reported_at_its_ts_line_keeps_the_running_shell_and_a_fix_lo
     assert_eq!(lines_of(&marker, "fixed"), 3, "{}", run.dump());
 }
 
+// ---- hot reload: the programs the config's top level starts -------------------------------------------------------------------
+
+/// A shell whose top level starts `sleep <program>` (when it names one) and then runs `rest`. The program's argument tells it from
+/// any other, and `sleep` ends only when something stops it.
+fn spawning_shell(program: Option<&str>, rest: &str) -> String {
+    let spawn = program.map_or_else(String::new, |tag| format!("gnoblin.spawn([\"sleep\", \"{tag}\"]);\n"));
+    format!("import {{ gnoblin }} from \"gnoblin-core\";\n{spawn}{rest}\n")
+}
+
+/// The pids of each `programs` step of `run`, in order.
+fn programs_seen(run: &Run) -> Vec<Vec<u32>> {
+    run.lines_with("programs running=")
+        .iter()
+        .map(|line| {
+            line.split_once("pids=")
+                .map_or("", |(_, pids)| pids)
+                .split(',')
+                .filter_map(|pid| pid.parse().ok())
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn a_reload_keeps_the_program_the_config_starts_again_stops_one_it_no_longer_starts_and_a_refused_stage_starts_nothing()
+{
+    let dir = project("reload-programs");
+    let edits = dir.join("edits");
+    fs::create_dir_all(&edits).unwrap();
+    fs::write(dir.join("shell.ts"), spawning_shell(Some("31.6101"), "")).unwrap();
+    fs::write(
+        edits.join("again.ts"),
+        spawning_shell(Some("31.6101"), "// saved again"),
+    )
+    .unwrap();
+    fs::write(
+        edits.join("throws.ts"),
+        spawning_shell(Some("31.6102"), "throw new Error(\"late\");"),
+    )
+    .unwrap();
+    fs::write(edits.join("other.ts"), spawning_shell(Some("31.6103"), "")).unwrap();
+    fs::write(edits.join("none.ts"), spawning_shell(None, "")).unwrap();
+    let put = |name: &str| format!("put:{}={}", dir.join("shell.ts").display(), edits.join(name).display());
+    let run = drive(
+        &dir.join("shell.ts"),
+        &[
+            "pump",
+            // The program the entry started when it took over.
+            "programs",
+            &put("again.ts"),
+            "sleep:500",
+            "pump",
+            "serve",
+            // The same program again: the generation that took over keeps the process it has.
+            "programs",
+            &put("throws.ts"),
+            "sleep:500",
+            "pump",
+            "serve",
+            // A stage that starts a program and then fails starts nothing, and the running one is left alone.
+            "programs",
+            &put("other.ts"),
+            "sleep:500",
+            "pump",
+            "serve",
+            "sleep:300",
+            // Another program: the first one is stopped and the other runs.
+            "programs",
+            &put("none.ts"),
+            "sleep:500",
+            "pump",
+            "serve",
+            "sleep:300",
+            // No program: the one the config started is stopped.
+            "programs",
+            "stop",
+        ],
+    );
+    assert_eq!(run.code, 0, "{}", run.dump());
+    let seen = programs_seen(&run);
+    assert_eq!(seen.len(), 5, "{}", run.dump());
+    let first = &seen[0];
+    assert_eq!(first.len(), 1, "the entry started one program\n{}", run.dump());
+    assert_eq!(
+        &seen[1],
+        first,
+        "the same program again is the process that ran\n{}",
+        run.dump()
+    );
+    assert_eq!(&seen[2], first, "a refused stage changed nothing\n{}", run.dump());
+    assert_eq!(
+        seen[3].len(),
+        1,
+        "one program runs after the replacement\n{}",
+        run.dump()
+    );
+    assert_ne!(&seen[3], first, "the replacement is another process\n{}", run.dump());
+    assert!(
+        seen[4].is_empty(),
+        "a config that starts none leaves none running\n{}",
+        run.dump()
+    );
+    let outcomes: Vec<&str> = run.stdout.lines().filter(|line| line.starts_with("reload ")).collect();
+    assert_eq!(outcomes.len(), 4, "{}", run.dump());
+    assert!(outcomes[1].starts_with("reload failed"), "{}", run.dump());
+}
+
+/// How many times the compositor was told to set a property of a node, by each `writes` step of `run`, in order.
+fn writes_seen(run: &Run) -> Vec<usize> {
+    run.lines_with("writes id=")
+        .iter()
+        .filter_map(|line| line.split_once("count=").and_then(|(_, count)| count.parse().ok()))
+        .collect()
+}
+
+#[test]
+fn a_stage_that_writes_at_its_top_level_and_then_throws_leaves_no_write_behind_and_one_that_loads_sends_it() {
+    let dir = project("reload-writes");
+    let edits = dir.join("edits");
+    fs::create_dir_all(&edits).unwrap();
+    let entry = |rest: &str| format!("import {{ gnoblin }} from \"gnoblin-core\";\n{rest}\n");
+    fs::write(dir.join("shell.ts"), entry("")).unwrap();
+    fs::write(
+        edits.join("throws.ts"),
+        entry("gnoblin.clients.at(0).x = 999;\nthrow new Error(\"late\");"),
+    )
+    .unwrap();
+    fs::write(edits.join("writes.ts"), entry("gnoblin.clients.at(0).x = 5;")).unwrap();
+    let put = |name: &str| format!("put:{}={}", dir.join("shell.ts").display(), edits.join(name).display());
+    let run = drive(
+        &dir.join("shell.ts"),
+        &[
+            "pump",
+            "writes:40:x",
+            &put("throws.ts"),
+            "sleep:500",
+            // The runtime sees the change and asks the host, which serves the request through the loader: the stage is refused.
+            "pump",
+            "serve",
+            "pump",
+            "writes:40:x",
+            &put("writes.ts"),
+            "sleep:500",
+            "pump",
+            "serve",
+            "pump",
+            "writes:40:x",
+            "stop",
+        ],
+    );
+    assert_eq!(run.code, 0, "{}", run.dump());
+    let outcomes: Vec<&str> = run.stdout.lines().filter(|line| line.starts_with("reload ")).collect();
+    assert_eq!(outcomes.len(), 2, "{}", run.dump());
+    assert!(outcomes[0].starts_with("reload failed"), "{}", run.dump());
+    assert!(outcomes[1].starts_with("reload ok"), "{}", run.dump());
+    assert_eq!(
+        writes_seen(&run),
+        vec![0, 0, 1],
+        "the refused stage's write never went out; the one that loaded sent its own\n{}",
+        run.dump()
+    );
+}
+
 // ---- example 17 (JavaScript): a shell that imports only gnoblin-core -----------------------------------------------------------
 
 #[test]

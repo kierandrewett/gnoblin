@@ -27,6 +27,7 @@
 //! | `put:DEST=SRC`  | replaces the file `DEST` with `SRC`, atomically: an edit of a file a script imports, not the module  |
 //! | `sleep:MS`      | waits `MS` real milliseconds, for a file watcher that runs on the clock and not on the manual one    |
 //! | `wait_programs` | waits until every program the shell started has ended, so what it wrote is on disk before `stop`    |
+//! | `programs`      | prints `programs running=N pids=A,B` for the programs the shell has running now                      |
 //! | `writes:ID:KEY` | prints how many times a transaction set property `KEY` of node `ID` since the scene started          |
 //! | `stop`          | ends the shell                                                                                       |
 #![allow(unsafe_code)]
@@ -174,6 +175,12 @@ impl ReloadScene {
             "stats" => self.stats(),
             "sleep" => std::thread::sleep(Duration::from_millis(number(argument)?)),
             "wait_programs" => self.wait_programs()?,
+            "programs" => {
+                self.pump();
+                let pids = live_children().map_err(|error| fail(&format!("programs: {error}")))?;
+                let pids: Vec<String> = pids.iter().map(ToString::to_string).collect();
+                out!("programs running={} pids={}", pids.len(), pids.join(","));
+            }
             "writes" => {
                 let (id, key) = argument.split_once(':').ok_or_else(|| fail("writes takes ID:KEY"))?;
                 let id = number(id)?;
@@ -207,7 +214,9 @@ impl ReloadScene {
         let deadline = Instant::now() + PROGRAMS_WAIT;
         loop {
             self.shell.dispatch(0);
-            let running = live_children().map_err(|error| fail(&format!("wait_programs: {error}")))?;
+            let running = live_children()
+                .map_err(|error| fail(&format!("wait_programs: {error}")))?
+                .len();
             if running == 0 || Instant::now() >= deadline {
                 out!("programs running={running}");
                 return Ok(());
@@ -331,11 +340,11 @@ fn fail(message: &str) -> i32 {
     2
 }
 
-/// How many child processes of this process have not ended. A child that ended and is not reaped yet is a zombie and has done its
-/// work, so it is not counted.
-fn live_children() -> Result<usize, String> {
+/// The child processes of this process that have not ended, by process id. A child that ended and is not reaped yet is a zombie and
+/// has done its work, so it is not counted.
+fn live_children() -> Result<Vec<u32>, String> {
     let me = std::process::id();
-    let mut live = 0;
+    let mut live = Vec::new();
     for entry in fs::read_dir("/proc").map_err(|error| format!("cannot read /proc: {error}"))? {
         let entry = entry.map_err(|error| format!("cannot read /proc: {error}"))?;
         if !entry.file_name().as_encoded_bytes().iter().all(u8::is_ascii_digit) {
@@ -353,8 +362,9 @@ fn live_children() -> Result<usize, String> {
         let state = fields.next();
         let parent = fields.next().and_then(|parent| parent.parse::<u32>().ok());
         if parent == Some(me) && !matches!(state, Some("Z" | "X")) {
-            live += 1;
+            live.extend(entry.file_name().to_str().and_then(|name| name.parse::<u32>().ok()));
         }
     }
+    live.sort_unstable();
     Ok(live)
 }
