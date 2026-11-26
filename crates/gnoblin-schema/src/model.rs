@@ -277,7 +277,10 @@ pub struct Augment {
     /// Each member acts on one object of the target class (`client.style`), which the library is handed as the first parameter
     /// `target`. Without it a member is the same on every object of the class (`gnoblin.workspaces`).
     pub receiver: bool,
-    /// The read-only properties the augment adds.
+    /// The target gains `set(props, options)` in the script languages: it writes each writable property `props` names in one transition
+    /// of the root's `request_transition`. Rust writes the properties inside `request_transition` itself.
+    pub assign: bool,
+    /// The properties the augment adds: read-only, or for a receiver augment writable too.
     pub properties: Vec<Property>,
     /// The methods the augment adds.
     pub methods: Vec<Method>,
@@ -334,13 +337,19 @@ pub struct ObjectType {
     pub ctor: Option<Vec<String>>,
     /// An instance stays until it is destroyed, whatever the shell releases (a widget on screen).
     pub retained: bool,
+    /// The class has `set(props, options)` in the script languages: each writable property `props` names, written in one transition of
+    /// the root's `request_transition`. For the class that holds an augment: the class it extends has it.
+    pub assign: bool,
     /// For the class that holds the members of the augments of a core class: that class's name in the core's catalog (`gnoblin`). The
     /// members of the class are installed on it, and the class is the std library's.
     pub augment_of: Option<String>,
     /// For the class that holds the members of a `receiver = true` augment: every method takes the object it acts on as its first
-    /// parameter `target`, and these are the methods that were the augment's properties, which a generator installs as read-only
-    /// properties of the target. `None` for any other class.
+    /// parameter `target`, and these are the methods that were the augment's properties, which a generator installs as properties of the
+    /// target. `None` for any other class.
     pub augment_getters: Option<Vec<String>>,
+    /// The getters of `augment_getters` that were writable properties: each has the method `set_<name>(target, value)`, which a generator
+    /// installs as the property's setter and not as a method of its own.
+    pub augment_setters: Vec<String>,
     /// The object's name in each language when it differs from the mechanical conversion.
     pub export: Export,
     /// For a record that is the family of a tagged value: the enum property whose value says which variant a value is.
@@ -386,8 +395,10 @@ impl ObjectType {
             kind: self.kind,
             ctor: self.ctor.clone(),
             retained: self.retained,
+            assign: self.assign,
             augment_of: self.augment_of.clone(),
             augment_getters: self.augment_getters.clone(),
+            augment_setters: self.augment_setters.clone(),
             export: self.export.clone(),
             tag: self.tag.clone(),
             number: self.number.clone(),
@@ -1034,6 +1045,12 @@ impl Catalog {
             if let Some(getters) = &object.augment_getters {
                 let _ = writeln!(text, "augment_getters {getters:?}");
             }
+            if object.assign {
+                let _ = writeln!(text, "assign");
+            }
+            if !object.augment_setters.is_empty() {
+                let _ = writeln!(text, "augment_setters {:?}", object.augment_setters);
+            }
             if let Some(field) = &object.number {
                 let _ = writeln!(text, "number {field}");
             }
@@ -1146,6 +1163,8 @@ struct AugmentGroup {
     since: Version,
     /// The augments of the target are `receiver = true`; every augment of one target agrees.
     receiver: bool,
+    /// An augment of the target gives it `set(props, options)`.
+    assign: bool,
     properties: Vec<Property>,
     methods: Vec<Method>,
     /// The file each member came from, to name both when two augments declare one member.
@@ -1231,6 +1250,7 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
                         schema: index,
                         since: augment.since,
                         receiver: augment.receiver,
+                        assign: false,
                         properties: Vec::new(),
                         methods: Vec::new(),
                         declared_in: BTreeMap::new(),
@@ -1247,6 +1267,7 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
                 continue;
             }
             group.since = group.since.min(augment.since);
+            group.assign |= augment.assign;
             let names = augment
                 .properties
                 .iter()
@@ -1265,8 +1286,42 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
         }
     }
     for group in groups {
-        let (properties, methods, getters) = if group.receiver {
+        let (properties, methods, getters, setters) = if group.receiver {
             let getters: Vec<String> = group.properties.iter().map(|property| property.name.clone()).collect();
+            let setters: Vec<String> = group
+                .properties
+                .iter()
+                .filter(|property| !property.readonly)
+                .map(|property| property.name.clone())
+                .collect();
+            // A writable property is a getter and the method `set_<name>(target, value)`, which a generator makes the property's setter.
+            let setter_methods: Vec<Method> = group
+                .properties
+                .iter()
+                .filter(|property| !property.readonly)
+                .map(|property| Method {
+                    params: vec![
+                        receiver_param(&group.class, property.since),
+                        Field {
+                            name: "value".to_owned(),
+                            ty: property.ty.clone(),
+                            since: property.since,
+                            secret: property.secret,
+                            optional: property.optional,
+                        },
+                    ],
+                    name: format!("set_{}", property.name),
+                    since: property.since,
+                    secret: property.secret,
+                    function: false,
+                    returns: None,
+                    optional: false,
+                    required: false,
+                    native_default: false,
+                    dunder: None,
+                    extras: Extras::default(),
+                })
+                .collect();
             let methods = group
                 .properties
                 .into_iter()
@@ -1283,14 +1338,15 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
                     dunder: None,
                     extras: property.extras,
                 })
+                .chain(setter_methods)
                 .chain(group.methods.into_iter().map(|mut method| {
                     method.params.insert(0, receiver_param(&group.class, method.since));
                     method
                 }))
                 .collect();
-            (Vec::new(), methods, Some(getters))
+            (Vec::new(), methods, Some(getters), setters)
         } else {
-            (group.properties, group.methods, None)
+            (group.properties, group.methods, None, Vec::new())
         };
         schemas[group.schema].objects.push(ObjectType {
             name: augment_class_name(&group.class),
@@ -1301,8 +1357,10 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
             kind: ObjectKind::Service,
             ctor: None,
             retained: false,
+            assign: group.assign,
             augment_of: Some(group.class),
             augment_getters: getters,
+            augment_setters: setters,
             export: Export::default(),
             tag: None,
             number: None,

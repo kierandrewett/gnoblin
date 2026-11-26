@@ -366,4 +366,12 @@ fn example_34_a_python_shell_tiles_real_windows_with_each_layout_and_drags_a_div
     serving(&mut session);
     assert_the_workspaces_tile_real_windows_and_a_divider_moves(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
+    // The layout aliases of the TypeScript library are classes of the generated SDK: the workspace holds the `KioskLayout` it was
+    // given (its base, `MonocleLayout`, is named by the type stubs only), and the carousel the chords chose above was a
+    // `Carousel3dLayout`.
+    assert!(
+        session.log_text().contains("workspaces: side has a kiosk layout: true"),
+        "{}",
+        session.log_text()
+    );
 }

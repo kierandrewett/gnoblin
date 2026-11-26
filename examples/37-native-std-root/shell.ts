@@ -104,6 +104,13 @@ function onChanged(): void {
     workspaces.showById("main");
     say(`show main by id: true`);
     say(`main is active: ${main.active}`);
+    // `find` has the kind `Workspace` once std is loaded: by field values, and by a function.
+    const workspaceIds = (found: Workspace[]) => found.map((workspace) => workspace.id).join(",");
+    say(`find Workspace by id: ${workspaceIds(gnoblin.find("Workspace", { id: "side" }))}`);
+    say(`find Workspace shown: ${workspaceIds(gnoblin.find("Workspace", { active: true }))}`);
+    say(
+        `find Workspace by a function: ${workspaceIds(gnoblin.find("Workspace", (found) => found.id.startsWith("m")))}`,
+    );
     const shown = gnoblin.input?.primary?.activeDisplay?.viewport?.content;
     say(`the active display shows main: ${shown?.id === "main"}`);
     try {

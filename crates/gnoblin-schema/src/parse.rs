@@ -136,6 +136,8 @@ struct RawAugment {
     since: Option<String>,
     #[serde(default)]
     receiver: bool,
+    #[serde(default)]
+    assign: bool,
     #[serde(default, rename = "property")]
     properties: Vec<RawProperty>,
     #[serde(default, rename = "method")]
@@ -159,6 +161,8 @@ struct RawObject {
     ctor: Option<Vec<String>>,
     #[serde(default)]
     retained: bool,
+    #[serde(default)]
+    assign: bool,
     #[serde(default)]
     export: Option<RawExport>,
     #[serde(default)]
@@ -555,9 +559,14 @@ fn parse_augments(raw_augments: &[RawAugment], scope: Scope, problems: &mut Vec<
             false,
             problems,
         );
-        for property in properties.iter().filter(|property| !property.readonly) {
+        // A receiver augment's writable property is written through its setter method `set_<name>(target, value)`; a property of an
+        // augment that acts on no one object has nothing to write through.
+        for property in properties
+            .iter()
+            .filter(|property| !property.readonly && !raw_augment.receiver)
+        {
             problems.push(format!(
-                "{owner}: property `{}` must be read-only (`readonly = true`): the library serves it and no language writes it",
+                "{owner}: property `{}` must be read-only (`readonly = true`): only a `receiver = true` augment has writable properties",
                 property.name
             ));
         }
@@ -581,6 +590,7 @@ fn parse_augments(raw_augments: &[RawAugment], scope: Scope, problems: &mut Vec<
             class: class.to_owned(),
             since,
             receiver: raw_augment.receiver,
+            assign: raw_augment.assign,
             properties,
             methods,
         });
@@ -683,6 +693,13 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
                 ));
             }
         }
+        local_only(scope, problems, &owner, "assign", raw_object.assign);
+        if raw_object.assign && kind != ObjectKind::Handle {
+            problems.push(format!(
+                "{owner}: `assign = true` gives a handle `set(props, options)`, and this object is a {}",
+                kind.as_str()
+            ));
+        }
         objects.push(ObjectType {
             name: raw_object.name.clone(),
             base: raw_object.base.clone(),
@@ -692,8 +709,10 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
             kind,
             ctor: raw_object.ctor.clone(),
             retained: raw_object.retained,
+            assign: raw_object.assign,
             augment_of: None,
             augment_getters: None,
+            augment_setters: Vec::new(),
             export: export_of(raw_object.export.as_ref()),
             tag: raw_object.tag.clone(),
             number: raw_object.number.clone(),

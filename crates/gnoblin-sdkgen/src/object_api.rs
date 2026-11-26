@@ -32,8 +32,8 @@ use gnoblin_schema::{
 };
 
 use super::objects::{
-    Member, augments_of, check_foreign, crate_path_of, ctor_properties, finds_of, foreign_handle, foreign_handles,
-    options_type_name, slots_of, stem_of,
+    Member, augment_finds, augments_of, check_foreign, crate_path_of, ctor_properties, finds_of, foreign_handle,
+    foreign_handles, options_type_name, slots_of, stem_of,
 };
 use super::text::{pascal, rust_ident, snake};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family};
@@ -1219,8 +1219,26 @@ pub struct @Options@ {
                 given.join(", ")
             );
         }
+        // A finder the augment declares (`find = "Kind"`) is a kind of the core class's `find::<T>`: the kind is this library's class, so
+        // the impl of the core's `Finds` lives here.
+        let mut finds = String::new();
+        for (kind, method) in augment_finds(class) {
+            let Some(Type::List(inner)) = &method.returns else {
+                return Err(format!(
+                    "`{}`: the finder of `{kind}` does not return a list",
+                    class.name
+                ));
+            };
+            let _ = write!(
+                finds,
+                "impl ::gnoblin_core::objects::Finds<{core}> for {found} {{\n    type Filter = {filter};\n    const KIND: &'static str = {kind:?};\n\n    fn find_in(service: &{core}, filter: Option<&{filter}>) -> go::Res<Vec<{found}>> {{\n        {trait_name}::{ident}(service, filter)\n    }}\n}}\n\n",
+                found = self.owned(inner)?,
+                filter = self.owned(&method.params[0].ty)?,
+                ident = member_ident(&method.name, &method.extras.export.rust),
+            );
+        }
         Ok(format!(
-            "/// The members `{ns}` adds to the core's `{name}`: `use gnoblin_std::prelude::*` brings them in, and a shell that never does has none.\n///\n/// Each is read through the library's service for the generation the object belongs to, so a member never binds to a library of another\n/// generation.\npub trait {trait_name} {{\n{declared}}}\n\nimpl {trait_name} for {core} {{\n{defined}}}\n\n",
+            "/// The members `{ns}` adds to the core's `{name}`: `use gnoblin_std::prelude::*` brings them in, and a shell that never does has none.\n///\n/// Each is read through the library's service for the generation the object belongs to, so a member never binds to a library of another\n/// generation.\npub trait {trait_name} {{\n{declared}}}\n\nimpl {trait_name} for {core} {{\n{defined}}}\n\n{finds}",
             ns = self.namespace,
             name = class_name(target),
         ))

@@ -67,10 +67,14 @@ const terminals = gnoblin.clients.where({ appId: "foot" });
 terminals.style.opacity = 0.9;
 ```
 
-- A query value is compared with `===`. An array matches when the property equals any of its entries.
-- The keys depend on the collection. Windows take `id`, `appId`, `title`, `focused`, `fullscreen`, `x`, `y`, `width` and
-  `height`. Workspaces take `id`, `name`, `index` and `active`. Outputs take `id`, `name`, `make`, `model`, `mode`,
-  `scale`, `primary`, `enabled`, `x`, `y`, `width` and `height`.
+- A query value is compared with `===`. To match one of several values, use the `any` field for that key:
+  `{ anyAppId: ["foot", "kitty"] }`. An empty `any` list matches no member.
+- The keys depend on the collection. Windows take `id`, `appId`, `title`, `focused`, `fullscreen`, `x`, `y`, `width`,
+  `height`, `anyId`, `anyAppId` and `anyTitle`. Outputs take `id`, `name`, `make`, `model`, `mode`, `scale`, `primary`,
+  `enabled`, `x`, `y`, `width`, `height`, `anyId` and `anyName`.
+- `where` on a selection narrows it: `gnoblin.clients.where({ appId: "foot" }).where({ focused: true })`.
+- A selection's `parent` is the collection it was made from, and its `query` is the query it was made with. Both are
+  `undefined` on `gnoblin.clients`, `gnoblin.outputs` and a list made with `new ClientCollection()`.
 - `where(query, { priority })` ranks the selection's `style` among the other selections that style a window: the higher
   priority wins. See [window style](/js-style).
 

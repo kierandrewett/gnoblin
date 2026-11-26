@@ -1044,12 +1044,13 @@ type = "object:gnoblin.model.client"
 
 # A place windows are laid out in. A shell makes it, gives it a layout and adds it to `workspaces`; it stays usable after it leaves the
 # list. Its id is what finds it across a reload: a workspace an earlier generation left in the library is the one a new workspace of that
-# id becomes.
+# id becomes. In the script languages `workspace.set(props, options)` writes its properties in one transition (`assign`).
 [[object]]
 name = "workspace"
 since = "0.2.0"
 retained = true
 ctor = ["id"]
+assign = true
 
 # The workspace's id, unique among the workspaces in the list.
 [[object.property]]
@@ -1458,6 +1459,40 @@ type = "enum:snap_zone"
 name = "floating"
 type = "object:layout_rect"
 
+# The fields `gnoblin.find("Workspace", filter)` selects on: a workspace matches when it equals every field that is given.
+[[object]]
+name = "workspace_query"
+since = "0.2.0"
+kind = "record"
+
+# The workspace's id.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The workspace's name.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The workspace's place in the list, from 0.
+[[object.property]]
+name = "index"
+type = "int"
+since = "0.2.0"
+optional = true
+
+# Whether an output shows the workspace.
+[[object.property]]
+name = "active"
+type = "bool"
+since = "0.2.0"
+optional = true
+
 # The list of workspaces is `gnoblin.workspaces` of the core's root once this library is loaded: the core has no workspace, so the member is
 # the library's. A shell that loads no std library has no such member.
 [[augment]]
@@ -1471,11 +1506,41 @@ type = "object:workspaces"
 since = "0.2.0"
 readonly = true
 
-# What a window has once this library is loaded: the core has no workspace.
+# The workspaces of the list that match `query`, in list order, or every one: the kind `Workspace` of the root's `find`, which
+# `gnoblin.find("Workspace", filter)` calls.
+[[augment.method]]
+name = "find_workspaces"
+since = "0.2.0"
+returns = "list<object:workspace>"
+find = "Workspace"
+
+[[augment.method.param]]
+name = "query"
+type = "object:workspace_query"
+optional = true
+
+# Shows `workspace` as `gnoblin.workspaces.show` does: on the output `options.output` names, else on the output under the pointer, else on
+# the primary output.
+[[augment.method]]
+name = "show"
+since = "0.2.0"
+
+[[augment.method.param]]
+name = "workspace"
+type = "object:workspace"
+
+[[augment.method.param]]
+name = "options"
+type = "object:show_options"
+optional = true
+
+# What a window has once this library is loaded: the core has no workspace. In the script languages `client.set(props, options)` writes
+# the window's properties, the core's and these, in one transition (`assign`).
 [[augment]]
 target = "core.client"
 since = "0.2.0"
 receiver = true
+assign = true
 
 # The workspace the window belongs to, or none for a window that is in none.
 [[augment.property]]
@@ -1496,6 +1561,48 @@ returns = "bool"
 name = "workspace"
 type = "object:workspace"
 
+# The output that shows the window's workspace, or none while no output shows it.
+[[augment.property]]
+name = "output"
+type = "object:gnoblin.model.output"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# Moves the window to the workspace `output` shows. False when the output shows none, or the move is refused as `move_to_workspace`
+# refuses one.
+[[augment.method]]
+name = "move_to_output"
+since = "0.2.0"
+returns = "bool"
+
+[[augment.method.param]]
+name = "output"
+type = "object:gnoblin.model.output"
+
+# The room the window's frame takes round its content, as the decorations last told the library: 0 on each side for a window that has no
+# frame.
+[[augment.property]]
+name = "frame_inset"
+type = "object:frame_inset"
+since = "0.2.0"
+readonly = true
+
+# Whether the window floats on a workspace whose layout tiles: a layout leaves a floating window where it is. The same value as
+# `ClientState.floating` of the window.
+[[augment.property]]
+name = "floating"
+type = "bool"
+since = "0.2.0"
+
+# The rectangle the window floats at, which the library keeps so a refit to another work area moves it too, or none while it keeps none.
+# Writing none forgets it. The same value as `ClientState.floating_bounds` of the window.
+[[augment.property]]
+name = "floating_bounds"
+type = "object:layout_rect"
+since = "0.2.0"
+optional = true
+
 # What an output has once this library is loaded: the core has no workspace.
 [[augment]]
 target = "core.output"
@@ -1506,6 +1613,15 @@ receiver = true
 [[augment.property]]
 name = "workspace"
 type = "object:workspace"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# What a layout tiles in on the output: the output less the room the shell's bars take. None for an output the library has no rectangle
+# of.
+[[augment.property]]
+name = "area"
+type = "object:layout_rect"
 since = "0.2.0"
 readonly = true
 optional = true

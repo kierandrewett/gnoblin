@@ -49,6 +49,10 @@ struct HeldClients {
     /// window that closes later is told of as the core's object even when no shell read it: once the window closed, the core no longer
     /// lists it, and a lookup then finds nothing.
     arriving: Vec<(u64, u8)>,
+    /// Each output's `Output`, by node, held by one reference of the library's as `clients` holds a window's.
+    outputs: HashMap<u64, Obj>,
+    /// The core's collection of every output, which an output's `Output` is looked up in once, held by one reference.
+    every_output: Option<Obj>,
 }
 
 thread_local! {
@@ -78,6 +82,77 @@ pub(crate) fn client_value(ctx: GnoblinCtx, node: u64) -> Res<Val> {
         namespace: CORE.to_owned(),
         obj,
     })
+}
+
+/// The core's `Output` of the output `node`, as the value that hands it to a shell: what [`client_value`] is for a window. The value holds
+/// no reference; an answer must go through `Cx::hand_out` before it is handed over.
+///
+/// # Errors
+///
+/// The core has no output of that node, or its object protocol refused.
+pub(crate) fn output_value(ctx: GnoblinCtx, node: u64) -> Res<Val> {
+    let held = HELD.with(|held| {
+        held.borrow()
+            .get(&ctx)
+            .and_then(|held| held.outputs.get(&node).copied())
+    });
+    let obj = match held {
+        Some(obj) => obj,
+        None => look_up_output(ctx, node)?,
+    };
+    Ok(Val::Foreign {
+        namespace: CORE.to_owned(),
+        obj,
+    })
+}
+
+/// Asks the core for the `Output` of `node` and keeps it.
+fn look_up_output(ctx: GnoblinCtx, node: u64) -> Res<Obj> {
+    let core = core_api(ctx)?;
+    let every = match HELD.with(|held| held.borrow().get(&ctx).and_then(|held| held.every_output)) {
+        Some(every) => every,
+        None => {
+            let root = core.create(core.class("gnoblin")?, &[])?;
+            let outputs = core.member(core.class_of(root)?, abi::MEMBER_PROPERTY, "outputs");
+            let every = outputs
+                .and_then(|outputs| core.get(root, outputs))
+                .and_then(|every| every.object());
+            let _ = core.release(root);
+            let every = every?;
+            HELD.with(|held| held.borrow_mut().entry(ctx).or_default().every_output = Some(every));
+            every
+        }
+    };
+    let get = core.member(core.class_of(every)?, abi::MEMBER_METHOD, "get")?;
+    let obj = match core.call(every, get, &[Val::Text(node.to_string())])? {
+        Val::Object { obj, .. } => obj,
+        _ => {
+            return Err(Fail::new(abi::E_NO_SUCH_NODE, format!("the core has no output {node}")));
+        }
+    };
+    // Outputs come and go while a generation runs: each lookup lets go of the outputs the core says are gone, so the library holds about the
+    // outputs there are. A shell that has one of them holds its own reference.
+    let held: Vec<(u64, Obj)> = HELD.with(|held| {
+        held.borrow()
+            .get(&ctx)
+            .map(|held| held.outputs.iter().map(|(node, obj)| (*node, *obj)).collect())
+            .unwrap_or_default()
+    });
+    let alive = core.member(core.class("output")?, abi::MEMBER_PROPERTY, "alive")?;
+    for (gone, old) in held {
+        if !core.get(old, alive).and_then(|value| value.bool()).unwrap_or(false) {
+            let _ = core.release(old);
+            HELD.with(|held| {
+                if let Some(held) = held.borrow_mut().get_mut(&ctx) {
+                    held.outputs.remove(&gone);
+                }
+            });
+        }
+    }
+    HELD.with(|held| {
+        held.borrow_mut().entry(ctx).or_default().outputs.insert(node, obj);
+    });
+    Ok(obj)
 }
 
 /// Asks the core for the `Client` of `node` and keeps it.

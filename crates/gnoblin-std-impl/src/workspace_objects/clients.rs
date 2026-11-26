@@ -267,19 +267,8 @@ fn register_state(builder: &mut Builder) {
                 None => Ok(Val::None),
             }
         })
-        .get("floating", |held, _| {
-            look(held.ctx, |st| {
-                st.rec
-                    .get(&held.node)
-                    .map(|rec| rec.floating)
-                    .ok_or_else(|| no_client(held.node))
-            })
-            .map(Val::Bool)
-        })
-        .set("floating", |held, _, value| {
-            let floating = value.bool()?;
-            edit(held.ctx, |st| st.set_floating(held.node, floating))
-        })
+        .get("floating", |held, _| floating_of(held))
+        .set("floating", |held, _, value| set_floating(held, &value))
         .get("inset", |held, _| {
             let state = state_of(held)?;
             Ok(record(vec![
@@ -346,34 +335,8 @@ fn register_state(builder: &mut Builder) {
                 Ok(())
             })
         })
-        .get("floating_bounds", |held, _| {
-            let state = state_of(held)?;
-            Ok(if state.flags & sabi::STD_CLIENT_HAS_FLOATING != 0 {
-                rect_val(&Rect::new(
-                    state.floating.x,
-                    state.floating.y,
-                    state.floating.width,
-                    state.floating.height,
-                ))
-            } else {
-                Val::None
-            })
-        })
-        .set("floating_bounds", |held, _, value| {
-            let bounds = (!value.is_none())
-                .then(|| checked_rect(&value, "floating_bounds"))
-                .transpose()?;
-            update(held, |state| {
-                match bounds {
-                    Some(bounds) => {
-                        state.flags |= sabi::STD_CLIENT_HAS_FLOATING;
-                        state.floating = rect_out(&bounds);
-                    }
-                    None => state.flags &= !sabi::STD_CLIENT_HAS_FLOATING,
-                }
-                Ok(())
-            })
-        })
+        .get("floating_bounds", |held, _| floating_bounds_of(held))
+        .set("floating_bounds", |held, _, value| set_floating_bounds(held, &value))
         .get("snap", |held, _| {
             look(held.ctx, |st| {
                 st.rec
@@ -418,6 +381,82 @@ fn register_state(builder: &mut Builder) {
             let obj = cx.spawn("client_state", ClientRef { ctx, node })?;
             cx.handout(obj)
         });
+}
+
+/// Whether the shell floated the client.
+fn floating_of(held: &ClientRef) -> Res<Val> {
+    look(held.ctx, |st| {
+        st.rec
+            .get(&held.node)
+            .map(|rec| rec.floating)
+            .ok_or_else(|| no_client(held.node))
+    })
+    .map(Val::Bool)
+}
+
+fn set_floating(held: &ClientRef, value: &Val) -> Res<()> {
+    let floating = value.bool()?;
+    edit(held.ctx, |st| st.set_floating(held.node, floating))
+}
+
+/// The rectangle the client floats at, or none while the library keeps none.
+fn floating_bounds_of(held: &ClientRef) -> Res<Val> {
+    let state = state_of(held)?;
+    Ok(if state.flags & sabi::STD_CLIENT_HAS_FLOATING != 0 {
+        rect_val(&Rect::new(
+            state.floating.x,
+            state.floating.y,
+            state.floating.width,
+            state.floating.height,
+        ))
+    } else {
+        Val::None
+    })
+}
+
+fn set_floating_bounds(held: &ClientRef, value: &Val) -> Res<()> {
+    let bounds = (!value.is_none())
+        .then(|| checked_rect(value, "floating_bounds"))
+        .transpose()?;
+    update(held, |state| {
+        match bounds {
+            Some(bounds) => {
+                state.flags |= sabi::STD_CLIENT_HAS_FLOATING;
+                state.floating = rect_out(&bounds);
+            }
+            None => state.flags &= !sabi::STD_CLIENT_HAS_FLOATING,
+        }
+        Ok(())
+    })
+}
+
+/// The client of the core's `Client` `client`, for the member `member` of the core's class that the library adds.
+fn augment_ref(cx: &Cx<'_>, member: &str, client: &Val) -> Res<ClientRef> {
+    let ctx = cx.ctx();
+    let node = client_node(ctx, member, client)?;
+    Ok(ClientRef { ctx, node })
+}
+
+/// `client.floating`: as `ClientState.floating` of the window.
+pub(crate) fn client_floating(cx: &Cx<'_>, client: &Val) -> Res<Val> {
+    floating_of(&augment_ref(cx, "floating", client)?)
+}
+
+/// `client.floating = value`: as a write of `ClientState.floating`.
+pub(crate) fn set_client_floating(cx: &Cx<'_>, client: &Val, value: &Val) -> Res<Val> {
+    set_floating(&augment_ref(cx, "floating", client)?, value)?;
+    Ok(Val::None)
+}
+
+/// `client.floatingBounds`: as `ClientState.floatingBounds` of the window.
+pub(crate) fn client_floating_bounds(cx: &Cx<'_>, client: &Val) -> Res<Val> {
+    floating_bounds_of(&augment_ref(cx, "floatingBounds", client)?)
+}
+
+/// `client.floatingBounds = value`: as a write of `ClientState.floatingBounds`; none forgets the rectangle.
+pub(crate) fn set_client_floating_bounds(cx: &Cx<'_>, client: &Val, value: &Val) -> Res<Val> {
+    set_floating_bounds(&augment_ref(cx, "floatingBounds", client)?, value)?;
+    Ok(Val::None)
 }
 
 /// Implements the client classes.

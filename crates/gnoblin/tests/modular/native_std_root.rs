@@ -80,6 +80,12 @@ fn the_root_has_the_std_members(language: Language, session: &mut Gnoblin) {
     said(session, "side is active: true");
     said(session, "show main by id: true");
     said(session, "main is active: true");
+    // `find` has the kind `Workspace` once std is loaded, in every language; a function filter is a script's form.
+    said(session, "find Workspace by id: side");
+    said(session, "find Workspace shown: main");
+    if language != Language::Rust {
+        said(session, "find Workspace by a function: main");
+    }
     // The display under the pointer, else the primary one, shows the workspace that was shown last.
     said(session, "the active display shows main: true");
     let ghost = said(session, "refused ghost:");
@@ -146,7 +152,14 @@ fn a_core_only_rust_shell_records_no_std_library_and_a_std_shell_records_it() {
 }
 
 /// Which of the members a shell has, as the script of a language reads them.
-const MEMBERS: [&str; 5] = ["workspaces", "displays", "scene", "gestures", "requestTransition"];
+const MEMBERS: [&str; 6] = [
+    "workspaces",
+    "displays",
+    "scene",
+    "gestures",
+    "requestTransition",
+    "show",
+];
 
 /// A TypeScript shell that says which members `gnoblin` and its outputs have, after importing `imports`.
 fn typescript_shell(imports: &str) -> String {
@@ -155,7 +168,9 @@ fn typescript_shell(imports: &str) -> String {
          const names = {names:?};\n\
          const have = names.map((name) => `${{name}}=${{name in gnoblin}}`).join(\" \");\n\
          const outputs = gnoblin.outputs;\n\
-         console.log(`members: ${{have}} profiles=${{outputs !== undefined && \"profiles\" in outputs}}`);\n",
+         let kind = true;\n\
+         try {{ gnoblin.find(\"Workspace\" as never); }} catch {{ kind = false; }}\n\
+         console.log(`members: ${{have}} profiles=${{outputs !== undefined && \"profiles\" in outputs}} find-workspace=${{kind}}`);\n",
         names = MEMBERS
     )
 }
@@ -167,7 +182,8 @@ fn python_shell(imports: &str) -> String {
          from gnoblin.objects.model import Gnoblin, OutputCollection\n{imports}\n\
          names = [{names}]\n\
          have = \" \".join(f\"{{name}}={{str(hasattr(Gnoblin, name)).lower()}}\" for name in names)\n\
-         session.log(f\"members: {{have}} profiles={{str(hasattr(OutputCollection, 'profiles')).lower()}}\")\n",
+         try:\n    Gnoblin.get().find(\"Workspace\")\n    kind = \"true\"\nexcept TypeError:\n    kind = \"false\"\n\
+         session.log(f\"members: {{have}} profiles={{str(hasattr(OutputCollection, 'profiles')).lower()}} find-workspace={{kind}}\")\n",
         names = MEMBERS.map(|name| format!("{:?}", python_name(name))).join(", ")
     )
 }
@@ -206,7 +222,7 @@ fn a_typescript_shell_that_loads_no_std_has_none_of_the_members() {
     for name in MEMBERS {
         assert!(line.contains(&format!("{name}=false")), "{name}: {line}");
     }
-    assert!(line.contains("profiles=false"), "{line}");
+    assert!(line.contains("profiles=false find-workspace=false"), "{line}");
 }
 
 #[test]
@@ -215,7 +231,7 @@ fn a_python_shell_that_loads_no_std_has_none_of_the_members() {
     for name in MEMBERS {
         assert!(line.contains(&format!("{}=false", python_name(name))), "{name}: {line}");
     }
-    assert!(line.contains("profiles=false"), "{line}");
+    assert!(line.contains("profiles=false find-workspace=false"), "{line}");
 }
 
 /// A shell whose only stock import is `gnoblin-std/generated/objects` runs on the generated library and not on the TypeScript one: the
@@ -250,7 +266,7 @@ fn importing_the_std_module_puts_the_members_on_the_core_class_in_typescript() {
     for name in MEMBERS {
         assert!(line.contains(&format!("{name}=true")), "{name}: {line}");
     }
-    assert!(line.contains("profiles=true"), "{line}");
+    assert!(line.contains("profiles=true find-workspace=true"), "{line}");
 }
 
 #[test]
@@ -259,7 +275,7 @@ fn importing_the_std_module_puts_the_members_on_the_core_class_in_python() {
     for name in MEMBERS {
         assert!(line.contains(&format!("{}=true", python_name(name))), "{name}: {line}");
     }
-    assert!(line.contains("profiles=true"), "{line}");
+    assert!(line.contains("profiles=true find-workspace=true"), "{line}");
 }
 
 // ---- after a reload the members belong to the new generation ---------------------------------------------------------------------

@@ -140,10 +140,15 @@ fn act(
     Ok(outcome.value)
 }
 
-/// The class of a kind: its options, its actions and the members of the interface it extends.
-fn register_kind<'a>(builder: &'a mut Builder, kind: &'static LayoutKindDesc) -> ClassBuilder<'a, OwnedLayout> {
+/// The class `<name>_layout` of a kind: its options, its actions and the members of the interface it extends. `name` is the kind's own
+/// name or one of its aliases.
+fn register_kind<'a>(
+    builder: &'a mut Builder,
+    kind: &'static LayoutKindDesc,
+    name: &str,
+) -> ClassBuilder<'a, OwnedLayout> {
     let mut class = builder
-        .class::<OwnedLayout>(&format!("{}_layout", kind.name))
+        .class::<OwnedLayout>(&format!("{name}_layout"))
         .ctor(move |cx, inits| make(cx, kind, inits));
     for option in kind.options {
         class = class
@@ -209,9 +214,12 @@ fn set_option(
     Ok(())
 }
 
-/// Implements the classes of the built-in kinds.
+/// Implements the classes of the built-in kinds, and the class of each alias, which makes the same layout.
 pub(super) fn register(builder: &mut Builder) {
     for kind in LAYOUT_KINDS {
-        let _ = register_kind(builder, kind);
+        let _ = register_kind(builder, kind, kind.name);
+        for alias in kind.aliases {
+            let _ = register_kind(builder, kind, alias);
+        }
     }
 }

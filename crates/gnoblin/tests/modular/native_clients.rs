@@ -71,12 +71,35 @@ fn the_shell_passes_a_client(language: Language, session: &mut Gnoblin) {
     logged(session, "clients: Terminal: moved back: true, again refused: true");
     logged(session, "clients: Terminal: its own style holds 0.8: true");
     logged(session, "clients: Terminal: its style warnings are a list: true");
+    // A selection styles the windows it holds and no others; a selection that can hold no window has no style.
+    logged(session, "clients: Terminal: an empty any list has no style: true");
+    logged(
+        session,
+        "clients: Terminal: an app id outside its any list has no style: true",
+    );
+    logged(
+        session,
+        "clients: Terminal: only the matching selections style it: true",
+    );
     logged(
         session,
         "clients: Terminal: keyboard move before Repositioning starts: false",
     );
     logged(session, "clients: Terminal: the output shows main: true");
     logged(session, "clients: Terminal: the output showed side: true");
+    // `client.output` and `moveToOutput`, `client.frameInset`, `output.area` and `gnoblin.show`.
+    logged(session, "clients: Terminal: its output is the first: true");
+    logged(
+        session,
+        "clients: Terminal: a move to the output it is on is refused: true",
+    );
+    logged(session, "clients: Terminal: its frame inset has 4 sides: true");
+    logged(session, "clients: Terminal: the output's area is inside it: true");
+    logged(session, "clients: Terminal: gnoblin.show showed side: true");
+    // `client.floating` and `floatingBounds` are written as well as read.
+    logged(session, "clients: Terminal: it floats once set: true");
+    logged(session, "clients: Terminal: it keeps its floating bounds: true");
+    logged(session, "clients: Terminal: it forgets them: true");
 
     match language {
         Language::Rust => {
@@ -103,6 +126,14 @@ fn the_shell_passes_a_client(language: Language, session: &mut Gnoblin) {
                 other.contains(error) && other.contains("expected a Client") && other.contains("got Gnoblin"),
                 "the root object is not a Client: {other}"
             );
+            // `set(props, options)` of the script languages: writable properties in one transition, and a read-only one refused by name
+            // before anything is written. Rust writes inside `request_transition` itself and has no `set`.
+            logged(session, "clients: Terminal: set wrote floating: true");
+            logged(
+                session,
+                "clients: Terminal: set refused title: TypeError: Client.set: title is not a writable property",
+            );
+            logged(session, "clients: Terminal: a workspace's set wrote its name: true");
         }
     }
 
