@@ -7,8 +7,8 @@ workspaces and acts on gestures with these.
 ::: tabs
 
 ```typescript
-import { PointerDragBinding } from "gnoblin-core";
-import type { BindingEvent, Client } from "gnoblin-core";
+import { PointerDragBinding, gnoblin } from "gnoblin-core/generated/objects";
+import type { BindingEvent, Client } from "gnoblin-core/generated/objects";
 
 class Nudge extends PointerDragBinding {
     private client: Client | undefined;
@@ -41,7 +41,7 @@ class Nudge extends PointerDragBinding {
     }
 }
 
-gnoblin.input.primary.bindDrag("Alt+MouseMiddle+Drag", new Nudge(), { id: "nudge" });
+gnoblin.input.primary?.bindDrag("Alt+MouseMiddle+Drag", new Nudge(), { id: "nudge" });
 ```
 
 ```python
@@ -201,7 +201,8 @@ of their own when you install both pairs:
 ::: tabs
 
 ```typescript
-import { MasterStackLayout, SplitResizeBinding, SwapBinding, Workspace } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { MasterStackLayout, SplitResizeBinding, SwapBinding, Workspace } from "gnoblin-std/generated/objects";
 
 gnoblin.workspaces.add(new Workspace("dev", { layout: new MasterStackLayout({ ratio: 0.6 }) }));
 new SwapBinding({ trigger: "Alt+MouseLeft+Drag" }).install();
@@ -209,7 +210,7 @@ new SplitResizeBinding({ trigger: "Alt+MouseRight+Drag" }).install();
 ```
 
 ```python
-from gnoblin.std import MasterStackLayout, SplitResizeBinding, SwapBinding, Workspace, Workspaces
+from gnoblin.objects.std import MasterStackLayout, SplitResizeBinding, SwapBinding, Workspace, Workspaces
 
 Workspaces.get().add(Workspace("dev", layout=MasterStackLayout(ratio=0.6)))
 SwapBinding(trigger="Alt+MouseLeft+Drag").install()
@@ -217,31 +218,31 @@ SplitResizeBinding(trigger="Alt+MouseRight+Drag").install()
 ```
 
 ```rust
-use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::GnoblinStdExt;
 use gnoblin_std::objects::{
-    MasterStackLayout, MasterStackLayoutOptions, SplitResizeBinding, SplitResizeBindingOptions, SwapBinding,
-    SwapBindingOptions, Workspace, Workspaces,
+    MasterStackLayout, MasterStackLayoutOptions, ModelRootStdExt, SplitResizeBinding, SplitResizeBindingOptions,
+    SwapBinding, SwapBindingOptions, Workspace, WorkspaceOptions,
 };
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let objects = g.objects()?;
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let std = g.std()?.objects()?;
     let layout = MasterStackLayout::new_with(
-        &objects,
+        &std,
         MasterStackLayoutOptions { ratio: Some(0.6), master_count: None, gap: None, orientation: None },
     )?
     .as_layout()?;
-    let dev = Workspace::new(&objects, "dev")?;
-    dev.set_layout(&layout)?;
-    Workspaces::get(&objects)?.add(&dev)?;
+    let dev = Workspace::new_with(&std, "dev", WorkspaceOptions { layout: Some(layout), ..WorkspaceOptions::default() })?;
+    ModelRoot::get(&g.objects()?)?.workspaces()?.add(&dev)?;
     SwapBinding::new_with(
-        &objects,
+        &std,
         SwapBindingOptions { priority: None, trigger: Some("Alt+MouseLeft+Drag".to_owned()) },
     )?
     .install(None)?;
     SplitResizeBinding::new_with(
-        &objects,
+        &std,
         SplitResizeBindingOptions { priority: None, trigger: Some("Alt+MouseRight+Drag".to_owned()) },
     )?
     .install(None)?;
@@ -273,8 +274,9 @@ To drag a divider of your own layout, return a list with one split from `findSpl
 ::: tabs
 
 ```typescript
-import { Layout, SplitResizeBinding, Workspace } from "gnoblin-std";
-import type { LayoutContextInit, LayoutPlacementInit, LayoutSplitInit } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { Layout, SplitResizeBinding, Workspace } from "gnoblin-std/generated/objects";
+import type { LayoutContextInit, LayoutPlacementInit, LayoutSplitInit } from "gnoblin-std/generated/objects";
 
 class Halves extends Layout {
     ratio = 0.5;
@@ -283,7 +285,7 @@ class Halves extends Layout {
     private changes = 0;
 
     compute(context: LayoutContextInit): LayoutPlacementInit[] {
-        const { x, y, width, height } = context.area;
+        const { x = 0, y = 0, width = 0, height = 0 } = context.area;
         const left = Math.floor(width * this.ratio);
         this.width = width;
         return context.children.map((node, index) => ({
@@ -324,7 +326,7 @@ new SplitResizeBinding().install();
 
 ```python
 from gnoblin.objects.model import Client
-from gnoblin.std import (
+from gnoblin.objects.std import (
     Layout,
     LayoutContext,
     LayoutPlacement,
@@ -385,12 +387,12 @@ SplitResizeBinding().install()
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::Client;
+use gnoblin_core::objects::{Client, ModelRoot};
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::GnoblinStdExt;
 use gnoblin_std::objects::{
-    LayoutContext, LayoutHandlers, LayoutPlacement, LayoutRect, LayoutSplit, SplitAxis, SplitResizeBinding,
-    SplitResizeBindingOptions, Workspace, Workspaces,
+    LayoutContext, LayoutHandlers, LayoutPlacement, LayoutRect, LayoutSplit, ModelRootStdExt, SplitAxis,
+    SplitResizeBinding, SplitResizeBindingOptions, Workspace,
 };
 
 struct Halves {
@@ -401,12 +403,12 @@ struct Halves {
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let objects = g.objects()?;
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let std = g.std()?.objects()?;
     let halves = Rc::new(RefCell::new(Halves { ratio: 0.5, width: 0.0, start: 0.5, changes: 0 }));
     let compute = {
         let halves = Rc::clone(&halves);
-        move |context: LayoutContext| -> gnoblin::Result<Vec<LayoutPlacement>> {
+        move |context: LayoutContext| {
             let mut state = halves.borrow_mut();
             let area = context.area;
             let left = (area.width * state.ratio).floor();
@@ -431,7 +433,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     };
     let find_split = {
         let halves = Rc::clone(&halves);
-        move |_client: Client, _x: f64, _y: f64| -> gnoblin::Result<Vec<LayoutSplit>> {
+        move |_client: Client, _x: f64, _y: f64| {
             let mut state = halves.borrow_mut();
             state.start = state.ratio;
             if state.width == 0.0 {
@@ -456,7 +458,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     };
     let move_split = {
         let halves = Rc::clone(&halves);
-        move |_token: u64, ratio: f64, _cross_ratio: Option<f64>| -> gnoblin::Result<()> {
+        move |_token: u64, ratio: f64, _cross_ratio: Option<f64>| {
             let mut state = halves.borrow_mut();
             state.ratio = ratio;
             state.changes += 1;
@@ -465,7 +467,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     };
     let reset_split = {
         let halves = Rc::clone(&halves);
-        move |_token: u64| -> gnoblin::Result<()> {
+        move |_token: u64| {
             let mut state = halves.borrow_mut();
             state.ratio = state.start;
             state.changes += 1;
@@ -474,7 +476,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     };
     let revision = {
         let halves = Rc::clone(&halves);
-        move || -> gnoblin::Result<u64> { Ok(halves.borrow().changes) }
+        move || Ok(halves.borrow().changes)
     };
     let layout = LayoutHandlers {
         compute: Box::new(compute),
@@ -487,11 +489,11 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         move_split: Some(Box::new(move_split)),
         reset_split: Some(Box::new(reset_split)),
     }
-    .implement(&objects)?;
-    let workspace = Workspace::new(&objects, "halves")?;
+    .implement(&std)?;
+    let workspace = Workspace::new(&std, "halves")?;
     workspace.set_layout(&layout)?;
-    Workspaces::get(&objects)?.add(&workspace)?;
-    SplitResizeBinding::new_with(&objects, SplitResizeBindingOptions { priority: None, trigger: None })?.install(None)?;
+    ModelRoot::get(&g.objects()?)?.workspaces()?.add(&workspace)?;
+    SplitResizeBinding::new_with(&std, SplitResizeBindingOptions { priority: None, trigger: None })?.install(None)?;
     Ok(())
 }
 ```
@@ -517,34 +519,34 @@ To trade two windows from a script, swap them in the workspace's client collecti
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import "gnoblin-std/generated/objects";
 
 const dev = gnoblin.workspaces.byId("dev");
-const [first, second] = dev?.clients.members ?? [];
-if (dev && first && second) {
+const [first, second] = dev?.clients?.members ?? [];
+if (dev?.clients && first && second) {
     dev.clients.swap(first, second);
 }
 ```
 
 ```python
-from gnoblin.std import Workspaces
+from gnoblin.objects.std import Workspaces
 
 dev = Workspaces.get().by_id("dev")
 if dev is not None:
-    members = dev.clients.members()
+    members = dev.clients.members
     if len(members) >= 2:
         dev.clients.swap(members[0], members[1])
 ```
 
 ```rust
-use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_std::objects::Workspaces;
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::objects::ModelRootStdExt;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let objects = g.objects()?;
-    if let Some(dev) = Workspaces::get(&objects)?.by_id("dev")? {
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    if let Some(dev) = ModelRoot::get(&g.objects()?)?.workspaces()?.by_id("dev")? {
         if let Some(clients) = dev.clients()? {
             let members = clients.members()?;
             if let [first, second, ..] = members.as_slice() {
@@ -593,14 +595,28 @@ it.
 ::: tabs
 
 ```typescript
-const nudge = gnoblin.input.primary.bindDrag("Alt+MouseMiddle+Drag", new Nudge(), { id: "nudge" });
-nudge.unbind();
+import { PointerDragBinding, gnoblin } from "gnoblin-core/generated/objects";
+
+class Decline extends PointerDragBinding {
+    onStart(): boolean {
+        return false;
+    }
+}
+
+const nudge = gnoblin.input.primary?.bindDrag("Alt+MouseMiddle+Drag", new Decline(), { id: "nudge" });
+nudge?.unbind();
 ```
 
 ```python
-from gnoblin.objects.model import BindingOptions, InputManager
+from gnoblin.objects.model import BindingEvent, BindingOptions, InputManager, PointerDragBinding
 
-nudge = InputManager.get().primary().bind_drag("Alt+MouseMiddle+Drag", Nudge(), BindingOptions(id="nudge"))
+
+class Decline(PointerDragBinding):
+    def on_start(self, event: BindingEvent) -> bool:
+        return False
+
+
+nudge = InputManager.get().primary.bind_drag("Alt+MouseMiddle+Drag", Decline(), BindingOptions(id="nudge"))
 nudge.unbind()
 ```
 

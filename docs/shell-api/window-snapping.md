@@ -6,7 +6,8 @@ binding does that. A script can snap a window by itself with `ClientState` and `
 ::: tabs
 
 ```typescript
-import { ClientState } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { ClientState } from "gnoblin-std/generated/objects";
 
 const input = gnoblin.input.primary;
 input.bind("Super+Shift+Left", () => {

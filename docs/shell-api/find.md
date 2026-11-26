@@ -5,7 +5,7 @@ Two calls select windows, workspaces and outputs. `find` returns an array of the
 
 ::: tabs
 
-```ts
+```typescript
 gnoblin.input.primary.bind("Super+f", () => {
     const [notes] = gnoblin.find("Window", { appId: "org.gnome.Notes" });
     notes?.focus();
@@ -86,26 +86,39 @@ The field names are the same in every language, written in each language's own s
 
 ::: tabs
 
-```ts
+```typescript
 const focusedNotes = gnoblin.find("Window", { appId: "org.gnome.Notes", focused: true });
 const primary = gnoblin.find("Output", { primary: true })[0];
 ```
 
 ```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
 focused_notes = gnoblin.find("Window", {"app_id": "org.gnome.Notes", "focused": True})
 primary = gnoblin.find("Output", {"primary": True})[0]
 ```
 
 ```rust
-let focused_notes = model.find_clients(Some(&ClientQuery {
-    app_id: Some("org.gnome.Notes".to_owned()),
-    focused: Some(true),
-    ..Default::default()
-}))?;
-let primary = model.find_outputs(Some(&OutputQuery {
-    primary: Some(true),
-    ..Default::default()
-}))?;
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::{ClientQuery, ModelRoot, OutputQuery};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = ModelRoot::get(&objects)?;
+    let focused_notes = model.find_clients(Some(&ClientQuery {
+        app_id: Some("org.gnome.Notes".to_owned()),
+        focused: Some(true),
+        ..Default::default()
+    }))?;
+    let primary = model.find_outputs(Some(&OutputQuery {
+        primary: Some(true),
+        ..Default::default()
+    }))?;
+    Ok(())
+}
 ```
 
 :::
@@ -130,11 +143,14 @@ such as a title that contains a word:
 
 ::: tabs
 
-```ts
+```typescript
 const drafts = gnoblin.find("Window", (window) => window.title.includes("draft"));
 ```
 
 ```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
 drafts = gnoblin.find("Window", lambda window: "draft" in window.title)
 ```
 
@@ -154,7 +170,7 @@ title joins it, and one that stops matching leaves. You can listen to it and sty
 
 ::: tabs
 
-```ts
+```typescript
 import "gnoblin-std";
 
 const terminals = gnoblin.clients.where({ appId: "foot" });
@@ -163,25 +179,35 @@ terminals.style.opacity = 0.9;
 
 ```python
 from gnoblin.objects.model import ClientQuery, Gnoblin
+from gnoblin.objects.std import ClientCollectionAugment
 
 gnoblin = Gnoblin.get()
 terminals = gnoblin.clients.where(ClientQuery(app_id="foot"))
-terminals.style.opacity = 0.9
+ClientCollectionAugment.get().style(terminals).opacity = 0.9
 ```
 
 ```rust
-let Some(clients) = model.clients()? else {
-    return Ok(());
-};
-let terminals = clients.where_(
-    &ClientQuery {
-        app_id: Some("foot".to_owned()),
-        ..Default::default()
-    },
-    None,
-)?;
-if let Some(style) = terminals.style()? {
-    style.set_opacity(0.9)?;
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::{ClientQuery, ModelRoot};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = ModelRoot::get(&objects)?;
+    let Some(clients) = model.clients()? else {
+        return Ok(());
+    };
+    let terminals = clients.where_(
+        &ClientQuery {
+            app_id: Some("foot".to_owned()),
+            ..Default::default()
+        },
+        None,
+    )?;
+    terminals.style()?.set_opacity(0.9)?;
+    Ok(())
 }
 ```
 

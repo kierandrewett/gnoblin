@@ -7,10 +7,13 @@ script does not run per frame.
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { Gnoblin } from "gnoblin-core/generated/objects";
+import "gnoblin-std/generated/objects";
 
-gnoblin.input.primary.bind("Super+o", () => {
-    const client = gnoblin.input.primary.focusedClient;
+const gnoblin = Gnoblin.get();
+
+gnoblin.input?.primary?.bind("Super+o", () => {
+    const client = gnoblin.input?.primary?.focusedClient;
     if (client !== undefined) {
         gnoblin.requestTransition(
             () => {
@@ -195,9 +198,11 @@ The curves are the CSS timing functions of the same names:
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { Gnoblin } from "gnoblin-core/generated/objects";
+import "gnoblin-std/generated/objects";
 
-const client = gnoblin.input.primary.focusedClient;
+const gnoblin = Gnoblin.get();
+const client = gnoblin.input?.primary?.focusedClient;
 if (client !== undefined) {
     gnoblin.requestTransition(
         () => {
@@ -308,9 +313,11 @@ The transition call returns a `Transition`. Its `finished` event runs when the a
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { Gnoblin } from "gnoblin-core/generated/objects";
+import "gnoblin-std/generated/objects";
 
-const client = gnoblin.input.primary.focusedClient;
+const gnoblin = Gnoblin.get();
+const client = gnoblin.input?.primary?.focusedClient;
 if (client !== undefined) {
     const fade = gnoblin.requestTransition(
         () => {

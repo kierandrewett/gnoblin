@@ -8,8 +8,8 @@ This page describes the paint list and how it is drawn. The widgets built on it 
 ::: tabs
 
 ```typescript
-import { Canvas, Widget } from "gnoblin-std";
-import type { PaintOp } from "gnoblin-std";
+import { Canvas, Widget } from "gnoblin-std/generated/objects";
+import type { PaintOp } from "gnoblin-std/generated/objects";
 
 class Label extends Widget {
     paint(): PaintOp[] {

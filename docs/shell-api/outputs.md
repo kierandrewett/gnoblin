@@ -7,13 +7,17 @@ a window that loses its output moves to another or waits hidden for the next. `g
 ::: tabs
 
 ```typescript
-import { FloatingLayout, Toast, Workspace } from "gnoblin-std";
+import { Gnoblin } from "gnoblin-core/generated/objects";
+import { FloatingLayout, OutputAugment, Toast, Workspace, Workspaces } from "gnoblin-std/generated/objects";
 
+const gnoblin = Gnoblin.get();
+const workspaces = Workspaces.get();
 for (const id of ["1", "2", "3"]) {
-    gnoblin.workspaces.add(new Workspace(id, { layout: new FloatingLayout() }));
+    workspaces.add(new Workspace(id, { layout: new FloatingLayout() }));
 }
 for (const output of gnoblin.outputs.toList()) {
-    Toast.show(`${output.name}: ${output.mode} showing ${output.workspace?.id ?? "nothing"}`);
+    const shown = OutputAugment.get().workspace(output);
+    Toast.show(`${output.name}: ${output.mode} showing ${shown?.id ?? "nothing"}`);
 }
 ```
 
@@ -104,7 +108,7 @@ array.
 | `x`, `y`, `width`, `height` | The output's rectangle in the compositor's coordinates. `bounds` is the same as one object.                                                |
 | `primary`                   | Whether this is the primary output, the one the stock bars and `gnoblin.workspaces.area` are on.                                           |
 | `enabled`                   | Whether the output is on.                                                                                                                  |
-| `workspace`                 | The workspace the output shows, or `undefined`.                                                                                            |
+| `workspace`                 | The workspace the output shows, or `undefined`: `OutputAugment.get().workspace(output)`.                                                   |
 | `show(workspace, options?)` | Shows a workspace on this output. `options.duration` slides the windows.                                                                   |
 | `apply(options)`            | Configures the display. See [Configure an output](#configure-an-output).                                                                   |
 | `mirror(source?)`           | Shows a copy of `source`, or stops when it is left out.                                                                                    |
@@ -117,7 +121,7 @@ passing a bound, a count) and `evicted` (the bytes given back from caches to mak
 [GPU memory](../gpu-memory#the-budget).
 
 A script reads these properties and writes none. It changes a display with `apply` and `mirror`, below, or keeps a
-setting for a monitor with an [`OutputProfile`](#hardware-profiles) in `gnoblin.outputs.profiles`.
+setting for a monitor with an [`OutputProfile`](#hardware-profiles) added by `DisplayManager.addProfile` (`add_profile` in Python and Rust).
 
 Each language spells the same members its own way:
 
@@ -175,10 +179,13 @@ took effect.
 ::: tabs
 
 ```typescript
+import { Gnoblin, OutputConfig, OutputQuery } from "gnoblin-core/generated/objects";
+
+const gnoblin = Gnoblin.get();
 gnoblin.outputs
-    .where({ name: "output-1" })
+    .where(new OutputQuery({ name: "output-1" }))
     .at(0)
-    ?.apply({ mode: "2560x1440@60", scale: 1.25 })
+    ?.apply(new OutputConfig({ mode: "2560x1440@60", scale: 1.25 }))
     .catch((error, code) => {
         gnoblin.spawn(["notify-send", `Display change refused (${code}): ${error}`]);
     });
@@ -240,7 +247,11 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 ::: tabs
 
 ```typescript
-gnoblin.outputs.at(1)?.apply({ positionX: 0, positionY: 1080 });
+import { Gnoblin, OutputConfig } from "gnoblin-core/generated/objects";
+
+Gnoblin.get()
+    .outputs.at(1)
+    ?.apply(new OutputConfig({ positionX: 0, positionY: 1080 }));
 ```
 
 ```python
@@ -281,8 +292,11 @@ monitor: the mirrored output has no place of its own, no workspace, and the poin
 ::: tabs
 
 ```typescript
-gnoblin.outputs.at(1)?.mirror(gnoblin.outputs.at(0));
-gnoblin.outputs.at(1)?.mirror(); // stop
+import { Gnoblin } from "gnoblin-core/generated/objects";
+
+const outputs = Gnoblin.get().outputs;
+outputs.at(1)?.mirror(outputs.at(0));
+outputs.at(1)?.mirror(); // stop
 ```
 
 ```python
@@ -320,7 +334,11 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 ::: tabs
 
 ```typescript
-gnoblin.outputs.at(1)?.apply({ enabled: false });
+import { Gnoblin, OutputConfig } from "gnoblin-core/generated/objects";
+
+Gnoblin.get()
+    .outputs.at(1)
+    ?.apply(new OutputConfig({ enabled: false }));
 ```
 
 ```python
@@ -386,10 +404,16 @@ plugged in: see [Hardware profiles](#hardware-profiles). One the compositor refu
 ::: tabs
 
 ```typescript
-const output = gnoblin.outputs.where({ name: "output-1" }).at(0)!;
-output.apply({ supersample: 1 }); // the default: composed at the mode, nothing averaged
-output.apply({ supersample: 2 }); // 1920x1080 composed at 3840x2160; output.virtualSize is { width: 3840, height: 2160 }
-output.apply({ supersample: 4 }); // 1920x1080 composed at 7680x4320: a GPU with 8192 texels per edge is needed
+import { Gnoblin, OutputConfig, OutputQuery } from "gnoblin-core/generated/objects";
+
+const output = Gnoblin.get()
+    .outputs.where(new OutputQuery({ name: "output-1" }))
+    .at(0);
+if (output) {
+    output.apply(new OutputConfig({ supersample: 1 })); // the default: composed at the mode, nothing averaged
+    output.apply(new OutputConfig({ supersample: 2 })); // 1920x1080 composed at 3840x2160; output.virtualSize is { width: 3840, height: 2160 }
+    output.apply(new OutputConfig({ supersample: 4 })); // 1920x1080 composed at 7680x4320: a GPU with 8192 texels per edge is needed
+}
 ```
 
 ```python
@@ -511,7 +535,7 @@ engine as `apply`: the same checks, the same test before the first output is dri
 ## Hardware profiles
 
 An `OutputProfile` is the persistent setting of one monitor: which monitor it is for (the first argument) and the mode,
-scale, transform and place it should have (its `settings`). Put it in `gnoblin.outputs.profiles`.
+scale, transform and place it should have (its `settings`). Add it with `DisplayManager.get().addProfile(profile)` (`add_profile` in Python and Rust).
 
 A profile is inert while no matching output is connected. When one is, the profile applies as one request, and it applies
 again when the monitor comes back after an unplug.
@@ -519,18 +543,30 @@ again when the monitor comes back after an unplug.
 ::: tabs
 
 ```typescript
-import { OutputProfile } from "gnoblin-std";
+import {
+    DisplayManager,
+    OutputMatch,
+    OutputPosition,
+    OutputProfile,
+    ProfileSettings,
+} from "gnoblin-std/generated/objects";
 
-const main = new OutputProfile(
-    { connector: "DP-1" },
-    { settings: { mode: "3440x1440@144", scale: 1.25, position: { kind: "absolute", x: 0, y: 0 } } },
-);
-const side = new OutputProfile(
-    { connector: "HDMI-A-1" },
-    { settings: { mode: "preferred", position: { kind: "right_of", profile: main, align: "top" } } },
-);
-gnoblin.outputs.profiles.add(main);
-gnoblin.outputs.profiles.add(side);
+const manager = DisplayManager.get();
+const main = new OutputProfile(new OutputMatch({ connector: "DP-1" }), {
+    settings: new ProfileSettings({
+        mode: "3440x1440@144",
+        scale: 1.25,
+        position: new OutputPosition({ kind: "absolute", x: 0, y: 0 }),
+    }),
+});
+const side = new OutputProfile(new OutputMatch({ connector: "HDMI-A-1" }), {
+    settings: new ProfileSettings({
+        mode: "preferred",
+        position: new OutputPosition({ kind: "right_of", profile: main, align: "top" }),
+    }),
+});
+manager.addProfile(main);
+manager.addProfile(side);
 ```
 
 ```python
@@ -657,16 +693,20 @@ whose `content` is the workspace shown. `gnoblin.displays` is the live collectio
 ::: tabs
 
 ```typescript
-import { Workspace } from "gnoblin-std";
+import { Gnoblin } from "gnoblin-core/generated/objects";
+import { InputContextAugment, Workspace, Workspaces } from "gnoblin-std/generated/objects";
 
+const gnoblin = Gnoblin.get();
+const workspaces = Workspaces.get();
 const desktop = new Workspace("desktop");
 const web = new Workspace("web");
-gnoblin.workspaces.add(desktop);
-gnoblin.workspaces.add(web);
+workspaces.add(desktop);
+workspaces.add(web);
 
-gnoblin.input.primary.bind("Super+2", () => {
-    const display = gnoblin.input.primary.activeDisplay;
-    if (display) display.viewport.content = web;
+const seat = gnoblin.input.primary;
+seat.bind("Super+2", () => {
+    const display = InputContextAugment.get().activeDisplay(seat);
+    if (display?.viewport) display.viewport.content = web;
 });
 ```
 
@@ -757,21 +797,32 @@ number:
 ::: tabs
 
 ```typescript
-import { Camera2D, Display, OutputProfile, Viewport, Workspace } from "gnoblin-std";
+import {
+    Camera2D,
+    Display,
+    DisplayManager,
+    DisplaySelector,
+    OutputMatch,
+    OutputProfile,
+    Viewport,
+    Workspace,
+    Workspaces,
+} from "gnoblin-std/generated/objects";
 
-const main = new OutputProfile({ connector: "DP-1" });
-const side = new OutputProfile({ connector: "HDMI-A-1" });
-gnoblin.outputs.profiles.add(main);
-gnoblin.outputs.profiles.add(side);
+const manager = DisplayManager.get();
+const main = new OutputProfile(new OutputMatch({ connector: "DP-1" }));
+const side = new OutputProfile(new OutputMatch({ connector: "HDMI-A-1" }));
+manager.addProfile(main);
+manager.addProfile(side);
 
 const desktop = new Workspace("desktop");
-gnoblin.workspaces.add(desktop);
+Workspaces.get().add(desktop);
 
-const spanned = new Display([{ profile: main }, { profile: side }], {
+const spanned = new Display([new DisplaySelector({ profile: main }), new DisplaySelector({ profile: side })], {
     mode: "span",
     viewport: new Viewport({ content: desktop, camera: new Camera2D() }),
 });
-gnoblin.displays.add(spanned);
+manager.addDisplay(spanned);
 ```
 
 ```python
@@ -872,7 +923,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 
 ## The display manager
 
-`DisplayManager.get()` is the service behind `gnoblin.displays` and `gnoblin.outputs.profiles`. It is for a shell that wants
+`DisplayManager.get()` is the service behind `gnoblin.displays` and the output profiles. It is for a shell that wants
 the lists and the events in one place.
 
 - It holds the lists `displays` and `profiles`.
@@ -901,17 +952,20 @@ A viewport looks at its content through a camera, `Camera2D` or `Camera3D`. Both
 ::: tabs
 
 ```typescript
-import { Camera2D, Camera3D } from "gnoblin-std";
+import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Camera2D, Camera3D, GnoblinAugment, InputContextAugment } from "gnoblin-std/generated/objects";
 
+const gnoblin = Gnoblin.get();
+const seat = gnoblin.input.primary;
 const flat = new Camera2D();
 const deep = new Camera3D({ projection: "perspective", fov: 65, position: { x: 0, y: 0, z: 1600 } });
 let threeD = false;
-gnoblin.input.primary.bind("Super+Tab", () => {
+seat.bind("Super+Tab", () => {
     threeD = !threeD;
-    gnoblin.requestTransition(
+    GnoblinAugment.get().requestTransition(
         () => {
-            const display = gnoblin.input.primary.activeDisplay;
-            if (display) display.viewport.camera = threeD ? deep : flat;
+            const display = InputContextAugment.get().activeDisplay(seat);
+            if (display?.viewport) display.viewport.camera = threeD ? deep : flat;
         },
         { duration: 750 },
     );
@@ -1038,8 +1092,10 @@ A layout can place windows in depth with `z`, `rotation` and `scale`; the camera
 ::: tabs
 
 ```typescript
-import { OutputCollectionListener } from "gnoblin-core";
-import type { Output } from "gnoblin-core";
+import { Gnoblin, OutputCollectionListener } from "gnoblin-core/generated/objects";
+import type { Output } from "gnoblin-core/generated/objects";
+
+const gnoblin = Gnoblin.get();
 
 class Hotplug extends OutputCollectionListener {
     onConnected(output: Output) {
@@ -1153,9 +1209,10 @@ A `Bar` sits on the primary output unless you give it one:
 ::: tabs
 
 ```typescript
-import { Bar } from "gnoblin-std";
+import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Bar } from "gnoblin-std/generated/objects";
 
-const second = gnoblin.outputs.at(1);
+const second = Gnoblin.get().outputs.at(1);
 if (second) {
     new Bar({ edge: "bottom", height: 24, output: Number(second.id) });
 }
@@ -1225,10 +1282,15 @@ configuration what each output showed, by output name, and each output goes back
 ::: tabs
 
 ```typescript
-const [client] = gnoblin.find("Window", { focused: true });
-const target = gnoblin.outputs.at(1)?.workspace;
+import { ClientQuery, Gnoblin } from "gnoblin-core/generated/objects";
+import { ClientAugment, OutputAugment } from "gnoblin-std/generated/objects";
+
+const gnoblin = Gnoblin.get();
+const [client] = gnoblin.findClients(new ClientQuery({ focused: true }));
+const second = gnoblin.outputs.at(1);
+const target = second ? OutputAugment.get().workspace(second) : undefined;
 if (client && target) {
-    client.moveToWorkspace(target); // true when it moved
+    ClientAugment.get().moveToWorkspace(client, target); // true when it moved
 }
 ```
 

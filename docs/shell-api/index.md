@@ -10,6 +10,8 @@ and ask the session for things. Each language imports it its own way:
 ::: tabs
 
 ```typescript
+import { gnoblin } from "gnoblin-core/generated/objects";
+
 for (const client of gnoblin.clients.toList()) {
     gnoblin.spawn(["notify-send", `${client.appId} is open`]);
 }

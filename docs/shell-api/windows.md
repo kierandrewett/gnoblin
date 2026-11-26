@@ -6,8 +6,12 @@ window by writing its properties or calling its methods, and attach a listener t
 ::: tabs
 
 ```typescript
-gnoblin.input.primary.bind("Super+t", () => {
-    const terminal = gnoblin.clients.toList().find((client) => client.appId === "foot");
+import { Gnoblin } from "gnoblin-core/generated/objects";
+
+const gnoblin = Gnoblin.get();
+
+gnoblin.input?.primary?.bind("Super+t", () => {
+    const terminal = gnoblin.clients?.toList().find((client) => client.appId === "foot");
     terminal?.focus();
 });
 ```
@@ -18,7 +22,7 @@ from gnoblin.objects.model import Gnoblin
 gnoblin = Gnoblin.get()
 
 
-def focus_terminal() -> None:
+def focus_terminal(_event: object) -> None:
     terminal = next((client for client in gnoblin.clients.to_list() if client.app_id == "foot"), None)
     if terminal is not None:
         terminal.focus()
@@ -39,7 +43,10 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = Rc::new(ModelRoot::get(&g.objects()?)?);
     let shell = Rc::clone(&model);
     g.bind("Super+t", move || -> gnoblin::Result<()> {
-        for client in shell.clients()?.to_list()? {
+        let Some(clients) = shell.clients()? else {
+            return Ok(());
+        };
+        for client in clients.to_list()? {
             if client.app_id()? == "foot" {
                 client.focus()?;
                 break;
@@ -83,8 +90,11 @@ The table uses TypeScript spellings. Python and Rust use snake_case for the same
 ::: tabs
 
 ```typescript
-const terminals = gnoblin.clients.toList().filter((client) => client.appId === "org.gnome.Console");
-const titles = gnoblin.clients.toList().map((client) => client.title);
+import { Gnoblin } from "gnoblin-core/generated/objects";
+
+const all = Gnoblin.get().clients?.toList() ?? [];
+const terminals = all.filter((client) => client.appId === "org.gnome.Console");
+const titles = all.map((client) => client.title);
 ```
 
 ```python
@@ -106,7 +116,10 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
     let mut terminals = Vec::new();
     let mut titles = Vec::new();
-    for client in model.clients()?.to_list()? {
+    let Some(clients) = model.clients()? else {
+        return Ok(());
+    };
+    for client in clients.to_list()? {
         titles.push(client.title()?);
         if client.app_id()? == "org.gnome.Console" {
             terminals.push(client);

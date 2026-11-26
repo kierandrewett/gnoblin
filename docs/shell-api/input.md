@@ -278,7 +278,7 @@ What backs them:
 ::: tabs
 
 ```typescript
-import { InputContext } from "gnoblin-core";
+import { InputContext, gnoblin } from "gnoblin-core/generated/objects";
 
 const other = new InputContext("secondary");
 gnoblin.input.addContext(other);

@@ -15,8 +15,8 @@ command line through `/bin/sh`, with the same options.
 ::: tabs
 
 ```typescript
-import { ProcessListener } from "gnoblin-core";
-import type { Process } from "gnoblin-core";
+import { gnoblin, ProcessListener } from "gnoblin-core/generated/objects";
+import type { Process } from "gnoblin-core/generated/objects";
 
 class Notify extends ProcessListener {
     onExited(process: Process) {
@@ -49,7 +49,10 @@ class Notify(ProcessListener):
 
 def show_time(event: BindingEvent) -> None:
     date = gnoblin.process.spawn(["date", "+%H:%M"], SpawnOptions(stdout=StreamMode.CAPTURE))
-    date.wait().then(lambda: gnoblin.spawn(["notify-send", date.exit.stdout or ""]))
+    def notify_date() -> None:
+        gnoblin.spawn(["notify-send", date.exit.stdout or ""])
+
+    date.wait().then(notify_date)
 
 
 gnoblin.process.add_listener(Notify())
@@ -134,6 +137,8 @@ exist as `spawn` and `shell` on the process service.
 ::: tabs
 
 ```typescript
+import { gnoblin } from "gnoblin-core/generated/objects";
+
 gnoblin.input.primary.bind("Super+c", () => {
     const count = gnoblin.shell("ls ~/Downloads | wc -l", { stdout: "capture" });
     count.wait().then(() => gnoblin.spawn(["notify-send", `${count.exit?.stdout?.trim()} files`]));
@@ -281,8 +286,11 @@ holds:
 - `stdoutTruncated` and `stderrTruncated` (`stdout_truncated` and `stderr_truncated`): `true` when the output passed
   `outputLimit`.
 
-Use `then` on the operation to run code once it succeeds: `.then(() => ...)` in TypeScript, `.then(lambda: ...)` in Python
-and `.then(move || { ...; Ok(()) })` in Rust. The Rust `wait()` and `then` return a `Res`, so they take `?`.
+Call `then` on the operation to run code once it succeeds:
+
+- TypeScript: `.then(() => ...)`.
+- Python: `.then(lambda: ...)`.
+- Rust: `.then(move || { ...; Ok(()) })`. Here `wait()` and `then` return a `Res`, so they take `?`.
 
 ### `kill(signal?)`
 

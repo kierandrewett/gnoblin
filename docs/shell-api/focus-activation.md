@@ -24,6 +24,8 @@ was. To raise the window as well, call `client.raise()`.
 ::: tabs
 
 ```typescript
+import { gnoblin } from "gnoblin-core/generated/objects";
+
 const client = gnoblin.clients.toList().find((c) => c.appId === "foot");
 client?.focus();
 client?.raise();

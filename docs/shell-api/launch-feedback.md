@@ -46,9 +46,8 @@ use std::rc::Rc;
 use gnoblin_core::objects::{LaunchListenerHandlers, LaunchOptions, ModelRoot};
 use gnoblin_core::{self as gnoblin, Gnoblin};
 
-fn notify(model: &ModelRoot, text: &str) -> gnoblin::Result<()> {
-    model.spawn(&["notify-send".to_owned(), text.to_owned()], None)?;
-    Ok(())
+fn notify_argv(text: &str) -> [String; 2] {
+    ["notify-send".to_owned(), text.to_owned()]
 }
 
 #[gnoblin::main]
@@ -65,11 +64,11 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let listener = LaunchListenerHandlers {
         on_changed: None,
         on_started: Some(Box::new(move |_launch| {
-            notify(&started, "The terminal is open")?;
+            started.spawn(&notify_argv("The terminal is open"), None)?;
             Ok(())
         })),
         on_timed_out: Some(Box::new(move |_launch| {
-            notify(&timed_out, "The terminal did not open")?;
+            timed_out.spawn(&notify_argv("The terminal did not open"), None)?;
             Ok(())
         })),
         on_closed: None,

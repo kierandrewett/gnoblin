@@ -6,9 +6,16 @@ shell, whether a listener, a handler or a timer, runs under a time budget and ma
 ::: tabs
 
 ```typescript
+import { Gnoblin } from "gnoblin-core/generated/objects";
+
+const gnoblin = Gnoblin.get();
+
 gnoblin.input.primary.bind("Super+Shift+q", () => {
-    gnoblin.session.logout().catch((error, code) => {
-        gnoblin.spawn(["notify-send", `Logout refused: ${code}: ${error}`]);
+    const operation = gnoblin.session.logout();
+    operation.on("settled", () => {
+        if (operation.error !== "") {
+            gnoblin.spawn(["notify-send", `Logout refused: ${operation.errorCode}: ${operation.error}`]);
+        }
     });
 });
 ```
@@ -19,12 +26,13 @@ from gnoblin.objects.model import BindingEvent, Gnoblin
 gnoblin = Gnoblin.get()
 
 
-def refused(error: str, code: str) -> None:
-    gnoblin.spawn(["notify-send", f"Logout refused: {code}: {error}"])
-
-
 def log_out(event: BindingEvent) -> None:
-    gnoblin.session.logout().catch(refused)
+    operation = gnoblin.session.logout()
+
+    @operation.on("settled")
+    def settled(*_: object) -> None:
+        if operation.error != "":
+            gnoblin.spawn(["notify-send", f"Logout refused: {operation.error_code}: {operation.error}"])
 
 
 gnoblin.input.primary.bind("Super+Shift+q", log_out)
@@ -83,11 +91,14 @@ budget as every listener: one that throws is reported, and the next callback sti
 | `on("settled", fn)`                       | Calls `fn(operation)` once, when it settles either way. Returns a `Listener`.                                                            |
 
 A call that has a result, such as `Process.wait()`, leaves it on the object that made the operation: read `process.exit`
-inside `then`. To stop waiting for an operation after a time, start a timer:
+when it settles (`then`). To stop waiting for an operation after a time, start a timer:
 
 ::: tabs
 
 ```typescript
+import { Gnoblin } from "gnoblin-core/generated/objects";
+
+const gnoblin = Gnoblin.get();
 const sleep = gnoblin.process.spawn(["sleep", "30"]);
 sleep.wait().then(() => gnoblin.spawn(["notify-send", "sleep ended"]));
 gnoblin.timers.after(5000, () => {
@@ -139,13 +150,17 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let sleep = Rc::new(processes.spawn(&["sleep".to_owned(), "30".to_owned()], None)?);
     let ended = Rc::clone(&model);
     sleep.wait()?.then(move || {
-        notify(&ended, "sleep ended")?;
+        if let Err(error) = notify(&ended, "sleep ended") {
+            g.log(&format!("errors: cannot notify: {error}"));
+        }
         Ok(())
     })?;
     let (late, watched) = (Rc::clone(&model), Rc::clone(&sleep));
     timers.after(5000.0, move || {
         if watched.alive()? {
-            notify(&late, "sleep took too long")?;
+            if let Err(error) = notify(&late, "sleep took too long") {
+                g.log(&format!("errors: cannot notify: {error}"));
+            }
             watched.kill(None)?;
         }
         Ok(())
@@ -194,11 +209,11 @@ Rust has no string code: a failed call returns an error that says what failed, a
 ::: tabs
 
 ```typescript
-import { GnoblinError } from "gnoblin-core";
-import { Workspace } from "gnoblin-std";
+import { GnoblinError } from "gnoblin-core/generated/objects";
+import { Workspace, Workspaces } from "gnoblin-std/generated/objects";
 
 try {
-    gnoblin.workspaces.add(new Workspace("main"));
+    Workspaces.get().add(new Workspace("main"));
 } catch (error) {
     if (error instanceof GnoblinError && error.code === "already_exists") {
         gnoblin.spawn(["notify-send", "There is a workspace with that id already"]);
@@ -209,12 +224,12 @@ try {
 ```python
 from gnoblin import GnoblinError
 from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Workspace
+from gnoblin.objects.std import Workspace, Workspaces
 
 gnoblin = Gnoblin.get()
 
 try:
-    gnoblin.workspaces.add(Workspace("main"))
+    Workspaces.get().add(Workspace("main"))
 except GnoblinError as error:
     if error.code == "already_exists":
         gnoblin.spawn(["notify-send", "There is a workspace with that id already"])
@@ -328,18 +343,23 @@ The ABI integer is not part of the script API. A shell that needs it reads `abi`
 ::: tabs
 
 ```typescript
-const timer = gnoblin.timers.after(2000, () => gnoblin.workspaces.showById("2"));
+import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Workspaces } from "gnoblin-std/generated/objects";
+
+const gnoblin = Gnoblin.get();
+const timer = gnoblin.timers.after(2000, () => Workspaces.get().showById("2"));
 timer.cancel();
 ```
 
 ```python
 from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import Workspaces
 
 gnoblin = Gnoblin.get()
 
 
 def show_second() -> None:
-    gnoblin.workspaces.show_by_id("2")
+    Workspaces.get().show_by_id("2")
 
 
 timer = gnoblin.timers.after(2000.0, show_second)

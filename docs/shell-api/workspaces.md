@@ -6,12 +6,13 @@ Add workspaces with `gnoblin.workspaces.add`, then read them, show one and chang
 ::: tabs
 
 ```typescript
-import { GridLayout, MasterStackLayout, Workspace } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { GridLayout, MasterStackLayout, Workspace } from "gnoblin-std/generated/objects";
 
 gnoblin.workspaces.add(new Workspace("web", { layout: new MasterStackLayout() }));
 gnoblin.workspaces.add(new Workspace("chat", { layout: new GridLayout() }));
 
-gnoblin.input.primary.bind("Super+Tab", () => {
+gnoblin.input?.primary?.bind("Super+Tab", () => {
     const list = gnoblin.workspaces.list;
     const current = list.find((workspace) => workspace.active);
     const next = list[(current?.index ?? -1) + 1] ?? list[0];
@@ -41,28 +42,35 @@ gnoblin.input.primary.bind("Super+Tab", cycle)
 ```
 
 ```rust
-use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_std::objects::{GridLayout, MasterStackLayout, Workspace, WorkspaceOptions, Workspaces};
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::GnoblinStdExt;
+use gnoblin_std::objects::{
+    GridLayout, InputContextStdExt, MasterStackLayout, ModelRootStdExt, Workspace, WorkspaceOptions,
+};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let objects = g.objects()?;
-    let workspaces = Workspaces::get(&objects)?;
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let std = g.std()?.objects()?;
+    let model = ModelRoot::get(&g.objects()?)?;
+    let workspaces = model.workspaces()?;
     workspaces.add(&Workspace::new_with(
-        &objects,
+        &std,
         "web",
-        WorkspaceOptions { name: None, gaps: None, layout: Some(MasterStackLayout::new(&objects)?.as_layout()?) },
+        WorkspaceOptions { layout: Some(MasterStackLayout::new(&std)?.as_layout()?), ..WorkspaceOptions::default() },
     )?)?;
     workspaces.add(&Workspace::new_with(
-        &objects,
+        &std,
         "chat",
-        WorkspaceOptions { name: None, gaps: None, layout: Some(GridLayout::new(&objects)?.as_layout()?) },
+        WorkspaceOptions { layout: Some(GridLayout::new(&std)?.as_layout()?), ..WorkspaceOptions::default() },
     )?)?;
 
-    g.bind(
+    let Some(seat) = model.input()?.and_then(|input| input.primary().ok().flatten()) else {
+        return Ok(());
+    };
+    seat.bind(
         "Super+Tab",
-        Some(move |_event| {
+        Some(move |_| {
             let items = workspaces.list()?;
             let current = items.iter().position(|workspace| workspace.active().unwrap_or(false));
             let next = current.map_or(0, |i| i + 1) % items.len();
@@ -111,21 +119,25 @@ workspace where the removed one was. No window closes.
 
 ## The `Workspace` object
 
-| Member          | Type            | Meaning                                                                                |
-| --------------- | --------------- | -------------------------------------------------------------------------------------- |
-| `id`            | string          | The workspace's identity. Unique in the collection.                                    |
-| `name`          | string          | What the workspace is called where a name is shown. Writable.                          |
-| `index`         | integer         | The position in `gnoblin.workspaces`, or -1 outside it.                                |
-| `active`        | boolean         | Whether an output shows it. With several outputs several are active.                   |
-| `output`        | integer         | The number of the output that shows it, or 0 while none does.                          |
-| `layout`        | `Layout`        | The layout that places its windows. Assign a layout object.                            |
-| `gaps`          | inner and outer | Pixels between windows and between windows and the edge. Assign both together.         |
-| `clients`       | collection      | The windows on this workspace. `add(client)` moves a window here.                      |
-| `attached`      | boolean         | Whether the workspace is in `gnoblin.workspaces`.                                      |
-| `show(options)` | method          | Shows the workspace on the output under the pointer.                                   |
-| `set(values)`   | method          | Writes properties in one transition. See [Tweens and easing](tweens#animate-a-window). |
-| `invalidate()`  | method          | Lays the workspace out again.                                                          |
-| `walk(step)`    | method          | Moves the focus `step` windows along the workspace: 1 is the next, -1 the previous.    |
+| Member                                | Type            | Meaning                                                                                |
+| ------------------------------------- | --------------- | -------------------------------------------------------------------------------------- |
+| `id`                                  | string          | The workspace's identity. Unique in the collection.                                    |
+| `name`                                | string          | What the workspace is called where a name is shown. Writable.                          |
+| `index`                               | integer         | The position in `gnoblin.workspaces`, or -1 outside it.                                |
+| `active`                              | boolean         | Whether an output shows it. With several outputs several are active.                   |
+| `output`                              | integer         | The number of the output that shows it, or 0 while none does.                          |
+| `layout`                              | `Layout`        | The layout that places its windows. Assign a layout object.                            |
+| `gaps`                                | inner and outer | Pixels between windows and between windows and the edge. Assign both together.         |
+| `clients`                             | collection      | The windows on this workspace. `add(client)` moves a window here.                      |
+| `attached`                            | boolean         | Whether the workspace is in `gnoblin.workspaces`.                                      |
+| `show(options)`                       | method          | Shows the workspace on the output under the pointer.                                   |
+| `set(values)`                         | method          | Writes properties in one transition. See [Tweens and easing](tweens#animate-a-window). |
+| `invalidate()`                        | method          | Lays the workspace out again.                                                          |
+| `walk(step)`                          | method          | Moves the focus `step` windows along the workspace: 1 is the next, -1 the previous.    |
+| `findSplit(client, x, y)`             | method          | The divider a drag on `client` at that point would move, or none. Asks the layout.     |
+| `setSplit(token, ratio, crossRatio?)` | method          | Moves the divider `findSplit` named `token` to `ratio`.                                |
+| `resetSplit(token)`                   | method          | Puts that divider back where it was.                                                   |
+| `destroy()`                           | method          | Ends the object. Remove it from the collection first.                                  |
 
 `walk` does nothing when no window of the workspace has the focus, and a step past either end leaves the focus where it is.
 A workspace is the script's own object: it stays usable after it leaves the collection.
@@ -140,7 +152,8 @@ no pointer says. `Workspace.show` and `Output.show` are the same call with a dif
 ::: tabs
 
 ```typescript
-import { Workspace } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { Workspace } from "gnoblin-std/generated/objects";
 
 const web = new Workspace("web");
 gnoblin.workspaces.add(web);
@@ -156,15 +169,16 @@ web.show(ShowOptions(duration=250.0))
 ```
 
 ```rust
-use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_std::objects::{ShowOptions, Workspace, WorkspaceOptions, Workspaces};
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::GnoblinStdExt;
+use gnoblin_std::objects::{ModelRootStdExt, ShowOptions, Workspace};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let objects = g.objects()?;
-    let web = Workspace::new_with(&objects, "web", WorkspaceOptions { name: None, gaps: None, layout: None })?;
-    Workspaces::get(&objects)?.add(&web)?;
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let std = g.std()?.objects()?;
+    let web = Workspace::new(&std, "web")?;
+    ModelRoot::get(&g.objects()?)?.workspaces()?.add(&web)?;
     web.show(Some(&ShowOptions { duration: 250.0, progress: 0.0, output: None }))?;
     Ok(())
 }
@@ -192,7 +206,7 @@ constructor. Python takes the same options as keyword arguments in snake_case, s
 | `GridLayout`        | In equal cells.                                                                                     | `columns` (0 chooses from the window count), `fill` (`row` or `column`), `gap`                          |
 | `MonocleLayout`     | One at a time, filling the area. `KioskLayout` is another name for it.                              | none                                                                                                    |
 | `DwindleLayout`     | By halving the cell of the focused window for each new one, as Hyprland's dwindle does.             | `split`, `ratio`, `gap` and Hyprland's options: [Dwindle like Hyprland](/recipes/dwindle-like-hyprland) |
-| `StripLayout`       | In a scrolling strip of columns, the view following the focus.                                      | `column`                                                                                                |
+| `StripLayout`       | In a scrolling strip of columns, the view following the focus.                                      | `column`, `pin`                                                                                         |
 | `ArcLayout`         | Along an arc round the viewer.                                                                      | `radius`, `spacing`                                                                                     |
 | `CarouselLayout`    | On a rotating carousel, with `rotate(steps)` to turn it. `Carousel3dLayout` is another name for it. | `fov`, `cardWidth`, `cardHeight`                                                                        |
 
@@ -205,12 +219,13 @@ workspace changes, not on every frame, and a throw leaves the last placement in 
 ::: tabs
 
 ```typescript
-import { Layout, Workspace } from "gnoblin-std";
-import type { LayoutContextInit, LayoutPlacementInit } from "gnoblin-std";
+import { Layout, Workspace } from "gnoblin-std/generated/objects";
+import type { LayoutContextInit, LayoutPlacementInit } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core/generated/objects";
 
 class Columns extends Layout {
     compute(context: LayoutContextInit): LayoutPlacementInit[] {
-        const { x, y, width, height } = context.area;
+        const { x = 0, y = 0, width = 0, height = 0 } = context.area;
         const count = context.children.length;
         return context.children.map((node, index) => ({
             node,
@@ -255,30 +270,31 @@ Workspaces.get().add(Workspace("columns", layout=Columns()))
 ```
 
 ```rust
-use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::GnoblinStdExt;
 use gnoblin_std::objects::{
-    LayoutContext, LayoutHandlers, LayoutPlacement, LayoutRect, Workspace, WorkspaceOptions, Workspaces,
+    LayoutHandlers, LayoutPlacement, LayoutRect, ModelRootStdExt, Workspace, WorkspaceOptions,
 };
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let objects = g.objects()?;
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let std = g.std()?.objects()?;
     let columns = LayoutHandlers {
-        compute: Box::new(|context: LayoutContext| -> gnoblin::Result<Vec<LayoutPlacement>> {
-            let (x, y, width, height) = (context.area.x, context.area.y, context.area.width, context.area.height);
+        compute: Box::new(|context| {
+            let LayoutRect { x, y, width, height } = context.area;
             let count = context.children.len().max(1) as f64;
             Ok(context
                 .children
-                .iter()
+                .into_iter()
                 .enumerate()
                 .map(|(index, node)| {
-                    let mut placement = LayoutPlacement::new(node.clone());
+                    let mut placement = LayoutPlacement::new(node);
                     placement.tiled = true;
                     placement.bounds = Some(LayoutRect {
-                        x: x + index as f64 * width / count,
+                        x: (x + index as f64 * width / count).floor(),
                         y,
-                        width: width / count,
+                        width: (width / count).floor(),
                         height,
                     });
                     placement
@@ -294,12 +310,12 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         move_split: None,
         reset_split: None,
     }
-    .implement(&objects)?;
+    .implement(&std)?;
 
-    Workspaces::get(&objects)?.add(&Workspace::new_with(
-        &objects,
+    ModelRoot::get(&g.objects()?)?.workspaces()?.add(&Workspace::new_with(
+        &std,
         "columns",
-        WorkspaceOptions { name: None, gaps: None, layout: Some(columns) },
+        WorkspaceOptions { layout: Some(columns), ..WorkspaceOptions::default() },
     )?)?;
     Ok(())
 }
