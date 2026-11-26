@@ -2940,3 +2940,9 @@ left = "gnoblin-render-vulkan::Stats"
 right = "gnoblin-std::Stats"
 kind = "same-name"
 reason = "each crate's Stats is the counters of its own subsystem (the Vulkan device's, the library's), read by its own callers; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-sdkgen::DocLanguage"
+right = "gnoblinctl::StarterLanguage"
+kind = "same-shape"
+reason = "the SDK generator's documentation languages and the languages `gnoblinctl config init` writes a starter in are both TypeScript, Python and Rust; the command-line tool does not link the generator, which is a build-time crate, so it names its own three"
