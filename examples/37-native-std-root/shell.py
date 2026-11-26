@@ -3,12 +3,16 @@
     gnoblin ./shell.py
 
 Importing ``gnoblin.objects.std`` gives the core's ``Gnoblin`` the members ``workspaces``, ``displays``, ``scene``, ``gestures`` and
-``request_transition``, and its ``outputs`` the member ``profiles``. A shell that never imports it (example 35) has none of them. This shell:
+``request_transition``, its ``outputs`` the member ``profiles``, each input context ``active_display`` and each collection of windows
+``style``. A shell that never imports it (example 35) has none of them. This shell:
 
 - adds two workspaces to ``gnoblin.workspaces``, reads ``scene`` and ``gestures``, and runs a transition through
   ``gnoblin.request_transition``;
+- sets the style of every window through ``gnoblin.clients.style``, and checks that a selection made with ``where``, and a selection of it,
+  each have a style of their own, and that a list made with ``ClientCollection()`` has none;
 - when the library has a display for an output: reads the area windows are laid out in, shows each workspace with ``show`` and
-  ``show_by_id``, and tries what the checks refuse (a workspace that is not in the list, an id that is not there);
+  ``show_by_id``, tries what the checks refuse (a workspace that is not in the list, an id that is not there), and reads the workspace the
+  display under the pointer shows through ``gnoblin.input.primary.active_display``;
 - adds an output profile to ``gnoblin.outputs.profiles``, adds a display of its own over it, swaps it for another with
   ``gnoblin.displays.replace``, and tries to replace a display of the library's, which is refused.
 
@@ -17,7 +21,7 @@ test reads all three.
 """
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.model import ClientCollection, ClientQuery, Gnoblin
 from gnoblin.objects.std import Display, DisplaySelector, OutputMatch, OutputProfile, TransitionOptions, Workspace
 
 
@@ -53,6 +57,21 @@ try:
 except Exception as error:
     say(f"requestTransition refused: {error}")
 
+# The style of a collection of windows: every window for ``gnoblin.clients``, and a scope of its own for a selection and for a selection of
+# it.
+clients = gnoblin.clients
+clients.style.opacity = 0.9
+say(f"clients style opacity is 0.9: {flag(abs(clients.style.opacity - 0.9) < 1e-6)}")
+foot = clients.where(ClientQuery(app_id="foot"))
+say(f"a selection has its own style: {flag(foot.style.path != clients.style.path)}")
+say(
+    f"a selection of a selection has its own style: {flag(foot.where(ClientQuery(title='x')).style.path != foot.style.path)}"
+)
+try:
+    say(f"refused list style: no {ClientCollection().style.path}")
+except Exception as error:
+    say(f"refused list style: {error}")
+
 
 def ids():
     """The ids of the displays in the list, sorted and joined."""
@@ -83,6 +102,11 @@ def on_changed():
     workspaces.show_by_id("main")
     say("show main by id: true")
     say(f"main is active: {flag(main.active)}")
+    primary = gnoblin.input.primary if gnoblin.input is not None else None
+    active = primary.active_display if primary is not None else None
+    viewport = active.viewport if active is not None else None
+    shown = viewport.content if viewport is not None else None
+    say(f"the active display shows main: {flag(shown is not None and shown.id == 'main')}")
     try:
         workspaces.show(ghost)
         say("refused ghost: no")

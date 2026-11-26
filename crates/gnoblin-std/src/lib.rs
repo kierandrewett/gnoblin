@@ -134,7 +134,7 @@ pub mod prelude {
         ViewOptions,
     };
 
-    // The members this library adds to the core's typed root and output collections: `model.workspaces()?`, `model.request_transition(..)`,
-    // `outputs.profiles()?`. A shell that does not use this prelude has none of them.
-    pub use crate::objects::{ModelRootStdExt, OutputCollectionStdExt};
+    // The members this library adds to the core's typed classes: `model.workspaces()?`, `model.request_transition(..)`,
+    // `outputs.profiles()?`, `context.active_display()?`, `clients.style()?`. A shell that does not use this prelude has none of them.
+    pub use crate::objects::{ClientCollectionStdExt, InputContextStdExt, ModelRootStdExt, OutputCollectionStdExt};
 }

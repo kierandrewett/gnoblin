@@ -1,10 +1,11 @@
 //! What the std catalog's `[[augment]]` becomes in every language, and what the generator refuses.
 //!
-//! The std library adds `workspaces`, `displays`, `scene`, `gestures` and `requestTransition` to the core's `gnoblin` object and `profiles`
-//! to its output collections. The core catalog never reads the std files, so a core-only shell has none of them: the failure modes are
-//! that the core's files render the same bytes with and without std, that the members are installed by the std module of each language
-//! and by nothing of the core's, that a missing target is refused with its name, and that a name the core's class already has is refused
-//! with both names.
+//! The std library adds `workspaces`, `displays`, `scene`, `gestures` and `requestTransition` to the core's `gnoblin` object, `profiles`
+//! to its output collections, and, as `receiver = true` augments that act on the object they are used on, `activeDisplay` to its input
+//! contexts and `style` to its client collections. The core catalog never reads the std files, so a core-only shell has none of them: the
+//! failure modes are that the core's files render the same bytes with and without std, that the members are installed by the std module
+//! of each language and by nothing of the core's, that a receiver member is handed its object, that a missing target is refused with its
+//! name, and that a name the core's class already has is refused with both names.
 
 use std::fs;
 use std::path::Path;
@@ -28,14 +29,17 @@ fn generated(target: &str, path: &str) -> String {
         .1
 }
 
-/// The six members of the std library's augments, by the class that holds them.
-const MEMBERS: [(&str, &[&str], &[&str]); 2] = [
+/// The members of the std library's augments, by the class that holds them. A receiver augment's members are all methods, which take the
+/// object they act on first.
+const MEMBERS: [(&str, &[&str], &[&str]); 4] = [
     (
         "gnoblin_augment",
         &["workspaces", "displays", "scene", "gestures"],
         &["request_transition"],
     ),
     ("output_collection_augment", &["profiles"], &[]),
+    ("input_context_augment", &[], &["active_display"]),
+    ("client_collection_augment", &[], &["style"]),
 ];
 
 #[test]
@@ -103,8 +107,10 @@ fn javascript_installs_the_members_from_the_std_module_and_the_core_module_names
         "B.augmentGet(Core.Gnoblin, \"displays\", () => GnoblinAugment.get().displays);",
         "B.augmentGet(Core.Gnoblin, \"scene\", () => GnoblinAugment.get().scene);",
         "B.augmentGet(Core.Gnoblin, \"gestures\", () => GnoblinAugment.get().gestures);",
-        "B.augmentCall(Core.Gnoblin, \"requestTransition\", (...args) => GnoblinAugment.get().requestTransition(...args));",
+        "B.augmentCall(Core.Gnoblin, \"requestTransition\", (_self, ...args) => GnoblinAugment.get().requestTransition(...args));",
         "B.augmentGet(Core.OutputCollection, \"profiles\", () => OutputCollectionAugment.get().profiles);",
+        "B.augmentGet(Core.InputContext, \"activeDisplay\", (self) => InputContextAugment.get().activeDisplay(self));",
+        "B.augmentGet(Core.ClientCollection, \"style\", (self) => ClientCollectionAugment.get().style(self));",
     ] {
         assert!(std.contains(line), "the std module lacks `{line}`");
     }
@@ -118,6 +124,10 @@ fn javascript_installs_the_members_from_the_std_module_and_the_core_module_names
     assert!(declarations.contains("readonly workspaces: Workspaces;"));
     assert!(declarations.contains("interface OutputCollection {"));
     assert!(declarations.contains("readonly profiles: OutputProfiles;"));
+    assert!(declarations.contains("interface InputContext {"));
+    assert!(declarations.contains("readonly activeDisplay: Display | undefined;"));
+    assert!(declarations.contains("interface ClientCollection {"));
+    assert!(declarations.contains("readonly style: ClientStyle;"));
     let core = generated("object-types", "js/gnoblin-core/generated/objects.d.ts");
     assert!(
         !core.contains("workspaces"),
@@ -130,12 +140,14 @@ fn python_installs_the_members_from_the_std_module_and_the_core_module_names_non
     let std = generated("object-py", "python/gnoblin/objects/std.py");
     for line in [
         "from gnoblin.objects import model as _core",
-        "_B.augment_property(_core.Gnoblin, \"workspaces\", lambda: GnoblinAugment.get().workspaces)",
-        "_B.augment_property(_core.Gnoblin, \"displays\", lambda: GnoblinAugment.get().displays)",
-        "_B.augment_property(_core.Gnoblin, \"scene\", lambda: GnoblinAugment.get().scene)",
-        "_B.augment_property(_core.Gnoblin, \"gestures\", lambda: GnoblinAugment.get().gestures)",
-        "_B.augment_method(_core.Gnoblin, \"request_transition\", lambda *args, **kwargs: GnoblinAugment.get().request_transition(*args, **kwargs))",
-        "_B.augment_property(_core.OutputCollection, \"profiles\", lambda: OutputCollectionAugment.get().profiles)",
+        "_B.augment_property(_core.Gnoblin, \"workspaces\", lambda _obj: GnoblinAugment.get().workspaces)",
+        "_B.augment_property(_core.Gnoblin, \"displays\", lambda _obj: GnoblinAugment.get().displays)",
+        "_B.augment_property(_core.Gnoblin, \"scene\", lambda _obj: GnoblinAugment.get().scene)",
+        "_B.augment_property(_core.Gnoblin, \"gestures\", lambda _obj: GnoblinAugment.get().gestures)",
+        "_B.augment_method(_core.Gnoblin, \"request_transition\", lambda _obj, *args, **kwargs: GnoblinAugment.get().request_transition(*args, **kwargs))",
+        "_B.augment_property(_core.OutputCollection, \"profiles\", lambda _obj: OutputCollectionAugment.get().profiles)",
+        "_B.augment_property(_core.InputContext, \"active_display\", lambda obj: InputContextAugment.get().active_display(obj))",
+        "_B.augment_property(_core.ClientCollection, \"style\", lambda obj: ClientCollectionAugment.get().style(obj))",
     ] {
         assert!(std.contains(line), "the std module lacks `{line}`");
     }
@@ -157,6 +169,9 @@ fn rust_gives_the_core_root_an_extension_trait_in_the_std_api_only() {
     assert!(std.contains("impl OutputCollectionStdExt for ::gnoblin_core::objects::OutputCollection {"));
     assert!(std.contains("fn workspaces(&self) -> go::Res<Workspaces>;"));
     assert!(std.contains("fn request_transition(&self,"));
+    assert!(std.contains("impl ClientCollectionStdExt for ::gnoblin_core::objects::ClientCollection {"));
+    assert!(std.contains("fn style(&self) -> go::Res<ClientStyle>;"));
+    assert!(std.contains("ClientCollectionAugment::get(&super::std_objects(self.handle().api())?)?.style(self)"));
     let core = generated("object-api", "rust-objects/model_api.rs");
     assert!(!core.contains("StdExt"), "the core's API names a std trait");
     assert!(!core.contains("gnoblin_std"), "the core's API names the std crate");
@@ -180,6 +195,8 @@ fn the_surface_lock_records_the_augment_and_not_the_lowered_class() {
         "core.gnoblin.gestures",
         "core.gnoblin.request_transition",
         "core.output_collection.profiles",
+        "core.input_context.active_display",
+        "core.client_collection.style",
     ] {
         assert!(
             entries.iter().any(|(_, found)| *found == key),

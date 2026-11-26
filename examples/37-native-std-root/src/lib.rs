@@ -1,12 +1,16 @@
 //! Example 37: the members the std library adds to the `gnoblin` root of the core.
 //!
-//! `use gnoblin_std::prelude::*;` brings the extension traits `ModelRootStdExt` and `OutputCollectionStdExt` into scope, which give the
-//! core's typed root `workspaces`, `displays`, `scene`, `gestures` and `request_transition`, and its output collections `profiles`. A shell
-//! that does not use the std prelude (example 35) has none of them, and links no std library. This shell:
+//! `use gnoblin_std::prelude::*;` brings the extension traits `ModelRootStdExt`, `OutputCollectionStdExt`, `InputContextStdExt` and
+//! `ClientCollectionStdExt` into scope, which give the core's typed root `workspaces`, `displays`, `scene`, `gestures` and
+//! `request_transition`, its output collections `profiles`, its input contexts `active_display` and its collections of windows `style`. A
+//! shell that does not use the std prelude (example 35) has none of them, and links no std library. This shell:
 //!
 //! - adds two workspaces to the root's workspaces, reads the scene and the gestures, and runs a transition through `request_transition`;
+//! - sets the style of every window through the root's clients, and checks that a selection made with `where_`, and a selection of it,
+//!   each have a style of their own, and that a list made with `ClientCollection::new` has none;
 //! - when the library has a display for an output: reads the area windows are laid out in, shows each workspace with `show` and
-//!   `show_by_id`, and tries what the checks refuse (a workspace that is not in the list, an id that is not there);
+//!   `show_by_id`, tries what the checks refuse (a workspace that is not in the list, an id that is not there), and reads the workspace
+//!   the display under the pointer shows through the primary input context's `active_display`;
 //! - adds an output profile to the outputs' profiles, adds a display of its own over it, swaps it for another with `displays.replace`,
 //!   and tries to replace a display of the library's, which is refused.
 //!
@@ -16,7 +20,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::objects::{ClientCollection, ClientQuery, ModelRoot};
 use gnoblin_std::objects::{Display, DisplaySelector, OutputMatch, OutputProfile, TransitionOptions, Workspace};
 use gnoblin_std::prelude::*;
 
@@ -77,6 +81,36 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         Err(error) => g.log(&format!("stdroot: requestTransition refused: {error}")),
     }
 
+    // The style of a collection of windows: every window for the root's clients, and a scope of its own for a selection and for a
+    // selection of it.
+    if let Some(clients) = model.clients()? {
+        let style = clients.style()?;
+        style.set_opacity(0.9)?;
+        let opacity = clients.style()?.opacity()?;
+        g.log(&format!(
+            "stdroot: clients style opacity is 0.9: {}",
+            (opacity - 0.9).abs() < 1e-6
+        ));
+        let query = |app_id: Option<&str>, title: Option<&str>| ClientQuery {
+            app_id: app_id.map(str::to_owned),
+            title: title.map(str::to_owned),
+            ..ClientQuery::default()
+        };
+        let foot = clients.where_(&query(Some("foot"), None), None)?;
+        let own = foot.style()?.path()? != style.path()?;
+        g.log(&format!("stdroot: a selection has its own style: {own}"));
+        let titled = foot.where_(&query(None, Some("x")), None)?;
+        let own = titled.style()?.path()? != foot.style()?.path()?;
+        g.log(&format!("stdroot: a selection of a selection has its own style: {own}"));
+        match ClientCollection::new(&g.objects()?).and_then(|list| list.style()) {
+            Ok(list) => g.log(&format!(
+                "stdroot: refused list style: no {}",
+                list.path().unwrap_or_default()
+            )),
+            Err(error) => g.log(&format!("stdroot: refused list style: {error}")),
+        }
+    }
+
     let done = Rc::new(Cell::new(false));
     let on_changed = {
         let (workspaces, displays, profiles, objects, done) = (
@@ -104,6 +138,20 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             let _ = workspaces.show_by_id("main", None);
             say("show main by id: true".to_owned());
             say(format!("main is active: {}", main.active().unwrap_or(false)));
+            let shown = g
+                .objects()
+                .ok()
+                .and_then(|core| ModelRoot::get(&core).ok())
+                .and_then(|model| model.input().ok().flatten())
+                .and_then(|input| input.primary().ok().flatten())
+                .and_then(|context| context.active_display().ok().flatten())
+                .and_then(|display| display.viewport().ok().flatten())
+                .and_then(|viewport| viewport.content().ok().flatten())
+                .and_then(|workspace| workspace.id().ok());
+            say(format!(
+                "the active display shows main: {}",
+                shown.as_deref() == Some("main")
+            ));
             match workspaces.show(&ghost, None) {
                 Ok(()) => say("refused ghost: no".to_owned()),
                 Err(error) => say(format!("refused ghost: {error}")),

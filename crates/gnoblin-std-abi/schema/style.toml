@@ -987,3 +987,18 @@ type = "int"
 [[object.method.param]]
 name = "entry"
 type = "object:filter"
+
+# The style of a collection of the core's windows is `collection.style` once this library is loaded: the core draws no style.
+[[augment]]
+target = "core.client_collection"
+since = "0.2.0"
+receiver = true
+
+# The style of the collection's windows: every window for `gnoblin.clients`, and for a selection made with `where` the windows that
+# match its query, and the queries of the collections it was made from, while they match. The selection's `priority` ranks it among
+# the selections that style one window. A list made with `new ClientCollection()` has none and the read is refused.
+[[augment.property]]
+name = "style"
+type = "object:style"
+since = "0.2.0"
+readonly = true

@@ -1,8 +1,9 @@
 //! Example 37 (`examples/37-native-std-root`), run for real from the three languages: the shipped binary serving a shell that reads the
 //! members the std library adds to the core's root object, and the failure modes of a member that exists only while std is loaded.
 //!
-//! The std catalog declares `[[augment]]` blocks for `core.gnoblin` (`workspaces`, `displays`, `scene`, `gestures`, `requestTransition`) and
-//! `core.output_collection` (`profiles`). The core catalog never reads them, so:
+//! The std catalog declares `[[augment]]` blocks for `core.gnoblin` (`workspaces`, `displays`, `scene`, `gestures`, `requestTransition`),
+//! `core.output_collection` (`profiles`), and, as receiver augments that act on the object they are used on, `core.input_context`
+//! (`activeDisplay`) and `core.client_collection` (`style`). The core catalog never reads them, so:
 //!
 //! - a shell of each language that loads no std library has none of the members, and the core-only Rust shell of example 35 records no
 //!   `NEEDED libgnoblin-std` (`readelf -d`), which is the proof the core carries no symbol of std;
@@ -66,6 +67,12 @@ fn the_root_has_the_std_members(language: Language, session: &mut Gnoblin) {
     // A transition that cannot start is refused with the library's words about the duration.
     let refused = said(session, "requestTransition refused:");
     assert!(refused.contains("duration"), "{refused}");
+    // The style of every window, and a scope of its own for a selection and a selection of it; a list made by the shell has none.
+    said(session, "clients style opacity is 0.9: true");
+    said(session, "a selection has its own style: true");
+    said(session, "a selection of a selection has its own style: true");
+    let list = said(session, "refused list style:");
+    assert!(list.contains("has no style"), "a list made by the shell: {list}");
 
     // With a display for the output, the area is known and a workspace is shown by itself and by its id.
     said(session, "the area is known: true");
@@ -73,6 +80,8 @@ fn the_root_has_the_std_members(language: Language, session: &mut Gnoblin) {
     said(session, "side is active: true");
     said(session, "show main by id: true");
     said(session, "main is active: true");
+    // The display under the pointer, else the primary one, shows the workspace that was shown last.
+    said(session, "the active display shows main: true");
     let ghost = said(session, "refused ghost:");
     assert!(
         ghost.contains("add the workspace to the list first"),

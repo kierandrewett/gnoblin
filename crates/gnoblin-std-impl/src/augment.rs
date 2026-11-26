@@ -13,6 +13,10 @@
 //! | `gnoblin.gestures` | the service `gestures` |
 //! | `gnoblin.requestTransition` | the same call as `transition.request` |
 //! | `gnoblin.outputs.profiles` | the service `output_profiles` |
+//! | `input.activeDisplay` | the display under the context's pointer (`display_objects::manager`) |
+//! | `collection.style` | the style of the collection's windows (`style::objects`) |
+//!
+//! The last two are `receiver = true` augments: each call is handed the core object it acts on first.
 //!
 //! `data/js/gnoblin-std/host/roots.ts` and `data/js/gnoblin-std/index.ts` are the reference: the TypeScript host makes the same members on the
 //! root object when the package is loaded.
@@ -35,4 +39,5 @@ pub(crate) fn register(builder: &mut Builder) {
         .class::<()>("output_collection_augment")
         .ctor(|_, _| Ok(()))
         .get("profiles", |_, cx| cx.service("output_profiles"));
+    crate::style::objects::register_collection_augment(builder);
 }

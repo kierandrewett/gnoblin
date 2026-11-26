@@ -9,6 +9,8 @@
 # to the version that ships, and from then on its entries are frozen.
 released none
 
+augment | core.client_collection | members added to a class of the core catalog | 0.2.0
+
 enum | filter_kind | values blur saturate brightness contrast shader | 0.2.0
 enum | style_property | values opacity corner_radius background borders shadows filter backdrop_filter | 0.2.0
 
@@ -36,6 +38,7 @@ member | computed_style.filter | property list<object:filter> rw | 0.2.0
 member | computed_style.opacity | property double rw | 0.2.0
 member | computed_style.origin | property object:style_origin rw | 0.2.0
 member | computed_style.shadows | property list<object:shadow> rw | 0.2.0
+member | core.client_collection.style | property object:style ro | 0.2.0
 member | corner_radius.all | property double rw,optional | 0.2.0
 member | corner_radius.bottom_left | property double rw,optional | 0.2.0
 member | corner_radius.bottom_right | property double rw,optional | 0.2.0

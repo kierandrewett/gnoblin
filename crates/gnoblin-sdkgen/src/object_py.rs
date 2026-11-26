@@ -350,18 +350,18 @@ def _augmentable(target: type, name: str) -> None:
     _augmented.add((target, name))
 
 
-def augment_property(target: type, name: str, read: Callable[[], Any]) -> None:
-    """Adds the read-only property `name` to the core class `target`, which reads `read()`."""
+def augment_property(target: type, name: str, read: Callable[[Any], Any]) -> None:
+    """Adds the read-only property `name` to the core class `target`, which reads `read(obj)` for the object it is read on."""
     _augmentable(target, name)
-    setattr(target, name, property(lambda self: read()))
+    setattr(target, name, property(lambda self: read(self)))
 
 
 def augment_method(target: type, name: str, run: Callable[..., Any]) -> None:
-    """Adds the method `name` to the core class `target`, which calls `run(*args, **kwargs)`."""
+    """Adds the method `name` to the core class `target`, which calls `run(obj, *args, **kwargs)` for the object it is called on."""
     _augmentable(target, name)
 
     def method(self: Any, *args: Any, **kwargs: Any) -> Any:
-        return run(*args, **kwargs)
+        return run(self, *args, **kwargs)
 
     method.__name__ = name
     setattr(target, name, method)
@@ -1502,16 +1502,28 @@ impl Py<'_> {
         for property in &class.properties {
             let ident = member_name(&property.name, &property.extras.export.py);
             c.line(format!(
-                "_B.augment_property({core}, {}, lambda: {name}.get().{ident})",
+                "_B.augment_property({core}, {}, lambda _obj: {name}.get().{ident})",
                 quote(&ident)
             ));
         }
+        let getters = class.augment_getters.as_deref();
         for method in &class.methods {
             let ident = member_name(&method.name, &method.extras.export.py);
-            c.line(format!(
-                "_B.augment_method({core}, {}, lambda *args, **kwargs: {name}.get().{ident}(*args, **kwargs))",
-                quote(&ident)
-            ));
+            let line = match getters {
+                Some(getters) if getters.contains(&method.name) => format!(
+                    "_B.augment_property({core}, {}, lambda obj: {name}.get().{ident}(obj))",
+                    quote(&ident)
+                ),
+                Some(_) => format!(
+                    "_B.augment_method({core}, {}, lambda obj, *args, **kwargs: {name}.get().{ident}(obj, *args, **kwargs))",
+                    quote(&ident)
+                ),
+                None => format!(
+                    "_B.augment_method({core}, {}, lambda _obj, *args, **kwargs: {name}.get().{ident}(*args, **kwargs))",
+                    quote(&ident)
+                ),
+            };
+            c.line(line);
         }
         c.blank();
     }

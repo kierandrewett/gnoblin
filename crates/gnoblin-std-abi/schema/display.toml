@@ -689,3 +689,18 @@ name = "profiles"
 type = "object:output_profiles"
 since = "0.2.0"
 readonly = true
+
+# The display an input context acts on is `input.activeDisplay` once this library is loaded: the core has no display.
+[[augment]]
+target = "core.input_context"
+since = "0.2.0"
+receiver = true
+
+# The display under the context's pointer, else the primary output's; none when no display has an output. A key binding that acts on
+# "this screen" reads it: assigning its `viewport.content` switches the workspace that display shows.
+[[augment.property]]
+name = "active_display"
+type = "object:display"
+since = "0.2.0"
+readonly = true
+optional = true

@@ -345,21 +345,21 @@ function augmentable(target, name) {
   }
 }
 
-/** Adds the read-only property `name` to the core class `target`, which reads `read()`. */
+/** Adds the read-only property `name` to the core class `target`, which reads `read(object)` for the object it is read on. */
 export function augmentGet(target, name, read) {
   augmentable(target, name);
   const get = function () {
-    return read();
+    return read(this);
   };
   augmented.add(get);
   Object.defineProperty(target.prototype, name, { configurable: true, enumerable: false, get });
 }
 
-/** Adds the method `name` to the core class `target`, which calls `run(...args)`. */
+/** Adds the method `name` to the core class `target`, which calls `run(object, ...args)` for the object it is called on. */
 export function augmentCall(target, name, run) {
   augmentable(target, name);
   const value = function (...args) {
-    return run(...args);
+    return run(this, ...args);
   };
   augmented.add(value);
   Object.defineProperty(target.prototype, name, { configurable: true, enumerable: false, writable: true, value });
@@ -1386,7 +1386,8 @@ pub(super) fn render_js(view: &ScriptView<'_>) -> Result<String, String> {
 impl Js<'_> {
     /// What installs the members of the class `class`, which holds an augment, on the class `target` of the core's module: each is read or
     /// called through the service of this library, made for the generation that is running when the member is used, so a member binds to
-    /// the library of the generation and never to one that has retired.
+    /// the library of the generation and never to one that has retired. A member of a `receiver = true` augment hands the service the
+    /// object it is used on.
     fn augment_source(&self, c: &mut CodeWriter, class: &ObjectType, target: &ObjectType) {
         let name = class_name(class);
         let core = format!("Core.{}", class_name(target));
@@ -1402,12 +1403,26 @@ impl Js<'_> {
                 quote(&ident)
             ));
         }
+        let getters = class.augment_getters.as_deref();
         for method in &class.methods {
             let ident = member_name(&method.name, &method.extras.export.js);
-            c.line(format!(
-                "B.augmentCall({core}, {}, (...args) => {name}.get().{ident}(...args));",
-                quote(&ident)
-            ));
+            let line = match getters {
+                Some(getters) if getters.contains(&method.name) => {
+                    format!(
+                        "B.augmentGet({core}, {}, (self) => {name}.get().{ident}(self));",
+                        quote(&ident)
+                    )
+                }
+                Some(_) => format!(
+                    "B.augmentCall({core}, {}, (self, ...args) => {name}.get().{ident}(self, ...args));",
+                    quote(&ident)
+                ),
+                None => format!(
+                    "B.augmentCall({core}, {}, (_self, ...args) => {name}.get().{ident}(...args));",
+                    quote(&ident)
+                ),
+            };
+            c.line(line);
         }
         c.blank();
     }
@@ -1427,6 +1442,7 @@ impl Js<'_> {
             let ident = member_name(&property.name, &property.extras.export.js);
             c.line(format!("readonly {ident}: {};", self.ts(&property.ty, false)?));
         }
+        let getters = class.augment_getters.as_deref();
         for method in &class.methods {
             let ident = member_name(&method.name, &method.extras.export.js);
             let returns = match &method.returns {
@@ -1434,7 +1450,17 @@ impl Js<'_> {
                 Some(ty) => self.ts(ty, false)?,
                 None => "void".to_owned(),
             };
-            c.line(format!("{ident}({}): {returns};", self.params_dts(&method.params)?));
+            // A receiver augment's first parameter is the object the member is used on, which the declaration's `this` is.
+            let params = if getters.is_some() {
+                &method.params[1..]
+            } else {
+                &method.params[..]
+            };
+            if getters.is_some_and(|getters| getters.contains(&method.name)) {
+                c.line(format!("readonly {ident}: {returns};"));
+            } else {
+                c.line(format!("{ident}({}): {returns};", self.params_dts(params)?));
+            }
         }
         c.dedent();
         c.line("}");

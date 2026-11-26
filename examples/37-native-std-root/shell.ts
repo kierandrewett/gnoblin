@@ -3,17 +3,21 @@
 //     gnoblin ./shell.ts
 //
 // Importing `gnoblin-std/generated/objects` gives the core's `gnoblin` the members `workspaces`, `displays`, `scene`, `gestures` and
-// `requestTransition`, and its `outputs` the member `profiles`. A shell that never imports it (example 35) has none of them. This shell:
+// `requestTransition`, its `outputs` the member `profiles`, each input context `activeDisplay` and each collection of windows `style`. A shell
+// that never imports it (example 35) has none of them. This shell:
 //
 // - adds two workspaces to `gnoblin.workspaces`, reads `scene` and `gestures`, and runs a transition through `gnoblin.requestTransition`;
+// - sets the style of every window through `gnoblin.clients.style`, and checks that a selection made with `where`, and a selection of it,
+//   each have a style of their own, and that a list made with `new ClientCollection()` has none;
 // - when the library has a display for an output: reads the area windows are laid out in, shows each workspace with `show` and `showById`,
-//   and tries what the checks refuse (a workspace that is not in the list, an id that is not there);
+//   and tries what the checks refuse (a workspace that is not in the list, an id that is not there), and reads the workspace the display
+//   under the pointer shows through `gnoblin.input.primary.activeDisplay`;
 // - adds an output profile to `gnoblin.outputs.profiles`, adds a display of its own over it, swaps it for another with
 //   `gnoblin.displays.replace`, and tries to replace a display of the library's, which is refused.
 //
 // Every line starts with `stdroot:`, spelt as the Rust and Python shells of the same example (`37-native-std-root`) spell it, so that one test
 // reads all three.
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { ClientCollection, gnoblin } from "gnoblin-core/generated/objects";
 import { Display, OutputProfile, Workspace } from "gnoblin-std/generated/objects";
 
 function say(text: string): void {
@@ -57,6 +61,19 @@ try {
     say(`requestTransition refused: ${(error as Error).message}`);
 }
 
+// The style of a collection of windows: every window for `gnoblin.clients`, and a scope of its own for a selection and for a selection of it.
+const clients = gnoblin.clients!;
+clients.style.opacity = 0.9;
+say(`clients style opacity is 0.9: ${Math.abs(clients.style.opacity - 0.9) < 1e-6}`);
+const foot = clients.where({ appId: "foot" });
+say(`a selection has its own style: ${foot.style.path !== clients.style.path}`);
+say(`a selection of a selection has its own style: ${foot.where({ title: "x" }).style.path !== foot.style.path}`);
+try {
+    say(`refused list style: no ${new ClientCollection().style.path}`);
+} catch (error) {
+    say(`refused list style: ${(error as Error).message}`);
+}
+
 /** The ids of the displays in the list, sorted and joined. */
 function ids(): string {
     return displays.list
@@ -87,6 +104,8 @@ function onChanged(): void {
     workspaces.showById("main");
     say(`show main by id: true`);
     say(`main is active: ${main.active}`);
+    const shown = gnoblin.input?.primary?.activeDisplay?.viewport?.content;
+    say(`the active display shows main: ${shown?.id === "main"}`);
     try {
         workspaces.show(ghost);
         say("refused ghost: no");

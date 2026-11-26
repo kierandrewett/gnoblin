@@ -274,6 +274,9 @@ pub struct Augment {
     pub class: String,
     /// The version that added the augment.
     pub since: Version,
+    /// Each member acts on one object of the target class (`client.style`), which the library is handed as the first parameter
+    /// `target`. Without it a member is the same on every object of the class (`gnoblin.workspaces`).
+    pub receiver: bool,
     /// The read-only properties the augment adds.
     pub properties: Vec<Property>,
     /// The methods the augment adds.
@@ -334,6 +337,10 @@ pub struct ObjectType {
     /// For the class that holds the members of the augments of a core class: that class's name in the core's catalog (`gnoblin`). The
     /// members of the class are installed on it, and the class is the std library's.
     pub augment_of: Option<String>,
+    /// For the class that holds the members of a `receiver = true` augment: every method takes the object it acts on as its first
+    /// parameter `target`, and these are the methods that were the augment's properties, which a generator installs as read-only
+    /// properties of the target. `None` for any other class.
+    pub augment_getters: Option<Vec<String>>,
     /// The object's name in each language when it differs from the mechanical conversion.
     pub export: Export,
     /// For a record that is the family of a tagged value: the enum property whose value says which variant a value is.
@@ -377,6 +384,7 @@ impl ObjectType {
             ctor: self.ctor.clone(),
             retained: self.retained,
             augment_of: self.augment_of.clone(),
+            augment_getters: self.augment_getters.clone(),
             export: self.export.clone(),
             tag: self.tag.clone(),
             variants: self.variants.clone(),
@@ -1019,6 +1027,9 @@ impl Catalog {
             if let Some(target) = &object.augment_of {
                 let _ = writeln!(text, "augment_of {target}");
             }
+            if let Some(getters) = &object.augment_getters {
+                let _ = writeln!(text, "augment_getters {getters:?}");
+            }
             for property in &object.properties {
                 let _ = writeln!(
                     text,
@@ -1126,10 +1137,23 @@ struct AugmentGroup {
     /// The schema that holds the lowered class: the first one that declares an augment of the target.
     schema: usize,
     since: Version,
+    /// The augments of the target are `receiver = true`; every augment of one target agrees.
+    receiver: bool,
     properties: Vec<Property>,
     methods: Vec<Method>,
     /// The file each member came from, to name both when two augments declare one member.
     declared_in: BTreeMap<String, String>,
+}
+
+/// The parameter a member of a `receiver = true` augment takes first: the object of the core class `class` it acts on.
+fn receiver_param(class: &str, since: Version) -> Field {
+    Field {
+        name: "target".to_owned(),
+        ty: Type::ObjectRef(format!("{CORE_NAMESPACE}.{class}")),
+        since,
+        secret: false,
+        optional: false,
+    }
 }
 
 /// Lowers every `[[augment]]` into the service class `<class>_augment` of the namespace that declares it, one for each target, and checks
@@ -1167,7 +1191,26 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
                     ));
                     continue;
                 }
+                Some(ObjectKind::Service) if augment.receiver => {
+                    problems.push(format!(
+                        "{}: augment target `{target}` is a service, which has one object: `receiver = true` is for a handle",
+                        schema.origin
+                    ));
+                    continue;
+                }
                 Some(_) => {}
+            }
+            if let Some(param) = augment
+                .methods
+                .iter()
+                .flat_map(|method| method.params.iter())
+                .find(|param| augment.receiver && param.name == "target")
+            {
+                problems.push(format!(
+                    "{}: a parameter of augment `{target}` is named `{}`, the name its object is handed under",
+                    schema.origin, param.name
+                ));
+                continue;
             }
             let at = match groups
                 .iter()
@@ -1180,6 +1223,7 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
                         class: augment.class.clone(),
                         schema: index,
                         since: augment.since,
+                        receiver: augment.receiver,
                         properties: Vec::new(),
                         methods: Vec::new(),
                         declared_in: BTreeMap::new(),
@@ -1188,6 +1232,13 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
                 }
             };
             let group = &mut groups[at];
+            if group.receiver != augment.receiver {
+                problems.push(format!(
+                    "{}: the augments of `{target}` disagree on `receiver`: every augment of one target sets it alike",
+                    schema.origin
+                ));
+                continue;
+            }
             group.since = group.since.min(augment.since);
             let names = augment
                 .properties
@@ -1207,6 +1258,33 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
         }
     }
     for group in groups {
+        let (properties, methods, getters) = if group.receiver {
+            let getters: Vec<String> = group.properties.iter().map(|property| property.name.clone()).collect();
+            let methods = group
+                .properties
+                .into_iter()
+                .map(|property| Method {
+                    params: vec![receiver_param(&group.class, property.since)],
+                    name: property.name,
+                    since: property.since,
+                    secret: property.secret,
+                    function: false,
+                    returns: Some(property.ty),
+                    optional: property.optional,
+                    required: false,
+                    native_default: false,
+                    dunder: None,
+                    extras: property.extras,
+                })
+                .chain(group.methods.into_iter().map(|mut method| {
+                    method.params.insert(0, receiver_param(&group.class, method.since));
+                    method
+                }))
+                .collect();
+            (Vec::new(), methods, Some(getters))
+        } else {
+            (group.properties, group.methods, None)
+        };
         schemas[group.schema].objects.push(ObjectType {
             name: augment_class_name(&group.class),
             base: None,
@@ -1217,11 +1295,12 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
             ctor: None,
             retained: false,
             augment_of: Some(group.class),
+            augment_getters: getters,
             export: Export::default(),
             tag: None,
             variants: Vec::new(),
-            properties: group.properties,
-            methods: group.methods,
+            properties,
+            methods,
             signals: Vec::new(),
         });
     }

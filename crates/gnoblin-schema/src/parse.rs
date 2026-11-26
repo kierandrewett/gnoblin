@@ -80,7 +80,8 @@
 //! - `[[augment]]` with `target = "core.<class>"`, and `[[augment.property]]` and `[[augment.method]]` blocks: members a library above the
 //!   core adds to a class of the core's catalog (`gnoblin.model`), which the core never reads. A property is `readonly`, and a method is a
 //!   method of the object. The catalog refuses a target the core lacks and a member name the target has, and lowers the members of every
-//!   augment of one target into the service class `<class>_augment` of the augmenting namespace ([`crate::Augment`]).
+//!   augment of one target into the service class `<class>_augment` of the augmenting namespace ([`crate::Augment`]). `receiver = true`
+//!   makes each member read on, or called on, one object of the target class, which the library is handed as the first parameter.
 
 use std::collections::BTreeSet;
 
@@ -130,6 +131,8 @@ struct RawSchema {
 struct RawAugment {
     target: String,
     since: Option<String>,
+    #[serde(default)]
+    receiver: bool,
     #[serde(default, rename = "property")]
     properties: Vec<RawProperty>,
     #[serde(default, rename = "method")]
@@ -572,6 +575,7 @@ fn parse_augments(raw_augments: &[RawAugment], scope: Scope, problems: &mut Vec<
             target: raw_augment.target.clone(),
             class: class.to_owned(),
             since,
+            receiver: raw_augment.receiver,
             properties,
             methods,
         });
@@ -672,6 +676,7 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
             ctor: raw_object.ctor.clone(),
             retained: raw_object.retained,
             augment_of: None,
+            augment_getters: None,
             export: export_of(raw_object.export.as_ref()),
             tag: raw_object.tag.clone(),
             variants,

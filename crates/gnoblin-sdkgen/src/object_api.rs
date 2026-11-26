@@ -1179,22 +1179,38 @@ pub struct @Options@ {
                 "    fn {ident}(&self) -> go::Res<{owned}> {{\n        {read}\n    }}\n\n"
             );
         }
+        // A receiver augment's methods take the object they act on first, which the trait's `self` is.
+        let receiver = class.augment_getters.is_some();
         for method in &class.methods {
             let ident = member_ident(&method.name, &method.extras.export.rust);
-            let (params, _) = self.params_source(&method.params)?;
+            let own_params = if receiver {
+                &method.params[1..]
+            } else {
+                &method.params[..]
+            };
+            let (params, _) = self.params_source(own_params)?;
             let returns = match &method.returns {
                 Some(ty) if method.optional => format!("Option<{}>", self.owned(ty)?),
                 Some(ty) => self.owned(ty)?,
                 None => "()".to_owned(),
             };
-            let given: Vec<String> = method
-                .params
-                .iter()
-                .map(|field| rust_ident(&snake(&field.name)))
+            let given: Vec<String> = receiver
+                .then(|| "self".to_owned())
+                .into_iter()
+                .chain(own_params.iter().map(|field| rust_ident(&snake(&field.name))))
                 .collect();
+            let kind = if class
+                .augment_getters
+                .as_ref()
+                .is_some_and(|getters| getters.contains(&method.name))
+            {
+                "property"
+            } else {
+                "method"
+            };
             let _ = write!(
                 declared,
-                "    /// The method `{}`.\n    ///\n    /// # Errors\n    ///\n    /// The generation has retired, or the library refuses the arguments.\n    fn {ident}(&self{params}) -> go::Res<{returns}>;\n\n",
+                "    /// The {kind} `{}`.\n    ///\n    /// # Errors\n    ///\n    /// The generation has retired, or the library refuses the arguments.\n    fn {ident}(&self{params}) -> go::Res<{returns}>;\n\n",
                 method.name
             );
             let _ = write!(

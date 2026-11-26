@@ -148,4 +148,31 @@ pub(super) fn register(builder: &mut Builder) {
             })?;
             Ok(Val::None)
         });
+    register_input_augment(builder);
+}
+
+/// `input_context_augment`: `input.activeDisplay` of a core input context, the display under the context's pointer. A context whose
+/// pointer has not moved yet is off every output, which `display_at` answers with the primary display.
+fn register_input_augment(builder: &mut Builder) {
+    let _ = builder
+        .class::<()>("input_context_augment")
+        .ctor(|_, _| Ok(()))
+        .method("active_display", |_, cx, args| {
+            let (Val::Object { obj, .. } | Val::Foreign { obj, .. }) = &args[0] else {
+                return Err(gnoblin_object::Fail::type_error(
+                    "`activeDisplay` acts on an input context of the core",
+                ));
+            };
+            let core = crate::object::core_api(cx.ctx())?;
+            let class = core.class("input_context")?;
+            let pointer = core.get(*obj, core.member(class, gnoblin_core_abi::MEMBER_PROPERTY, "pointer")?)?;
+            let (x, y) = if pointer.is_none() {
+                (f64::NEG_INFINITY, f64::NEG_INFINITY)
+            } else {
+                let fields = pointer.record()?;
+                (fields[0].double()?, fields[1].double()?)
+            };
+            let found = edit(cx.ctx(), |st| Ok(st.display_at(x, y)))?;
+            maybe_display(cx, found)
+        });
 }

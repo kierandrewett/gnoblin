@@ -579,6 +579,90 @@ fn register_style(builder: &mut Builder) {
         });
 }
 
+/// The object of the core a call of an augment was handed, or a type error.
+fn core_object(member: &str, value: &Val) -> Res<Obj> {
+    match value {
+        Val::Object { obj, .. } | Val::Foreign { obj, .. } => Ok(*obj),
+        other => Err(Fail::type_error(format!(
+            "`{member}` acts on an object of the core, got {}",
+            other.kind_name()
+        ))),
+    }
+}
+
+/// The terms of a core `client_query` record, in the std's terms: the same keys, and an `any_` list as one term for each value, which a
+/// match holds when one of them does.
+fn client_query_terms(value: &Val) -> Res<Vec<(String, Want)>> {
+    if value.is_none() {
+        return Ok(Vec::new());
+    }
+    let fields = value.record()?;
+    let mut terms = Vec::new();
+    for (at, key) in [(0, "id"), (1, "app_id"), (2, "title")] {
+        if let Some(text) = field(fields, at) {
+            terms.push((key.to_owned(), Want::Text(text.text()?.to_owned())));
+        }
+    }
+    for (at, key) in [(3, "focused"), (4, "fullscreen")] {
+        if let Some(flag) = field(fields, at) {
+            terms.push((key.to_owned(), Want::Bool(flag.bool()?)));
+        }
+    }
+    for (at, key) in [(5, "x"), (6, "y"), (7, "width"), (8, "height")] {
+        if let Some(number) = field(fields, at) {
+            terms.push((key.to_owned(), Want::Number(number.double()?)));
+        }
+    }
+    for (at, key) in [(9, "id"), (10, "app_id"), (11, "title")] {
+        if let Some(list) = field(fields, at) {
+            for item in list.list()? {
+                terms.push((key.to_owned(), Want::Text(item.text()?.to_owned())));
+            }
+        }
+    }
+    Ok(terms)
+}
+
+/// `client_collection_augment`: `collection.style` of a core collection of windows. The style of `gnoblin.clients` is the style of
+/// every window; a selection's is the root's narrowed by the query of each selection from the root down to it, with each one's
+/// priority, so the windows it styles are the ones the core's selection holds.
+pub(crate) fn register_collection_augment(builder: &mut Builder) {
+    let _ = builder
+        .class::<()>("client_collection_augment")
+        .ctor(|_, _| Ok(()))
+        .method("style", |_, cx, args| {
+            let core = crate::object::core_api(cx.ctx())?;
+            let class = core.class("client_collection")?;
+            let read = |obj: Obj, name: &str| -> Res<Val> {
+                core.get(obj, core.member(class, gnoblin_core_abi::MEMBER_PROPERTY, name)?)
+            };
+            let mut at = core_object("style", &args[0])?;
+            let mut selections = Vec::new();
+            loop {
+                let parent = read(at, "parent")?;
+                if parent.is_none() {
+                    break;
+                }
+                let terms = client_query_terms(&read(at, "query")?)?;
+                selections.push((terms, read(at, "priority")?.double()?));
+                at = core_object("style", &parent)?;
+            }
+            if read(at, "mutable")?.bool()? {
+                return Err(Fail::refused(
+                    ErrorCode::Unsupported,
+                    "a list made with `new ClientCollection()` has no style: style its windows, or a selection made with `where`",
+                ));
+            }
+            made_style(cx, |st| {
+                let mut style = st.style_for(super::cascade::Scope::Collection(st.roots[0]))?;
+                for (terms, priority) in selections.into_iter().rev() {
+                    style = st.style_where(style, terms, Some(priority))?;
+                }
+                Ok(style)
+            })
+        });
+}
+
 // ---- the lists ----------------------------------------------------------------------------------------------------------------------
 
 type ListClass<'a> = ClassBuilder<'a, ListRef>;

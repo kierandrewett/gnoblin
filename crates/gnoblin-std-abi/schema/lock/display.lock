@@ -10,6 +10,7 @@
 released none
 
 augment | core.gnoblin | members added to a class of the core catalog | 0.2.0
+augment | core.input_context | members added to a class of the core catalog | 0.2.0
 augment | core.output_collection | members added to a class of the core catalog | 0.2.0
 
 enum | output_transform | values normal rotate-90 rotate-180 rotate-270 flipped flipped-90 flipped-180 flipped-270 | 0.2.0
@@ -17,6 +18,7 @@ enum | position_kind | values absolute right_of left_of above below | 0.2.0
 enum | present_mode | values single mirror span | 0.2.0
 
 member | core.gnoblin.displays | property object:displays ro | 0.2.0
+member | core.input_context.active_display | property object:display ro,optional | 0.2.0
 member | core.output_collection.profiles | property object:output_profiles ro | 0.2.0
 member | display.id | property string rw | 0.2.0
 member | display.implicit | property bool ro | 0.2.0
