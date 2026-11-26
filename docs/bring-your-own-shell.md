@@ -64,7 +64,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 
 Save the file. The shell reloads it, starts Waybar and Mako, and `Super+d` opens Fuzzel. A reload keeps a program the
 file starts at its top level running and does not start it a second time; it stops one you took out of the file (see
-[processes](/shell-api/processes#programs-the-file-starts)).
+[processes](/shell-api/processes#programs-the-configuration-starts)).
 
 Configure Waybar's clock, tray and system modules as usual. Its Sway and
 Hyprland modules need those compositors' own interfaces and do not work in Gnoblin.

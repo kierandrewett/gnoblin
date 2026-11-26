@@ -2,7 +2,7 @@
 
 A spawn call at the top level of the shell's entry file (`shell.ts`, `shell.py`, or the `main` of a Rust shell) starts its program when the shell loads the file. A reload does not start
 a second copy: the program that is running stays, and one you take out of the file is stopped (see
-[processes](/shell-api/processes#programs-the-file-starts)).
+[processes](/shell-api/processes#programs-the-configuration-starts)).
 
 The programs end with the shell, so this is not a startup list for the login session. For that, use one of these:
 
