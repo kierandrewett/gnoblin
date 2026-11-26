@@ -1021,6 +1021,10 @@ impl<S: Host + 'static> Backend<S> for Headless {
         self.renderer.effect_kinds()
     }
 
+    fn draws_filter_blur(&self) -> bool {
+        self.renderer.draws_filter_blur()
+    }
+
     fn dmabuf(&mut self) -> Option<DmabufSupport> {
         self.query_dmabuf()
     }

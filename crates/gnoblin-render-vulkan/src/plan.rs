@@ -168,6 +168,8 @@ pub(super) struct FramePlan {
     pub instances: Vec<f32>,
     /// Layers left out because they carry a 3D model.
     pub skipped_models: usize,
+    /// Whether a layer carries a filter that blurs, which is drawn graded and not blurred.
+    pub filter_blur: bool,
 }
 
 impl FramePlan {
@@ -271,6 +273,7 @@ pub(super) fn plan_into(
                         1.0,
                         scale,
                     );
+                    built.filter_blur |= has_filter_blur(&solid.effects);
                     draws.under(&mut built, damage, &parts);
                     if quad.intersects(damage) {
                         let passes = shader_passes(shaders, index, &solid.effects, sizes);
@@ -317,6 +320,7 @@ pub(super) fn plan_into(
                         surface.opacity,
                         scale,
                     );
+                    built.filter_blur |= has_filter_blur(&surface.effects);
                     draws.under(&mut built, damage, &parts);
                     if quad.intersects(damage) {
                         let mut uniforms = Uniforms::surface(
@@ -672,6 +676,14 @@ impl<'a> Parts<'a> {
             factor,
         }
     }
+}
+
+/// Whether the chain has a filter that blurs, which this renderer does not draw yet.
+fn has_filter_blur(effects: &Effects) -> bool {
+    effects
+        .passes()
+        .iter()
+        .any(|pass| matches!(pass, Pass::Filter(filter) if filter.blur > 0.0))
 }
 
 /// The grade of the layer's filter: its saturation, brightness and contrast, in the order [`grade::apply`] runs them.
@@ -1352,5 +1364,18 @@ mod tests {
             4.0,
             "the band's far edge is 4 physical pixels out"
         );
+    }
+
+    #[test]
+    fn a_filter_that_blurs_is_flagged_and_one_that_only_grades_is_not() {
+        let filter = |blur: f32| {
+            Pass::Filter(gnoblin_render::FilterParams {
+                blur,
+                saturate: 0.5,
+                ..gnoblin_render::FilterParams::default()
+            })
+        };
+        assert!(planned_effects(&effects_frame(Rect::new(0, 0, 64, 64), vec![filter(4.0)])).filter_blur);
+        assert!(!planned_effects(&effects_frame(Rect::new(0, 0, 64, 64), vec![filter(0.0)])).filter_blur);
     }
 }

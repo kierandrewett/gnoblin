@@ -489,6 +489,7 @@ impl Server {
         state.composer.set_secure_treatment(backend.secure_treatment());
         // A node asks for effects the renderer may not draw: the composer names those in its `skipped` list.
         state.composer.set_effect_kinds(backend.effect_kinds());
+        state.composer.set_filter_blur(backend.draws_filter_blur());
         // Whether the tree accepts a shader effect: the seat says so, so a shell can adapt before it writes one.
         state.composer.set_user_shaders(config.user_shaders);
         // A renderer that finishes work after its draw (a shader pipeline built on a worker thread) wakes the loop through the

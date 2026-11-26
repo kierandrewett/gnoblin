@@ -566,6 +566,10 @@ impl<S: Host + 'static> Backend<S> for Drm {
         gnoblin_backend::render::renderer::RendererKind::Gles.effect_kinds()
     }
 
+    fn draws_filter_blur(&self) -> bool {
+        gnoblin_backend::render::renderer::RendererKind::Gles.draws_filter_blur()
+    }
+
     fn dmabuf(&mut self) -> Option<DmabufSupport> {
         self.scanout.dmabuf_support()
     }

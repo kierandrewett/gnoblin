@@ -878,6 +878,12 @@ pub trait Backend<S: Host + 'static> {
         &[]
     }
 
+    /// Whether this backend's renderer blurs what a `filter` effect paints, and not only grades it. The default is `false`,
+    /// as for [`Self::effect_kinds`]: a filter's blur is then named in the node's `skipped` list.
+    fn draws_filter_blur(&self) -> bool {
+        false
+    }
+
     /// Whether this backend's renderer draws a View's source subtree into a texture on the GPU, so the composer
     /// describes a View as a [`gnoblin_render_frame::view_scene::ViewScene`] instead of drawing its picture on the
     /// CPU. The default is `false`: a View is drawn on the CPU, which is the reference path and the only one the

@@ -1136,6 +1136,10 @@ impl<S: Host + 'static> Backend<S> for Nested {
         self.renderer.effect_kinds()
     }
 
+    fn draws_filter_blur(&self) -> bool {
+        self.renderer.draws_filter_blur()
+    }
+
     fn gpu_views(&self) -> bool {
         self.renderer.draws_views()
     }

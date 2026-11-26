@@ -170,14 +170,14 @@ since = "0.2.0"
 default = []
 
 # The effects in `effects` that are not drawn, one text each as `<kind>: <reasons>`, in list
-# order; empty when every effect is drawn. Two reasons exist. `unsupported-by-renderer`: the
+# order; empty when every effect is drawn. Three reasons exist. `unsupported-by-renderer`: the
 # active renderer draws no effect of that kind (an inset shadow is the kind `inset-shadow`; `seat.effect_kinds`
 # lists what is drawn: GLES draws every kind, the software renderer blur, shadow, inset shadow, border and background,
-# and Vulkan every kind but `blur`, with a `filter` graded and not blurred, until each draws the rest).
-# `unsupported-effect-on-3d`:
+# and Vulkan every kind but `blur`, until each draws the rest). `unsupported-filter-blur`: the renderer draws a
+# `filter`'s grade and not its blur, so a `filter` that blurs is drawn graded only. `unsupported-effect-on-3d`:
 # a blur, shadow or border on a node whose placement carries depth (a rotation about x or y, a
 # `z`, or a perspective `Camera` above it) is not drawn, because the renderer has no depth
-# pass for backdrop and shadow passes. An effect with both reasons names both on one text,
+# pass for backdrop and shadow passes. An effect with several reasons names all of them on one text,
 # joined by `, `. The compositor writes it when the node's placement, its `effects` or the
 # renderer changes; a client can read it and cannot set it.
 [[object.property]]

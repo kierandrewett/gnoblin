@@ -148,6 +148,9 @@ const SHELL_OFFSET_LIMIT: f64 = 100_000.0;
 const SKIPPED_ON_3D: &str = "unsupported-effect-on-3d";
 /// The reason a node's effect is skipped when the active renderer draws no effect of that kind.
 const SKIPPED_BY_RENDERER: &str = "unsupported-by-renderer";
+/// Why the blur of a `filter` effect is not drawn by a renderer that draws the filter's grade: the reason on the `filter`
+/// entry of the node's `skipped` list.
+const SKIPPED_FILTER_BLUR: &str = "unsupported-filter-blur";
 
 /// Why the composer refused a shell visual value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -608,6 +611,9 @@ pub struct Composer {
     /// `skipped` list. The compositor sets it once from the backend before any frame; until then every kind is
     /// taken as drawn.
     effect_kinds: &'static [&'static str],
+    /// Whether the active renderer blurs what a `filter` effect paints. Until the compositor says otherwise it is taken as
+    /// drawn, like the kinds.
+    filter_blur: bool,
     /// Whether the tree accepts a `shader` effect (`compositor.user-shaders`), published on the main seat as
     /// `user_shaders`. The compositor sets it once before any frame.
     user_shaders: bool,
@@ -695,6 +701,7 @@ impl Composer {
             secure_treatment: SecureTreatment::default(),
             secure_scope: BTreeSet::new(),
             effect_kinds: Pass::NAMES,
+            filter_blur: true,
             user_shaders: true,
             shaders: shader_watch::ShaderWatch::default(),
             canvases: BTreeMap::new(),
@@ -3342,7 +3349,8 @@ impl Composer {
     /// The effects of `node` the renderer will not draw, one `<kind>: <reasons>` text each, in list order. A kind the
     /// renderer cannot draw at all is `unsupported-by-renderer`. A blur or a shadow on a node placed in 3D is
     /// `unsupported-effect-on-3d`: the renderers have no depth pass for a backdrop or a shadow, so they draw the layer
-    /// without them. An effect with both reasons names both, joined by `, `.
+    /// without them. A `filter` whose blur the renderer does not draw (it lists `filter` for the grade) is
+    /// `unsupported-filter-blur`. An effect with several reasons names all of them, joined by `, `.
     fn skipped_effects(&self, node: NodeId) -> Vec<String> {
         let Some(effects) = self.scene.effects(node) else {
             return Vec::new();
@@ -3359,6 +3367,13 @@ impl Composer {
                 let mut reasons = Vec::new();
                 if !self.effect_kinds.contains(&name) {
                     reasons.push(SKIPPED_BY_RENDERER.to_owned());
+                }
+                if let Pass::Filter(filter) = pass
+                    && filter.blur > 0.0
+                    && self.effect_kinds.contains(&name)
+                    && !self.filter_blur
+                {
+                    reasons.push(SKIPPED_FILTER_BLUR.to_owned());
                 }
                 if in_3d {
                     reasons.push(SKIPPED_ON_3D.to_owned());
@@ -3382,6 +3397,13 @@ impl Composer {
     pub fn set_effect_kinds(&mut self, kinds: &'static [&'static str]) {
         self.effect_kinds = kinds;
         self.publish_effect_kinds();
+    }
+
+    /// Tells the composer whether the active renderer blurs what a `filter` effect paints. The compositor calls it once, from
+    /// the backend, with [`Self::set_effect_kinds`]; the next [`Self::publish_skipped_effects`] names a filter's blur when it
+    /// is not drawn.
+    pub fn set_filter_blur(&mut self, drawn: bool) {
+        self.filter_blur = drawn;
     }
 
     /// Tells the composer whether the tree accepts a `shader` effect, and publishes it on the main seat's read-only

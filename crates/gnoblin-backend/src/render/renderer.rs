@@ -104,6 +104,13 @@ impl RendererKind {
         }
     }
 
+    /// Whether the renderer blurs what a `filter` effect paints, which it lists as `filter` only for the grade when this is
+    /// false. A filter that blurs is then named in the node's `skipped` list as `unsupported-filter-blur`.
+    #[must_use]
+    pub const fn draws_filter_blur(self) -> bool {
+        matches!(self, Self::Gles)
+    }
+
     /// Whether this renderer draws a View's source subtree into a texture on the GPU. Only GLES does: the software
     /// renderer is the CPU reference, and the Vulkan renderer has no pass for one yet.
     #[must_use]

@@ -147,6 +147,8 @@ pub struct Vulkan {
     lost: bool,
     /// Whether the 3D warning has been logged, so a steady session logs it once.
     warned_models: bool,
+    /// Whether the filter-blur warning has been logged.
+    warned_filter_blur: bool,
     /// When the renderer was made: a shader pass's time `t` is the seconds since.
     epoch: Instant,
     context: Rc<VkContext>,
@@ -200,6 +202,7 @@ impl Vulkan {
             physical,
             lost: false,
             warned_models: false,
+            warned_filter_blur: false,
             epoch: Instant::now(),
             context,
         })

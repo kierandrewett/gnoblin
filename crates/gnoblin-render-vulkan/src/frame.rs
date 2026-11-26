@@ -696,6 +696,12 @@ impl Vulkan {
                 "unsupported-3d: the Vulkan renderer has no depth pass, so a layer with a model is not drawn"
             );
         }
+        if planned.filter_blur && !self.warned_filter_blur {
+            self.warned_filter_blur = true;
+            log::warn!(
+                "unsupported-filter-blur: the Vulkan renderer does not blur a filter yet, so a filter that blurs is drawn graded only"
+            );
+        }
         self.record(FrameRecording {
             frame,
             planned: &planned,

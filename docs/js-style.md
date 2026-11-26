@@ -504,8 +504,9 @@ GLES draws all of these kinds and lists them in `seat.effect_kinds`. A renderer 
 the node's `skipped` list and leaves it out of `seat.effect_kinds`: the software renderer a `filter`, and Vulkan the
 `blur`.
 
-A `filter` on Vulkan is drawn graded: its blur is not drawn yet, and the node's `skipped` list does not say so. The style
-reports as `not applied: style.<property>: <reason>` only what a limit of the tree changes.
+A `filter` on Vulkan is drawn graded: its blur is not drawn yet, and the node's `skipped` list names it as
+`filter: unsupported-filter-blur`. The style reports as `not applied: style.<property>: <reason>` only what a limit of the
+tree changes.
 
 A window holds at most 16 effects in all, whatever their kinds.
 

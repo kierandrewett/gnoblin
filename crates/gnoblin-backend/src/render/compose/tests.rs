@@ -4202,6 +4202,76 @@ fn an_inset_shadow_a_background_and_a_filter_are_skipped_by_a_renderer_that_does
 }
 
 #[test]
+fn a_filter_whose_blur_the_renderer_does_not_draw_is_named_skipped_for_the_blur() {
+    use crate::render::renderer::RendererKind;
+    use gnoblin_render::FilterParams;
+    let (mut composer, _output) = screen();
+    let (blurred, graded) = (NodeId::new(0x4000), NodeId::new(0x4001));
+    composer.with_scene(|scene| {
+        for (node, filter) in [
+            (
+                blurred,
+                FilterParams {
+                    blur: 3.0,
+                    saturate: 1.5,
+                    ..FilterParams::default()
+                },
+            ),
+            (
+                graded,
+                FilterParams {
+                    saturate: 1.5,
+                    ..FilterParams::default()
+                },
+            ),
+        ] {
+            scene
+                .insert(node, NodeSpec::new(Rect::new(0, 0, 100, 100)))
+                .expect("the node");
+            let mut chain = Effects::new();
+            chain.push(Pass::Filter(filter)).expect("a filter");
+            scene.set_effects(node, chain).expect("the effects");
+        }
+    });
+    composer.take_tree_changes();
+
+    // A renderer that draws the grade and not the blur names the blur, and only on the filter that has one.
+    composer.set_effect_kinds(RendererKind::Vulkan.effect_kinds());
+    composer.set_filter_blur(false);
+    composer.publish_skipped_effects();
+    let changes = composer.take_tree_changes();
+    let skipped = |node: NodeId| {
+        changes.iter().rev().find_map(|change| match change {
+            TreeChange::Set {
+                node: changed,
+                key,
+                value: TreeValue::ListText(texts),
+            } if *changed == node && key == "skipped" => Some(texts.clone()),
+            _ => None,
+        })
+    };
+    assert_eq!(
+        skipped(blurred),
+        Some(vec!["filter: unsupported-filter-blur".to_owned()])
+    );
+    assert_eq!(skipped(graded), None, "a grade alone is drawn whole");
+
+    // One that draws both names nothing.
+    composer.set_filter_blur(true);
+    composer.publish_skipped_effects();
+    assert_eq!(queued_skipped(&mut composer, blurred), Some(Vec::new()));
+
+    // One that draws no filter says so for the kind and does not add the blur to it.
+    composer.set_effect_kinds(RendererKind::Software.effect_kinds());
+    composer.set_filter_blur(false);
+    composer.publish_skipped_effects();
+    assert_eq!(
+        queued_skipped(&mut composer, blurred),
+        Some(vec!["filter: unsupported-by-renderer".to_owned()])
+    );
+}
+
+#[test]
 fn an_effect_with_both_reasons_names_both_on_one_entry() {
     let (mut composer, _output) = screen();
     let node = NodeId::new(0x4000);

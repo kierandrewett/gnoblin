@@ -32,8 +32,9 @@ A few notes on the table:
 - Filter grades and the filter's blur on GLES apply to everything one layer paints: its shadows, background, content and
   borders. A window drawn as several layers (a titlebar child over the content) grades the layer that carries the effect.
   The filter's blur is drawn from a picture of that layer and spills past its edge.
-- Vulkan grades the same things, and does not draw the filter's `blur` yet, so a filter that blurs is drawn graded and not
-  blurred there. The software renderer stores the filter and draws nothing; use a shader if you need it there.
+- Vulkan grades the same things, and does not draw the filter's `blur` yet: a filter that blurs is drawn graded and not
+  blurred there, and the node's `skipped` list says `filter: unsupported-filter-blur`. The software renderer stores the
+  filter and draws nothing; use a shader if you need it there.
 - On Vulkan an outer shadow fades with the window's opacity, as in CSS. A background, an inset shadow and a border take
   the window's tint as well.
 
