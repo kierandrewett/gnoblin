@@ -280,12 +280,9 @@ gnoblin.workspaces.add(
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Gaps, MasterStackLayout, Workspace
+from gnoblin.objects.std import Gaps, MasterStackLayout, Workspace, Workspaces
 
-gnoblin = Gnoblin.get()
-
-gnoblin.workspaces.add(
+Workspaces.get().add(
     Workspace(
         "dev",
         name="Development",

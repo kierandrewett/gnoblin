@@ -25,16 +25,20 @@ gnoblin.input.primary.bind("Super+Down", () => {
 ```python
 from gnoblin import gnoblin
 
+seat = gnoblin.input.primary
 
-@gnoblin.input.primary.bind("Super+Down")
+
 def toggle_window(event):
-    client = gnoblin.input.primary.focused_client
+    client = seat.focused_client
     if client is None:
         return
     if client.maximised:
         client.maximised = False
     else:
         client.minimised = True
+
+
+seat.bind("Super+Down", toggle_window)
 ```
 
 ```rust

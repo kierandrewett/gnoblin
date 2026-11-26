@@ -193,9 +193,20 @@ The hand-written stubs live in `crates/gnoblin-runtime-python/stubs/`. A test (`
 test (`every_python_example_type_checks_clean_against_the_installed_stubs`) runs when `pyright` is on the path or `GNOBLIN_PYRIGHT`
 names it, and fails on any error. A `GNOBLIN_PYRIGHT` that names nothing is an error too.
 
-A stub differs from the classes at run time in two ways, on purpose:
+A property that holds an object reads as `Client | None` in a stub, as TypeScript reads `Client | undefined` and Rust `Option<Client>`.
+The exception is a property the catalog marks `always`:
 
-- A property or a result reads as `None` only where the catalog marks it `optional`.
+- The members of the root (`clients`, `outputs`, `focus`, `session`, `runtime`, `process`, `idle`, `launches`, `input`, `dialogs`,
+  `authentication`, `lock`, `timers`, `compositor`) and `InputManager.primary` read as the object, so `gnoblin.input.primary.bind(...)`
+  needs no check.
+- A library that answered none for one of them would break its word, and the class raises a `GnoblinError` that names the property.
+
+Every other object is checked before it is used: `client = seat.focused_client`, then `if client is not None`. A type checker does not
+keep that narrowing inside a function the script defines, so give the object a name of its own in the check (`window = client`) and
+use that name in the function.
+
+A stub differs from the classes at run time in one way, on purpose:
+
 - A class of `gnoblin.objects` that derives from another (`Camera3D` from `SceneNode`) names it as its base, so a checker accepts it
   where the base is wanted. At run time the classes are flat, and a call takes any handle.
 
@@ -418,6 +429,10 @@ dwindle.toggle_split()                          # the actions of a kind are meth
 
 `from gnoblin import gnoblin` is the handle on the compositor. It is a thin spelling of the core: everything it does is one call
 of the installed `libgnoblin-core`, and it holds no desktop policy.
+
+It also has every member of the root of the object model, as written from the schema: the object that
+`gnoblin.objects.model.Gnoblin.get()` returns. `gnoblin.input` and `gnoblin.clients` answer what the root answers, and so do the
+rest of its properties and its methods. A member the object has of its own, such as `spawn`, is its own.
 
 | Use                                          | What it does                                                                      |
 | -------------------------------------------- | --------------------------------------------------------------------------------- |

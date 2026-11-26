@@ -43,10 +43,11 @@ client = gnoblin.input.primary.focused_client
 
 if workspace is not None and client is not None:
     target = workspace
+    window = client
 
     def stage() -> None:
-        client.opacity = 0.85
-        client.x = 120.0
+        window.opacity = 0.85
+        window.x = 120.0
         target.layout = MasterStackLayout(ratio=0.7)
 
     GnoblinAugment.get().request_transition(stage, TransitionOptions(duration=250.0, easing=Easing.EASE_OUT))
@@ -178,9 +179,10 @@ gnoblin = Gnoblin.get()
 client = gnoblin.input.primary.focused_client
 
 if client is not None:
+    window = client
 
     def stage() -> None:
-        client.opacity = 0.5
+        window.opacity = 0.5
 
     transition = GnoblinAugment.get().request_transition(stage, TransitionOptions(duration=400.0, autoplay=False))
     transition.on("finished", lambda cancelled: print(f"finished, cancelled: {cancelled}"))

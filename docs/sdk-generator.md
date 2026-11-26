@@ -102,8 +102,9 @@ A local file may use keys a compositor file may not:
 - `kind` (`handle`, `record`, `interface`, `service`), `ctor`, `retained`, `[[enum]]` and `[[callback]]`.
 - `returns`, `required` and `default = "native"` on a method of an interface.
 - `optional` on a property: a record may leave the field out.
-- `always` on a property of an object type: the library always has an object to answer, so the read has no absent case. Rust and TypeScript
-  read `T` where they read `Option<T>` and `T | undefined` without it.
+- `always` on a property of an object type: the library always has an object to answer, so the read has no absent case. Rust, TypeScript
+  and Python read `T` where they read `Option<T>`, `T | undefined` and `T | None` without it, and a Python class refuses a none answer
+  with a `GnoblinError` that names the property.
     - It is a declaration for the SDKs, on no wire and in no catalog hash.
     - The roots of `gnoblin` carry it, and so does `InputManager.primary`, whose read is refused when there is no seat.
 - `optional` on a method: its `object:` result may be none, as `Option<T>` in Rust, `T | undefined` in TypeScript and `T | None` in
@@ -233,6 +234,14 @@ protocol that `gnoblin-runtime-js` (`__gnoblinObjects`) and `gnoblin-runtime-pyt
 
 A class, a property, a method, a signal and the conversion of every value are rendered. Nothing is written by hand per class, and a
 class added to a catalog is a class in all three languages with no change to a runtime.
+
+The root of the object model, `gnoblin` of `gnoblin.model`, is reached as `gnoblin` in TypeScript (`gnoblin-core/generated/objects`), as
+`ModelRoot::get` in Rust and as `Gnoblin.get()` in Python. Python has a second way, `from gnoblin import gnoblin`, the shell's own object:
+
+- The stub writes the root's members once, as `GnoblinRoot` in `gnoblin.objects.model`. Both `Gnoblin` and the stub of the shell's
+  object extend it.
+- At run time the shell's object hands any member it has none of its own for to the root.
+- The members are the catalog's, never a list kept by hand, so a property or a method added to the root is on both.
 
 The names follow the language: `camelCase` members and `PascalCase` classes in TypeScript, `snake_case` members in Python. An
 `export = { js, py }` attribute covers a name the mechanical conversion does not give (a Python keyword gets a trailing underscore:

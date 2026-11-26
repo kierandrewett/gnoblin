@@ -50,7 +50,8 @@ class Notify(ProcessListener):
 def show_time(event: BindingEvent) -> None:
     date = gnoblin.process.spawn(["date", "+%H:%M"], SpawnOptions(stdout=StreamMode.CAPTURE))
     def notify_date() -> None:
-        gnoblin.spawn(["notify-send", date.exit.stdout or ""])
+        finished = date.exit
+        gnoblin.spawn(["notify-send", (finished.stdout if finished else None) or ""])
 
     date.wait().then(notify_date)
 
@@ -149,7 +150,8 @@ def count_downloads(event: BindingEvent) -> None:
     count = gnoblin.shell("ls ~/Downloads | wc -l", SpawnOptions(stdout=StreamMode.CAPTURE))
 
     def announce() -> None:
-        gnoblin.spawn(["notify-send", f"{(count.exit.stdout or '').strip()} files"])
+        finished = count.exit
+        gnoblin.spawn(["notify-send", f"{((finished.stdout if finished else None) or '').strip()} files"])
 
     count.wait().then(announce)
 

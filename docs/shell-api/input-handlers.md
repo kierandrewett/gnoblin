@@ -531,7 +531,7 @@ if (dev?.clients && first && second) {
 from gnoblin.objects.std import Workspaces
 
 dev = Workspaces.get().by_id("dev")
-if dev is not None:
+if dev is not None and dev.clients is not None:
     members = dev.clients.members
     if len(members) >= 2:
         dev.clients.swap(members[0], members[1])

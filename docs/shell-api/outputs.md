@@ -714,7 +714,7 @@ seat = gnoblin.input.primary
 
 def show_web(event):
     display = InputContextAugment.get().active_display(seat)
-    if display:
+    if display and display.viewport:
         display.viewport.content = web
 
 
@@ -973,7 +973,7 @@ three_d = False
 
 def switch_camera():
     display = InputContextAugment.get().active_display(seat)
-    if display:
+    if display and display.viewport:
         display.viewport.camera = deep if three_d else flat
 
 

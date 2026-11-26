@@ -44,7 +44,8 @@ if std.scene.root is not None:
 
 client = gnoblin.input.primary.focused_client
 if client is not None and client.properties is not None:
-    client.properties.bind_double("opacity", lambda: 1.0 if client.focused else 0.7)
+    window = client
+    client.properties.bind_double("opacity", lambda: 1.0 if window.focused else 0.7)
 ```
 
 ```rust
@@ -252,14 +253,15 @@ from gnoblin.objects.std import GnoblinAugment, InputMode, PointerEdge, SceneSiz
 gnoblin = Gnoblin.get()
 client = gnoblin.input.primary.focused_client
 if client is not None:
+    window = client
     panel = View(size=SceneSize(width=400, height=300), input=InputMode.CAPTURE)
-    panel.show_client(client)
+    panel.show_client(window)
 
     def on_pointer(event) -> None:
         if event.edge != PointerEdge.PRESS:
             return
         if event.x < 40 and event.y < 40:
-            client.close()
+            window.close()
         else:
             panel.input = InputMode.FORWARD  # from the next move, the client gets the pointer
 
@@ -432,10 +434,11 @@ from gnoblin.objects.std import Easing, GnoblinAugment, TransitionOptions
 gnoblin = Gnoblin.get()
 client = gnoblin.input.primary.focused_client
 if client is not None:
+    window = client
 
     def change() -> None:
-        client.opacity = 0.92
-        client.rotation = [0.0, 0.12, 0.0]
+        window.opacity = 0.92
+        window.rotation = [0.0, 0.12, 0.0]
 
     GnoblinAugment.get().request_transition(change, TransitionOptions(duration=250, easing=Easing.EASE_OUT))
 ```
@@ -557,7 +560,8 @@ from gnoblin.objects.model import Gnoblin
 gnoblin = Gnoblin.get()
 client = gnoblin.input.primary.focused_client
 if client is not None and client.properties is not None:
-    client.properties.bind_double("opacity", lambda: max(0.25, 1 - client.x / 2500))
+    window = client
+    client.properties.bind_double("opacity", lambda: max(0.25, 1 - window.x / 2500))
 ```
 
 ```rust

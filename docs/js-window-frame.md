@@ -120,8 +120,11 @@ def windowed(client: FrameClient) -> bool:
 
 
 def strip(client: FrameClient, frame: WindowFrame) -> bool:
-    frame.top.size = 8.0  # a thin strip in place of the titlebar
-    frame.top.fill = "#2a2b3c"
+    top = frame.top
+    if top is None:
+        return False
+    top.size = 8.0  # a thin strip in place of the titlebar
+    top.fill = "#2a2b3c"
     return True
 
 
@@ -219,9 +222,12 @@ def fill(client: FrameClient, frame: WindowFrame) -> bool:
     if not frame.server:
         return False
     Titlebar.install(frame)
-    frame.bottom.size = 4.0
-    frame.bottom.fill = "#7c3aed"
-    frame.bottom.hide_when = lambda window: window.maximised  # no strip on a maximised window
+    bottom = frame.bottom
+    if bottom is None:
+        return False
+    bottom.size = 4.0
+    bottom.fill = "#7c3aed"
+    bottom.hide_when = lambda window: window.maximised  # no strip on a maximised window
     return True
 
 

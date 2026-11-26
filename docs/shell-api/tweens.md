@@ -147,10 +147,11 @@ from gnoblin.objects.std import Easing, Transition, TransitionOptions
 
 client = Gnoblin.get().input.primary.focused_client
 if client is not None:
+    window = client
 
     def move_to_origin():
-        client.x = 0.0
-        client.y = 0.0
+        window.x = 0.0
+        window.y = 0.0
 
     Transition.request(move_to_origin, TransitionOptions(duration=400.0, easing=Easing.EASE_OUT))
 ```
@@ -220,11 +221,12 @@ from gnoblin.objects.std import Easing, Transition, TransitionOptions
 
 client = Gnoblin.get().input.primary.focused_client
 if client is not None:
+    window = client
 
     def move_and_tilt():
-        client.x = 0.0
-        client.y = 0.0
-        client.rotation = [0.0, 0.0, 0.1]
+        window.x = 0.0
+        window.y = 0.0
+        window.rotation = [0.0, 0.0, 0.1]
 
     Transition.request(move_and_tilt, TransitionOptions(duration=400.0, easing=Easing.EASE_OUT))
 ```
@@ -338,15 +340,16 @@ from gnoblin.objects.std import Transition, TransitionOptions
 
 client = Gnoblin.get().input.primary.focused_client
 if client is not None:
+    window = client
 
     def fade_out():
-        client.opacity = 0.0
+        window.opacity = 0.0
 
     fade = Transition.request(fade_out, TransitionOptions(duration=200.0))
 
     def close_unless_cancelled(cancelled):
         if not cancelled:
-            client.close()
+            window.close()
 
     fade.on("finished", close_unless_cancelled)
 ```
