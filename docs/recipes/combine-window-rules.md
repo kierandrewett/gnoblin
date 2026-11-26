@@ -44,7 +44,7 @@ use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?.expect("the model has clients");
+    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
     clients.style()?.set_opacity(1.0)?;
     clients
         .on_added(|client: Client, _clients: ClientCollection| {

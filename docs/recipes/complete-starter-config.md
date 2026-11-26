@@ -239,12 +239,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         .install(None)?;
 
     // Super+space opens the launcher, with a command entry in the middle of the screen.
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(seat) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let seat = input.primary()?;
     let library = objects.clone();
     seat.bind("Super+space", Some(move |_event| {
         // Return starts what you typed.
@@ -295,12 +291,8 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(seat) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let seat = input.primary()?;
     let shell = g.clone();
     seat.bind("Super+Return", Some(move |_event| {
         let _ = shell.spawn("foot");

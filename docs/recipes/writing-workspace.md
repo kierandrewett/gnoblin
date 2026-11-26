@@ -93,6 +93,8 @@ gnoblin.input.primary.bind("Super+Shift+w", send_to_write)
 ```
 
 ```rust
+use std::rc::Rc;
+
 use gnoblin_core::objects::{Client, ModelRoot};
 use gnoblin_core::Gnoblin;
 use gnoblin_std::objects::{FloatingLayout, MasterStackLayout, MonocleLayout, Workspace, WorkspaceOptions, Workspaces};
@@ -103,12 +105,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
     let workspaces = Workspaces::get(&objects)?;
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(seat) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let seat = input.primary()?;
 
     let layouts = [
         ("write", "Write", MonocleLayout::new(&objects)?.as_layout()?),
@@ -133,24 +131,24 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         )?;
     }
 
-    if let Some(clients) = model.clients()? {
-        let workspaces = Workspaces::get(&objects)?;
-        clients
-            .on_added(move |client: Client, _collection| {
-                let write = workspaces.by_id("write").ok().flatten();
-                if let Some(write) = write
-                    && client.app_id().is_ok_and(|app_id| app_id == "org.gnome.TextEditor")
-                {
-                    let _ = client.move_to_workspace(&write);
-                }
-            })?
-            .keep();
-    }
+    let clients = model.clients()?;
+    let workspaces = Workspaces::get(&objects)?;
+    let workspaces_for_bind = Workspaces::get(&objects)?;
+    clients
+        .on_added(move |client: Client, _collection| {
+            let write = workspaces.by_id("write").ok().flatten();
+            if let Some(write) = write
+                && client.app_id().is_ok_and(|app_id| app_id == "org.gnome.TextEditor")
+            {
+                let _ = client.move_to_workspace(&write);
+            }
+        })?
+        .keep();
 
     seat.bind(
         "Super+Shift+w",
         Some(move |_event| {
-            if let (Some(focused), Some(write)) = (input.focused_client()?, workspaces.by_id("write")?) {
+            if let (Some(focused), Some(write)) = (input.focused_client()?, workspaces_for_bind.by_id("write")?) {
                 focused.move_to_workspace(&write)?;
             }
             Ok(true)

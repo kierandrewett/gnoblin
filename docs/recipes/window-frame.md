@@ -284,7 +284,7 @@ use gnoblin_std::prelude::*;
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
     let model = ModelRoot::get(&g.objects()?)?;
-    let clients = Rc::new(model.clients()?.expect("the model has clients"));
+    let clients = Rc::new(model.clients()?);
     let decorations = Decorations::get(&objects)?;
     decorations.set_frame(move |_client, frame| {
         // The stock titlebar fills the top edge, then this callback adds its own outlets.

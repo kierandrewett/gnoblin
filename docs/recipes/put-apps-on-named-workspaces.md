@@ -94,7 +94,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     }
 
     let core = g.objects()?;
-    let clients = ModelRoot::get(&core)?.clients()?.expect("the model has clients");
+    let clients = ModelRoot::get(&core)?.clients()?;
     let listener = ClientCollectionListenerHandlers {
         on_added: Some(Box::new(move |client: Client, _collection: ClientCollection| {
             let app_id = client.app_id()?;

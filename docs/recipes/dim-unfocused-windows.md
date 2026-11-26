@@ -36,9 +36,7 @@ use gnoblin_core::objects::{ClientCollectionListenerHandlers, ModelRoot};
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = ModelRoot::get(&objects)?;
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     let listener = ClientCollectionListenerHandlers {
         on_added: None,
         on_removed: None,
@@ -118,9 +116,7 @@ use gnoblin_std::prelude::*;
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.objects()?;
     let model = Rc::new(ModelRoot::get(&objects)?);
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     let transitioner = Rc::clone(&model);
     let listener = ClientCollectionListenerHandlers {
         on_added: None,

@@ -40,7 +40,7 @@ use gnoblin_std::prelude::*;
 
 pub fn place_windows(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.objects()?;
-    let clients = ModelRoot::get(&objects)?.clients()?.expect("the model has clients");
+    let clients = ModelRoot::get(&objects)?.clients()?;
     clients
         .on_added(|client: Client, _collection| {
             if client.app_id().unwrap_or_default() == "org.gnome.TextEditor" {

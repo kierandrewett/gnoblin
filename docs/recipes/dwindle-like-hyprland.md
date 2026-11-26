@@ -124,9 +124,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     )?;
     Workspaces::get(&objects)?.add(&main)?;
 
-    let Some(input) = ModelRoot::get(&g.objects()?)?.input()?.and_then(|manager| manager.primary().ok().flatten()) else {
-        return Ok(());
-    };
+    let input = ModelRoot::get(&g.objects()?)?.input()?.primary()?;
 
     let d = Rc::clone(&dwindle);
     bind_action(&input, "Super+j", move || d.toggle_split())?;
