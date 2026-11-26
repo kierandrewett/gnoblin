@@ -27,10 +27,13 @@
 //! rectangle and the viewport, three columns of an optional projection and its parameters.
 //! A flat quad leaves the projection empty and its flag clear.
 
-use gnoblin_render::{Border, Effects, Pass, ShaderKey, Shadow};
+use std::collections::BTreeMap;
+
+use gnoblin_render::{Border, Effects, FilterParams, Pass, ShaderKey, Shadow};
 use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 use smithay::utils::{Physical, Rectangle};
 
+use super::blur::{BlurState, Glass, Picture};
 use super::pipeline::{INSTANCE_FLOATS, UNIFORM_BYTES};
 use super::spatial::{DrawVariant, Placed, plan_models};
 use gnoblin_render_frame::frame::{Layer, OutputFrame, Overlay, Surface, SurfaceSource};
@@ -56,6 +59,8 @@ pub(super) enum PassKind {
     Border,
     /// A shell's shader pass, by the key of its source.
     User(ShaderKey),
+    /// One sweep of a blur, and the write that resolves it.
+    Blur,
 }
 
 /// Where a draw's texture comes from.
@@ -75,6 +80,8 @@ pub(super) enum TextureSlot {
     View(u64),
     /// A layer of a View's scene: the scene's number among the ones this frame draws, and the layer's number in it.
     Scene(usize, usize),
+    /// A scratch image of this frame, by the id `blur.rs` gave it: a layer's glass, group or picture, or a step of a blur.
+    Image(u32),
 }
 
 impl TextureSlot {
@@ -140,6 +147,9 @@ pub(super) struct Shaders {
     pub layers: Vec<Vec<ShaderUse>>,
     /// The time in seconds a pass reads as `t`.
     pub time: f32,
+    /// What each layer with a blur draws from: the images the frame's earlier passes made of it. A layer with none is drawn as
+    /// its kind says.
+    pub blurs: BTreeMap<usize, BlurState>,
 }
 
 impl Shaders {
@@ -177,8 +187,6 @@ pub(super) struct FramePlan {
     pub instances: Vec<f32>,
     /// The draws from `layers_end` to this index are the layers a matrix places (3D layers), drawn in a pass with a depth buffer.
     pub models_end: usize,
-    /// Whether a layer carries a filter that blurs, which is drawn graded and not blurred.
-    pub filter_blur: bool,
 }
 
 impl FramePlan {
@@ -257,107 +265,31 @@ pub(super) fn plan_into(
     sizes: &TextureSizes,
     shaders: &Shaders,
 ) -> FramePlan {
-    let bounds = Rect::new(0, 0, physical.width, physical.height);
     let damage = damage_of(frame, scale, physical);
+    plan_into_damage(frame, scale, physical, target, sizes, shaders, damage)
+}
+
+/// [`plan_into`] with the damage given in physical pixels of the output, already clipped to it and disjoint: for a plan
+/// whose region is stated in pixels and not in the frame's logical units.
+pub(super) fn plan_into_damage(
+    frame: &OutputFrame,
+    scale: Scale,
+    physical: Size,
+    target: PlanTarget,
+    sizes: &TextureSizes,
+    shaders: &Shaders,
+    damage: Vec<Rect>,
+) -> FramePlan {
+    let bounds = Rect::new(0, 0, physical.width, physical.height);
     let mut built = FramePlan::default();
     let mut draws = Draws::new(target);
     for damage in damage.clone() {
         for (index, layer) in frame.layers().iter().enumerate() {
-            match layer {
-                Layer::Solid(solid) => {
-                    if solid.model.is_some() {
-                        continue;
-                    }
-                    let quad = to_rect(physical_rect(solid.dst, scale));
-                    if quad.is_empty() {
-                        continue;
-                    }
-                    let parts = EffectParts::new(
-                        quad,
-                        solid.corner_radius,
-                        solid.silhouette,
-                        &solid.effects,
-                        solid.tint,
-                        1.0,
-                        scale,
-                    );
-                    built.filter_blur |= has_filter_blur(&solid.effects);
-                    draws.under(&mut built, damage, &parts);
-                    if quad.intersects(damage) {
-                        let passes = shader_passes(shaders, index, &solid.effects, sizes);
-                        let mut uniforms = if passes.is_empty() {
-                            // The grade of a solid colour is done here, on the colour, as `grade::apply` does it.
-                            let colour = grade::apply(parts.grade, solid.colour);
-                            Uniforms::solid(quad, colour, solid.tint, 1.0)
-                        } else {
-                            // The shader reads the solid's colour from a pixel of it, so the draw is a textured one.
-                            let mut uniforms = Uniforms::surface(quad, [0.0, 0.0, 1.0, 1.0], solid.tint, 1.0, 0.0);
-                            uniforms.grade = parts.grade.to_array();
-                            uniforms
-                        };
-                        uniforms.corner = parts.radius;
-                        if let Some(shape) = parts.rounded_to {
-                            uniforms.round_to(shape);
-                        }
-                        if passes.is_empty() {
-                            draws.push(&mut built, PassKind::Solid, None, damage, quad, &uniforms);
-                        } else {
-                            draws.push_shader(&mut built, shaders, index, damage, quad, &uniforms);
-                        }
-                    }
-                    draws.over(&mut built, damage, &parts);
-                }
-                Layer::Surface(surface) => {
-                    if surface.model.is_some() {
-                        continue;
-                    }
-                    let Some(Some(size)) = sizes.layers.get(index) else {
-                        continue;
-                    };
-                    let quad = to_rect(physical_rect(surface.dst, scale));
-                    if quad.is_empty() {
-                        continue;
-                    }
-                    let parts = EffectParts::new(
-                        quad,
-                        surface.corner_radius,
-                        surface.silhouette,
-                        &surface.effects,
-                        surface.tint,
-                        surface.opacity,
-                        scale,
-                    );
-                    built.filter_blur |= has_filter_blur(&surface.effects);
-                    draws.under(&mut built, damage, &parts);
-                    if quad.intersects(damage) {
-                        let mut uniforms = Uniforms::surface(
-                            quad,
-                            texture_mapping(surface, *size),
-                            surface.tint,
-                            surface.opacity,
-                            parts.radius,
-                        );
-                        uniforms.grade = parts.grade.to_array();
-                        if let Some(shape) = parts.rounded_to {
-                            uniforms.round_to(shape);
-                        }
-                        let passes = shader_passes(shaders, index, &surface.effects, sizes);
-                        if passes.is_empty() {
-                            draws.push(
-                                &mut built,
-                                PassKind::Surface,
-                                Some(slot_of(surface, index)),
-                                damage,
-                                quad,
-                                &uniforms,
-                            );
-                        } else {
-                            draws.push_shader(&mut built, shaders, index, damage, quad, &uniforms);
-                        }
-                    }
-                    draws.over(&mut built, damage, &parts);
-                }
-                Layer::Overlay(_) => continue,
+            match Paint::of(layer, index, scale, sizes) {
+                Layered::Flat(paint) => draws.layer(&mut built, damage, shaders, sizes, index, &paint),
+                // A layer with a model is drawn by the depth pass (`spatial.rs`), after the flat ones.
+                Layered::Model => {}
+                Layered::Absent => {}
             }
         }
     }
@@ -384,6 +316,179 @@ pub(super) fn plan_into(
     }
     built.damage = damage.iter().map(|rect| draws.shift(*rect)).collect();
     built
+}
+
+/// One quad of an image's own plan, in the image's pixels: a blur sweep, or a draw that resolves one.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct QuadDraw {
+    pub kind: PassKind,
+    pub slot: Option<TextureSlot>,
+    pub quad: Rect,
+    pub uniforms: Uniforms,
+}
+
+/// The plan of an image whose pixels are all drawn by `quads`, which lie in the image's own pixels: the image is cleared and
+/// every draw is clipped to it.
+pub(super) fn image_plan(size: Size, quads: &[QuadDraw]) -> FramePlan {
+    let area = Rect::new(0, 0, size.width, size.height);
+    let mut built = FramePlan::default();
+    let mut draws = Draws::new(PlanTarget { origin: (0, 0), size });
+    for quad in quads {
+        draws.push(&mut built, quad.kind, quad.slot, area, quad.quad, &quad.uniforms);
+    }
+    built.layers_end = built.draws.len();
+    built.overlay_end = built.draws.len();
+    built.damage = vec![area];
+    built
+}
+
+/// What a layer's blur draws of it: the pieces it is made of, in an image of `image` pixels of the output, that a layer's
+/// group or picture draws before the effect is composed. `lead` are the draws that come first (a glass), and `kind` says
+/// which pieces follow.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn plan_pieces(
+    layer: &Layer,
+    index: usize,
+    scale: Scale,
+    sizes: &TextureSizes,
+    shaders: &Shaders,
+    image: Rect,
+    kind: Pieces,
+    lead: &[QuadDraw],
+) -> FramePlan {
+    let target = PlanTarget {
+        origin: (image.x, image.y),
+        size: Size::new(image.width, image.height),
+    };
+    let mut built = FramePlan::default();
+    let mut draws = Draws::new(target);
+    for quad in lead {
+        draws.push(&mut built, quad.kind, quad.slot, image, quad.quad, &quad.uniforms);
+    }
+    if let Layered::Flat(paint) = Paint::of(layer, index, scale, sizes) {
+        // The layer's own pieces carry no opacity: the group or the picture is faded as one. A picture also leaves the tint
+        // and the grade to its composition, which treats it as one picture.
+        let mut parts = EffectParts {
+            opacity: 1.0,
+            ..paint.parts
+        };
+        if kind == Pieces::Picture {
+            parts.tint = Color::WHITE;
+            parts.grade = Grade::IDENTITY;
+        }
+        let paint = Paint { parts, ..paint };
+        if kind == Pieces::Picture {
+            draws.shadows(&mut built, image, &paint.parts);
+        }
+        if kind != Pieces::Glass {
+            draws.fills(&mut built, image, &paint.parts);
+            draws.content(&mut built, image, shaders, sizes, index, &paint);
+        }
+        if kind == Pieces::Picture {
+            draws.borders(&mut built, image, &paint.parts);
+        }
+    }
+    built.layers_end = built.draws.len();
+    built.overlay_end = built.draws.len();
+    built.damage = vec![draws.shift(image)];
+    built
+}
+
+/// Which of a layer's pieces an image of its own holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Pieces {
+    /// Only what the leading draws put there: the glass of a layer whose pieces are in a picture.
+    Glass,
+    /// The background, the inset shadows and the layer's own pixels: what is faded with the glass as one group.
+    Group,
+    /// Everything the layer paints, which a filter blurs and grades as one picture.
+    Picture,
+}
+
+/// Whether an effect chain has a backdrop blur or a filter that blurs.
+pub(super) fn has_blur(effects: &Effects) -> bool {
+    effects.passes().iter().any(|pass| match pass {
+        Pass::Blur(blur) => blur.radius > 0.0,
+        Pass::Filter(filter) => filter.blur > 0.0,
+        _ => false,
+    })
+}
+
+/// What a flat layer is made of, for the draw of its own pixels.
+#[derive(Clone, Copy, Debug)]
+enum Content {
+    /// One colour, straight.
+    Solid(Color),
+    /// A texture (its slot), by the crop that maps the layer onto it.
+    Surface([f32; 4], TextureSlot),
+}
+
+/// A flat layer as the draws of its parts read it.
+struct Paint<'a> {
+    parts: EffectParts<'a>,
+    content: Content,
+}
+
+/// What [`Paint::of`] finds in a layer.
+enum Layered<'a> {
+    Flat(Paint<'a>),
+    /// A layer with a 3D model, which belongs to a depth pass this renderer does not have.
+    Model,
+    /// A layer with nothing to draw: no pixels, no texture, or the overlay.
+    Absent,
+}
+
+impl<'a> Paint<'a> {
+    fn of(layer: &'a Layer, index: usize, scale: Scale, sizes: &TextureSizes) -> Layered<'a> {
+        match layer {
+            Layer::Solid(solid) => {
+                if solid.model.is_some() {
+                    return Layered::Model;
+                }
+                let quad = to_rect(physical_rect(solid.dst, scale));
+                if quad.is_empty() {
+                    return Layered::Absent;
+                }
+                Layered::Flat(Self {
+                    parts: EffectParts::new(
+                        quad,
+                        solid.corner_radius,
+                        solid.silhouette,
+                        &solid.effects,
+                        solid.tint,
+                        1.0,
+                        scale,
+                    ),
+                    content: Content::Solid(solid.colour),
+                })
+            }
+            Layer::Surface(surface) => {
+                if surface.model.is_some() {
+                    return Layered::Model;
+                }
+                let Some(Some(size)) = sizes.layers.get(index) else {
+                    return Layered::Absent;
+                };
+                let quad = to_rect(physical_rect(surface.dst, scale));
+                if quad.is_empty() {
+                    return Layered::Absent;
+                }
+                Layered::Flat(Self {
+                    parts: EffectParts::new(
+                        quad,
+                        surface.corner_radius,
+                        surface.silhouette,
+                        &surface.effects,
+                        surface.tint,
+                        surface.opacity,
+                        scale,
+                    ),
+                    content: Content::Surface(texture_mapping(surface, *size), slot_of(surface, index)),
+                })
+            }
+            Layer::Overlay(_) => Layered::Absent,
+        }
+    }
 }
 
 /// The shader passes a layer draws: those of `shaders`, when the layer still has a shader effect and its texture exists.
@@ -671,6 +776,7 @@ impl Draws {
 const MAX_RADIUS: f32 = 4096.0;
 
 /// One flat layer's geometry and paint, in physical pixels, as its effects read it.
+#[derive(Clone, Copy)]
 struct EffectParts<'a> {
     /// The rectangle the layer covers.
     quad: Rect,
@@ -718,12 +824,14 @@ impl<'a> EffectParts<'a> {
     }
 }
 
-/// Whether the chain has a filter that blurs, which this renderer does not draw yet.
-fn has_filter_blur(effects: &Effects) -> bool {
-    effects
-        .passes()
-        .iter()
-        .any(|pass| matches!(pass, Pass::Filter(filter) if filter.blur > 0.0))
+/// The grade of a filter: its saturation, brightness and contrast, in the order [`grade::apply`] runs them.
+pub(super) fn grade_of_filter(filter: &FilterParams) -> Grade {
+    Grade {
+        saturate: filter.saturate,
+        brightness: filter.brightness,
+        contrast: filter.contrast,
+        noise: 0.0,
+    }
 }
 
 /// The grade of the layer's filter: its saturation, brightness and contrast, in the order [`grade::apply`] runs them.
@@ -755,11 +863,55 @@ fn tinted(colour: Color, tint: Color) -> Color {
 
 /// The draws of a layer's effects around its own pixels, in the paint order of the design: outer shadows, then (below its
 /// content) the background and the inset shadows, and (above it) the borders. Within a kind, list order is paint order.
-///
-/// The layer's backdrop blur and filter blur are not drawn here.
 impl Draws {
-    /// The effects that sit under the layer's content.
-    fn under(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>) {
+    /// One layer, in every damage rectangle it reaches: its effects and its own pixels, in the order of the design.
+    ///
+    /// A layer with a blur has its images: the glass and the layer's group, or its picture, which earlier passes of the frame
+    /// drew (`blur.rs`). The group holds the glass, the background, the inset shadows and the layer's pixels, and is composed
+    /// here with the layer's opacity and corner clip; the shadows and the borders are drawn on the frame around it. A
+    /// layer with a filter that blurs has all of its pieces in a picture, which is composed here with the layer's tint,
+    /// opacity and grade, and that picture is not clipped to the corners.
+    fn layer(
+        &mut self,
+        built: &mut FramePlan,
+        damage: Rect,
+        shaders: &Shaders,
+        sizes: &TextureSizes,
+        index: usize,
+        paint: &Paint<'_>,
+    ) {
+        let parts = &paint.parts;
+        // A layer that was drawn from a stand-in (a secure layer's black, in a backdrop) has none of its effects, so it has none of
+        // its images either.
+        let blurs = shaders.blurs.get(&index).filter(|_| has_blur(parts.effects));
+        let state = match blurs {
+            None | Some(BlurState::Unavailable) => {
+                self.shadows(built, damage, parts);
+                self.fills(built, damage, parts);
+                self.content(built, damage, shaders, sizes, index, paint);
+                self.borders(built, damage, parts);
+                return;
+            }
+            Some(state) => state,
+        };
+        if !state.has_picture() {
+            self.shadows(built, damage, parts);
+        }
+        if let BlurState::Drawn { glass, picture } = state {
+            if let Some(glass) = glass {
+                self.glass(built, damage, parts, glass);
+            }
+            if let Some(picture) = picture {
+                self.picture(built, damage, parts, picture);
+            }
+        }
+        if !state.has_picture() {
+            self.borders(built, damage, parts);
+        }
+    }
+
+    /// The outer shadows, behind the layer.
+    fn shadows(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>) {
         for pass in parts.effects.passes() {
             if let Pass::Shadow(shadow) = pass
                 && !shadow.inset
@@ -769,6 +921,10 @@ impl Draws {
                 self.shadow(built, damage, parts, shadow);
             }
         }
+    }
+
+    /// The effects under the layer's own pixels and over its glass: the backgrounds, then the inset shadows.
+    fn fills(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>) {
         for pass in parts.effects.passes() {
             if let Pass::Background { color } = pass {
                 self.background(built, damage, parts, *color);
@@ -785,13 +941,102 @@ impl Draws {
         }
     }
 
+    /// The layer's own pixels: its solid colour, its texture, or the last of its shader passes.
+    fn content(
+        &mut self,
+        built: &mut FramePlan,
+        damage: Rect,
+        shaders: &Shaders,
+        sizes: &TextureSizes,
+        index: usize,
+        paint: &Paint<'_>,
+    ) {
+        let parts = &paint.parts;
+        let quad = parts.quad;
+        if !quad.intersects(damage) {
+            return;
+        }
+        let passes = shader_passes(shaders, index, parts.effects, sizes);
+        let mut uniforms = match paint.content {
+            Content::Solid(colour) if passes.is_empty() => {
+                // The grade of a solid colour is done here, on the colour, as `grade::apply` does it.
+                Uniforms::solid(quad, grade::apply(parts.grade, colour), parts.tint, parts.opacity)
+            }
+            Content::Solid(_) => {
+                // The shader reads the solid's colour from a pixel of it, so the draw is a textured one.
+                let mut uniforms = Uniforms::surface(quad, [0.0, 0.0, 1.0, 1.0], parts.tint, parts.opacity, 0.0);
+                uniforms.grade = parts.grade.to_array();
+                uniforms
+            }
+            Content::Surface(src, _) => {
+                let mut uniforms = Uniforms::surface(quad, src, parts.tint, parts.opacity, 0.0);
+                uniforms.grade = parts.grade.to_array();
+                uniforms
+            }
+        };
+        uniforms.corner = parts.radius;
+        if let Some(shape) = parts.rounded_to {
+            uniforms.round_to(shape);
+        }
+        if !passes.is_empty() {
+            self.push_shader(built, shaders, index, damage, quad, &uniforms);
+        } else if let Content::Surface(_, slot) = paint.content {
+            self.push(built, PassKind::Surface, Some(slot), damage, quad, &uniforms);
+        } else {
+            self.push(built, PassKind::Solid, None, damage, quad, &uniforms);
+        }
+    }
+
     /// The effects that sit over the layer's content.
-    fn over(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>) {
+    fn borders(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>) {
         for pass in parts.effects.passes() {
             if let Pass::Border(border) = pass {
                 self.border(built, damage, parts, border);
             }
         }
+    }
+
+    /// The layer's group over the frame: the glass and what is on it, faded by the layer's opacity and clipped to its
+    /// corners as one.
+    fn glass(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>, glass: &Glass) {
+        if !glass.rect.intersects(damage) {
+            return;
+        }
+        let mut uniforms = Uniforms::surface(
+            glass.rect,
+            [0.0, 0.0, 1.0, 1.0],
+            Color::WHITE,
+            parts.opacity,
+            parts.radius,
+        );
+        // The group's image holds the part of the layer that is on the output, so the corners are cut from the layer's
+        // whole shape and not from the image's.
+        uniforms.round_to(parts.rounded_to.unwrap_or(parts.quad));
+        self.push(
+            built,
+            PassKind::Surface,
+            Some(TextureSlot::Image(glass.image)),
+            damage,
+            glass.rect,
+            &uniforms,
+        );
+    }
+
+    /// The layer's picture over the frame, at the layer's tint, opacity and grade. It is not clipped to the corners.
+    fn picture(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>, picture: &Picture) {
+        if !picture.extent.intersects(damage) {
+            return;
+        }
+        let mut uniforms = Uniforms::surface(picture.extent, [0.0, 0.0, 1.0, 1.0], parts.tint, parts.opacity, 0.0);
+        uniforms.grade = grade_of_filter(&picture.filter).to_array();
+        self.push(
+            built,
+            PassKind::Surface,
+            Some(TextureSlot::Image(picture.image)),
+            damage,
+            picture.extent,
+            &uniforms,
+        );
     }
 
     /// An outer shadow: the shape moved by the offset and grown by the spread, full strength at its edge and fading
@@ -800,17 +1045,7 @@ impl Draws {
     /// The offset and the spread are whole pixels, as the GLES renderer rounds them, and the shader finds the shape by
     /// shrinking the quad by the blur it was grown by.
     fn shadow(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>, shadow: &Shadow) {
-        let factor = parts.factor;
-        let blur = (shadow.blur * factor).clamp(1.0, MAX_RADIUS);
-        let grow = blur.round() as i32 + (shadow.spread * factor).round() as i32;
-        let offset = |axis: f64| (axis as f32 * factor).round() as i32;
-        let base = if shadow.frame { parts.shape } else { parts.quad };
-        let quad = Rect::new(
-            base.x + offset(shadow.offset.x) - grow,
-            base.y + offset(shadow.offset.y) - grow,
-            (base.width as i32 + 2 * grow).max(0) as u32,
-            (base.height as i32 + 2 * grow).max(0) as u32,
-        );
+        let (quad, blur) = shadow_geometry(parts, shadow);
         if quad.is_empty() || !quad.intersects(damage) {
             return;
         }
@@ -858,38 +1093,14 @@ impl Draws {
     /// for an inset one, inside it. The quad is the shape grown by how far the ring reaches, and a pixel more for the
     /// antialiased fringe.
     fn border(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>, border: &Border) {
-        let width = border.width * parts.factor;
-        if width <= 0.0 || border.color.a <= 0.0 {
+        let Some((quad, grow, band)) = border_geometry(parts, border) else {
             return;
-        }
-        let offset = border.offset * parts.factor;
-        let (near, far) = if border.inset {
-            (-(offset + width), -offset)
-        } else {
-            (offset, offset + width)
         };
-        let reach = if border.inset { -offset } else { offset + width };
-        let grow = reach.max(0.0).ceil() as i32 + 1;
-        let shape = parts.shape;
-        let quad = Rect::new(
-            shape.x - grow,
-            shape.y - grow,
-            shape.width + 2 * grow as u32,
-            shape.height + 2 * grow as u32,
-        );
         if !quad.intersects(damage) {
             return;
         }
         let colour = grade::apply(parts.grade, border.color);
-        let uniforms = Uniforms::border(
-            quad,
-            grow as f32,
-            (near, far),
-            colour,
-            parts.tint,
-            parts.opacity,
-            parts.radius,
-        );
+        let uniforms = Uniforms::border(quad, grow as f32, band, colour, parts.tint, parts.opacity, parts.radius);
         self.push(built, PassKind::Border, None, damage, quad, &uniforms);
     }
 }
@@ -900,6 +1111,107 @@ pub(super) fn slot_of(surface: &Surface, index: usize) -> TextureSlot {
         SurfaceSource::View(view) => TextureSlot::View(view.id),
         _ => TextureSlot::Layer(index),
     }
+}
+
+/// The quad of a border, how far it is grown past the shape and the band of signed distance it paints, or `None` for a
+/// border that draws nothing.
+fn border_geometry(parts: &EffectParts<'_>, border: &Border) -> Option<(Rect, i32, (f32, f32))> {
+    let width = border.width * parts.factor;
+    if width <= 0.0 || border.color.a <= 0.0 {
+        return None;
+    }
+    let offset = border.offset * parts.factor;
+    let band = if border.inset {
+        (-(offset + width), -offset)
+    } else {
+        (offset, offset + width)
+    };
+    let reach = if border.inset { -offset } else { offset + width };
+    let grow = reach.max(0.0).ceil() as i32 + 1;
+    let shape = parts.shape;
+    let quad = Rect::new(
+        shape.x - grow,
+        shape.y - grow,
+        shape.width + 2 * grow as u32,
+        shape.height + 2 * grow as u32,
+    );
+    Some((quad, grow, band))
+}
+
+/// The quad of an outer shadow, and its blur in physical pixels: the shape moved by the offset and grown by the spread and
+/// the blur. The offset and the spread are whole pixels, as the GLES renderer rounds them.
+fn shadow_geometry(parts: &EffectParts<'_>, shadow: &Shadow) -> (Rect, f32) {
+    let factor = parts.factor;
+    let blur = (shadow.blur * factor).clamp(1.0, MAX_RADIUS);
+    let grow = blur.round() as i32 + (shadow.spread * factor).round() as i32;
+    let offset = |axis: f64| (axis as f32 * factor).round() as i32;
+    let base = if shadow.frame { parts.shape } else { parts.quad };
+    let quad = Rect::new(
+        base.x + offset(shadow.offset.x) - grow,
+        base.y + offset(shadow.offset.y) - grow,
+        (base.width as i32 + 2 * grow).max(0) as u32,
+        (base.height as i32 + 2 * grow).max(0) as u32,
+    );
+    (quad, blur)
+}
+
+/// Where a flat layer paints, for the images its effects need.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct LayerShape {
+    /// The rectangle the layer covers.
+    pub quad: Rect,
+    /// The rectangle of everything the layer paints: its own, its shape, its outer shadows and its borders.
+    pub painted: Rect,
+    /// The corner radius in physical pixels.
+    pub factor: f32,
+}
+
+/// The geometry of the layer at `index`, or `None` for one that is not drawn flat or has nothing to draw.
+pub(super) fn layer_shape(layer: &Layer, index: usize, scale: Scale, sizes: &TextureSizes) -> Option<LayerShape> {
+    let Layered::Flat(paint) = Paint::of(layer, index, scale, sizes) else {
+        return None;
+    };
+    let parts = &paint.parts;
+    let mut painted = union(parts.quad, parts.shape);
+    for pass in parts.effects.passes() {
+        match pass {
+            Pass::Shadow(shadow) if !shadow.inset && shadow.opacity > 0.0 && shadow.color.a > 0.0 => {
+                painted = union(painted, shadow_geometry(parts, shadow).0);
+            }
+            Pass::Border(border) => {
+                if let Some((quad, ..)) = border_geometry(parts, border) {
+                    painted = union(painted, quad);
+                }
+            }
+            _ => {}
+        }
+    }
+    Some(LayerShape {
+        quad: parts.quad,
+        painted,
+        factor: parts.factor,
+    })
+}
+
+/// The smallest rectangle that holds both.
+fn union(first: Rect, second: Rect) -> Rect {
+    let left = first.x.min(second.x);
+    let top = first.y.min(second.y);
+    let right = (i64::from(first.x) + i64::from(first.width)).max(i64::from(second.x) + i64::from(second.width));
+    let bottom = (i64::from(first.y) + i64::from(first.height)).max(i64::from(second.y) + i64::from(second.height));
+    Rect::new(
+        left,
+        top,
+        (right - i64::from(left)) as u32,
+        (bottom - i64::from(top)) as u32,
+    )
+}
+
+/// The parts of `outer` that `inner` does not cover, as rectangles that do not overlap.
+pub(super) fn around(outer: Rect, inner: Rect) -> Vec<Rect> {
+    let mut parts = Vec::new();
+    subtract(outer, inner, &mut parts);
+    parts
 }
 
 /// A logical rectangle of the frame as physical pixels of the output, by the rule every renderer shares.
@@ -1105,6 +1417,7 @@ mod tests {
         let shaders = Shaders {
             layers: vec![uses],
             time: 2.5,
+            ..Shaders::default()
         };
         (frame, sizes, shaders)
     }
@@ -1420,18 +1733,5 @@ mod tests {
             4.0,
             "the band's far edge is 4 physical pixels out"
         );
-    }
-
-    #[test]
-    fn a_filter_that_blurs_is_flagged_and_one_that_only_grades_is_not() {
-        let filter = |blur: f32| {
-            Pass::Filter(gnoblin_render::FilterParams {
-                blur,
-                saturate: 0.5,
-                ..gnoblin_render::FilterParams::default()
-            })
-        };
-        assert!(planned_effects(&effects_frame(Rect::new(0, 0, 64, 64), vec![filter(4.0)])).filter_blur);
-        assert!(!planned_effects(&effects_frame(Rect::new(0, 0, 64, 64), vec![filter(0.0)])).filter_blur);
     }
 }

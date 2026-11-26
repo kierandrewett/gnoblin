@@ -2,8 +2,8 @@
 //! The render pass, the pipelines, the samplers and the descriptor pools.
 //!
 //! One render pass draws into the target and keeps what is already there (`LOAD`), because a
-//! frame repaints only its damage. Five pipelines share a layout and a vertex stage: `solid`,
-//! `surface`, `shadow`, `inset_shadow` and `border`, which are the GLES renderer's passes of the same names. All blend
+//! frame repaints only its damage. Six pipelines share a layout and a vertex stage: `solid`,
+//! `surface`, `shadow`, `inset_shadow`, `border` and `blur`, which are the GLES renderer's passes of the same names. All blend
 //! premultiplied colour (`ONE`, `ONE_MINUS_SRC_ALPHA`, for colour and for alpha), which is
 //! what the software renderer's compositing and every GLES pass agree on.
 //!
@@ -84,12 +84,14 @@ pub(super) struct ShaderSources<'a> {
     pub inset_shadow: &'a str,
     /// The border's fragment stage.
     pub border: &'a str,
+    /// One sweep of the blur, which also grades, tints and grains what it writes.
+    pub blur: &'a str,
 }
 
 impl ShaderSources<'static> {
     /// The sources the GLES renderer draws with.
     pub(super) fn shared() -> Self {
-        use gnoblin_render_frame::shader::sources::{BORDER, INSET_SHADOW, SHADOW, SOLID, SURFACE, VERTEX};
+        use gnoblin_render_frame::shader::sources::{BLUR, BORDER, INSET_SHADOW, SHADOW, SOLID, SURFACE, VERTEX};
         Self {
             vertex: VERTEX,
             solid: SOLID,
@@ -97,6 +99,7 @@ impl ShaderSources<'static> {
             shadow: SHADOW,
             inset_shadow: INSET_SHADOW,
             border: BORDER,
+            blur: BLUR,
         }
     }
 }
@@ -112,6 +115,7 @@ pub(super) struct Compiled {
     shadow: Vec<u32>,
     inset_shadow: Vec<u32>,
     border: Vec<u32>,
+    blur: Vec<u32>,
 }
 
 impl Compiled {
@@ -128,6 +132,7 @@ impl Compiled {
             shadow: compile("shadow", sources.shadow, StageKind::Fragment)?,
             inset_shadow: compile("inset-shadow", sources.inset_shadow, StageKind::Fragment)?,
             border: compile("border", sources.border, StageKind::Fragment)?,
+            blur: compile("blur", sources.blur, StageKind::Fragment)?,
         })
     }
 }
@@ -158,6 +163,7 @@ pub(super) struct Pipelines {
     pub(super) shadow: vk::Pipeline,
     pub(super) inset_shadow: vk::Pipeline,
     pub(super) border: vk::Pipeline,
+    pub(super) blur: vk::Pipeline,
     pub(super) linear: vk::Sampler,
     pub(super) nearest: vk::Sampler,
     /// The driver's cache of compiled pipelines, null when it could not be made.
@@ -196,6 +202,7 @@ impl Pipelines {
             shadow: vk::Pipeline::null(),
             inset_shadow: vk::Pipeline::null(),
             border: vk::Pipeline::null(),
+            blur: vk::Pipeline::null(),
             linear: vk::Sampler::null(),
             nearest: vk::Sampler::null(),
             cache: vk::PipelineCache::null(),
@@ -318,6 +325,7 @@ impl Pipelines {
         self.shadow = made[2];
         self.inset_shadow = made[3];
         self.border = made[4];
+        self.blur = made[5];
         Ok(())
     }
 
@@ -595,6 +603,7 @@ impl Drop for Pipelines {
             device.destroy_pipeline(self.shadow, None);
             device.destroy_pipeline(self.inset_shadow, None);
             device.destroy_pipeline(self.border, None);
+            device.destroy_pipeline(self.blur, None);
             device.destroy_shader_module(self.vertex, None);
             device.destroy_pipeline_layout(self.layout, None);
             device.destroy_descriptor_set_layout(self.uniform_layout, None);
@@ -610,15 +619,15 @@ impl Drop for Pipelines {
 /// The fragment modules of the shipped passes, destroyed when the pipelines have been made from them.
 struct ShaderModules {
     context: Rc<VkContext>,
-    /// Solid, surface, shadow, inset shadow and border, in the order [`Pipelines::create`] makes pipelines from them.
-    fragments: [vk::ShaderModule; 5],
+    /// Solid, surface, shadow, inset shadow, border and blur, in the order [`Pipelines::create`] makes pipelines from them.
+    fragments: [vk::ShaderModule; 6],
 }
 
 impl ShaderModules {
     fn new(context: &Rc<VkContext>, compiled: &Compiled) -> Result<Self, VulkanError> {
         let mut made = Self {
             context: Rc::clone(context),
-            fragments: [vk::ShaderModule::null(); 5],
+            fragments: [vk::ShaderModule::null(); 6],
         };
         for (slot, (name, words)) in made.fragments.iter_mut().zip([
             ("solid", &compiled.solid),
@@ -626,6 +635,7 @@ impl ShaderModules {
             ("shadow", &compiled.shadow),
             ("inset-shadow", &compiled.inset_shadow),
             ("border", &compiled.border),
+            ("blur", &compiled.blur),
         ]) {
             *slot = module(context, name, words)?;
         }
@@ -888,6 +898,9 @@ pub(super) struct ShaderPipelines {
     worker: Option<Worker>,
     /// The signal of every output on the device: the worker asks each for another frame, as any of them may draw the node.
     listeners: Arc<Mutex<Vec<RedrawSignal>>>,
+    /// The builds asked of the worker, for a test that says a steady frame asks for none.
+    #[cfg(test)]
+    requested: u64,
     /// What the worker builds with: handles of the device, copied from the shipped pipelines.
     graphics: GraphicsContext,
 }
@@ -902,6 +915,8 @@ impl ShaderPipelines {
             touched: Vec::new(),
             worker: None,
             listeners: Arc::new(Mutex::new(Vec::new())),
+            #[cfg(test)]
+            requested: 0,
             graphics: pipelines.graphics_context(),
         }
     }
@@ -980,6 +995,10 @@ impl ShaderPipelines {
         match &self.worker {
             Some(worker) if worker.requests.send(request).is_ok() => {
                 self.pending.push(key);
+                #[cfg(test)]
+                {
+                    self.requested += 1;
+                }
                 Err(COMPILING)
             }
             _ => Err(PIPELINE_FAILED),
@@ -1008,6 +1027,12 @@ impl ShaderPipelines {
     #[cfg(test)]
     pub(super) fn len(&self) -> usize {
         self.cache.len()
+    }
+
+    /// How many builds the worker has been asked for over the renderer's life.
+    #[cfg(test)]
+    pub(super) fn requested(&self) -> u64 {
+        self.requested
     }
 
     /// How many sources the worker has not answered.

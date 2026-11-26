@@ -23,11 +23,13 @@
 //! 4. **Images of the shader layers.** A layer whose pass reads the backdrop gets an image of its
 //!    size to draw the backdrop into, and a layer with several passes gets two scratch images; a
 //!    layer whose images cannot be made is drawn without its passes.
-//! 5. **Plan.** With the textures known, the frame, each backdrop and each pass of a chain
-//!    become lists of draws (`plan.rs`), joined into one set of buffers.
-//! 6. **Uploads and shader jobs**, from the bottom layer up: the copies that update textures, then a layer's backdrop is
-//!    drawn (the layers below it, secure ones black, over its rectangle) and the passes of its chain, each into its own render
-//!    pass and then made readable. A layer reads the backdrops of those below it, so the order is the layers'.
+//! 5. **Plan.** With the textures known, the blurs are planned first (`blur.rs`): for each layer with a blur that the damage
+//!    or a reader reaches, the images it is drawn through come from the output's pool (`scratch.rs`). Then the frame, each
+//!    backdrop and each pass of a chain become lists of draws (`plan.rs`), joined into one set of buffers.
+//! 6. **Uploads and jobs**, from the bottom layer up: the copies that update textures, the Views' pictures, then a blur's
+//!    passes (its backdrop, its sweeps, its group or picture), a layer's backdrop (the layers below it, secure ones black,
+//!    over its rectangle) and the passes of its chain, each into its own render pass and then made readable. A layer reads
+//!    what the layers below it drew, so the order is the layers'; a layer's blur comes before its shader passes.
 //! 7. **Pass A.** The damage is cleared to the background and the layers are drawn, each
 //!    clipped to the damage rectangle it belongs to.
 //! 8. **Overlay.** The overlay is drawn over the layers. The cursor's pixels are copied into
@@ -56,6 +58,7 @@ use gnoblin_render::{Pass, ShaderKey};
 use gnoblin_types::{Color, Rect, Scale, Size};
 
 use super::Vulkan;
+use super::blur::{self, BlurJob};
 use super::context::{TARGET_FORMAT, VkContext};
 use super::error::classify;
 use super::memory::{VkBuffer, VkImage, colour_range};
@@ -101,7 +104,7 @@ impl RenderTarget {
     }
 
     /// An image a frame draws into and then samples: a backdrop, or a scratch image of a shader chain.
-    fn scratch(context: &Rc<VkContext>, pass: vk::RenderPass, size: Size) -> Result<Self, vk::Result> {
+    pub(super) fn scratch(context: &Rc<VkContext>, pass: vk::RenderPass, size: Size) -> Result<Self, vk::Result> {
         Self::with_usage(
             context,
             pass,
@@ -240,8 +243,39 @@ enum Job {
     },
     /// One pass of a layer's chain, drawn into one of its scratch images.
     Chain { index: usize, step: ChainStep },
+    /// One pass of a blur: a sweep, the draw of a glass, a group or a picture (`blur.rs`).
+    Image(BlurJob),
 }
 
+impl Job {
+    /// The layer the pass is for, which orders it among the others.
+    fn index(&self) -> usize {
+        match self {
+            Self::View { .. } => 0,
+            Self::Backdrop { index, .. } | Self::Chain { index, .. } => *index,
+            Self::Image(job) => job.index,
+        }
+    }
+}
+
+/// The passes of the Views, the shader layers and the blurs of a frame in one list: the Views first, since any layer's pixels
+/// may be a View's picture, then the rest by layer from the bottom. A blur's passes come before the shader passes of the same
+/// layer: they read only what is below it.
+fn merge(shader: Vec<Job>, blur: Vec<BlurJob>) -> Vec<Job> {
+    let mut jobs = Vec::with_capacity(shader.len() + blur.len());
+    let mut shader = shader.into_iter().peekable();
+    while let Some(view) = shader.next_if(|job| matches!(job, Job::View { .. })) {
+        jobs.push(view);
+    }
+    for job in blur {
+        while let Some(next) = shader.next_if(|next| next.index() < job.index) {
+            jobs.push(next);
+        }
+        jobs.push(Job::Image(job));
+    }
+    jobs.extend(shader);
+    jobs
+}
 /// The view pass of a frame: the scratch image the finished output is copied into and the pass that draws it back.
 struct ViewPass {
     image: vk::Image,
@@ -259,6 +293,8 @@ struct FrameRecording<'a> {
     images: &'a BTreeMap<usize, LayerImages>,
     jobs: Vec<Job>,
     pipelines: &'a [(ShaderKey, vk::Pipeline)],
+    /// The images the blurs draw through, by the id `blur.rs` gave each.
+    scratch: &'a [(u32, RenderTarget)],
     /// The pictures of the Views the frame samples, by View.
     views: Vec<(u64, vk::ImageView)>,
     /// The view pass, when the frame has a magnifier or colour matrix that changes a pixel.
@@ -269,7 +305,6 @@ struct FrameRecording<'a> {
     /// Whether the frame only draws View pictures: its target, cursor and overlay are not touched.
     views_only: bool,
 }
-
 /// What a render pass draws into.
 #[derive(Clone, Copy)]
 struct PassTarget {
@@ -549,7 +584,11 @@ impl Vulkan {
                 TextureSlot::Layer(index) => sizes.layers[index] = Some(*size),
                 TextureSlot::Overlay => sizes.overlay = Some(*size),
                 TextureSlot::Cursor => sizes.cursor = Some(*size),
-                TextureSlot::Chain(..) | TextureSlot::Backdrop(_) | TextureSlot::View(_) | TextureSlot::Scene(..) => {}
+                TextureSlot::Chain(..)
+                | TextureSlot::Backdrop(_)
+                | TextureSlot::View(_)
+                | TextureSlot::Scene(..)
+                | TextureSlot::Image(_) => {}
             }
         }
         // The pictures of the Views this frame samples, and how big each is.
@@ -575,6 +614,46 @@ impl Vulkan {
         }
         let images = self.make_images(frame, scale, &mut shaders, &sizes);
         let mut batch = DrawBatch::default();
+        // A blur below a shader layer is read by it, so the region a shader's backdrop covers is a reader of the blurs.
+        let reads: Vec<Rect> = images
+            .values()
+            .filter_map(|layer| layer.backdrop.as_ref())
+            .map(|(_, input)| quad_of(input.region, scale))
+            .collect();
+        let blurs = blur::plan(
+            &blur::Inputs {
+                frame,
+                scale,
+                physical: self.physical,
+                sizes: &sizes,
+                limit: self.max_image_edge(),
+                reads: &reads,
+            },
+            &mut shaders,
+        );
+        let blur_jobs: Vec<BlurJob> = blurs
+            .jobs
+            .into_iter()
+            .map(|mut job| {
+                job.plan = job.plan.append_to(&mut batch);
+                job
+            })
+            .collect();
+        let mut leased: Vec<(u32, RenderTarget)> = Vec::with_capacity(blurs.images.len());
+        for (id, size) in &blurs.images {
+            match self
+                .blur_images
+                .lease(&device.context, device.pipelines.render_pass, *size)
+            {
+                Ok(target) => leased.push((*id, target)),
+                Err(result) => {
+                    for (_, target) in leased {
+                        self.blur_images.give_back(target);
+                    }
+                    return Err(result);
+                }
+            }
+        }
         let mut jobs = Vec::new();
         for (number, request) in fresh.iter().enumerate() {
             let Some(handles) = device.views.borrow().handles((request.scene.id(), request.capture)) else {
@@ -593,7 +672,9 @@ impl Vulkan {
                 plan,
             });
         }
-        jobs.extend(self.plan_jobs(frame, scale, &shaders, &sizes, &images, &mut batch));
+        let mut shader_jobs = jobs;
+        shader_jobs.extend(self.plan_jobs(frame, scale, &shaders, &sizes, &images, &mut batch));
+        let jobs = merge(shader_jobs, blur_jobs);
         let planned = plan(frame, scale, self.physical, &sizes, &shaders).append_to(&mut batch);
         let models = if planned.models_end > planned.layers_end {
             self.depth_framebuffer()
@@ -605,18 +686,13 @@ impl Vulkan {
         } else {
             None
         };
-        if planned.filter_blur && !self.warned_filter_blur {
-            self.warned_filter_blur = true;
-            log::warn!(
-                "unsupported-filter-blur: the Vulkan renderer does not blur a filter yet, so a filter that blurs is drawn graded only"
-            );
-        }
         let recorded = self.record(FrameRecording {
             frame,
             planned: &planned,
             batch,
             prepared: &prepared,
             images: &images,
+            scratch: &leased,
             jobs,
             pipelines: &pipelines,
             views,
@@ -624,6 +700,16 @@ impl Vulkan {
             models,
             views_only,
         });
+        // The pool keeps the images for the next frame, which may draw into them again: every frame begins with a barrier from
+        // all earlier work. Those it lets go are destroyed when the newest frame that may use them has finished.
+        for (_, target) in leased {
+            self.blur_images.give_back(target);
+        }
+        let newest = match &recorded {
+            Ok(submitted) => *submitted,
+            Err(_) => device.context.timeline.submitted(),
+        };
+        self.blur_images.end_frame(&mut device.retire.borrow_mut(), newest);
         match recorded {
             Ok(submitted) => {
                 debug_assert_eq!(submitted, value, "the frame signalled the value it was promised");
@@ -736,6 +822,7 @@ impl Vulkan {
         let mut shaders = Shaders {
             layers: vec![Vec::new(); frame.layers().len()],
             time: self.device.epoch.elapsed().as_secs_f32(),
+            ..Shaders::default()
         };
         let mut found: Vec<(ShaderKey, Result<UserPipeline, &'static str>)> = Vec::new();
         for (index, layer) in frame.layers().iter().enumerate() {
@@ -977,6 +1064,7 @@ impl Vulkan {
             views,
             filter,
             models,
+            scratch,
             views_only,
         } = recording;
         let device = Rc::clone(&self.device);
@@ -1000,7 +1088,7 @@ impl Vulkan {
         let uniform_set = self.uniform_set()?;
         // (the texture sets of the frame are next)
         let mut sets: Vec<(TextureSlot, vk::DescriptorSet)> =
-            Vec::with_capacity(prepared.sets.len() + 2 * images.len() + views.len());
+            Vec::with_capacity(prepared.sets.len() + 2 * images.len() + views.len() + scratch.len());
         sets.extend_from_slice(&prepared.sets);
         for (index, layer_images) in images {
             if let Some((target, _)) = &layer_images.backdrop {
@@ -1017,6 +1105,10 @@ impl Vulkan {
         for (id, view) in &views {
             let set = self.texture_set(*view, device.pipelines.linear)?;
             sets.push((TextureSlot::View(*id), set));
+        }
+        for (id, target) in scratch {
+            let set = self.texture_set(target.image.view(), device.pipelines.linear)?;
+            sets.push((TextureSlot::Image(*id), set));
         }
         let filter_set = match &filter {
             Some(filter) => Some(self.texture_set(filter.view, device.pipelines.nearest)?),
@@ -1108,6 +1200,37 @@ impl Vulkan {
                     );
                     self.to_sampled(target.image.raw());
                 }
+                Job::Image(job) => {
+                    let Some((_, target)) = scratch.iter().find(|(id, _)| *id == job.image) else {
+                        continue;
+                    };
+                    // The image is drawn whole: cleared, then given the frame's background where the plan draws over it, as a
+                    // backdrop is, so what a blur reads past the layers is what the frame shows.
+                    let whole = [Rect::new(0, 0, job.size.width, job.size.height)];
+                    let clears = [
+                        Clear {
+                            colour: transparent,
+                            rects: &whole,
+                        },
+                        Clear {
+                            colour: job.background.map_or(transparent, premultiplied),
+                            rects: if job.background.is_some() {
+                                &job.plan.damage
+                            } else {
+                                &[]
+                            },
+                        },
+                    ];
+                    self.to_drawn(target.image.raw());
+                    self.pass(
+                        PassTarget::plain(target.framebuffer, job.size),
+                        &clears,
+                        &job.plan.draws,
+                        &bindings,
+                        &mut stamps,
+                    );
+                    self.to_sampled(target.image.raw());
+                }
             }
         }
         if !views_only {
@@ -1173,6 +1296,7 @@ impl Vulkan {
             .flat_map(|job| match job {
                 Job::View { plan, .. } | Job::Backdrop { plan, .. } => plan.draws.iter(),
                 Job::Chain { step, .. } => step.plan.draws.iter(),
+                Job::Image(job) => job.plan.draws.iter(),
             })
             .chain(planned.draws.iter());
         for draw in drawn {
@@ -1442,12 +1566,15 @@ impl Vulkan {
                         (PassKind::Solid, None) => pipelines.solid,
                         (PassKind::Surface, None) => pipelines.surface,
                         (PassKind::Shadow, None) => pipelines.shadow,
+                        (PassKind::Blur, None) => pipelines.blur,
                         (PassKind::InsetShadow, None) => pipelines.inset_shadow,
                         (PassKind::Border, None) => pipelines.border,
                         (PassKind::Solid, Some(extras)) => extras.placed(pipelines, QuadBase::Solid, class),
                         (PassKind::Surface, Some(extras)) => extras.placed(pipelines, QuadBase::Surface, class),
                         // A shadow, an inset shadow and a border are not drawn on a placed layer, as on GLES.
-                        (PassKind::Shadow | PassKind::InsetShadow | PassKind::Border, Some(_)) => continue,
+                        (PassKind::Shadow | PassKind::InsetShadow | PassKind::Border | PassKind::Blur, Some(_)) => {
+                            continue;
+                        }
                         (PassKind::User(key), None) => match bindings.pipelines.iter().find(|(held, _)| *held == key) {
                             Some((_, pipeline)) => *pipeline,
                             None => continue,
@@ -1519,7 +1646,8 @@ impl Vulkan {
                     | PassKind::Surface
                     | PassKind::Shadow
                     | PassKind::InsetShadow
-                    | PassKind::Border => None,
+                    | PassKind::Border
+                    | PassKind::Blur => None,
                 };
                 // The draw is covered by this block's contract: the buffers, sets and scissor are the ones bound above.
                 stamps.bracket(device, cmd, slot.query.as_ref(), key, || {

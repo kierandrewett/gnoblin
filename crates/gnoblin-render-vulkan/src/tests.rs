@@ -31,6 +31,7 @@ use gnoblin_render_frame::frame::{Layer, Overlay, Solid, Surface, SurfaceSource}
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_software::Software;
 
+mod blur;
 mod device;
 mod dmabuf;
 mod effects;

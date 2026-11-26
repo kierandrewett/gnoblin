@@ -3,8 +3,8 @@
 //!
 //! This is the third implementation of the frame description (see `gnoblin-render-frame`), built on `ash` and
 //! `naga`. It is the offscreen renderer: it draws what the software renderer draws, plus the rounded corners the shared
-//! shaders already clip, and it reads the result back. It does not present, import dmabufs or draw a blur
-//! yet; `DESIGN.md` lists what is next and in what order.
+//! shaders already clip, and it reads the result back. It does not present yet; `DESIGN.md` lists what is next and in what
+//! order.
 //!
 //! # The device and the output
 //!
@@ -21,9 +21,10 @@
 //!   source rectangle and scaled with linear filtering. The pixels are premultiplied, as the
 //!   protocol says a shm buffer's are, and are blended with `ONE, ONE_MINUS_SRC_ALPHA`.
 //! - **Opacity** and **tint** per layer, in the same shader the GLES renderer runs.
-//! - **Effects**: outer and inset shadows, a background, borders and a filter's grade, in the paint order of
-//!   the design note (section 6.1) and with the same shaders as GLES. A solid colour is graded on the CPU by
-//!   [`grade::apply`](gnoblin_render_frame::grade::apply) and a layer's pixels in the fragment stage.
+//! - **Effects**: outer and inset shadows, a background, borders, the backdrop blur, a filter's grade and its blur, in the
+//!   paint order of the design note (section 6.1) and with the same shaders as GLES. A solid colour is graded on the CPU by
+//!   [`grade::apply`](gnoblin_render_frame::grade::apply) and a layer's pixels in the fragment stage. A blur is drawn into
+//!   images before the frame (`blur.rs`), from the layers below, so a partial redraw blurs what a full one does.
 //! - **The portal overlay and the cursor**, nearest-sampled, with the pixels under each saved
 //!   so a capture can leave the overlay (always) and the cursor (when asked) out.
 //! - **Output scale**: a frame's rectangles are logical and the target is physical, converted
@@ -146,6 +147,7 @@
 //! A little-endian host is assumed where a client's pixels are uploaded: the bytes of an
 //! `argb8888` word are blue, green, red, alpha, which is what `B8G8R8A8_UNORM` reads.
 
+mod blur;
 mod capture;
 mod context;
 mod dmabuf;
@@ -161,6 +163,7 @@ mod harness;
 mod memory;
 mod pipeline;
 mod plan;
+mod scratch;
 mod shader;
 mod spatial;
 mod subtree;
@@ -189,6 +192,7 @@ use context::VkContext;
 use frame::{RenderTarget, Saved};
 use memory::{VkBuffer, VkImage};
 use pipeline::{Compiled, Pipelines, ShaderPipelines, ShaderSources};
+use scratch::ScratchPool;
 use spatial::{DepthExtras, DepthTarget};
 use subtree::ViewStore;
 use sync::{FrameRing, MIN_BUFFER, RetireQueue};
@@ -486,8 +490,8 @@ pub struct Vulkan {
     lost: bool,
     /// Whether the warning that this device draws no 3D layer has been logged, so a steady session logs it once.
     warned_models: bool,
-    /// Whether the filter-blur warning has been logged.
-    warned_filter_blur: bool,
+    /// The images the effects of a frame are drawn through, kept for the next frame.
+    blur_images: ScratchPool,
     /// Whether the last frame drew the magnifier or the colour matrix, which makes the next one repaint the whole output.
     filtered: bool,
     /// The depth-stencil image the output's 3D layers are tested against, made when a frame first has one.
@@ -566,7 +570,7 @@ impl Vulkan {
             physical,
             lost: false,
             warned_models: false,
-            warned_filter_blur: false,
+            blur_images: ScratchPool::default(),
             filtered: false,
             depth: None,
             scratch: None,
@@ -604,10 +608,14 @@ impl Vulkan {
     /// reports them too.
     #[must_use]
     pub fn footprint(&self) -> Footprint {
+        let device = self.device.footprint();
+        let pool = self.blur_images.bytes();
         Footprint {
             target: image_bytes(self.physical, COLOUR_BYTES_PER_PIXEL),
+            scratch: device.scratch.saturating_add(pool),
             staging: self.host_bytes(),
-            ..self.device.footprint()
+            releasable: device.releasable.saturating_add(pool),
+            ..device
         }
     }
 
