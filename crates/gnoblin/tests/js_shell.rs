@@ -4382,7 +4382,6 @@ fn room_of(ipc: &Path) -> Option<gnoblin_proto::tree::snapshot_node::Properties>
 }
 
 #[test]
-#[ignore = "vrnw: needs XR: with the program's seat attached the stock shell builds no room (no View node ever appears)"]
 fn the_xr_programs_seat_makes_the_stock_shell_build_a_room_with_a_view_per_window_and_its_going_takes_it_down() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
@@ -4495,7 +4494,6 @@ fn claims_of(ipc: &Path, controller: u64) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "vrnw: needs XR: with the program's seat attached the stock shell builds no room (no View node ever appears)"]
 fn the_stock_grab_claims_the_grip_on_the_real_controller_and_the_claim_goes_with_the_drag_and_with_the_shell() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
