@@ -20,7 +20,9 @@ use gnoblin_render_software::Software;
 #[cfg(feature = "vulkan")]
 use gnoblin_render_vulkan::Vulkan;
 
-#[cfg(not(all(feature = "vulkan", feature = "gles")))]
+#[cfg(feature = "vulkan")]
+use std::rc::Rc;
+
 use crate::log;
 
 /// The renderers this crate can draw an output with.
@@ -111,11 +113,12 @@ impl RendererKind {
         matches!(self, Self::Gles | Self::Software)
     }
 
-    /// Whether this renderer draws a View's source subtree into a texture on the GPU. Only GLES does: the software
-    /// renderer is the CPU reference, and the Vulkan renderer has no pass for one yet.
+    /// Whether this renderer draws a View's source subtree into a texture on the GPU: GLES and Vulkan do, and the software
+    /// renderer is the CPU reference. A Vulkan device with no depth-stencil format draws none; [`AnyRenderer::draws_views`]
+    /// answers for the device a renderer is on, and a backend asks it once it has one.
     #[must_use]
     pub const fn draws_views(self) -> bool {
-        matches!(self, Self::Gles)
+        matches!(self, Self::Gles | Self::Vulkan)
     }
 }
 
@@ -168,6 +171,38 @@ macro_rules! on_renderer {
     };
 }
 
+/// What the outputs of one backend share on the GPU.
+///
+/// Only Vulkan shares anything: its device, which owns the allocator, the pipelines and the cache of client textures. A GLES
+/// context is one per renderer, and the software renderer has no GPU.
+#[derive(Default)]
+pub struct GpuShare {
+    #[cfg(feature = "vulkan")]
+    vulkan: Option<Rc<gnoblin_render_vulkan::VulkanDevice>>,
+    /// The `dev_t` of the DRM node the device should be on, when the backend knows one: a host compositor's dmabuf
+    /// `main_device`, so the buffers the nested session presents are ones the host can import. A machine with no device there
+    /// gets the best device, and the presenter falls back to shared memory if the host refuses its buffers.
+    pub node: Option<u64>,
+}
+
+impl GpuShare {
+    /// A share that has no device yet and prefers the one on `node`.
+    #[must_use]
+    pub fn on_node(node: Option<u64>) -> Self {
+        Self {
+            node,
+            ..Self::default()
+        }
+    }
+
+    /// The Vulkan device the outputs share, once one has been built.
+    #[cfg(feature = "vulkan")]
+    #[must_use]
+    pub fn vulkan_device(&self) -> Option<&Rc<gnoblin_render_vulkan::VulkanDevice>> {
+        self.vulkan.as_ref()
+    }
+}
+
 impl AnyRenderer {
     /// A renderer of `kind` with an offscreen buffer of `physical` pixels.
     ///
@@ -179,10 +214,21 @@ impl AnyRenderer {
     /// no loader, no device or a refused shader (the log names which), or a build without
     /// the `vulkan` feature; and for GLES, a build without the `gles` feature.
     pub fn new(kind: RendererKind, physical: Size) -> Result<Self, RenderError> {
+        Self::new_sharing(kind, physical, &mut GpuShare::default())
+    }
+
+    /// [`AnyRenderer::new`] on the GPU `share` holds: the outputs of one backend that are built with the same share draw on one
+    /// Vulkan device, so a window that spans two outputs is uploaded once and a lost device is lost once. The first Vulkan
+    /// renderer built makes the device, on `share.node` when the machine has a device there.
+    ///
+    /// # Errors
+    ///
+    /// As [`AnyRenderer::new`].
+    pub fn new_sharing(kind: RendererKind, physical: Size, share: &mut GpuShare) -> Result<Self, RenderError> {
         match kind {
             RendererKind::Software => Software::new(physical).map(|software| Self::Software(Box::new(software))),
             RendererKind::Gles => Self::gles(physical),
-            RendererKind::Vulkan => Self::vulkan(physical),
+            RendererKind::Vulkan => Self::vulkan(physical, share),
         }
     }
 
@@ -201,14 +247,54 @@ impl AnyRenderer {
     }
 
     #[cfg(feature = "vulkan")]
-    fn vulkan(physical: Size) -> Result<Self, RenderError> {
-        Vulkan::new(physical)
+    fn vulkan(physical: Size, share: &mut GpuShare) -> Result<Self, RenderError> {
+        use gnoblin_render_vulkan::VulkanError;
+        // A device that was lost is lost for every output on it: the next output builds a new one.
+        if share.vulkan.as_ref().is_some_and(|device| device.is_lost()) {
+            share.vulkan = None;
+        }
+        let device = match &share.vulkan {
+            Some(device) => Rc::clone(device),
+            None => {
+                let device = Self::vulkan_device(share.node).map_err(VulkanError::into_render_error)?;
+                share.vulkan = Some(Rc::clone(&device));
+                device
+            }
+        };
+        Vulkan::with_device(&device, physical)
             .map(|vulkan| Self::Vulkan(Box::new(vulkan)))
-            .map_err(gnoblin_render_vulkan::VulkanError::into_render_error)
+            .map_err(VulkanError::into_render_error)
+    }
+
+    /// The device outputs share: the one on `node` when the backend names one and the machine has it, the best otherwise.
+    #[cfg(feature = "vulkan")]
+    fn vulkan_device(
+        node: Option<u64>,
+    ) -> Result<Rc<gnoblin_render_vulkan::VulkanDevice>, gnoblin_render_vulkan::VulkanError> {
+        use gnoblin_render_vulkan::{DeviceChoice, VulkanDevice, VulkanError, VulkanOptions};
+        if let Some(node) = node {
+            let options = VulkanOptions {
+                device: DeviceChoice::RenderNode(node),
+                ..VulkanOptions::default()
+            };
+            match VulkanDevice::with_options(&options) {
+                Ok(device) => return Ok(device),
+                Err(VulkanError::NoDevice { reason }) => {
+                    log::info!(
+                        area = "render",
+                        node = format_args!("{node:#x}"),
+                        reason,
+                        "no Vulkan device on the wanted DRM node; the best device is used"
+                    );
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        VulkanDevice::new()
     }
 
     #[cfg(not(feature = "vulkan"))]
-    fn vulkan(_physical: Size) -> Result<Self, RenderError> {
+    fn vulkan(_physical: Size, _share: &mut GpuShare) -> Result<Self, RenderError> {
         log::warn!(
             area = "render",
             "this build has no Vulkan renderer (the `vulkan` feature is off)"
@@ -318,20 +404,57 @@ impl AnyRenderer {
             _ => None,
         }
     }
+}
+
+#[cfg(feature = "vulkan")]
+impl AnyRenderer {
+    /// The Vulkan renderer, when this is one.
+    #[must_use]
+    pub fn vulkan_mut(&mut self) -> Option<&mut Vulkan> {
+        match self {
+            Self::Vulkan(vulkan) => Some(vulkan.as_mut()),
+            _ => None,
+        }
+    }
+}
+
+/// What a client's GPU buffer, a capture into one and a View's picture ask of a renderer. GLES and Vulkan answer them; the
+/// software renderer reads CPU memory and answers that it cannot.
+impl AnyRenderer {
+    /// Whether this renderer draws a View's source subtree into a texture on the GPU: GLES always, Vulkan when the device has
+    /// a depth-stencil format to draw one with ([`RendererKind::draws_views`] says what the kind can do).
+    #[must_use]
+    pub fn draws_views(&self) -> bool {
+        match self {
+            Self::Software(_) => false,
+            #[cfg(feature = "gles")]
+            Self::Gles(_) => true,
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(vulkan) => vulkan.gpu().draws_views(),
+        }
+    }
 
     /// What this renderer imports of a client's GPU buffers, or `None` when it imports none.
     ///
-    /// Only the GLES renderer does, and only on a display that reports an importable format: the
-    /// software renderer reads CPU memory, and the Vulkan renderer has no import path yet. The
-    /// device is the render node of the context, when it has one.
+    /// GLES imports what its display reports importable, on the render node of the context when it has one. Vulkan imports a
+    /// linear single-plane buffer in the formats its device draws (`gnoblin_render_vulkan::dmabuf_formats`), on the render
+    /// node of its device when the driver names one; a software driver names none, so clients are served version 3 of the
+    /// protocol, which names formats and no device. The software renderer reads CPU memory and imports none.
     #[must_use]
     pub fn dmabuf_support(&mut self) -> Option<crate::DmabufSupport> {
-        let gles = self.gles_mut()?;
-        let formats = gles.dmabuf_formats();
-        if formats.is_empty() {
-            return None;
+        match self {
+            Self::Software(_) => None,
+            #[cfg(feature = "gles")]
+            Self::Gles(gles) => {
+                let formats = gles.dmabuf_formats();
+                if formats.is_empty() {
+                    return None;
+                }
+                Some(crate::DmabufSupport::new(gles.render_node(), formats))
+            }
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(vulkan) => Some(crate::DmabufSupport::new(vulkan.render_node(), vulkan.dmabuf_formats())),
         }
-        Some(crate::DmabufSupport::new(gles.render_node(), formats))
     }
 
     /// Imports a client's GPU buffer, so a draw of it finds the texture made.
@@ -339,29 +462,40 @@ impl AnyRenderer {
     /// # Errors
     ///
     /// [`crate::DmabufImportError::Unsupported`] for a renderer that imports none, and
-    /// [`crate::DmabufImportError::Refused`] when the driver refuses the buffer.
+    /// [`crate::DmabufImportError::Refused`] when the renderer refuses the buffer (Vulkan: not a single linear plane in a
+    /// format it draws).
     pub fn import_dmabuf(
         &mut self,
         dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
     ) -> Result<(), crate::DmabufImportError> {
-        let gles = self.gles_mut().ok_or(crate::DmabufImportError::Unsupported)?;
-        gles.import_dmabuf(dmabuf).map_err(crate::DmabufImportError::Refused)
+        match self {
+            Self::Software(_) => Err(crate::DmabufImportError::Unsupported),
+            #[cfg(feature = "gles")]
+            Self::Gles(gles) => gles.import_dmabuf(dmabuf).map_err(crate::DmabufImportError::Refused),
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(vulkan) => vulkan.import_dmabuf(dmabuf).map_err(crate::DmabufImportError::Refused),
+        }
     }
 
     /// Copies the frame last drawn into a client's GPU buffer, with the cursor composed in when `with_cursor` is set.
     ///
     /// # Errors
     ///
-    /// [`RenderError::Unsupported`] for a renderer that draws into no client buffer (the software and Vulkan
-    /// renderers), and the GLES renderer's own error otherwise.
+    /// [`RenderError::Unsupported`] for a renderer that draws into no client buffer (the software renderer) or a buffer
+    /// Vulkan does not offer, and the renderer's own error otherwise.
     pub fn copy_frame_into_dmabuf(
         &mut self,
         dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
         copy: crate::DmabufCopy,
         with_cursor: bool,
     ) -> Result<(), RenderError> {
-        let gles = self.gles_mut().ok_or(RenderError::Unsupported)?;
-        gles.copy_frame_into_dmabuf(dmabuf, copy.region, copy.from, with_cursor)
+        match self {
+            Self::Software(_) => Err(RenderError::Unsupported),
+            #[cfg(feature = "gles")]
+            Self::Gles(gles) => gles.copy_frame_into_dmabuf(dmabuf, copy.region, copy.from, with_cursor),
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(vulkan) => vulkan.copy_frame_region_into_dmabuf(dmabuf, copy.region, copy.from, with_cursor),
+        }
     }
 
     /// Writes a picture the CPU holds into a client's GPU buffer.
@@ -375,17 +509,28 @@ impl AnyRenderer {
         image: &Image,
         copy: crate::DmabufCopy,
     ) -> Result<(), RenderError> {
-        let gles = self.gles_mut().ok_or(RenderError::Unsupported)?;
-        gles.copy_image_into_dmabuf(dmabuf, image, copy.region, copy.from)
+        match self {
+            Self::Software(_) => Err(RenderError::Unsupported),
+            #[cfg(feature = "gles")]
+            Self::Gles(gles) => gles.copy_image_into_dmabuf(dmabuf, image, copy.region, copy.from),
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(vulkan) => vulkan.copy_image_region_into_dmabuf(image, dmabuf, copy.region, copy.from),
+        }
     }
 
     /// Reads a client's GPU buffer back as a picture.
     ///
     /// # Errors
     ///
-    /// [`RenderError::Unsupported`] for a renderer that imports none, and the GLES renderer's own error otherwise.
+    /// [`RenderError::Unsupported`] for a renderer that imports none, and the renderer's own error otherwise.
     pub fn read_dmabuf(&mut self, dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<Image, RenderError> {
-        self.gles_mut().ok_or(RenderError::Unsupported)?.read_dmabuf(dmabuf)
+        match self {
+            Self::Software(_) => Err(RenderError::Unsupported),
+            #[cfg(feature = "gles")]
+            Self::Gles(gles) => gles.read_dmabuf(dmabuf),
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(vulkan) => vulkan.read_dmabuf(dmabuf),
+        }
     }
 
     /// Reads a View's picture back, drawing the scene into a texture first when the renderer holds none of its
@@ -393,101 +538,51 @@ impl AnyRenderer {
     ///
     /// # Errors
     ///
-    /// [`RenderError::Unsupported`] for a renderer that draws a View on the CPU, and the GLES renderer's own error
-    /// otherwise.
+    /// [`RenderError::Unsupported`] for a renderer that draws a View on the CPU, and the renderer's own error otherwise.
     pub fn view_pixels(
         &mut self,
         scene: &gnoblin_render_frame::view_scene::ViewScene,
         capture: bool,
         live: &[u64],
     ) -> Result<Image, RenderError> {
-        let gles = self.gles_mut().ok_or(RenderError::Unsupported)?;
-        gles.read_view(scene, capture, live)
+        match self {
+            Self::Software(_) => Err(RenderError::Unsupported),
+            #[cfg(feature = "gles")]
+            Self::Gles(gles) => gles.read_view(scene, capture, live),
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(vulkan) if vulkan.gpu().draws_views() => vulkan.read_view(scene, capture, live),
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(_) => Err(RenderError::Unsupported),
+        }
     }
 
     /// Gives back every View texture the renderer holds. A renderer that draws a View on the CPU holds none.
     pub fn release_views(&mut self) {
-        if let Some(gles) = self.gles_mut() {
-            gles.retire_views(&[]);
+        match self {
+            Self::Software(_) => {}
+            #[cfg(feature = "gles")]
+            Self::Gles(gles) => gles.retire_views(&[]),
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(vulkan) => vulkan.retire_views(&[]),
         }
     }
-}
 
-/// Without the `gles` feature no renderer imports a client's GPU buffer or draws a View on the GPU: each call answers what
-/// a renderer that cannot do it answers, and [`AnyRenderer::new`] refuses `RendererKind::Gles` before any holder exists.
-#[cfg(not(feature = "gles"))]
-impl AnyRenderer {
-    /// What this renderer imports of a client's GPU buffers: nothing.
-    #[must_use]
-    pub fn dmabuf_support(&mut self) -> Option<crate::DmabufSupport> {
-        None
-    }
-
-    /// Imports a client's GPU buffer.
+    /// The output's target as the display shows it at `shown` pixels: a supersampled target averaged down on the GPU, with the
+    /// cursor. The software renderer has no GPU pass for it and answers [`RenderError::Unsupported`]; its caller averages
+    /// the capture on the CPU.
     ///
     /// # Errors
     ///
-    /// [`crate::DmabufImportError::Unsupported`], always.
-    pub fn import_dmabuf(
-        &mut self,
-        _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
-    ) -> Result<(), crate::DmabufImportError> {
-        Err(crate::DmabufImportError::Unsupported)
+    /// [`RenderError::Unsupported`], and the renderer's own error otherwise.
+    pub fn downsampled(&mut self, shown: Size) -> Result<Image, RenderError> {
+        match self {
+            Self::Software(_) => Err(RenderError::Unsupported),
+            #[cfg(feature = "gles")]
+            Self::Gles(gles) => gles.downsampled(shown),
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(vulkan) => vulkan.downsampled(shown),
+        }
     }
-
-    /// Copies the frame last drawn into a client's GPU buffer.
-    ///
-    /// # Errors
-    ///
-    /// [`RenderError::Unsupported`], always.
-    pub fn copy_frame_into_dmabuf(
-        &mut self,
-        _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
-        _copy: crate::DmabufCopy,
-        _with_cursor: bool,
-    ) -> Result<(), RenderError> {
-        Err(RenderError::Unsupported)
-    }
-
-    /// Writes a picture the CPU holds into a client's GPU buffer.
-    ///
-    /// # Errors
-    ///
-    /// [`RenderError::Unsupported`], always.
-    pub fn copy_image_into_dmabuf(
-        &mut self,
-        _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
-        _image: &Image,
-        _copy: crate::DmabufCopy,
-    ) -> Result<(), RenderError> {
-        Err(RenderError::Unsupported)
-    }
-
-    /// Reads a client's GPU buffer back as a picture.
-    ///
-    /// # Errors
-    ///
-    /// [`RenderError::Unsupported`], always.
-    pub fn read_dmabuf(&mut self, _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<Image, RenderError> {
-        Err(RenderError::Unsupported)
-    }
-
-    /// Reads a View's picture back.
-    ///
-    /// # Errors
-    ///
-    /// [`RenderError::Unsupported`], always: a renderer without GLES draws a View on the CPU.
-    pub fn view_pixels(
-        &mut self,
-        _scene: &gnoblin_render_frame::view_scene::ViewScene,
-        _capture: bool,
-        _live: &[u64],
-    ) -> Result<Image, RenderError> {
-        Err(RenderError::Unsupported)
-    }
-
-    /// Gives back every View texture the renderer holds: none.
-    pub fn release_views(&mut self) {}
 }
 
 impl AnyRenderer {

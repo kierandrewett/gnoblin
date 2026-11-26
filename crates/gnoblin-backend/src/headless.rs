@@ -60,7 +60,7 @@ use gnoblin_config::RendererChoice;
 
 use crate::gpu::{DmabufHub, GpuTarget, TargetParts};
 use crate::input_settings::{DeviceBook, Setting, VirtualDevice};
-use crate::render::renderer::{AnyRenderer, RendererKind};
+use crate::render::renderer::{AnyRenderer, GpuShare, RendererKind};
 use crate::{
     Backend, BackendError, BackendEvent, DmabufCopy, DmabufCopyError, DmabufImportError, DmabufProvider, DmabufSource,
     DmabufSupport, GammaRamp, Host, InputEvent, InputSource, Output, OutputControls, Present, Target,
@@ -216,6 +216,21 @@ impl HeadlessTarget {
         scale: Scale,
         supersample: Scale,
     ) -> Result<Self, RenderError> {
+        Self::with_shared_gpu(kind, mode, scale, supersample, &mut GpuShare::default())
+    }
+
+    /// [`HeadlessTarget::with_renderer`] on the GPU `gpu` holds, so the outputs of one backend share a Vulkan device.
+    ///
+    /// # Errors
+    ///
+    /// As [`HeadlessTarget::with_renderer`].
+    pub fn with_shared_gpu(
+        kind: RendererKind,
+        mode: DisplayMode,
+        scale: Scale,
+        supersample: Scale,
+        gpu: &mut GpuShare,
+    ) -> Result<Self, RenderError> {
         let physical = Output::virtual_extent(mode, supersample);
         let size = mode.logical_size(gnoblin_types::Orientation::Normal, scale);
         Ok(Self {
@@ -224,9 +239,15 @@ impl HeadlessTarget {
             scale: scale.product(supersample),
             presents: 0,
             damage: Vec::new(),
-            renderer: AnyRenderer::new(kind, physical)?,
+            renderer: AnyRenderer::new_sharing(kind, physical, gpu)?,
             display: None,
         })
+    }
+
+    /// Whether this target's renderer draws a View's subtree on the GPU: the device it is on says.
+    #[must_use]
+    pub fn draws_views(&self) -> bool {
+        self.renderer.draws_views()
     }
 
     /// The renderer this target draws with.
@@ -568,6 +589,8 @@ pub struct Headless {
     next_output: u64,
     /// The renderer every output this backend connects draws with.
     renderer: RendererKind,
+    /// What the outputs share on the GPU: one Vulkan device for every output this backend connects.
+    gpu: GpuShare,
     /// What a capture draws in place of a secure layer, from the session's configuration.
     secure_treatment: SecureTreatment,
     /// The gamma and power state last applied, shared with the handle a test holds.
@@ -638,6 +661,7 @@ impl Headless {
             presenting: true,
             next_output: 0,
             renderer: RendererKind::default(),
+            gpu: GpuShare::default(),
             secure_treatment: SecureTreatment::default(),
             control: Arc::new(Mutex::new(HeadlessControl::default())),
             dmabuf: DmabufHub::default(),
@@ -742,7 +766,7 @@ impl Headless {
             mode.width > 0 && mode.height > 0,
             "a mode that covers no pixels cannot be an output: {mode:?}"
         );
-        let target = HeadlessTarget::with_renderer(self.renderer, mode, scale, Scale::IDENTITY)?;
+        let target = HeadlessTarget::with_shared_gpu(self.renderer, mode, scale, Scale::IDENTITY, &mut self.gpu)?;
         let id = OutputId::new(self.next_output);
         self.next_output = self.next_output.saturating_add(1);
         let output = Output::new(id, connector, mode, scale).with_identity(identity);
@@ -1057,7 +1081,11 @@ impl<S: Host + 'static> Backend<S> for Headless {
     }
 
     fn gpu_views(&self) -> bool {
-        self.renderer.draws_views()
+        // The device the first output draws on answers, because a Vulkan device with no depth-stencil format draws no View;
+        // before an output exists the renderer's kind does.
+        self.targets
+            .first()
+            .map_or_else(|| self.renderer.draws_views(), HeadlessTarget::draws_views)
     }
 
     fn read_view(
@@ -1600,10 +1628,12 @@ mod tests {
         assert_eq!(target.renderer(), RendererKind::Vulkan);
     }
 
-    /// The software and Vulkan renderers cannot render into a client's buffer, so a session that draws with either
-    /// offers no GPU capture and the capture protocols serve shared memory only.
+    /// The software renderer cannot render into a client's buffer, so a session that draws with it offers no GPU capture
+    /// and the capture protocols serve shared memory only. The Vulkan renderer writes a capture into a linear buffer in the
+    /// formats its device draws (`gnoblin_render_vulkan::dmabuf_formats`), and so a session that draws with it offers
+    /// exactly those, and no more than linear.
     #[test]
-    fn a_session_that_draws_with_the_software_or_vulkan_renderer_offers_no_gpu_capture() {
+    fn a_software_session_offers_no_gpu_capture_and_a_vulkan_one_offers_its_linear_formats() {
         let mut software = Headless::new();
         let output = software.outputs[0].id;
         assert!(Backend::<Recorder>::dmabuf_capture_support(&mut software, output).is_none());
@@ -1615,9 +1645,60 @@ mod tests {
                 return;
             };
             let output = vulkan.outputs[0].id;
-            assert!(Backend::<Recorder>::dmabuf_capture_support(&mut vulkan, output).is_none());
-            assert!(Backend::<Recorder>::dmabuf_picture_support(&mut vulkan).is_none());
+            let capture = Backend::<Recorder>::dmabuf_capture_support(&mut vulkan, output)
+                .expect("the Vulkan renderer writes a capture into a linear buffer");
+            let picture = Backend::<Recorder>::dmabuf_picture_support(&mut vulkan)
+                .expect("and writes a picture the CPU holds into one");
+            let offered: Vec<_> = gnoblin_render_vulkan::dmabuf_formats();
+            assert!(!offered.is_empty());
+            for support in [&capture, &picture] {
+                assert_eq!(
+                    support.formats.iter().count(),
+                    offered.len(),
+                    "exactly what the renderer offers"
+                );
+                assert!(
+                    offered.iter().all(|format| support.offers(*format)),
+                    "every format the renderer offers is offered to the capture client"
+                );
+            }
+            assert!(
+                Backend::<Recorder>::gpu_views(&vulkan),
+                "a Vulkan device with a depth-stencil format draws a View on the GPU"
+            );
         }
+    }
+
+    /// The outputs of one backend draw on one Vulkan device: a window that spans two outputs is uploaded once, and a lost
+    /// device is lost once. An output built with its own share would make a device of its own.
+    #[cfg(feature = "vulkan")]
+    #[test]
+    fn the_outputs_of_a_headless_backend_share_one_vulkan_device() {
+        let Ok(mut backend) = Headless::with_config(HeadlessConfig::vulkan()) else {
+            println!("skipping: no Vulkan loader or device on this machine");
+            return;
+        };
+        backend
+            .try_push_output("HEADLESS-2", DEFAULT_MODE, Scale::integral(1), None)
+            .expect("a second output");
+        let [first, second] = &mut backend.targets[..] else {
+            panic!("two outputs");
+        };
+        let device = |target: &mut HeadlessTarget| {
+            std::rc::Rc::clone(target.renderer.vulkan_mut().expect("a Vulkan renderer").gpu())
+        };
+        assert!(
+            std::rc::Rc::ptr_eq(&device(first), &device(second)),
+            "both outputs draw on the device the first one made"
+        );
+        let separate =
+            HeadlessTarget::with_renderer(RendererKind::Vulkan, DEFAULT_MODE, Scale::integral(1), Scale::IDENTITY)
+                .expect("a target on its own share");
+        let mut separate = separate;
+        assert!(
+            !std::rc::Rc::ptr_eq(&device(first), &device(&mut separate)),
+            "a target built with no share makes a device of its own"
+        );
     }
 
     /// The Vulkan renderer draws at any compositing scale into an image of any size the device allows, so a supersampled

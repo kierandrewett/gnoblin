@@ -77,7 +77,7 @@ use super::host_dmabuf::HostDmabuf;
 use super::present_dmabuf::{DmabufPresenter, GpuSlots, presentable};
 use crate::Present;
 use crate::gpu::{GpuTarget, TargetParts};
-use crate::render::renderer::{AnyRenderer, RendererKind};
+use crate::render::renderer::{AnyRenderer, GpuShare, RendererKind};
 use crate::{Output, Target};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
@@ -478,6 +478,7 @@ impl NestedTarget {
         index: usize,
         output: Output,
         kind: RendererKind,
+        share: &mut GpuShare,
         gpu: Option<(zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, HostDmabuf, SharedPresenter)>,
     ) -> Result<Self, NestedError> {
         let planned = plan(
@@ -493,7 +494,7 @@ impl NestedTarget {
         if composed.width > MAX_EXTENT || composed.height > MAX_EXTENT {
             return Err(NestedError::NoFormat);
         }
-        let renderer = AnyRenderer::new(kind, composed).map_err(NestedError::Render)?;
+        let renderer = AnyRenderer::new_sharing(kind, composed, share).map_err(NestedError::Render)?;
         let pool = Pool::new(shm, qh, index, 1, planned.physical, format)?;
         let mut target = Self {
             output,
@@ -581,6 +582,12 @@ impl NestedTarget {
     #[must_use]
     pub fn footprint(&self) -> gnoblin_render_frame::footprint::Footprint {
         self.renderer.footprint()
+    }
+
+    /// Whether this target's renderer draws a View's subtree on the GPU: the device it is on says.
+    #[must_use]
+    pub fn draws_views(&self) -> bool {
+        self.renderer.draws_views()
     }
 
     /// Applies a new configure: the mode the output is in and the scale it composes at.
@@ -915,7 +922,18 @@ impl NestedTarget {
         };
         let released = u8::try_from(slot).unwrap_or(0);
         let shown = Size::new(self.pool.width, self.pool.height);
-        let image = match self.renderer.capture(true) {
+        // A supersampled output composed more pixels than the parent's buffer has: a GPU renderer averages them down itself, and
+        // the software renderer, or a GPU pass that fails, leaves the average to the CPU.
+        let averaged = if self.output.supersample == gnoblin_types::Scale::IDENTITY {
+            None
+        } else {
+            self.renderer.downsampled(shown).ok()
+        };
+        let captured = match averaged {
+            Some(image) => Ok(image),
+            None => self.renderer.capture(true),
+        };
+        let image = match captured {
             Ok(image) if image.size() == shown => image,
             // The renderer composed at the factor; the parent's buffer is the mode.
             Ok(image) => image.downsample(shown),

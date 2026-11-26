@@ -146,7 +146,7 @@ pub use present_dmabuf::{DmabufPresenter, GbmPresenter, PresentRefusal};
 pub use surface::NestedTarget;
 
 use crate::gpu::DmabufHub;
-use crate::render::renderer::RendererKind;
+use crate::render::renderer::{GpuShare, RendererKind};
 use crate::{Backend, BackendError, BackendEvent, Host, InputSource, Output, Present, Target};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::{OutputFrame, SecureTreatment};
@@ -360,6 +360,8 @@ pub struct Nested {
     renderer: RendererKind,
     /// What clients were offered of a GPU buffer, kept so each import and copy is checked against it.
     dmabuf: DmabufHub,
+    /// What the outputs share on the GPU: one Vulkan device, on the host's main device when the machine has it.
+    share: GpuShare,
     /// Why the renderer could not be created for an output, until [`Nested::connect`] reports it: a session whose
     /// renderer is refused waits for no configure that will ever succeed.
     render_refused: Option<RenderError>,
@@ -559,6 +561,7 @@ impl Nested {
             secure_treatment: config.secure_treatment,
             renderer: config.renderer,
             dmabuf: DmabufHub::default(),
+            share: GpuShare::default(),
             render_refused: None,
             requests: Arc::new(Mutex::new(HandleRequests::default())),
             next_output: count as u64,
@@ -909,6 +912,12 @@ impl Nested {
             return;
         };
         let qh = self.queue.handle();
+        // The first Vulkan device is made on the host's main device when the machine has it, so the buffers this session
+        // presents are ones the host can import.
+        if self.share.node.is_none() {
+            self.share.node = self.handler.host_dmabuf().device();
+        }
+        let gpu = self.gpu_parts();
         match NestedTarget::new(
             &qh,
             &self.handler.shm,
@@ -918,7 +927,8 @@ impl Nested {
             index,
             output.clone(),
             self.renderer,
-            self.gpu_parts(),
+            &mut self.share,
+            gpu,
         ) {
             Ok(target) => {
                 log::debug!(area = "nested", connector = %output.connector, "an output connected");
@@ -1141,7 +1151,12 @@ impl<S: Host + 'static> Backend<S> for Nested {
     }
 
     fn gpu_views(&self) -> bool {
-        self.renderer.draws_views()
+        // The device the first output draws on answers; before an output exists, the renderer's kind does.
+        self.targets
+            .iter()
+            .flatten()
+            .next()
+            .map_or_else(|| self.renderer.draws_views(), NestedTarget::draws_views)
     }
 
     fn footprint(&self, output: OutputId) -> gnoblin_render_frame::footprint::Footprint {
