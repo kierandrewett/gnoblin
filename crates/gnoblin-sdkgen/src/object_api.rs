@@ -10,7 +10,9 @@
 //!   constructor (`new`, or `get` for a service), a getter and a setter for each property, a method for each method (a function of
 //!   the class is an associated function that takes the namespace's `Objects`), and `on_<signal>` and `on_<property>_changed`
 //!   listeners that end when the returned guard is dropped. A property that holds an object or a record reads as an `Option`, because
-//!   the catalog does not say it is always there;
+//!   the catalog does not say it is always there. A handle also has `as_<base>` for each class it extends and one `downcast(objects, value)`,
+//!   the checked cast the other way: `Some` when the object a value holds is of the class or of one that extends it (the ids of the
+//!   class and of every class of the namespace that extends it are looked up with the rest), `None` when it is of another;
 //! - an interface is a struct of handlers, one boxed closure for each method (an `Option` of one for a method the library has a
 //!   native default for), and `implement` makes the object the library calls them through;
 //! - a `callback` type is a Rust closure, wherever a property, a constructor or a method takes one.
@@ -770,6 +772,39 @@ impl go::typed::FromVal<Objects> for @Name@ {
                 _ => true,
             });
 
+        // The classes an object of this class may be: this one and every class of the namespace that extends it, looked up by name with
+        // the rest of the ids. A name the library lacks (a shell built against a newer catalog) has no objects, so it is left out.
+        let checked_down = object.kind == ObjectKind::Handle;
+        let mut family = Vec::new();
+        if checked_down {
+            for other in self.objects.values() {
+                let mut above = base_of(&self.objects, &other.name);
+                let mut steps = 0;
+                while let Some(base) = above {
+                    if base == object.name {
+                        family.push(format!("{:?}", other.name));
+                        break;
+                    }
+                    steps += 1;
+                    if steps > self.objects.len() {
+                        break;
+                    }
+                    above = base_of(&self.objects, base);
+                }
+            }
+        }
+        let (family_field, family_read) = if checked_down {
+            (
+                "    family: Vec<go::ClassId>,\n",
+                format!(
+                    "                family: std::iter::once(class).chain(<[&str]>::iter(&[{}]).filter_map(|name| api.class(name).ok())).collect(),\n",
+                    family.join(", ")
+                ),
+            )
+        } else {
+            ("", String::new())
+        };
+
         // The ids, resolved by name the first time a call needs them.
         let mut id_fields = Vec::new();
         let mut id_reads = Vec::new();
@@ -789,7 +824,7 @@ impl go::typed::FromVal<Objects> for @Name@ {
             r#"#[derive(Debug)]
 struct @Ids@ {
     class: go::ClassId,
-@Fields@
+@FamilyField@@Fields@
 }
 
 impl @Ids@ {
@@ -799,7 +834,7 @@ impl @Ids@ {
             let class = api.class(@Schema@)?;
             Ok(@Ids@ {
                 class,
-@Reads@
+@FamilyRead@@Reads@
             })
         })
     }
@@ -808,6 +843,8 @@ impl @Ids@ {
 "#,
             &[
                 ("Ids", &ids_name),
+                ("FamilyField", family_field),
+                ("FamilyRead", &family_read),
                 ("Fields", &id_fields.join("\n")),
                 ("Field", &rust_ident(&snake(&object.name))),
                 ("Schema", &format!("{:?}", object.name)),
@@ -815,7 +852,7 @@ impl @Ids@ {
             ],
         );
 
-        let mut taken: BTreeSet<String> = ["new", "new_with", "get", "handle", "destroy", "objects"]
+        let mut taken: BTreeSet<String> = ["new", "new_with", "get", "handle", "destroy", "objects", "downcast"]
             .iter()
             .map(|s| (*s).to_owned())
             .collect();
@@ -965,6 +1002,13 @@ impl @Ids@ {
                     class_name(base_object)
                 );
                 above = base_object.base.as_deref();
+            }
+            if checked_down {
+                // The other way: a value that holds an object as a base class or an interface, checked against the class the object has.
+                let _ = write!(
+                    methods,
+                    "    /// `from` as a `{name}`, when the object it holds is of that class or of a class that extends it, and `None` when it is of\n    /// another: the checked downcast of a value held as a base class or an interface (TypeScript's `instanceof`, Python's `isinstance`).\n    /// The result holds a reference of its own.\n    ///\n    /// # Errors\n    ///\n    /// `from` holds no object, or the object is gone.\n    pub fn downcast(objects: &Objects, from: &impl go::typed::ToVal) -> go::Res<Option<{name}>> {{\n        let obj = match go::typed::ToVal::to_val(from) {{\n            go::Val::Object {{ obj, .. }} => obj,\n            other => return Err(go::Fail::type_error(format!(\"expected an object, got {{}}\", other.kind_name())).at({name:?})),\n        }};\n        let class = objects.api.class_of(obj).map_err(|fail| go::typed::at_class(fail, {name:?}, \"downcast\"))?;\n        if !{ids_name}::of(objects)?.family.contains(&class) {{\n            return Ok(None);\n        }}\n        objects.api.retain(obj).map_err(|fail| go::typed::at_class(fail, {name:?}, \"downcast\"))?;\n        Ok(Some({name} {{ object: go::client::Object::adopt(objects.api, class, obj), objects: objects.clone() }}))\n    }}\n\n",
+                );
             }
             text.push_str(&fill(
                 r#"#[derive(Debug)]

@@ -538,6 +538,42 @@ let half = Workspace::new_with(
 - The struct is `<Class>Options`, or `<Class>CreateOptions` where the catalog already has a type of the first name.
 - `examples/38-native-options` is this.
 
+### Check which class an object is
+
+A property typed as a base class or an interface, such as the `Layout` a workspace holds, may hold a class that extends it. Rust casts in
+both directions:
+
+- `as_<base>` goes up, from a class to one it extends.
+- `downcast` goes down. Call it on the class you want, with the library's `Objects` and any value that holds an object.
+
+`downcast` returns:
+
+- `Ok(Some(class))` when the object is of that class or of a class that extends it.
+- `Ok(None)` when the object is of another class.
+- An error when the object is gone.
+
+| Language   | Check                                       |
+| ---------- | ------------------------------------------- |
+| TypeScript | `layout instanceof StripLayout`             |
+| Python     | `isinstance(layout, StripLayout)`           |
+| Rust       | `StripLayout::downcast(&objects, &layout)?` |
+
+```rust
+use gnoblin_std::objects::{StripLayout, Workspace};
+
+fn focus_next_column(objects: &gnoblin_std::objects::Objects, workspace: &Workspace) -> gnoblin_std::Result<()> {
+    if let Some(layout) = workspace.layout()?
+        && let Some(strip) = StripLayout::downcast(objects, &layout)?
+    {
+        strip.focus_right()?;
+    }
+    Ok(())
+}
+```
+
+The starter's `Super+Left` and `Super+Right` are this. [Workspaces](shell-api/workspaces#act-on-the-layout-a-workspace-has) shows the whole
+binding in the three languages.
+
 ### Keyboard focus
 
 A shell on the core alone has no focus policy. The core moves the keyboard when a shell writes it (`Window::focus`), so

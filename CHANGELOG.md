@@ -141,6 +141,7 @@
 
 #### Windows, workspaces and shell
 
+- Each handle class of the typed Rust API has `downcast(objects, value)`, the check that TypeScript spells `instanceof` and Python `isinstance`: `Ok(Some(class))` when the object a value holds is of that class or of one that extends it, `Ok(None)` when it is of another, and an error when the object is gone (`StripLayout::downcast(&objects, &layout)?`). The Rust starter uses it to bind `Super+Left` and `Super+Right`, which the TypeScript and Python starters already did (`docs/sdk-generator.md`, `docs/shell-api/workspaces.md`, `docs/shell-api/input.md`).
 - Workspaces, desks and window placement are now handled by the native library, so window membership events and layout arrive one to two frames after the engine sees a window, and floating windows keep their own bounds.
 - Gnoblin now picks and starts its shell itself, with `--shell`, `--isolate` and `--list-shells` options, and `gnoblinctl shell reload`, `status` and `watch` let a running shell reload without dropping clients.
 - Native tiling layouts (dwindle, strip, arc, carousel) now match the TypeScript layouts, including split resizing, edge snapping, client size limits and touchpad swipe and pinch bindings via `GestureBinding`.

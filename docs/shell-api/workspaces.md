@@ -361,6 +361,113 @@ methods of its `Layout` subclass, and Rust sets them as the fields of `LayoutHan
 A layout's bindings are the drag bindings you install for the windows of its workspace, such as the drag that moves a
 floating window or swaps two tiles: see [Input handlers](input-handlers).
 
+### Act on the layout a workspace has
+
+`workspace.layout` reads as the base type `Layout`. The actions of a layout, such as `focusLeft` of a `StripLayout`, belong to its class,
+so check the class before calling one. The check is false for a layout of another class, and the call is skipped.
+
+- TypeScript: `instanceof`.
+- Python: `isinstance`.
+- Rust: `downcast` of the class.
+
+This binds `Super+Left` and `Super+Right` to move focus between the columns of the strip on the display under the pointer. They
+do nothing on other layouts.
+
+::: tabs
+
+```typescript
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { StripLayout } from "gnoblin-std/generated/objects";
+
+const seat = gnoblin.input?.primary;
+for (const [key, side] of [
+    ["Super+Left", "focusLeft"],
+    ["Super+Right", "focusRight"],
+] as const) {
+    seat?.bind(key, () => {
+        const layout = seat.activeDisplay?.viewport?.content?.layout;
+        if (layout instanceof StripLayout) {
+            layout[side]();
+        }
+    });
+}
+```
+
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import InputContextAugment, StripLayout
+
+input = Gnoblin.get().input.primary
+
+
+def move_column(side):
+    def action(_event):
+        display = InputContextAugment.get().active_display(input)
+        viewport = display.viewport if display is not None else None
+        layout = viewport.content.layout if viewport is not None and viewport.content is not None else None
+        if isinstance(layout, StripLayout):
+            getattr(layout, side)()
+
+    return action
+
+
+input.bind("Super+Left", move_column("focus_left"))
+input.bind("Super+Right", move_column("focus_right"))
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::objects::StripLayout;
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let std = g.std()?.objects()?;
+    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let seat = model.input()?.primary()?;
+    for (key, right) in [("Super+Left", false), ("Super+Right", true)] {
+        let model = Rc::clone(&model);
+        let std = std.clone();
+        seat.bind(
+            key,
+            Some(move |_event| {
+                let Some(display) = model.input()?.primary()?.active_display()? else {
+                    return Ok(true);
+                };
+                let Some(viewport) = display.viewport()? else {
+                    return Ok(true);
+                };
+                let Some(workspace) = viewport.content()? else {
+                    return Ok(true);
+                };
+                let Some(layout) = workspace.layout()? else {
+                    return Ok(true);
+                };
+                // `Some` only when the layout is a `StripLayout`, or a class that extends it.
+                if let Some(strip) = StripLayout::downcast(&std, &layout)? {
+                    if right {
+                        strip.focus_right()?;
+                    } else {
+                        strip.focus_left()?;
+                    }
+                }
+                Ok(true)
+            }),
+            None,
+        )?;
+    }
+    Ok(())
+}
+```
+
+:::
+
+A layout that a shell made itself and kept needs no check: `StripLayout::new(&std)?` is already a `StripLayout`. The check is for a
+layout read back from a workspace, whose type is only `Layout`.
+
 ## Workspace events
 
 Each event has the same meaning in every language. Install a handler with `on` in TypeScript and Python, and with the

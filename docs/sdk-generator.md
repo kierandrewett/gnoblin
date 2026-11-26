@@ -228,6 +228,26 @@ library and fails only on a name the library lacks.
 A member whose type names a class of another namespace is refused at build time with a
 message that says so: a typed reference across two libraries needs both libraries' `Objects`, which no catalog needs yet.
 
+### Check which class an object is
+
+A property typed as a base class or an interface (`workspace.layout`) holds the class the library made, which may extend that type. A shell
+that wants a member only the concrete class has asks for the class first. Each language uses its own check:
+
+| Language   | Check                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------- |
+| TypeScript | `layout instanceof StripLayout`                                                                         |
+| Python     | `isinstance(layout, StripLayout)`                                                                       |
+| Rust       | `StripLayout::downcast(&objects, &layout)?`, which is `Some(strip)` for a strip and `None` for the rest |
+
+The check is true for the class and for every class that extends it. In Rust each handle class has one `downcast(objects, from)`:
+
+- `objects` is the namespace's `Objects`, and `from` is any value that holds an object, such as a `Layout`.
+- It returns `Ok(Some(class))` when the object is of that class or of a class that extends it, and `Ok(None)` when it is of another.
+- It fails when the object is gone.
+- The result holds a reference of its own, so `from` stays valid.
+
+`as_<base>` is the other direction, from a class to a class it extends. A record, an interface and a service have no `downcast`.
+
 ### The classes in JavaScript, TypeScript and Python
 
 `object-js`, `object-py` and `object-types` write the same surface for the script languages, from the same catalog, over the object

@@ -179,7 +179,7 @@ every device. Use it for a macro pad.
 
 ## Device classes and their settings
 
-A device is an instance of the class its capabilities name. Test a device's class with your language's own check: `instanceof` in TypeScript, `isinstance` in Python. Rust has no such check, so match on `capabilities` instead.
+A device is an instance of the class its capabilities name. Test a device's class with your language's own check: `instanceof` in TypeScript, `isinstance` in Python and the class's `downcast` in Rust, which gives `Some` for a device of that class and `None` for another.
 
 - `Keyboard`: a keyboard, also one with a pointing stick.
 - `Mouse`: any other pointer.
@@ -226,17 +226,28 @@ for device in gnoblin.input.devices:
         device.tap_to_click = True
 ```
 
-```rust skip="Rust cannot turn an InputDevice the compositor already has into a Mouse, Keyboard or Touchpad; it can only create one with Mouse::new, so this shows that instead of changing the existing devices in the loop above"
+```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::Mouse;
+use gnoblin_core::objects::{AccelerationProfile, Keyboard, ModelRoot, Mouse, Touchpad};
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
-    let mouse = Mouse::new(&objects)?;
-    mouse.set_sensitivity(0.5)?;
-    mouse.set_natural_scroll(true)?;
+    for device in ModelRoot::get(&objects)?.input()?.devices()? {
+        if let Some(mouse) = Mouse::downcast(&objects, &device)? {
+            mouse.set_sensitivity(0.5)?;
+            mouse.set_acceleration(AccelerationProfile::Flat)?;
+        }
+        if let Some(keyboard) = Keyboard::downcast(&objects, &device)? {
+            keyboard.set_repeat_rate(40.0)?;
+            keyboard.set_repeat_delay(250)?;
+        }
+        if let Some(touchpad) = Touchpad::downcast(&objects, &device)? {
+            touchpad.set_natural_scroll(true)?;
+            touchpad.set_tap_to_click(true)?;
+        }
+    }
     Ok(())
 }
 ```
