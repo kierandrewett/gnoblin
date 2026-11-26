@@ -15,8 +15,9 @@ A menu request is one kind of request a client makes of its window. A `RequestLi
 ::: tabs
 
 ```typescript
-import { RequestListener, WindowState } from "gnoblin-std";
-import type { ClientRequest } from "gnoblin-std";
+import { RequestListener, WindowState } from "gnoblin-std/generated/objects";
+import type { ClientRequest } from "gnoblin-std/generated/objects";
+import type {} from "gnoblin-std";
 
 class OwnMenu extends RequestListener {
     onRequest(request: ClientRequest) {
@@ -50,16 +51,20 @@ state.start()
 ```
 
 ```rust
-use gnoblin_core::Gnoblin;
-use gnoblin_std::objects::{ClientRequest, ClientRequestKind, RequestListenerHandlers, WindowState};
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{ClientRequestKind, RequestListenerHandlers, WindowState};
+use gnoblin_std::prelude::*;
 
-fn main(g: &Gnoblin) -> gnoblin_core::Result<()> {
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
+    let model = ModelRoot::get(&g.objects()?)?;
     let listener = RequestListenerHandlers {
-        on_request: Box::new(move |request: ClientRequest| {
+        on_request: Box::new(move |request| {
             if request.kind()? == ClientRequestKind::Menu {
                 request.take()?;
-                g.spawn(&format!("notify-send Menu at {} {}", request.x()?, request.y()?))?;
+                let text = format!("Menu at {}, {}", request.x()?, request.y()?);
+                model.spawn(&["notify-send".to_string(), text], None)?;
             }
             Ok(())
         }),
@@ -67,7 +72,10 @@ fn main(g: &Gnoblin) -> gnoblin_core::Result<()> {
     .implement(&objects)?;
     let state = WindowState::get(&objects)?;
     state.add_listener(&listener, None)?;
-    state.start()
+    // The service holds the listener from here on.
+    std::mem::forget(listener);
+    state.start()?;
+    Ok(())
 }
 ```
 

@@ -9,8 +9,6 @@ A key is a function, and the function can read and write the focused window:
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin";
-
 gnoblin.input.primary.bind("Super+Down", () => {
     const client = gnoblin.input.primary.focusedClient;
     if (client === null) {
@@ -41,7 +39,8 @@ def toggle_window(event):
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::{Gnoblin, ModelRoot};
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {

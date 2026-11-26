@@ -71,17 +71,20 @@ entries to show. Each entry is a `MenuEntry`: a label and any of these:
 ::: tabs
 
 ```typescript
-import { Gnoblin, MenuEntry, MenuProvider, WindowMenus } from "gnoblin-std";
+import { Gnoblin } from "gnoblin-core/generated/objects";
+import { MenuEntry, MenuProvider, WindowMenus } from "gnoblin-std/generated/objects";
+import type {} from "gnoblin-std";
 
+const clients = Gnoblin.get().clients;
 const menus = WindowMenus.get();
 
 class CopyTitle extends MenuProvider {
     items(id: string): MenuEntry[] {
-        const window = gnoblin.clients.get(id);
+        const window = clients.get(id);
         const entries = window === undefined ? [] : menus.defaultItems(window);
         const copy = new MenuEntry("Copy title");
         copy.run = (target: string) => {
-            gnoblin.spawn(["wl-copy", gnoblin.clients.get(target)?.title ?? ""]);
+            gnoblin.spawn(["wl-copy", clients.get(target)?.title ?? ""]);
         };
         entries.splice(entries.length - 1, 0, copy);
         return entries;
@@ -93,21 +96,21 @@ menus.start();
 ```
 
 ```python
-from gnoblin_std import Gnoblin, MenuEntry, MenuProvider, WindowMenus
-from gnoblin_core import ClientQuery, Gnoblin as CoreGnoblin
+from gnoblin.objects.model import ClientQuery, Gnoblin
+from gnoblin.objects.std import MenuEntry, MenuProvider, WindowMenus
 
 
 class CopyTitle(MenuProvider):
-    def items(self, id: str) -> list[MenuEntry]:
-        clients = CoreGnoblin.get().find_clients(ClientQuery(id=id))
+    def items(self, client: str) -> list[MenuEntry]:
+        clients = Gnoblin.get().find_clients(ClientQuery(id=client))
         window = clients[0] if clients else None
         entries = [] if window is None else WindowMenus.get().default_items(window)
         copy = MenuEntry("Copy title")
 
         def run(target: str) -> None:
-            found = CoreGnoblin.get().find_clients(ClientQuery(id=target))
+            found = Gnoblin.get().find_clients(ClientQuery(id=target))
             title = found[0].title if found else ""
-            CoreGnoblin.get().spawn(["wl-copy", title])
+            Gnoblin.get().spawn(["wl-copy", title])
 
         copy.run = run
         entries.insert(len(entries) - 1, copy)
@@ -122,45 +125,51 @@ menus.start()
 ```rust
 use std::rc::Rc;
 
-use gnoblin_std::{MenuEntry, MenuEntryOptions, MenuProvider, MenuProviderHandlers, WindowMenus};
-use gnoblin_core::{ClientQuery, ModelRoot, Objects};
+use gnoblin_core::objects::{ClientQuery, ModelRoot};
+use gnoblin_std::objects::{MenuEntry, MenuProviderHandlers, WindowMenus};
+use gnoblin_std::prelude::*;
 
-fn find_client(objects: &Objects, id: &str) -> gnoblin_core::Res<Option<gnoblin_core::Client>> {
-    let query = ClientQuery { id: Some(id.to_string()), ..Default::default() };
-    Ok(ModelRoot::get(objects)?.find_clients(Some(&query))?.into_iter().next())
-}
-
-fn copy_title_items(objects: Rc<Objects>, id: String) -> gnoblin_core::Res<Vec<MenuEntry>> {
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
     let menus = WindowMenus::get(&objects)?;
-    let mut entries = match find_client(&objects, &id)? {
-        Some(window) => menus.default_items(&window)?,
-        None => Vec::new(),
+    let core = Rc::new(g.objects()?);
+    let model_for_find = core.clone();
+    let find = move |id: &str| {
+        let query = ClientQuery { id: Some(id.to_string()), ..Default::default() };
+        ModelRoot::get(&model_for_find)
+            .and_then(|model| model.find_clients(Some(&query)))
+            .map(|found| found.into_iter().next())
     };
-    let copy = MenuEntry::new(&objects, "Copy title")?;
-    let run_objects = objects.clone();
-    copy.set_run(move |target: String| {
-        if let Some(window) = find_client(&run_objects, &target)? {
-            let title = window.title()?;
-            ModelRoot::get(&run_objects)?.spawn(&["wl-copy".to_string(), title], None)?;
-        }
-        Ok(())
-    })?;
-    entries.insert(entries.len() - 1, copy);
-    Ok(entries)
-}
-
-pub fn install(objects: Rc<Objects>) -> gnoblin_core::Res<()> {
-    let handlers = MenuProviderHandlers {
-        items: Some(Box::new({
-            let objects = objects.clone();
-            move |id: String| copy_title_items(objects.clone(), id)
+    let find_on_run = find.clone();
+    let made = objects.clone();
+    let stock = WindowMenus::get(&objects)?;
+    let provider = MenuProviderHandlers {
+        items: Some(Box::new(move |id: String| {
+            let mut entries = match find(&id)? {
+                Some(window) => stock.default_items(&window)?,
+                None => Vec::new(),
+            };
+            let copy = MenuEntry::new(&made, "Copy title")?;
+            let find = find_on_run.clone();
+            let model = ModelRoot::get(&core)?;
+            copy.set_run(move |target: String| {
+                if let Some(window) = find(&target)? {
+                    model.spawn(&["wl-copy".to_string(), window.title()?], None)?;
+                }
+                Ok(())
+            })?;
+            entries.insert(entries.len() - 1, copy);
+            Ok(entries)
         })),
         show: None,
-    };
-    let provider = MenuProvider::implement(&objects, handlers)?;
-    let menus = WindowMenus::get(&objects)?;
+    }
+    .implement(&objects)?;
     menus.set_provider(&provider)?;
-    menus.start()
+    // The service holds the provider from here on.
+    std::mem::forget(provider);
+    menus.start()?;
+    Ok(())
 }
 ```
 
@@ -179,11 +188,15 @@ close on a press elsewhere, and be `secure` when the window is, as the stock men
 ::: tabs
 
 ```typescript
-import { Box, MenuProvider, Text, WindowMenus } from "gnoblin-std";
+import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Box, MenuProvider, Text, WindowMenus } from "gnoblin-std/generated/objects";
+import type {} from "gnoblin-std";
+
+const clients = Gnoblin.get().clients;
 
 class OwnMenu extends MenuProvider {
     show(id: string, x: number, y: number): void {
-        const client = gnoblin.clients.get(id);
+        const client = clients.get(id);
         if (client === undefined) return;
         const card = new Box({ x, y, width: 160, height: 36, radius: 8, fill: "#1e1e2e", secure: client.secure });
         card.add(new Text({ text: "Close", size: 14 }));
@@ -204,23 +217,23 @@ menus.start();
 ```
 
 ```python
-from gnoblin_std import Box, MenuProvider, Text, WindowMenus
-from gnoblin_core import ClientQuery, Gnoblin as CoreGnoblin
+from gnoblin.objects.model import ClientQuery, Gnoblin
+from gnoblin.objects.std import Box, MenuProvider, Text, WindowMenus
 
 
 class OwnMenu(MenuProvider):
-    def show(self, id: str, x: float, y: float) -> None:
-        found = CoreGnoblin.get().find_clients(ClientQuery(id=id))
+    def show(self, client: str, x: float, y: float) -> None:
+        found = Gnoblin.get().find_clients(ClientQuery(id=client))
         if not found:
             return
-        client = found[0]
-        card = Box(x=x, y=y, width=160, height=36, radius=8, fill="#1e1e2e", secure=client.secure)
+        window = found[0]
+        card = Box(x=x, y=y, width=160, height=36, radius=8, fill="#1e1e2e", secure=window.secure)
         card.add(Text(text="Close", size=14))
 
         def on_pointer(event) -> bool:
             if event.kind == "press":
                 card.destroy()
-                client.close()
+                window.close()
             return True
 
         card.on_pointer = on_pointer
@@ -232,8 +245,64 @@ menus.provider = OwnMenu()
 menus.start()
 ```
 
-```rust skip="The reference shows no documented Rust way to add a Text child to a UiBox"
+```rust
+use std::rc::Rc;
 
+use gnoblin_core::objects::{ClientQuery, ModelRoot};
+use gnoblin_std::objects::{MenuProviderHandlers, PointerKind, Text, UiBox, UiBoxOptions, WindowMenus};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let core = Rc::new(g.objects()?);
+    let made = objects.clone();
+    let provider = MenuProviderHandlers {
+        items: None,
+        show: Some(Box::new(move |id: String, x: f64, y: f64| {
+            let query = ClientQuery { id: Some(id), ..Default::default() };
+            let Some(window) = ModelRoot::get(&core)?.find_clients(Some(&query))?.into_iter().next() else {
+                return Ok(());
+            };
+            let card = Rc::new(UiBox::new_with(
+                &made,
+                UiBoxOptions {
+                    x: Some(x),
+                    y: Some(y),
+                    width: Some(160.0),
+                    height: Some(36.0),
+                    radius: Some(8.0),
+                    fill: Some("#1e1e2e".to_string()),
+                    secure: Some(window.secure()?),
+                    ..Default::default()
+                },
+            )?);
+            let label = Text::new(&made)?;
+            label.set_text("Close")?;
+            label.set_size(14.0)?;
+            card.add(&label.as_canvas()?)?;
+            let pressed = Rc::clone(&card);
+            card.set_on_pointer(move |event| {
+                if event.kind == PointerKind::Press {
+                    pressed.destroy()?;
+                    window.close()?;
+                }
+                Ok(true)
+            })?;
+            card.mount_top()?;
+            // The compositor's tree holds the card from here on.
+            std::mem::forget(Rc::clone(&card));
+            Ok(())
+        })),
+    }
+    .implement(&objects)?;
+    let menus = WindowMenus::get(&objects)?;
+    menus.set_provider(&provider)?;
+    // The service holds the provider from here on.
+    std::mem::forget(provider);
+    menus.start()?;
+    Ok(())
+}
 ```
 
 :::
@@ -249,22 +318,26 @@ place and Escape puts the window back. The entries are dim until a mode can star
 ::: tabs
 
 ```typescript
-import { Repositioning } from "gnoblin-std";
+import { Repositioning } from "gnoblin-std/generated/objects";
+import type {} from "gnoblin-std";
 
 Repositioning.get().start();
 ```
 
 ```python
-from gnoblin_std import Repositioning
+from gnoblin.objects.std import Repositioning
 
 Repositioning.get().start()
 ```
 
 ```rust
-use gnoblin_std::Repositioning;
+use gnoblin_std::objects::Repositioning;
+use gnoblin_std::prelude::*;
 
-pub fn start_modes(objects: &gnoblin_core::Objects) -> gnoblin_core::Res<()> {
-    Repositioning::get(objects)?.start()
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    Repositioning::get(&g.std()?.objects()?)?.start()?;
+    Ok(())
 }
 ```
 
