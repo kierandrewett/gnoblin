@@ -119,8 +119,8 @@ pub enum LoadError {
     StdMissing {
         /// The module path as asked for.
         path: PathBuf,
-        /// Where std was looked for and what became of it.
-        missing: StdMissing,
+        /// Where std was looked for and what became of it, boxed so a load error stays small.
+        missing: Box<StdMissing>,
     },
     /// The file loaded but exports no `gnoshell_entry_v1`.
     NotAShell {
@@ -614,7 +614,7 @@ impl<E: 'static> NativeLoader<E> {
         let handle = opened.map_err(|message| match std {
             Some(Err(missing)) if message.contains(std_library::SONAME) => LoadError::StdMissing {
                 path: path.to_owned(),
-                missing,
+                missing: Box::new(missing),
             },
             _ => classify_dlopen(path, &target, &message),
         })?;
