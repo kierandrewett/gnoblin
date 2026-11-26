@@ -22,7 +22,7 @@ fn the_shared_scenes_match_their_goldens_on_gles() {
 }
 
 #[test]
-fn tint_and_opacity_match_the_same_goldens_on_the_software_renderer() {
+fn the_scenes_the_software_renderer_draws_match_the_same_goldens() {
     for case in golden::CASES.iter().filter(|case| case.software) {
         let mut renderer = Software::new(golden::SIZE).expect("a software renderer");
         renderer.draw(&golden::frame_of(case), Scale::IDENTITY).expect("drawn");

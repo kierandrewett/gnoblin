@@ -18,8 +18,8 @@
 //! under a tint, a shadow darker than the backdrop). They run on every picture, including the one a renderer is about to
 //! write, so a wrong golden written by the first renderer to draw a case is caught.
 //!
-//! Tint and opacity are properties the software renderer draws too, so a case marked `software` is checked against its
-//! picture as well. Blur and shadow are the GPU renderers' alone.
+//! The software renderer draws every case below (it computes blur, shadow and border on the CPU), so a case marked
+//! `software` is checked against its picture as well; a new case the software renderer cannot draw is marked `false`.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -153,7 +153,7 @@ pub const CASES: [Case; 5] = [
     Case {
         name: "shadow",
         layers: || vec![window(one(shadow()), Color::WHITE, 1.0)],
-        software: false,
+        software: true,
         tolerance: SHAPE_TOLERANCE,
         probes: |image| {
             assert_eq!(rgb(image, 12, 10), ORANGE, "the window is over its shadow");
@@ -169,7 +169,7 @@ pub const CASES: [Case; 5] = [
     Case {
         name: "blur",
         layers: || vec![glass(), window(Effects::new(), Color::WHITE, 1.0)],
-        software: false,
+        software: true,
         tolerance: BLUR_TOLERANCE,
         probes: |image| {
             assert_eq!(rgb(image, 12, 10), ORANGE, "the window is over its glass");
@@ -225,7 +225,7 @@ pub const CASES: [Case; 5] = [
             chain.push(blur()).expect("a blur");
             vec![window(chain, TINT, 0.6)]
         },
-        software: false,
+        software: true,
         tolerance: BLUR_TOLERANCE,
         probes: |image| {
             let window_pixel = rgb(image, 12, 10);
