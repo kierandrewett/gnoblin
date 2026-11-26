@@ -193,6 +193,21 @@ pub fn schema_text() -> String {
                 }
             }
         }
+        // Each alias is a class of its own name that extends the kind's class and adds nothing.
+        for alias in kind.aliases {
+            out.push('\n');
+            comment(
+                &mut out,
+                &format!(
+                    "The {} layout by the name `{}`: the same layout, which takes the same options.",
+                    kind.name,
+                    class_name(alias)
+                ),
+            );
+            out.push_str("[[object]]\n");
+            let _ = writeln!(out, "name = {}", toml_text(&class_name(alias)));
+            let _ = writeln!(out, "since = \"0.2.0\"\nbase = {}", toml_text(&class_name(kind.name)));
+        }
     }
     out
 }

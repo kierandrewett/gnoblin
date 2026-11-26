@@ -125,6 +125,9 @@ pub struct LayoutKindDesc {
     pub actions: &'static [ActionDesc],
     /// The layout answers `workspace_find_split`: a drag can move one of its dividers.
     pub dividers: bool,
+    /// Other names of the same layout, each a class of the catalog (`<alias>_layout`) that extends this kind's class and adds nothing:
+    /// the names the TypeScript library gave it (`KioskLayout` for the monocle, `Carousel3dLayout` for the carousel).
+    pub aliases: &'static [&'static str],
 }
 
 const fn value(ty: ValueShape) -> ValueDesc {
@@ -288,6 +291,7 @@ const MASTER_STACK: LayoutKindDesc = LayoutKindDesc {
     ],
     actions: &[],
     dividers: true,
+    aliases: &[],
 };
 
 const GRID: LayoutKindDesc = LayoutKindDesc {
@@ -311,6 +315,7 @@ const GRID: LayoutKindDesc = LayoutKindDesc {
     ],
     actions: &[],
     dividers: false,
+    aliases: &[],
 };
 
 const MONOCLE: LayoutKindDesc = LayoutKindDesc {
@@ -320,6 +325,7 @@ const MONOCLE: LayoutKindDesc = LayoutKindDesc {
     options: &[],
     actions: &[],
     dividers: false,
+    aliases: &["kiosk"],
 };
 
 const DWINDLE: LayoutKindDesc = LayoutKindDesc {
@@ -513,6 +519,7 @@ const DWINDLE: LayoutKindDesc = LayoutKindDesc {
         ),
     ],
     dividers: true,
+    aliases: &[],
 };
 
 const STRIP: LayoutKindDesc = LayoutKindDesc {
@@ -560,6 +567,7 @@ const STRIP: LayoutKindDesc = LayoutKindDesc {
         ),
     ],
     dividers: false,
+    aliases: &[],
 };
 
 const ARC: LayoutKindDesc = LayoutKindDesc {
@@ -584,6 +592,7 @@ const ARC: LayoutKindDesc = LayoutKindDesc {
     ],
     actions: &[],
     dividers: false,
+    aliases: &[],
 };
 
 const CAROUSEL: LayoutKindDesc = LayoutKindDesc {
@@ -604,6 +613,7 @@ const CAROUSEL: LayoutKindDesc = LayoutKindDesc {
          Nothing happens while no window has the keyboard.",
     )],
     dividers: false,
+    aliases: &["carousel3d"],
 };
 
 /// The options of the ring: [`CAROUSEL`] lays its cards out with them, and `layout_ring` takes the same set.
@@ -804,9 +814,17 @@ mod tests {
                     .bytes()
                     .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
         };
-        let mut kinds: Vec<&str> = LAYOUT_KINDS.iter().map(|kind| kind.name).collect();
+        // A kind's aliases are class names too, so no alias may be the name of a kind or another alias.
+        let mut kinds: Vec<&str> = LAYOUT_KINDS
+            .iter()
+            .flat_map(|kind| std::iter::once(kind.name).chain(kind.aliases.iter().copied()))
+            .collect();
+        let declared = kinds.len();
         for kind in LAYOUT_KINDS {
             assert!(ok(kind.name), "{}", kind.name);
+            for alias in kind.aliases {
+                assert!(ok(alias), "{} alias {alias}", kind.name);
+            }
             let mut names: Vec<&str> = kind.options.iter().map(|o| o.name).collect();
             names.extend(kind.actions.iter().map(|a| a.name));
             let all = names.len();
@@ -819,7 +837,7 @@ mod tests {
         }
         kinds.sort_unstable();
         kinds.dedup();
-        assert_eq!(kinds.len(), LAYOUT_KINDS.len());
+        assert_eq!(kinds.len(), declared);
     }
 
     #[test]

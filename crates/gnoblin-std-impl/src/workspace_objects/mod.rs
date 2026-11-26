@@ -33,8 +33,12 @@ use crate::error::Res as StdRes;
 use crate::object::with_lib;
 use crate::state::{Id, Notice, State, Std};
 
+pub(crate) use clients::{client_floating, client_floating_bounds, set_client_floating, set_client_floating_bounds};
 pub(crate) use values::{NOTICE_HIDDEN, NOTICE_SHOWN};
-pub(crate) use workspaces::{client_workspace, move_client, output_workspace, show_on_output};
+pub(crate) use workspaces::{
+    client_frame_inset, client_output, client_workspace, find_workspaces, move_client, move_client_to_output,
+    output_area, output_workspace, show_on_output, show_workspace,
+};
 
 thread_local! {
     /// The object of each workspace a shell was given: one for each, so asking for a workspace again gives the one object.

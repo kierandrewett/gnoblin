@@ -29,6 +29,19 @@ member | arc_layout.reset_split | method (token:uint) native-default | 0.2.0
 member | arc_layout.revision | method () -> uint native-default | 0.2.0
 member | arc_layout.set_split | method (token:uint, ratio:double, cross_ratio?:double) native-default | 0.2.0
 member | arc_layout.spacing | property double rw | 0.2.0
+member | carousel3d_layout.area_changed | method (before:object:layout_rect, now:object:layout_rect) native-default | 0.2.0
+member | carousel3d_layout.card_height | property double rw | 0.2.0
+member | carousel3d_layout.card_width | property double rw | 0.2.0
+member | carousel3d_layout.client_added | method (context:object:layout_context, client:object:gnoblin.model.client) native-default | 0.2.0
+member | carousel3d_layout.client_removed | method (context:object:layout_context, client:object:gnoblin.model.client) native-default | 0.2.0
+member | carousel3d_layout.clients_swapped | method (a:object:gnoblin.model.client, b:object:gnoblin.model.client) native-default | 0.2.0
+member | carousel3d_layout.compute | method (context:object:layout_context) -> list<object:layout_placement> required | 0.2.0
+member | carousel3d_layout.find_split | method (client:object:gnoblin.model.client, x:double, y:double) -> list<object:layout_split> native-default | 0.2.0
+member | carousel3d_layout.fov | property double rw | 0.2.0
+member | carousel3d_layout.reset_split | method (token:uint) native-default | 0.2.0
+member | carousel3d_layout.revision | method () -> uint native-default | 0.2.0
+member | carousel3d_layout.rotate | method (steps:int) | 0.2.0
+member | carousel3d_layout.set_split | method (token:uint, ratio:double, cross_ratio?:double) native-default | 0.2.0
 member | carousel_layout.area_changed | method (before:object:layout_rect, now:object:layout_rect) native-default | 0.2.0
 member | carousel_layout.card_height | property double rw | 0.2.0
 member | carousel_layout.card_width | property double rw | 0.2.0
@@ -87,6 +100,15 @@ member | grid_layout.gap | property double rw,optional | 0.2.0
 member | grid_layout.reset_split | method (token:uint) native-default | 0.2.0
 member | grid_layout.revision | method () -> uint native-default | 0.2.0
 member | grid_layout.set_split | method (token:uint, ratio:double, cross_ratio?:double) native-default | 0.2.0
+member | kiosk_layout.area_changed | method (before:object:layout_rect, now:object:layout_rect) native-default | 0.2.0
+member | kiosk_layout.client_added | method (context:object:layout_context, client:object:gnoblin.model.client) native-default | 0.2.0
+member | kiosk_layout.client_removed | method (context:object:layout_context, client:object:gnoblin.model.client) native-default | 0.2.0
+member | kiosk_layout.clients_swapped | method (a:object:gnoblin.model.client, b:object:gnoblin.model.client) native-default | 0.2.0
+member | kiosk_layout.compute | method (context:object:layout_context) -> list<object:layout_placement> required | 0.2.0
+member | kiosk_layout.find_split | method (client:object:gnoblin.model.client, x:double, y:double) -> list<object:layout_split> native-default | 0.2.0
+member | kiosk_layout.reset_split | method (token:uint) native-default | 0.2.0
+member | kiosk_layout.revision | method () -> uint native-default | 0.2.0
+member | kiosk_layout.set_split | method (token:uint, ratio:double, cross_ratio?:double) native-default | 0.2.0
 member | master_stack_layout.area_changed | method (before:object:layout_rect, now:object:layout_rect) native-default | 0.2.0
 member | master_stack_layout.client_added | method (context:object:layout_context, client:object:gnoblin.model.client) native-default | 0.2.0
 member | master_stack_layout.client_removed | method (context:object:layout_context, client:object:gnoblin.model.client) native-default | 0.2.0
@@ -125,9 +147,11 @@ member | strip_layout.scroll_to | method (offset?:double) | 0.2.0
 member | strip_layout.set_split | method (token:uint, ratio:double, cross_ratio?:double) native-default | 0.2.0
 
 object | arc_layout | base layout | 0.2.0
+object | carousel3d_layout | base carousel_layout | 0.2.0
 object | carousel_layout | base layout | 0.2.0
 object | dwindle_layout | base layout | 0.2.0
 object | grid_layout | base layout | 0.2.0
+object | kiosk_layout | base monocle_layout | 0.2.0
 object | master_stack_layout | base layout | 0.2.0
 object | monocle_layout | base layout | 0.2.0
 object | strip_layout | base layout | 0.2.0

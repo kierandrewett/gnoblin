@@ -21,7 +21,9 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use gnoblin_core::objects::{ClientCollection, ClientQuery, ModelRoot};
-use gnoblin_std::objects::{Display, DisplaySelector, OutputMatch, OutputProfile, TransitionOptions, Workspace};
+use gnoblin_std::objects::{
+    Display, DisplaySelector, OutputMatch, OutputProfile, TransitionOptions, Workspace, WorkspaceQuery,
+};
 use gnoblin_std::prelude::*;
 
 /// The options of a transition of `duration` milliseconds.
@@ -138,6 +140,31 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             let _ = workspaces.show_by_id("main", None);
             say("show main by id: true".to_owned());
             say(format!("main is active: {}", main.active().unwrap_or(false)));
+            // `find::<Workspace>` is a kind of the root's `find` once std is loaded.
+            let model = g.objects().ok().and_then(|core| ModelRoot::get(&core).ok());
+            let ids = |query: WorkspaceQuery| {
+                model
+                    .as_ref()
+                    .and_then(|model| model.find::<Workspace>(Some(&query)).ok())
+                    .map(|found| {
+                        found
+                            .iter()
+                            .filter_map(|workspace| workspace.id().ok())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    })
+                    .unwrap_or_default()
+            };
+            let by_id = ids(WorkspaceQuery {
+                id: Some("side".to_owned()),
+                ..WorkspaceQuery::default()
+            });
+            say(format!("find Workspace by id: {by_id}"));
+            let shown = ids(WorkspaceQuery {
+                active: Some(true),
+                ..WorkspaceQuery::default()
+            });
+            say(format!("find Workspace shown: {shown}"));
             let shown = g
                 .objects()
                 .ok()

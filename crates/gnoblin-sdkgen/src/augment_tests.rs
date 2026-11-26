@@ -35,7 +35,7 @@ const MEMBERS: [(&str, &[&str], &[&str]); 6] = [
     (
         "gnoblin_augment",
         &["workspaces", "displays", "scene", "gestures"],
-        &["request_transition"],
+        &["find_workspaces", "request_transition", "show"],
     ),
     ("output_collection_augment", &["profiles"], &[]),
     ("input_context_augment", &[], &["active_display"]),
@@ -45,15 +45,22 @@ const MEMBERS: [(&str, &[&str], &[&str]); 6] = [
         &[],
         &[
             "computed_style",
+            "floating",
+            "floating_bounds",
+            "frame_inset",
+            "move_to_output",
             "move_to_workspace",
             "move_with_keys",
+            "output",
             "resize_with_keys",
+            "set_floating",
+            "set_floating_bounds",
             "style",
             "style_warnings",
             "workspace",
         ],
     ),
-    ("output_augment", &[], &["show", "workspace"]),
+    ("output_augment", &[], &["area", "show", "workspace"]),
 ];
 
 #[test]

@@ -8,9 +8,10 @@
 //! The Rust types make the other two refusals a build error: text where a `Client` is taken, and an object of another class. The
 //! TypeScript and Python shells of the same example log those refusals at run time.
 //!
-//! For the first window it then reads the members the library adds to a window and an output, through the extension traits
-//! `ClientStdExt` and `OutputStdExt` of the prelude: the window's `workspace`, `move_to_workspace`, `style`, `style_warnings` and
-//! `move_with_keys`, and the output's `workspace` and `show`.
+//! For the first window it then reads the members the library adds to a window, an output and the root, through the extension traits
+//! `ClientStdExt`, `OutputStdExt` and `ModelRootStdExt` of the prelude: the window's `workspace`, `move_to_workspace`, `style`,
+//! `style_warnings`, `move_with_keys`, `output`, `move_to_output` and `frame_inset`, the output's `workspace`, `area` and `show`, and the
+//! root's `show`.
 //!
 //! Every line it logs starts with `clients:`, and the other shells log the same lines. Build it with
 //! `cargo build -p gnoblin-example-native-clients` and run it with `gnoblin ./target/debug/libnative_clients.so`.
@@ -18,7 +19,7 @@
 use std::cell::Cell;
 
 use gnoblin_core::objects::{Client, ClientQuery, ModelRoot};
-use gnoblin_std::objects::{Decorations, WindowMenus, Workspace, Workspaces};
+use gnoblin_std::objects::{Decorations, LayoutRect, WindowMenus, Workspace, Workspaces};
 use gnoblin_std::prelude::*;
 
 /// What the shell does with a window that appeared: each member takes the `Client` as it is.
@@ -125,6 +126,46 @@ fn check_members(g: &Gnoblin, workspaces: &Workspaces, client: &Client) -> gnobl
     let showed = is(output.workspace()?, "side");
     output.show(&main, None)?;
     say(format!("the output showed side: {showed}"));
+    let first = client.output()?.and_then(|on| on.id().ok()) == Some(output.id()?);
+    say(format!("its output is the first: {first}"));
+    say(format!(
+        "a move to the output it is on is refused: {}",
+        !client.move_to_output(&output)?
+    ));
+    let inset = client.frame_inset()?;
+    let sides = [inset.top, inset.right, inset.bottom, inset.left];
+    say(format!(
+        "its frame inset has 4 sides: {}",
+        sides.iter().all(|room| *room >= 0.0)
+    ));
+    let width = output.width()?;
+    say(format!(
+        "the output's area is inside it: {}",
+        output
+            .area()?
+            .is_some_and(|area| area.width > 0.0 && area.width <= width)
+    ));
+    model.show(&side, None)?;
+    let shown = is(output.workspace()?, "side");
+    model.show(&main, None)?;
+    say(format!("gnoblin.show showed side: {shown}"));
+    client.set_floating(true)?;
+    say(format!("it floats once set: {}", client.floating()?));
+    let bounds = LayoutRect {
+        x: 10.0,
+        y: 20.0,
+        width: 300.0,
+        height: 200.0,
+    };
+    client.set_floating_bounds(Some(&bounds))?;
+    let kept = client
+        .floating_bounds()?
+        .is_some_and(|kept| (kept.width - 300.0).abs() < 1e-9);
+    say(format!("it keeps its floating bounds: {kept}"));
+    client.set_floating_bounds(None)?;
+    client.set_floating(false)?;
+    let forgot = client.floating_bounds()?.is_none() && !client.floating()?;
+    say(format!("it forgets them: {forgot}"));
     Ok(())
 }
 

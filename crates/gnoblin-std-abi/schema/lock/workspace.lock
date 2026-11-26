@@ -54,9 +54,17 @@ member | client_state.snap | property object:client_snap ro,optional | 0.2.0
 member | client_state.snap_to | method (zone:enum:snap_zone, area:object:layout_rect, edge_tiling?:bool) -> bool | 0.2.0
 member | client_state.unsnap | method () -> bool | 0.2.0
 member | client_state.workspace | property object:workspace ro,optional | 0.2.0
+member | core.client.floating | property bool rw | 0.2.0
+member | core.client.floating_bounds | property object:layout_rect rw,optional | 0.2.0
+member | core.client.frame_inset | property object:frame_inset ro | 0.2.0
+member | core.client.move_to_output | method (output:object:gnoblin.model.output) -> bool | 0.2.0
 member | core.client.move_to_workspace | method (workspace:object:workspace) -> bool | 0.2.0
+member | core.client.output | property object:gnoblin.model.output ro,optional | 0.2.0
 member | core.client.workspace | property object:workspace ro,optional | 0.2.0
+member | core.gnoblin.find_workspaces | method (query?:object:workspace_query) -> list<object:workspace> find=Workspace | 0.2.0
+member | core.gnoblin.show | method (workspace:object:workspace, options?:object:show_options) | 0.2.0
 member | core.gnoblin.workspaces | property object:workspaces ro | 0.2.0
+member | core.output.area | property object:layout_rect ro,optional | 0.2.0
 member | core.output.show | method (workspace:object:workspace, options?:object:show_options) | 0.2.0
 member | core.output.workspace | property object:workspace ro,optional | 0.2.0
 member | desks.areas | method (client?:object:gnoblin.model.client) -> object:client_areas | 0.2.0
@@ -169,6 +177,10 @@ member | workspace_policy.gaps | property object:gaps rw,optional | 0.2.0
 member | workspace_policy.mode | property enum:workspace_policy_mode rw | 0.2.0
 member | workspace_policy.name_prefix | property string rw | 0.2.0
 member | workspace_policy.placement | property enum:place_mode rw | 0.2.0
+member | workspace_query.active | property bool rw,optional | 0.2.0
+member | workspace_query.id | property string rw,optional | 0.2.0
+member | workspace_query.index | property int rw,optional | 0.2.0
+member | workspace_query.name | property string rw,optional | 0.2.0
 member | workspaces.add | method (workspace:object:workspace) | 0.2.0
 member | workspaces.added | signal (workspace:object:workspace) | 0.2.0
 member | workspaces.area | property object:layout_rect ro,optional | 0.2.0
@@ -204,4 +216,5 @@ object | show_options | base none record | 0.2.0
 object | size_limit | base none record | 0.2.0
 object | workspace | base none retained ctor(id) | 0.2.0
 object | workspace_policy | base none record | 0.2.0
+object | workspace_query | base none record | 0.2.0
 object | workspaces | base none service | 0.2.0

@@ -116,11 +116,12 @@ A local file of a library above the core may declare `[[augment]]` with `target 
 core catalog. Its `[[augment.property]]` and `[[augment.method]]` blocks are written as an object's members are. The std catalog
 augments six classes:
 
-- `core.gnoblin` gets `workspaces`, `displays`, `scene`, `gestures` and `request_transition`.
+- `core.gnoblin` gets `workspaces`, `displays`, `scene`, `gestures`, `request_transition`, `show` and `find_workspaces`.
 - `core.output_collection` gets `profiles`.
 - `core.input_context` gets `active_display`, and `core.client_collection` gets `style`.
-- `core.client` gets `style`, `computed_style`, `style_warnings`, `workspace`, `move_to_workspace`, `move_with_keys` and
-  `resize_with_keys`, and `core.output` gets `workspace` and `show`.
+- `core.client` gets `style`, `computed_style`, `style_warnings`, `workspace`, `move_to_workspace`, `move_with_keys`,
+  `resize_with_keys`, `output`, `move_to_output`, `frame_inset`, `floating` and `floating_bounds`, and `core.output` gets `workspace`,
+  `area` and `show`.
 
 The last four are `receiver = true`.
 
@@ -128,11 +129,24 @@ The rules:
 
 - The core catalog never reads the file, and no symbol of the core names std. The core's namespace fingerprint, its static catalog and
   its typed Rust API are the same bytes with and without the std files (`cargo test -p gnoblin-sdkgen` proves it).
-- An augment's property is read-only, and its method is a method of the object, not a function.
+- An augment's property is read-only unless the augment is `receiver = true`, and its method is a method of the object, not a
+  function.
 - `receiver = true` makes each member act on the object it is used on (`gnoblin.clients.where({ ... }).style`), not on every object of
   the class alike (`gnoblin.workspaces`). Each member of the lowered class takes that object as its first parameter, `target`. A
-  property becomes a method that takes only `target`, which each generator installs as a read-only property of the target. A receiver
+  property becomes a method that takes only `target`, which each generator installs as a property of the target. A receiver
   augment targets a handle, every augment of one target sets `receiver` alike, and no method of it has a parameter named `target`.
+- A writable property of a receiver augment (`floating`) also becomes the method `set_<name>(target, value)`. TypeScript and Python
+  install it as the property's setter, so `client.floating = true` works; Rust has `client.set_floating(true)` on the extension trait.
+- `find = "Kind"` on a method of an augment adds the kind to the `find` of the class it extends. `find_workspaces` is
+  `find = "Workspace"`, so `gnoblin.find("Workspace", { active: true })` works once std is loaded, and a shell that loads no std is
+  refused the kind. Rust gets an implementation of the core's `Finds` for the library's class (`model.find::<Workspace>(..)`).
+- `assign = true` on a handle, or on an augment of one, gives the class `set(props, options)` in TypeScript and Python:
+    - It writes each property `props` names in one transition of the root's `request_transition`.
+    - Without `options` the change is not animated.
+    - A key that is not a writable property is refused before anything is written.
+    - The namespace must add `request_transition` to `core.gnoblin`. Rust has no `set`: a Rust shell writes inside
+      `request_transition`.
+    - In std, `core.client` and `workspace` have it.
 - The catalog refuses a target the core catalog lacks (the message names `core.<class>`), a record or an interface as a target, and a
   member whose name the target has as a property, a method or a signal, its own or inherited (the message names the member, the
   augment, the file of each and the core class). Two augments of one target may not declare one member.
@@ -158,6 +172,8 @@ A catalog may also take a schema file that is not on disk (`Catalog::load_dirs_w
 
 - `layouts.toml` is written from `gnoblin_std_abi::layouts::LAYOUT_KINDS` (`crates/gnoblin-sdkgen/src/layout_schema.rs`), one class
   `<kind>_layout` for each kind, so the table stays the one source.
+- A kind may have other names (`aliases` in the table). Each is a class `<alias>_layout` that extends the kind's class and adds nothing:
+  `kiosk_layout` (`KioskLayout`) is the monocle and `carousel3d_layout` (`Carousel3dLayout`) the carousel.
 - Its surface lock is `crates/gnoblin-std-abi/schema/lock/layouts.lock`.
 - Each class extends the interface `layout`: it has the interface's methods and its own options and actions, and a call that takes a `layout`
   takes it, or an object a shell implemented.

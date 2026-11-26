@@ -18,10 +18,11 @@ from gnoblin import gnoblin as session
 from gnoblin.objects.model import Gnoblin
 from gnoblin.objects.std import (
     ArcLayout,
-    CarouselLayout,
+    Carousel3dLayout,
     DwindleLayout,
     Gaps,
     GridLayout,
+    KioskLayout,
     Layout,
     LayoutPlacement,
     LayoutRect,
@@ -59,7 +60,7 @@ LAYOUTS = [
     ("dwindle", DwindleLayout),
     ("strip", StripLayout),
     ("arc", ArcLayout),
-    ("carousel", CarouselLayout),
+    ("carousel", Carousel3dLayout),
     ("columns", Columns),
 ]
 
@@ -74,7 +75,10 @@ main.gaps = Gaps(inner=6.0, outer=12.0)
 main.layout = MasterStackLayout()
 side = Workspace("side")
 side.name = "Side"
-side.layout = MasterStackLayout()
+# `KioskLayout` is the monocle by the name the TypeScript library gave it, as `Carousel3dLayout` is the carousel. At run time a Python
+# class is flat (only the type stubs name its base), so the check is that the workspace holds the kiosk layout it was given.
+side.layout = KioskLayout()
+say(f"side has a kiosk layout: {str(isinstance(side.layout, KioskLayout)).lower()}")
 workspaces = Workspaces.get()
 workspaces.add(main)
 workspaces.add(side)

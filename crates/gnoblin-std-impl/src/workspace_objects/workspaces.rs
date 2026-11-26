@@ -17,7 +17,7 @@ use super::layouts::{self, mode_of, step_of};
 use super::values::{checked_rect, gaps_of, gaps_val, member_val, rect_val, wire_of};
 use super::{LIST_OBJECTS, WORKSPACE_OBJECTS, edit, look};
 use crate::floating::{DEFAULT_CASCADE_STEP, PlaceMode};
-use crate::object::client::{client_node, optional_client_node, output_node};
+use crate::object::client::{client_node, optional_client_node, output_node, output_value};
 use crate::object::record::{field, number_field, record, text_field};
 use crate::state::{Id, NodeId, State};
 
@@ -402,9 +402,21 @@ pub(crate) fn move_client(cx: &mut Cx<'_>, client: &Val, workspace: &Val) -> Res
     edit(cx.ctx(), |st| st.move_client_to(client, workspace)).map(Val::Bool)
 }
 
-/// `output.workspace`: the workspace the core's `Output` `output` shows, or none.
+/// The node of the output the core's `Output` `output` is, or none when that output is gone: a member that reads a gone output answers
+/// none and a move to it answers false, as the TypeScript library's did. Another value, or an object of another class, is still refused.
+fn live_output(ctx: GnoblinCtx, member: &str, output: &Val) -> Res<Option<NodeId>> {
+    match output_node(ctx, member, output) {
+        Ok(node) => Ok(Some(node)),
+        Err(fail) if fail.code == abi::E_NO_SUCH_NODE => Ok(None),
+        Err(fail) => Err(fail),
+    }
+}
+
+/// `output.workspace`: the workspace the core's `Output` `output` shows, or none (also for a gone output).
 pub(crate) fn output_workspace(cx: &mut Cx<'_>, output: &Val) -> Res<Val> {
-    let output = output_node(cx.ctx(), "workspace", output)?;
+    let Some(output) = live_output(cx.ctx(), "workspace", output)? else {
+        return Ok(Val::None);
+    };
     let found = shown_on_output(cx.ctx(), output)?;
     maybe_workspace(cx, found)
 }
@@ -420,6 +432,101 @@ pub(crate) fn show_on_output(cx: &mut Cx<'_>, output: &Val, workspace: &Val, opt
     edit(cx.ctx(), |st| {
         st.show_workspace(handle, Some(output), duration, progress)
     })
+}
+
+/// `client.output`: the core's `Output` that shows the workspace of the core's `Client` `client`, or none while no output shows it.
+pub(crate) fn client_output(cx: &mut Cx<'_>, client: &Val) -> Res<Val> {
+    let client = client_node(cx.ctx(), "output", client)?;
+    let output = look(cx.ctx(), |st| {
+        Ok(st
+            .rec
+            .get(&client)
+            .and_then(|rec| rec.workspace)
+            .and_then(|workspace| st.output_showing(workspace)))
+    })?;
+    let Some(output) = output else {
+        return Ok(Val::None);
+    };
+    let value = output_value(cx.ctx(), output)?;
+    cx.hand_out(&value)?;
+    Ok(value)
+}
+
+/// `client.moveToOutput(output)`: moves the window to the workspace the core's `Output` `output` shows. False when the output is gone or
+/// shows none, or the window is there already.
+pub(crate) fn move_client_to_output(cx: &mut Cx<'_>, client: &Val, output: &Val) -> Res<Val> {
+    let client = client_node(cx.ctx(), "moveToOutput", client)?;
+    let Some(output) = live_output(cx.ctx(), "moveToOutput", output)? else {
+        return Ok(Val::Bool(false));
+    };
+    let Some(workspace) = shown_on_output(cx.ctx(), output)? else {
+        return Ok(Val::Bool(false));
+    };
+    edit(cx.ctx(), |st| st.move_client_to(client, workspace)).map(Val::Bool)
+}
+
+/// `client.frameInset`: the room the window's frame takes round its content, as the decorations told the library; 0 on each side for a
+/// window without a frame.
+pub(crate) fn client_frame_inset(cx: &mut Cx<'_>, client: &Val) -> Res<Val> {
+    let client = client_node(cx.ctx(), "frameInset", client)?;
+    let state = look(cx.ctx(), |st| {
+        st.client_state_of(client)
+            .ok_or_else(|| crate::error::Fail::new(abi::E_NO_SUCH_NODE, format!("node {client} is not a client")))
+    })?;
+    Ok(record(vec![
+        Val::Double(state.inset_top),
+        Val::Double(state.inset_right),
+        Val::Double(state.inset_bottom),
+        Val::Double(state.inset_left),
+    ]))
+}
+
+/// `output.area`: what a layout tiles in on the core's `Output` `output`, the output less the room the shell's bars take; none for an
+/// output the library has no rectangle of, or one that is gone.
+pub(crate) fn output_area(cx: &mut Cx<'_>, output: &Val) -> Res<Val> {
+    let Some(output) = live_output(cx.ctx(), "area", output)? else {
+        return Ok(Val::None);
+    };
+    look(cx.ctx(), |st| Ok(rect_option(st.area_of(output))))
+}
+
+/// `gnoblin.show(workspace, options)`: shows `workspace` as `gnoblin.workspaces.show` does.
+pub(crate) fn show_workspace(cx: &mut Cx<'_>, workspace: &Val, options: &Val) -> Res<()> {
+    let handle = handle_of(cx, workspace)?;
+    show(cx.ctx(), handle, options)
+}
+
+/// `gnoblin.find("Workspace", filter)`: the workspaces of the list whose fields equal every field the `workspace_query` record `query`
+/// gives (`id`, `name`, `index`, `active`), in list order; every workspace for none.
+pub(crate) fn find_workspaces(cx: &mut Cx<'_>, query: &Val) -> Res<Val> {
+    let fields: &[Val] = if query.is_none() { &[] } else { query.record()? };
+    let id = field(fields, 0)
+        .map(|value| value.text().map(str::to_owned))
+        .transpose()?;
+    let name = field(fields, 1)
+        .map(|value| value.text().map(str::to_owned))
+        .transpose()?;
+    let index = field(fields, 2).map(Val::int).transpose()?;
+    let active = field(fields, 3).map(Val::bool).transpose()?;
+    let found = look(cx.ctx(), |st| {
+        let mut found = Vec::new();
+        for (at, handle) in st.workspaces.iter().copied().enumerate() {
+            let workspace = st.workspace(handle)?;
+            let holds = id.as_ref().is_none_or(|id| &workspace.id == id)
+                && name.as_ref().is_none_or(|name| &workspace.name == name)
+                && index.is_none_or(|index| i64::try_from(at).is_ok_and(|at| at == index))
+                && active.is_none_or(|active| st.is_shown(handle) == active);
+            if holds {
+                found.push(handle);
+            }
+        }
+        Ok(found)
+    })?;
+    found
+        .into_iter()
+        .map(|handle| workspace_val(cx, handle))
+        .collect::<Res<Vec<Val>>>()
+        .map(Val::List)
 }
 
 // ---- the desks -------------------------------------------------------------------------------------------------------------------

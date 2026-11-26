@@ -102,6 +102,16 @@ def on_changed():
     workspaces.show_by_id("main")
     say("show main by id: true")
     say(f"main is active: {flag(main.active)}")
+
+    # ``find`` has the kind ``Workspace`` once std is loaded: by field values, and by a function.
+    def workspace_ids(found):
+        return ",".join(workspace.id for workspace in found)
+
+    say(f"find Workspace by id: {workspace_ids(gnoblin.find('Workspace', {'id': 'side'}))}")
+    say(f"find Workspace shown: {workspace_ids(gnoblin.find('Workspace', {'active': True}))}")
+    say(
+        f"find Workspace by a function: {workspace_ids(gnoblin.find('Workspace', lambda found: found.id.startswith('m')))}"
+    )
     primary = gnoblin.input.primary if gnoblin.input is not None else None
     active = primary.active_display if primary is not None else None
     viewport = active.viewport if active is not None else None
