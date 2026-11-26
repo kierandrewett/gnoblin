@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_core_impl::host::{self, AttachMode, TreeLinkProvider};
-use gnoblin_js::{JsShell, JsShellConfig};
+use gnoblin_js::{JsRole, JsRoleConfig, JsRoleLinks, JsShell, JsShellConfig};
 use gnoblin_runtime_js::embed::Embedded;
 use gnoblin_shell_host::supervisor::Clock;
 use gnoblin_std_dyn::StdLib;
@@ -58,17 +58,34 @@ pub struct NativeCore {
     ctx: GnoblinCtx,
     /// False once [`close`](Self::close) ended the generation, so the drop does not end it again.
     open: bool,
+    /// Whether the first generation is still staged, waiting for [`role`](Self::role) to take it over once the entry has loaded.
+    booting: bool,
     _lock: MutexGuard<'static, ()>,
 }
 
 impl NativeCore {
-    /// A core over `comp`, whose timers read `clock`.
+    /// A core over `comp`, whose timers read `clock`. Its generation is active from the start, for a host whose shell has no entry to
+    /// load.
     pub fn new(comp: &FakeCompositor, clock: Arc<dyn Clock>) -> NativeCore {
+        Self::over(comp, clock, false)
+    }
+
+    /// A core whose first generation is staged, as the loader makes it for a first start (`NativeShell::start`: stage, `init`, activate):
+    /// what the entry spawns at its top level waits, and [`role`](Self::role) takes the generation over once the entry has loaded.
+    pub fn staged(comp: &FakeCompositor, clock: Arc<dyn Clock>) -> NativeCore {
+        Self::over(comp, clock, true)
+    }
+
+    fn over(comp: &FakeCompositor, clock: Arc<dyn Clock>, booting: bool) -> NativeCore {
         let lock = process_lock();
         host::reset_session();
         host::set_tree_link_provider(Box::new(Provider(comp.clone())));
         host::set_clock(clock);
-        let ctx = host::open_generation("js-rig", gnoblin_core_abi::LANG_TS).expect("a generation opens");
+        let ctx = if booting {
+            host::stage_generation("js-rig", gnoblin_core_abi::LANG_TS)
+        } else {
+            host::open_generation("js-rig", gnoblin_core_abi::LANG_TS).expect("a generation opens")
+        };
         let embedded = Embedded::new(host::api(), ctx);
         embedded.install_std(
             StdLib::from_entry_points(
@@ -81,8 +98,28 @@ impl NativeCore {
             embedded,
             ctx,
             open: true,
+            booting,
             _lock: lock,
         }
+    }
+
+    /// A role over this core, built as the runtime builds its own (`gnoblin-runtime-js`, `instance.rs`: `role_config` and `boot`).
+    ///
+    /// The role does not reload itself when its watcher sees a change (`external_reload`): the host serves the reload through the
+    /// loader, which stages a generation of the core, so that a stage that fails is rolled back and one that took over ends what the
+    /// old one started. A test reloads with [`reload`](Self::reload), which is that sequence. A role that reloaded inside its own
+    /// `tick` would evaluate the entry against the generation that serves, with no stage open in the core to roll back.
+    ///
+    /// When the first generation is staged ([`staged`](Self::staged)) it takes over once the entry has loaded, as `NativeShell::start`
+    /// activates it after `init`.
+    pub fn role(&mut self, mut config: JsRoleConfig, links: JsRoleLinks) -> JsRole {
+        config.external_reload = true;
+        self.configure(&mut config.shell);
+        let role = JsRole::over_link(self.link(), links, config).expect("a role");
+        if std::mem::take(&mut self.booting) {
+            host::take_over(self.ctx).expect("the first generation takes over");
+        }
+        role
     }
 
     /// The engine's link: a view of the core's tree. Boxed, to be the `link` of `JsShell::new`.
