@@ -131,7 +131,8 @@ pub fn stage_generation(label: &str, language: u32) -> GnoblinCtx {
 }
 
 /// A staged generation takes over from the active one: the claims of the old generation are released and the new one's go out behind
-/// them in the same transaction. The old generation is ended with [`close_generation`] afterwards, as a reload does.
+/// them in the same transaction. A reload ends the old generation's code with [`end_generation`] before this and closes it with
+/// [`close_generation`] after.
 ///
 /// # Errors
 ///
@@ -145,6 +146,12 @@ pub fn take_over(ctx: GnoblinCtx) -> Result<(), String> {
 pub fn close_generation(ctx: GnoblinCtx) -> usize {
     crate::registry::run_shutdown_hooks(ctx);
     crate::registry::finish_retire(ctx)
+}
+
+/// Ends a generation's code without removing what it registered: its shutdown hooks run (once; a later [`close_generation`] does not
+/// run them again). A reload's commit does this before the staged generation takes over, as the loader does.
+pub fn end_generation(ctx: GnoblinCtx) {
+    crate::registry::run_shutdown_hooks(ctx);
 }
 
 /// How many module libraries are kept mapped after retirement, abandonment or a failed load.

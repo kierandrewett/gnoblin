@@ -56,6 +56,8 @@ fn process_lock() -> MutexGuard<'static, ()> {
 pub struct NativeCore {
     embedded: Embedded,
     ctx: GnoblinCtx,
+    /// False once [`close`](Self::close) ended the generation, so the drop does not end it again.
+    open: bool,
     _lock: MutexGuard<'static, ()>,
 }
 
@@ -78,6 +80,7 @@ impl NativeCore {
         NativeCore {
             embedded,
             ctx,
+            open: true,
             _lock: lock,
         }
     }
@@ -119,11 +122,44 @@ impl NativeCore {
     pub fn ctx(&self) -> GnoblinCtx {
         self.ctx
     }
+
+    /// Ends the generation while `shell` is still alive, as a shutdown does: the core's shutdown hooks run with `shell` as the way its
+    /// callbacks enter, so a binding's `onCancel` for a drag in flight reaches the script. Returns how many registrations were removed;
+    /// zero when the generation was already closed.
+    pub fn close(&mut self, shell: &JsShell) -> usize {
+        if !std::mem::replace(&mut self.open, false) {
+            return 0;
+        }
+        self.embedded.enter(shell, || host::close_generation(self.ctx))
+    }
+
+    /// Reloads `role` as the runtime and the loader do: the new script is evaluated for a staged generation of the core. When it
+    /// took, the commit runs in the loader's order: the old generation's shutdown hooks run (with the shell as the way they enter),
+    /// the staged generation takes over (the old claims are released and the new ones sent behind them), and the old one is closed.
+    /// Else the staged generation is dropped and the old one serves on.
+    pub fn reload(&mut self, role: &mut gnoblin_js::JsRole) -> gnoblin_js::ReloadReport {
+        let staged = host::stage_generation("js-rig", gnoblin_core_abi::LANG_TS);
+        self.embedded.belong_to(staged);
+        let report = role.reload_now();
+        if report.ok {
+            let old = std::mem::replace(&mut self.ctx, staged);
+            self.embedded.serve(staged);
+            self.embedded.enter(role.shell_mut(), || host::end_generation(old));
+            host::take_over(staged).expect("the staged generation takes over");
+            host::close_generation(old);
+        } else {
+            self.embedded.belong_to(self.ctx);
+            host::close_generation(staged);
+        }
+        report
+    }
 }
 
 impl Drop for NativeCore {
     fn drop(&mut self) {
-        host::close_generation(self.ctx);
+        if self.open {
+            host::close_generation(self.ctx);
+        }
         host::reset_session();
         HOLDS.with(|holds| holds.set(false));
     }

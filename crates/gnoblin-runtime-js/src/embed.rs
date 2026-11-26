@@ -84,6 +84,20 @@ impl Embedded {
     pub fn dispatch(&self, shell: &JsShell) -> i32 {
         std_native::with_enter(&ShellEnter(shell), || self.table.dispatch(self.ctx))
     }
+
+    /// Scripts the engine evaluates from now belong to the generation `ctx`, as the runtime's `start` sets for a reload before the
+    /// engine evaluates the new script: what they register is the staged generation's until it takes over.
+    pub fn belong_to(&self, ctx: GnoblinCtx) {
+        std_native::set_context(ctx);
+        table::set_log_context(ctx);
+    }
+
+    /// The generation `ctx` serves from now: the engine's link and [`dispatch`](Self::dispatch) speak for it, as the runtime moves
+    /// to the new generation once a reload took.
+    pub fn serve(&mut self, ctx: GnoblinCtx) {
+        self.serving.set(ctx);
+        self.ctx = ctx;
+    }
 }
 
 /// How the library's callbacks enter a shell: its own entry, under the listener budget.
