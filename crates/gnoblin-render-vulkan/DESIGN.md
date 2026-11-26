@@ -308,7 +308,8 @@ goldens depend on the current rule, so it stays.
 5. Content: the client buffer, or the solid colour, or the shader passes that replace it. Then the filter grade.
 6. Borders.
 7. The layer's tint and opacity, and its corner clip, over everything from step 3 on. Steps 1 to 6 sit in one group
-   when the layer has a backdrop blur or a filter blur; otherwise each draw carries the opacity itself.
+   when the layer has a backdrop blur or a filter blur; otherwise each draw carries the opacity itself. An outer shadow
+   carries the opacity but not the tint, so a faded window fades its shadow, as in CSS.
 
 ### 6.2 What each effect means
 
@@ -385,7 +386,9 @@ As GLES does today, plus the two things it skips:
 
 - `downscale` d: the copied region is reduced to `ceil(size * d)` by successive halvings with a bilinear tap, then
   blurred at radius `radius * d`, then sampled back up with linear filtering when composed.
-- The last vertical sweep applies grade, tint and grain. Earlier sweeps stay ungraded, as now.
+- Grade, tint and grain apply once, in the final write at the layer's full resolution, never on the small image. With
+  `downscale` 1 that write is the last vertical sweep; the earlier sweeps stay ungraded, as now. The grain's origin is the
+  layer's top-left.
 
 The blurred backdrop is clipped by the layer's rounded shape. When the layer's opacity is 1, Vulkan draws the blur
 straight onto the target and the content over it; that is pixel-equal to GLES's group and saves a full-size image.
@@ -395,7 +398,8 @@ straight onto the target and the content over it; that is pixel-equal to GLES's 
 CSS blurs everything the element paints. Vulkan and GLES do the same for one layer:
 
 1. Steps 1 to 6 of 6.1 are drawn into a group image the size of the layer's painted extent, grown by the blur's reach.
-2. The group is blurred with the same sweeps as the backdrop blur.
+2. The group is blurred with the same sweeps as the backdrop blur: the radius means what a backdrop blur's does (sigma is
+   half of it), in one pass. A backdrop blur on the same layer stays outside the filtered picture.
 3. The result is composed with the layer's opacity. It is not clipped by the corner radius; it spills past the edge,
    as in CSS.
 
