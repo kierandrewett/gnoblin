@@ -33,22 +33,18 @@ Replace the app ID with the exact value from `gnoblinctl window list --json`.
 IDs expire when their windows close. If you need repeated updates, subscribe to
 snapshots instead of polling the command.
 
-## Python and Rust: no client library
+## Request a snapshot
 
-No Python or Rust bridge client library ships. The protocol is plain
-newline-delimited JSON over a Unix socket, so a Python or Rust client can
-use the standard socket and JSON modules directly. The Node.js and Go
-examples below show the full request and reply handling to copy.
+The examples below send one `command` request for `windows` and print the reply. Each one runs inside a Gnoblin session,
+reads the socket path from the environment, and stops at the matching reply.
 
 For a long-running dock or switcher, subscribe with `{"op":"windows"}` and
 handle every `windows` event. An empty `windows` array means no eligible
 windows, not a request failure.
 
-## Node.js: request a snapshot
+::: tabs
 
-Save this as `windows.mjs` and run `node windows.mjs`:
-
-```javascript
+```typescript client
 import net from "node:net";
 import path from "node:path";
 import readline from "node:readline";
@@ -82,6 +78,80 @@ lines.on("line", (line) => {
     connection.end();
 });
 ```
+
+```python
+import json
+import os
+import socket
+import sys
+
+runtime = os.environ.get("XDG_RUNTIME_DIR")
+socket_path = os.environ.get("GNOBLIN_COMPOSITOR_SOCKET") or (
+    os.path.join(runtime, "gnoblin", "compositor-v1.sock") if runtime else None
+)
+if socket_path is None:
+    sys.exit("XDG_RUNTIME_DIR is unset")
+
+with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+    connection.settimeout(5)
+    connection.connect(socket_path)
+    connection.sendall(b'{"op":"command","id":"list-1","command":"windows"}\n')
+    for line in connection.makefile("r", encoding="utf-8"):
+        message = json.loads(line)
+        if message.get("id") != "list-1":
+            continue  # includes the initial hello event
+        if message.get("event") == "error":
+            sys.exit(message["message"])
+        if message.get("event") == "reply":
+            print(json.dumps(message["result"]["windows"], indent=2))
+            break
+    else:
+        sys.exit("connection closed before reply")
+```
+
+```rust
+use serde_json::Value;
+use std::env;
+use std::io::{BufRead, BufReader, Write};
+use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
+use std::time::Duration;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let socket = match env::var_os("GNOBLIN_COMPOSITOR_SOCKET") {
+        Some(path) => PathBuf::from(path),
+        None => PathBuf::from(env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR is unset")?)
+            .join("gnoblin/compositor-v1.sock"),
+    };
+    let mut connection = UnixStream::connect(socket)?;
+    connection.set_read_timeout(Some(Duration::from_secs(5)))?;
+    connection.write_all(b"{\"op\":\"command\",\"id\":\"list-1\",\"command\":\"windows\"}\n")?;
+
+    for line in BufReader::new(connection).lines() {
+        let message: Value = serde_json::from_str(&line?)?;
+        if message["id"] != "list-1" {
+            continue; // includes the initial hello event
+        }
+        match message["event"].as_str() {
+            Some("error") => return Err(message["message"].as_str().unwrap_or("error").into()),
+            Some("reply") => {
+                println!("{}", serde_json::to_string_pretty(&message["result"]["windows"])?);
+                return Ok(());
+            }
+            _ => {}
+        }
+    }
+    Err("connection closed before reply".into())
+}
+```
+
+:::
+
+Run each example from the directory where you saved it:
+
+- TypeScript: save as `windows.ts`, then run `npx tsx windows.ts`. It prints the `windows` array.
+- Python: save as `windows.py`, then run `python3 windows.py`. It prints the `windows` array.
+- Rust: run `cargo new windows && cargo add serde_json`, save the example as `windows/src/main.rs`, then run `cargo run` in `windows`. It prints the `windows` array.
 
 `command` requests return one `reply` envelope. For live changes, send
 `{"op":"windows"}` on the same connection and handle every `windows` event.
