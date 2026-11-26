@@ -505,7 +505,7 @@ software renderer a `shader`, and Vulkan the `blur`.
 
 A `filter` on Vulkan is drawn graded: its blur is not drawn yet, and the node's `skipped` list names it as
 `filter: unsupported-filter-blur`. The style reports as `not applied: style.<property>: <reason>` only what a limit of the
-tree changes.
+tree changes. A per-corner radius is not applied yet: the largest of the four is drawn.
 
 A window holds at most 16 effects in all, whatever their kinds.
 

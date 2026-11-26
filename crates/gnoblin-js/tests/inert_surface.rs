@@ -243,7 +243,8 @@ const NOTICES: &[Notice] = &[
     },
     Notice {
         file: "gnoblin-std/host/styles.ts",
-        why: "the notices of the library about a style (background, filter, inset shadows stay in computedStyle), said once by the frame",
+        why: "the notices of the library about a style the tree draws differently (a per-corner radius, a value over a limit, a \
+              shader while custom shaders are off), said once by the frame",
         doc: Some(STYLE),
         optional: false,
     },
