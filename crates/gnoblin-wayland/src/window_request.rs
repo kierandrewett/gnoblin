@@ -366,6 +366,28 @@ struct X11Answer {
     frame: Option<Rect>,
 }
 
+/// The rectangle an X11 client is granted when it asks for a size while a shell decides its placement.
+///
+/// The shell owns where a window is and what state it is in, and an X11 client owns how big it draws, as a Wayland
+/// client's committed size is its own: a floating window is granted the size it asked for at the frame the shell
+/// placed it in. A maximised or fullscreen window, or one the shell tiled, has a size the shell wrote, so it is
+/// granted nothing and the client is told the geometry it has. `None` also for a request that did not ask for a size
+/// and for a window with no frame.
+pub(crate) fn x11_grant(
+    frame: Option<Rect>,
+    shell_flags: Option<[bool; 3]>,
+    tiled: bool,
+    asked: Rect,
+    size_asked: bool,
+) -> Option<Rect> {
+    let [fullscreen, maximised, _minimised] = shell_flags.unwrap_or_default();
+    if !size_asked || tiled || fullscreen || maximised {
+        return None;
+    }
+    let frame = frame?;
+    Some(Rect::new(frame.x, frame.y, asked.width.max(1), asked.height.max(1)))
+}
+
 /// The X11 answer for the shell's flags, the node's frame and the size the shell wrote.
 fn x11_answer(state: WindowState, frame: Option<Rect>, size: Option<(u32, u32)>) -> X11Answer {
     let frame = match (frame, size) {

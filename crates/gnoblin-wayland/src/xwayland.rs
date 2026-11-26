@@ -47,6 +47,17 @@
 //! 6. **A menu takes the keyboard.** The keyboard grab handler asks the policy before it
 //!    installs a grab, so an override-redirect window's grab is refused when the
 //!    configuration does not allow grabs.
+//! 7. **A client's size request goes unanswered.** An Xt client such as xterm maps at a placeholder
+//!    1x1 and asks for its real size, and draws nothing until it is told it got it. The record
+//!    decides the request for a window no shell has a node for and applies the answer even
+//!    while a shell holds the tree; a floating window the shell placed is granted its size at the
+//!    shell's position; a request that is not granted, or whose record refusal is logged at
+//!    `warn`, is answered with the geometry the window has; one made before the window maps is
+//!    applied: `an_xt_client_that_asks_for_its_size_after_mapping_is_granted_it_without_a_shell`,
+//!    `an_xt_client_that_has_not_drawn_yet_is_granted_its_size_while_a_shell_holds_the_tree`,
+//!    `a_floating_x11_window_is_granted_the_size_it_asks_for_while_a_shell_holds_the_tree`,
+//!    `a_request_the_shell_does_not_grant_is_answered_with_the_geometry_the_window_has` and
+//!    `a_size_asked_for_before_the_window_maps_is_granted`.
 //!
 //! # What this slice does not do
 //!
@@ -95,8 +106,8 @@ use gnoblin_types::{Rect, Scale, WindowId};
 use gnoblin_wm_api::{Open, WindowKind};
 
 use crate::selection_bridge::ToWayland;
-use crate::state::State;
-use crate::window_request::{X11Flags, request_of_ask};
+use crate::state::{State, x11_geometry};
+use crate::window_request::{Decider, X11Flags, request_of_ask};
 use crate::x11_root::{RootMessage, RootWatch};
 
 use crate::log;
@@ -595,6 +606,8 @@ impl State {
         // The record hears the changes that place and remove windows first, as it does for a toplevel: the
         // scene learns a window with the geometry the record gave it.
         let mut effects = Vec::new();
+        // What the record decided for a window no shell decides: applied whole, because nothing else will place it.
+        let mut decided_here = Vec::new();
         for change in &outcome.changes {
             match change {
                 NodeChange::Opened(opened) => {
@@ -605,11 +618,19 @@ impl State {
                     }
                 }
                 NodeChange::Closed { window } => self.window_closed(*window),
-                NodeChange::Geometry { window, geometry } => {
-                    if let Ok(moved) = self.wm.move_resize(*window, *geometry) {
-                        effects.extend(moved);
-                    }
-                }
+                NodeChange::Geometry { window, geometry } => match self.wm.move_resize(*window, *geometry) {
+                    // A window the shell has no node for yet is the record's to place, so its configure is applied
+                    // even while a shell holds the tree: an Xt client maps at 1x1 and draws nothing until it is
+                    // granted its real size, so no node would ever come for the shell to decide on.
+                    Ok(moved) if self.decider(*window) == Decider::Provider => decided_here.extend(moved),
+                    Ok(moved) => effects.extend(moved),
+                    Err(refusal) => log::warn!(
+                        area = "xwayland",
+                        %window,
+                        ?refusal,
+                        "the window manager refused an X11 window's geometry; the client is answered with the geometry it has"
+                    ),
+                },
                 NodeChange::Activate { .. }
                 | NodeChange::Asked { .. }
                 | NodeChange::Title { .. }
@@ -642,6 +663,7 @@ impl State {
             }
         }
         self.apply_decided(effects);
+        self.apply(decided_here);
         for command in outcome.commands {
             running.send(command);
         }
@@ -680,6 +702,39 @@ impl State {
             },
             Some(window),
         );
+    }
+
+    /// Answers an X11 client's `ConfigureRequest` once the policy has seen it (ICCCM 4.1.5): the client waits for a
+    /// `ConfigureNotify` that tells it the geometry it got, and a toolkit such as Xt that maps at a placeholder size
+    /// does not draw until that geometry is the one it asked for.
+    ///
+    /// Who grants what:
+    /// - A window nothing manages yet (it has not mapped) is its client's own: the request is applied.
+    /// - A window the shell decides is granted the size it asks for while it floats, at the position the shell gave it
+    ///   (see [`crate::window_request::x11_grant`]); the shell's own writes decide a maximised, fullscreen or tiled one.
+    /// - Any other window was decided by the record in `x11_event`, which applied what it granted.
+    ///
+    /// Whatever was not granted is answered by the synthetic `ConfigureNotify` Smithay sends after this handler with the
+    /// geometry the window last had, so the client is never left waiting.
+    fn answer_configure_request(&mut self, surface: &X11Surface, asked: Rect, size_asked: bool) {
+        let x11 = surface.window_id();
+        let managed = self.x11.as_ref().and_then(|running| running.window_for_x11(x11));
+        let grant = match managed {
+            None => Some(asked),
+            Some(window) if self.decider(window) == Decider::Shell => crate::window_request::x11_grant(
+                self.composer.window_frame(window),
+                self.composer.shell_window_flags(window),
+                self.composer.shell_window_tiled(window),
+                asked,
+                size_asked,
+            ),
+            Some(_) => None,
+        };
+        if let Some(rect) = grant
+            && let Err(error) = surface.configure(Some(x11_geometry(rect)))
+        {
+            log::warn!(area = "xwayland", %error, window = x11, "the X11 configure answering a request failed");
+        }
     }
 
     /// A root-window message Smithay's window manager does not decode: the policy answers it as it answers the
@@ -1033,15 +1088,17 @@ impl XwmHandler for State {
             w.unwrap_or(current.width).max(1),
             h.unwrap_or(current.height).max(1),
         );
+        let size_asked = w.is_some() || h.is_some();
         self.x11_event(
             WindowEvent::ConfigureRequested {
                 x11: window.window_id(),
                 geometry,
                 position: x.is_some() || y.is_some(),
-                size: w.is_some() || h.is_some(),
+                size: size_asked,
             },
             Some(&window),
         );
+        self.answer_configure_request(&window, geometry, size_asked);
     }
 
     fn configure_notify(

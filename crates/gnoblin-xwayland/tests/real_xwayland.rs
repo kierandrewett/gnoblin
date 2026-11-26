@@ -284,6 +284,11 @@ impl XClient {
 
     /// A mapped-able window with a title and a class, not yet mapped.
     fn create_window(&self, title: &str, class: &str, override_redirect: bool) -> u32 {
+        self.create_window_sized(title, class, override_redirect, (300, 200))
+    }
+
+    /// [`XClient::create_window`] at a size of the caller's choosing.
+    fn create_window_sized(&self, title: &str, class: &str, override_redirect: bool, size: (u16, u16)) -> u32 {
         let screen = &self.connection.setup().roots[self.screen];
         let window = self.connection.generate_id().expect("a window id");
         let aux = CreateWindowAux::new()
@@ -301,8 +306,8 @@ impl XClient {
                 self.root,
                 10,
                 10,
-                300,
-                200,
+                size.0,
+                size.1,
                 0,
                 WindowClass::INPUT_OUTPUT,
                 0,
@@ -934,6 +939,88 @@ impl XClient {
     fn has_state(&self, window: u32, name: &str) -> bool {
         self.state_names(window).iter().any(|held| held == name)
     }
+
+    /// The `WM_NORMAL_HINTS` an Xt client such as xterm sets: a program-specified size of 1x1 (the placeholder it maps
+    /// at), a minimum, a resize increment and a base size.
+    fn set_xt_hints(&self, window: u32) {
+        use x11rb::properties::{WmSizeHints, WmSizeHintsSpecification};
+        let mut hints = WmSizeHints::new();
+        hints.size = Some((WmSizeHintsSpecification::ProgramSpecified, 1, 1));
+        hints.min_size = Some((33, 25));
+        hints.size_increment = Some((14, 21));
+        hints.base_size = Some((19, 4));
+        hints
+            .set_normal_hints(&self.connection, window)
+            .expect("a hints request")
+            .check()
+            .expect("the hints are set");
+    }
+
+    /// What a dialog sets: a minimum size in `WM_NORMAL_HINTS`, and the window it is transient for.
+    fn set_dialog_hints(&self, window: u32, parent: u32, minimum: (i32, i32)) {
+        use x11rb::properties::{WmSizeHints, WmSizeHintsSpecification};
+        let mut hints = WmSizeHints::new();
+        hints.size = Some((WmSizeHintsSpecification::ProgramSpecified, 100, 80));
+        hints.min_size = Some(minimum);
+        hints
+            .set_normal_hints(&self.connection, window)
+            .expect("a hints request")
+            .check()
+            .expect("the hints are set");
+        self.connection
+            .change_property32(
+                PropMode::REPLACE,
+                window,
+                AtomEnum::WM_TRANSIENT_FOR,
+                AtomEnum::WINDOW,
+                &[parent],
+            )
+            .expect("a transient-for request");
+        self.connection.flush().expect("the requests reach the server");
+    }
+
+    /// Asks the window manager, as `XConfigureWindow` does, for a size.
+    fn request_size(&self, window: u32, size: (u16, u16)) {
+        self.connection
+            .configure_window(
+                window,
+                &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                    .width(u32::from(size.0))
+                    .height(u32::from(size.1)),
+            )
+            .expect("a configure request");
+        self.connection.flush().expect("the request reaches the server");
+    }
+
+    /// Reads and drops every event that is waiting, so the next `ConfigureNotify` heard is the answer to what the test
+    /// asks next.
+    fn drain_events(&self) {
+        let _ = self.connection.get_input_focus().expect("a round trip").reply();
+        while self.connection.poll_for_event().expect("an event").is_some() {}
+    }
+
+    /// Waits for a `ConfigureNotify` about `window` that tells it `size`, and fails listing what it was told instead.
+    /// A client such as xterm waits for exactly this event after it asks for a size, so a window manager that answers
+    /// with nothing, or with the old size, leaves it where it was.
+    #[track_caller]
+    fn wait_for_configure_size(&self, window: u32, size: (u16, u16)) {
+        let mut told = Vec::new();
+        let deadline = Instant::now() + TIMEOUT;
+        while Instant::now() < deadline {
+            while let Some(event) = self.connection.poll_for_event().expect("an event") {
+                if let Event::ConfigureNotify(configure) = event
+                    && configure.window == window
+                {
+                    if (configure.width, configure.height) == size {
+                        return;
+                    }
+                    told.push((configure.width, configure.height));
+                }
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        panic!("the window was never told {}x{}; it was told {told:?}", size.0, size.1);
+    }
 }
 
 const MAXIMISED_VERT: &str = "_NET_WM_STATE_MAXIMIZED_VERT";
@@ -1160,6 +1247,190 @@ fn an_x11_client_can_move_and_resize_itself_and_ask_for_its_frame() {
         client.root_message(window, "_NET_MOVERESIZE_WINDOW", [1 << 10 | 1 << 11, 0, 0, 500, 350]);
         client.wait_for_size(window, (500, 350));
         assert_eq!(client.position(window), (120, 90), "an unflagged field is not asked");
+    });
+}
+
+/// What xterm does: map at a placeholder 1x1 and ask for the real size once mapped. The client waits for the answer, so
+/// a window manager that does not grant the size leaves the window 1x1 for good.
+const XT_REAL_SIZE: (u16, u16) = (640, 400);
+
+/// ICCCM 4.1.5: a client's `ConfigureRequest` on a window that is mapped is answered, and a floating window is granted
+/// the size it asks for. With no shell the record decides.
+#[test]
+fn an_xt_client_that_asks_for_its_size_after_mapping_is_granted_it_without_a_shell() {
+    let Some(path) = display_path() else {
+        return;
+    };
+    let session = Session::start(real_settings(), Some(path));
+    let xwayland = session.handle.xwayland.clone();
+    session.run(move |handle| {
+        let display = wait_ready(&xwayland);
+        let client = XClient::connect(display);
+        let window = client.create_window_sized("xt", "XTerm", false, (1, 1));
+        client.set_xt_hints(window);
+        client.map(window);
+        handle.wait_for_title("xt");
+        client.drain_events();
+        client.request_size(window, XT_REAL_SIZE);
+        client.wait_for_configure_size(window, XT_REAL_SIZE);
+        client.wait_for_size(window, XT_REAL_SIZE);
+        handle.wait_for(|snapshot| {
+            snapshot
+                .windows()
+                .any(|window| window.title == "xt" && window.geometry.width == u32::from(XT_REAL_SIZE.0))
+        });
+    });
+}
+
+/// The same request while a shell holds the tree and the window has no node yet: the window draws nothing at 1x1, so
+/// it has no node for the shell to place, and nothing but the compositor can grant it the size it needs to draw.
+#[test]
+fn an_xt_client_that_has_not_drawn_yet_is_granted_its_size_while_a_shell_holds_the_tree() {
+    let Some(path) = xwayland_with_surfaces() else {
+        return;
+    };
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_with_tree(real_settings(), Some(path), hooks);
+    let xwayland = session.handle.xwayland.clone();
+    session.run(move |handle| {
+        shell.attach();
+        let display = wait_ready(&xwayland);
+        let client = XClient::connect(display);
+        let window = client.create_window_sized("xt unpainted", "XTerm", false, (1, 1));
+        client.set_xt_hints(window);
+        client.map(window);
+        handle.wait_for_title("xt unpainted");
+        client.drain_events();
+        client.request_size(window, XT_REAL_SIZE);
+        client.wait_for_configure_size(window, XT_REAL_SIZE);
+        client.wait_for_size(window, XT_REAL_SIZE);
+    });
+}
+
+/// The shell places a window it has a node for, and a floating window's own request for a size is still granted: the
+/// shell keeps the position and the node follows the size the client now draws at.
+#[test]
+fn a_floating_x11_window_is_granted_the_size_it_asks_for_while_a_shell_holds_the_tree() {
+    let Some(path) = xwayland_with_surfaces() else {
+        return;
+    };
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_with_tree(real_settings(), Some(path), hooks);
+    let xwayland = session.handle.xwayland.clone();
+    session.run(move |handle| {
+        shell.attach();
+        let display = wait_ready(&xwayland);
+        let client = XClient::connect(display);
+        let window = client.create_window_sized("xt placed", "XTerm", false, (1, 1));
+        client.set_xt_hints(window);
+        client.map(window);
+        handle.wait_for_title("xt placed");
+        client.paint(window);
+        let node = shell.wait_window_node();
+        shell.write(
+            node,
+            &[
+                ("x", TreeValue::Double(40.0)),
+                ("y", TreeValue::Double(30.0)),
+                ("width", TreeValue::Double(1.0)),
+                ("height", TreeValue::Double(1.0)),
+            ],
+        );
+        client.drain_events();
+        client.request_size(window, XT_REAL_SIZE);
+        client.wait_for_configure_size(window, XT_REAL_SIZE);
+        client.wait_for_size(window, XT_REAL_SIZE);
+        client.paint(window);
+        assert_eq!(client.position(window), (40, 30), "the shell's position is kept");
+    });
+}
+
+/// A window the shell has maximised is not granted a size of its own: the client is still told, by a `ConfigureNotify`
+/// with the geometry it has, that its request was not granted.
+#[test]
+fn a_request_the_shell_does_not_grant_is_answered_with_the_geometry_the_window_has() {
+    let Some(path) = xwayland_with_surfaces() else {
+        return;
+    };
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_with_tree(real_settings(), Some(path), hooks);
+    let xwayland = session.handle.xwayland.clone();
+    session.run(move |handle| {
+        shell.attach();
+        let display = wait_ready(&xwayland);
+        let client = XClient::connect(display);
+        let window = client.create_window("xt denied", "XTerm", false);
+        client.map(window);
+        handle.wait_for_title("xt denied");
+        client.paint(window);
+        let node = shell.wait_window_node();
+        shell.write(
+            node,
+            &[
+                ("maximised", TreeValue::Bool(true)),
+                ("width", TreeValue::Double(800.0)),
+                ("height", TreeValue::Double(600.0)),
+            ],
+        );
+        client.wait_for_size(window, (800, 600));
+        client.drain_events();
+        client.request_size(window, XT_REAL_SIZE);
+        client.wait_for_configure_size(window, (800, 600));
+        thread::sleep(Duration::from_millis(200));
+        assert_eq!(
+            client.size(window),
+            (800, 600),
+            "a maximised window keeps the shell's size"
+        );
+    });
+}
+
+/// A request made before the window maps is applied too: nothing manages the window yet, and the request is what the
+/// client is waiting on.
+#[test]
+fn a_size_asked_for_before_the_window_maps_is_granted() {
+    let Some(path) = display_path() else {
+        return;
+    };
+    let session = Session::start(real_settings(), Some(path));
+    let xwayland = session.handle.xwayland.clone();
+    session.run(move |_handle| {
+        let display = wait_ready(&xwayland);
+        let client = XClient::connect(display);
+        let window = client.create_window_sized("xt early", "XTerm", false, (1, 1));
+        client.set_xt_hints(window);
+        client.request_size(window, XT_REAL_SIZE);
+        client.wait_for_configure_size(window, XT_REAL_SIZE);
+        client.wait_for_size(window, XT_REAL_SIZE);
+    });
+}
+
+/// A dialog maps below the minimum size its hints name, as a toolkit that sizes its dialog after it maps does, and
+/// asks for a size that holds the minimum: it is granted it, while a shell holds the tree.
+#[test]
+fn an_x11_dialog_with_a_minimum_size_is_granted_the_size_it_asks_for() {
+    let Some(path) = xwayland_with_surfaces() else {
+        return;
+    };
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_with_tree(real_settings(), Some(path), hooks);
+    let xwayland = session.handle.xwayland.clone();
+    session.run(move |handle| {
+        shell.attach();
+        let display = wait_ready(&xwayland);
+        let client = XClient::connect(display);
+        let parent = client.create_window("dialog parent", "Parent", false);
+        client.map(parent);
+        handle.wait_for_title("dialog parent");
+        client.paint(parent);
+        let dialog = client.create_window_sized("a dialog", "Dialog", false, (100, 80));
+        client.set_dialog_hints(dialog, parent, (400, 300));
+        client.map(dialog);
+        handle.wait_for_title("a dialog");
+        client.drain_events();
+        client.request_size(dialog, (420, 320));
+        client.wait_for_configure_size(dialog, (420, 320));
+        client.wait_for_size(dialog, (420, 320));
     });
 }
 

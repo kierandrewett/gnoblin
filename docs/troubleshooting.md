@@ -159,6 +159,21 @@ Xwayland itself keeps stopping, report it with the compositor log:
 gnoblinctl log --limit 40
 ```
 
+## An X11 app opens at 1 by 1 pixel or never shows
+
+Some X11 toolkits, `xterm` among them, map a window at a placeholder size, then ask for the size they want and wait to be
+told they got it. The compositor answers every such request:
+
+- A floating window is granted the size it asks for, and the shell keeps the position it gave the window.
+- A maximised, fullscreen or tiled window keeps the size the shell wrote, and the app is told that size.
+
+If an app still stays tiny, the window manager refused its request and logged the reason. Find the line with the window
+id:
+
+```sh
+gnoblinctl log --level WARN --limit 100
+```
+
 ## A window opens behind the focused window
 
 A window from an app that is not the focused app can open behind the focused
