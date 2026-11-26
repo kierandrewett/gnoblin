@@ -226,12 +226,12 @@ whole.
 | `cornerRadius`   | a number of at least 0, or one per corner | 0       | one radius: GLES, software and Vulkan |
 | `borders`        | a list of `Border`, at most 8             | none    | GLES and software                     |
 | `filter`         | a list of filters, at most 8              | none    | shaders: GLES and Vulkan              |
-| `background`     | a colour or the empty text                | none    | no renderer yet                       |
+| `background`     | a colour or the empty text                | none    | software                              |
 
 A colour is `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
 
 A style element the active renderer does not draw is still written to the window's node, and the node's `skipped` list
-names it. No renderer draws a `background`, an inset shadow or the blur and grades of `filter` yet. See
+names it. Only the software renderer draws a `background` or an inset shadow, and no renderer draws the blur and grades of `filter` yet. See
 "What is drawn" below.
 
 ### Shadow
@@ -473,8 +473,8 @@ The tree has six effect kinds (blur, shadow, border, background, filter and shad
 | `shadow`         | yes                    | yes (smooth falloff)   | no, reported `skipped` |
 | `border`         | yes                    | yes (anti-aliased)     | no, reported `skipped` |
 | `blur`           | yes                    | yes (drawn on the CPU) | no, reported `skipped` |
-| `inset-shadow`   | no, reported `skipped` | no, reported `skipped` | no, reported `skipped` |
-| `background`     | no, reported `skipped` | no, reported `skipped` | no, reported `skipped` |
+| `inset-shadow`   | no, reported `skipped` | yes                    | no, reported `skipped` |
+| `background`     | no, reported `skipped` | yes                    | no, reported `skipped` |
 | `filter`         | no, reported `skipped` | no, reported `skipped` | no, reported `skipped` |
 
 Two decorated windows on the GLES renderer with `cornerRadius: 12`, a 2 pixel inset border and a shadow. The corners are
@@ -499,14 +499,10 @@ as follows:
 
 `seat.effect_kinds` lists the kinds the renderer draws.
 
-No renderer draws these kinds yet, so on every renderer the node's `skipped` list names them:
+Only the software renderer draws a background or an inset shadow, and no renderer draws a filter yet. A kind the active
+renderer does not draw is named in the node's `skipped` list.
 
-- `background: unsupported-by-renderer`
-- `inset-shadow: unsupported-by-renderer`
-- `filter: unsupported-by-renderer`
-
-`seat.effect_kinds` does not list them either. The style reports as `not applied: style.<property>: <reason>` only what a
-limit of the tree changes.
+The style reports a `not applied` warning only for what a limit of the tree changes.
 
 A window holds at most 16 effects in all, whatever their kinds.
 

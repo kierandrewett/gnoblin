@@ -231,9 +231,15 @@ pub(crate) fn paint(
             }
         }
 
+        // What of the layer's opacity each part of it is drawn with: none of it for a group, which fades as a whole.
+        let alpha = if group { 1.0 } else { opacity };
+        if flat {
+            under_content(canvas, effects, (dst, need), radius, tint, alpha)?;
+        }
+
         layer_damage(canvas.damage, dst, clipped);
         if !clipped.is_empty() {
-            draw_own_pixels(canvas, layer, texture, dst, clipped, if group { 1.0 } else { opacity })?;
+            draw_own_pixels(canvas, layer, texture, dst, clipped, alpha)?;
         }
 
         for (rect, before) in fixes.iter().zip(&before) {
@@ -286,6 +292,44 @@ fn draw_own_pixels(
     Ok(())
 }
 
+/// Draws what lies between the backdrop and the layer's own pixels: its `background`, then its inset shadows, in one read
+/// of the output and one write.
+///
+/// `place` is the layer's rectangle and the part of it the frame redraws. The fill is square and the layer's corners are
+/// put back afterwards, so a rounded layer's background has the same anti-aliased corner as its pixels.
+fn under_content(
+    canvas: &mut Canvas<'_, '_>,
+    effects: &gnoblin_render::Effects,
+    place: (Area, Area),
+    radius: f32,
+    tint: gnoblin_types::Color,
+    alpha: f32,
+) -> Result<(), RenderError> {
+    let (dst, need) = place;
+    let passes = effects.passes();
+    let drawn = |pass: &&Pass| match pass {
+        Pass::Background { color } => color.a > 0.0 && tint.a > 0.0,
+        Pass::Shadow(held) => held.inset && held.opacity > 0.0 && held.color.a > 0.0,
+        _ => false,
+    };
+    if !passes.iter().any(|pass| drawn(&pass)) {
+        return Ok(());
+    }
+    let mut patch = canvas.read(need)?;
+    for pass in passes.iter().filter(drawn) {
+        match pass {
+            Pass::Background { color } => {
+                let colour =
+                    gnoblin_types::Color::new(color.r * tint.r, color.g * tint.g, color.b * tint.b, color.a * tint.a);
+                raster::fill(&mut patch, dst, colour, colour.a * alpha);
+            }
+            Pass::Shadow(held) => Cast::inset(held, dst, radius, alpha, canvas.scale).draw(&mut patch),
+            _ => {}
+        }
+    }
+    canvas.write(&patch, need)
+}
+
 /// Draws the layer's drop shadows behind it, in one read of the output and one write.
 fn shadows(
     canvas: &mut Canvas<'_, '_>,
@@ -298,7 +342,7 @@ fn shadows(
         .passes()
         .iter()
         .filter_map(|pass| match pass {
-            Pass::Shadow(held) if held.opacity > 0.0 && held.color.a > 0.0 => Some(Cast::outer(
+            Pass::Shadow(held) if !held.inset && held.opacity > 0.0 && held.color.a > 0.0 => Some(Cast::outer(
                 held,
                 if held.frame { outline } else { dst },
                 radius,
@@ -383,19 +427,31 @@ fn borders(
     Ok(())
 }
 
-/// Says, once, that a shader the shell wrote is not drawn.
+/// Says, once, that a shader the shell wrote, or a `filter`, is not drawn.
 ///
 /// A shader is WGSL, and drawing it needs the compiler and the GPU the GLES and Vulkan renderers have. The software
 /// renderer has no WGSL interpreter, so a layer with a shader is drawn without it, and the node's `skipped` list names
-/// `shader: unsupported-by-renderer`.
+/// `shader: unsupported-by-renderer`. A `filter` grades and blurs everything the layer paints, which needs the layer drawn
+/// into a picture of its own; this renderer draws into the output only, so it is left out the same way.
 fn warn_unsupported(effects: &gnoblin_render::Effects) {
     static SHADER_REFUSED: Once = Once::new();
-    if effects.passes().iter().any(|pass| matches!(pass, Pass::Shader(_))) {
+    static FILTER_REFUSED: Once = Once::new();
+    let passes = effects.passes();
+    if passes.iter().any(|pass| matches!(pass, Pass::Shader(_))) {
         SHADER_REFUSED.call_once(|| {
             log::warn!(
                 area = "render",
                 "unsupported-effect: the software renderer has no WGSL interpreter, so a user shader is not drawn; \
                  the GLES and Vulkan renderers draw it"
+            );
+        });
+    }
+    if passes.iter().any(|pass| matches!(pass, Pass::Filter(_))) {
+        FILTER_REFUSED.call_once(|| {
+            log::warn!(
+                area = "render",
+                "unsupported-effect: the software renderer draws into the output only, so a filter, which blurs and \
+                 grades what the layer paints as a picture of its own, is not drawn"
             );
         });
     }
@@ -464,6 +520,7 @@ mod tests {
             opacity: 1.0,
             color: Color::BLACK,
             frame,
+            inset: false,
         })
     }
 
@@ -619,6 +676,7 @@ mod tests {
             opacity: 1.0,
             color: Color::BLACK,
             frame: false,
+            inset: false,
         })]);
         let image = picture(Color::WHITE, vec![solid]);
         let levels: std::collections::BTreeSet<u8> = (24..48)
@@ -809,6 +867,82 @@ mod tests {
         software.draw(&again, Scale::IDENTITY).expect("drawn");
         let second = software.screenshot().expect("a readback");
         assert_eq!(first, second, "a repaint of part of the frame gives the same picture");
+    }
+
+    #[test]
+    fn a_background_fills_under_the_content_and_over_a_blur() {
+        let mut layers = split();
+        let mut glass = glass(Rect::new(16, 16, 64, 64), BlurParams::default());
+        glass.effects = chain(vec![
+            Pass::Blur(BlurParams::default()),
+            Pass::Background {
+                color: Color::from_rgba8(255, 0, 0, 128),
+            },
+        ]);
+        layers.push(glass);
+        let image = picture(Color::BLACK, layers);
+        let inside = image.colour_at(48, 48).expect("a pixel");
+        assert!(
+            inside[0] > 120 && inside[1] < 120,
+            "a translucent red tints the blurred backdrop: {inside:?}"
+        );
+        assert_eq!(
+            image.colour_at(8, 48),
+            Some([20, 20, 20, 255]),
+            "outside the layer nothing changes"
+        );
+    }
+
+    #[test]
+    fn a_background_follows_the_rounded_corner_and_is_under_the_content() {
+        let mut fill = Solid::new(Rect::new(8, 8, 48, 48), Color::from_rgba8(0, 255, 0, 128));
+        fill.corner_radius = 12.0;
+        fill.effects = chain(vec![Pass::Background { color: Color::WHITE }]);
+        let image = picture(BLUE, vec![fill]);
+        assert_eq!(image.colour_at(9, 9), Some([0, 0, 255, 255]), "the corner is cut");
+        let middle = image.colour_at(32, 32).expect("a pixel");
+        // White, then half green over it: the content is over the background.
+        assert!(
+            middle[0].abs_diff(128) <= 1 && middle[1] == 255 && middle[2].abs_diff(128) <= 1,
+            "white under half green: {middle:?}"
+        );
+    }
+
+    #[test]
+    fn an_inset_shadow_darkens_the_edge_inside_the_layer_only() {
+        let mut solid = Solid::new(Rect::new(16, 16, 48, 48), Color::from_rgba8(255, 255, 255, 0));
+        let mut inset = soft_shadow(false);
+        if let Pass::Shadow(held) = &mut inset {
+            held.inset = true;
+        }
+        solid.effects = chain(vec![inset]);
+        let image = picture(Color::WHITE, vec![solid]);
+        assert!(
+            luma(image.colour_at(16, 40).expect("a pixel")) < 400,
+            "the edge inside is shadowed"
+        );
+        assert_eq!(image.colour_at(40, 40), Some([255, 255, 255, 255]), "the middle is not");
+        assert_eq!(
+            image.colour_at(14, 40),
+            Some([255, 255, 255, 255]),
+            "and outside is not"
+        );
+    }
+
+    #[test]
+    fn a_filter_is_not_drawn_and_the_layer_still_is() {
+        use gnoblin_render::FilterParams;
+        let mut solid = Solid::new(Rect::new(16, 16, 32, 32), RED);
+        solid.effects = chain(vec![Pass::Filter(FilterParams {
+            saturate: 0.0,
+            ..FilterParams::default()
+        })]);
+        let image = picture(Color::WHITE, vec![solid]);
+        assert_eq!(
+            image.colour_at(24, 24),
+            Some([255, 0, 0, 255]),
+            "the layer is drawn ungraded"
+        );
     }
 
     #[test]

@@ -4157,27 +4157,30 @@ fn an_inset_shadow_a_background_and_a_filter_are_skipped_by_a_renderer_that_does
     });
     composer.take_tree_changes();
 
-    // No renderer lists the three kinds yet, so each one names all of them, in list order.
-    let want: Vec<String> = ["inset-shadow", "background", "filter"]
-        .into_iter()
-        .map(|kind| format!("{kind}: unsupported-by-renderer"))
-        .collect();
+    // Each renderer names the kinds of the chain it does not list, in list order: the software renderer draws an inset
+    // shadow and a background but not a filter; GLES and Vulkan draw none of the three yet. A list that has not changed
+    // since the last publication is not published again.
+    let mut last: Option<Vec<String>> = None;
     for renderer in [RendererKind::Software, RendererKind::Gles, RendererKind::Vulkan] {
-        assert!(
-            !["inset-shadow", "background", "filter"]
-                .iter()
-                .any(|kind| renderer.effect_kinds().contains(kind)),
-            "{} lists a kind it does not draw yet",
-            renderer.name()
-        );
+        let want: Vec<String> = ["inset-shadow", "background", "filter"]
+            .into_iter()
+            .filter(|kind| !renderer.effect_kinds().contains(kind))
+            .map(|kind| format!("{kind}: unsupported-by-renderer"))
+            .collect();
         composer.set_effect_kinds(renderer.effect_kinds());
         composer.publish_skipped_effects();
         let published = queued_skipped(&mut composer, node);
-        if renderer == RendererKind::Software {
-            assert_eq!(published, Some(want.clone()), "the first publication names every kind");
-        } else {
+        if last.as_ref() == Some(&want) {
             assert_eq!(published, None, "{}: the same list is not republished", renderer.name());
+        } else {
+            assert_eq!(
+                published,
+                Some(want.clone()),
+                "{} names what it does not draw",
+                renderer.name()
+            );
         }
+        last = Some(want);
     }
     composer.set_effect_kinds(Pass::NAMES);
     composer.publish_skipped_effects();

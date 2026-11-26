@@ -76,9 +76,10 @@ impl RendererKind {
 
     /// The effect kinds the renderer draws, by [`gnoblin_render::Pass::name`].
     ///
-    /// GLES draws a blur, a shadow, a border and a shader. The software renderer draws a blur, a shadow and a border by
-    /// computing the pixels on the CPU (`gnoblin-render-software`'s `layers` module): the blur is the GLES kernel and
-    /// grade, the shadow's falloff and the border's edge are the shaders' own arithmetic. The Vulkan renderer
+    /// GLES draws a blur, a shadow, a border and a shader. The software renderer draws a blur, a shadow (outer and
+    /// inset), a border and a background by computing the pixels on the CPU (`gnoblin-render-software`'s `layers`
+    /// module): the blur is the GLES kernel and grade, the shadows' falloff and the border's edge are the shaders' own
+    /// arithmetic. It leaves a `filter` undrawn, as it does a shader. The Vulkan renderer
     /// does not draw the shipped effects yet: it rounds a layer's corners, the radius is not an effect, and it reports
     /// blur, shadow and border as skipped.
     ///
@@ -89,7 +90,7 @@ impl RendererKind {
     pub const fn effect_kinds(self) -> &'static [&'static str] {
         match self {
             Self::Gles => &["blur", "shadow", "border", "shader"],
-            Self::Software => &["blur", "shadow", "border"],
+            Self::Software => &["blur", "shadow", "inset-shadow", "border", "background"],
             Self::Vulkan => &["shader"],
         }
     }

@@ -264,20 +264,20 @@ impl Cast {
         }
     }
 
-    // The tree has no inset shadow yet (`Shadow` has no `inset`); the compositor reaches this when it does, and the
-    // tests below draw it in the meantime.
-    #[cfg_attr(not(test), allow(dead_code))]
     /// The inset shadow `held` casts inwards from the edge of `base`, with corner `radius` (`inset_shadow.wgsl`).
     ///
     /// The hole is `base` moved by the offset and shrunk by the spread on every side. A pixel on or outside the hole's
     /// edge has the full shadow, which falls to nothing `blur` pixels inside the edge, and the shadow is multiplied by
     /// the shape's own coverage so nothing leaks past a rounded corner.
-    pub(crate) fn inset(held: &Shadow, base: Area, radius: f32, scale: Scale) -> Self {
+    ///
+    /// `fade` is the share of the layer's own opacity the shadow is drawn with: an inset shadow is part of the layer, so
+    /// it fades with it, where a drop shadow behind the layer does not.
+    pub(crate) fn inset(held: &Shadow, base: Area, radius: f32, fade: f32, scale: Scale) -> Self {
         let factor = scale.as_f64() as f32;
         Self {
             quad: base,
             colour: held.color,
-            alpha: held.color.a * held.opacity,
+            alpha: held.color.a * held.opacity * fade,
             blur: (held.blur * factor).clamp(1.0, MAX_RADIUS),
             kind: Kind::Inset {
                 offset: [held.offset.x as f32 * factor, held.offset.y as f32 * factor],
@@ -344,6 +344,26 @@ impl Cast {
                     }
                 }
             }
+        }
+    }
+}
+
+/// Fills `rect` of `patch` with `colour` at `alpha`, over what is there: a layer's `background`.
+///
+/// The fill is square. A rounded layer is drawn square and faded back outside its curve afterwards ([`fade`]), which
+/// gives the fill the same anti-aliased corner as every other part of the layer.
+pub(crate) fn fill(patch: &mut Patch, rect: Area, colour: Color, alpha: f32) {
+    let Some(area) = patch.rect.intersection(rect) else {
+        return;
+    };
+    let blend = Blend::new(premultiplied(colour, alpha));
+    if blend.source[3] == 0 {
+        return;
+    }
+    for y in area.loc.y..area.loc.y + area.size.h {
+        let at = patch.at(area.loc.x, y);
+        for pixel in patch.bytes[at..at + area.size.w as usize * 4].as_chunks_mut::<4>().0 {
+            Patch::blend(pixel, blend);
         }
     }
 }
@@ -508,6 +528,7 @@ mod tests {
             opacity: 1.0,
             color: Color::BLACK,
             frame: false,
+            inset: false,
         }
     }
 
@@ -591,7 +612,13 @@ mod tests {
     #[test]
     fn an_inset_shadow_is_full_at_the_edge_and_gone_blur_pixels_inside() {
         let mut picture = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
-        let cast = Cast::inset(&shadow(6.0, 0.0, (0.0, 0.0)), area(8, 8, 16, 16), 0.0, Scale::IDENTITY);
+        let cast = Cast::inset(
+            &shadow(6.0, 0.0, (0.0, 0.0)),
+            area(8, 8, 16, 16),
+            0.0,
+            1.0,
+            Scale::IDENTITY,
+        );
         cast.draw(&mut picture);
         assert!(
             pixel(&picture, 8, 16)[0] < 10,
@@ -617,7 +644,13 @@ mod tests {
     #[test]
     fn an_inset_shadow_does_not_leak_past_a_rounded_corner() {
         let mut picture = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
-        let cast = Cast::inset(&shadow(4.0, 0.0, (0.0, 0.0)), area(4, 4, 24, 24), 10.0, Scale::IDENTITY);
+        let cast = Cast::inset(
+            &shadow(4.0, 0.0, (0.0, 0.0)),
+            area(4, 4, 24, 24),
+            10.0,
+            1.0,
+            Scale::IDENTITY,
+        );
         cast.draw(&mut picture);
         assert_eq!(
             pixel(&picture, 4, 4),
@@ -631,7 +664,14 @@ mod tests {
     fn an_inset_shadows_offset_moves_the_hole_and_its_spread_shrinks_it() {
         let shift = |offset: (f32, f32), spread: f32| {
             let mut picture = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
-            Cast::inset(&shadow(2.0, spread, offset), area(8, 8, 16, 16), 0.0, Scale::IDENTITY).draw(&mut picture);
+            Cast::inset(
+                &shadow(2.0, spread, offset),
+                area(8, 8, 16, 16),
+                0.0,
+                1.0,
+                Scale::IDENTITY,
+            )
+            .draw(&mut picture);
             picture
         };
         // Moved right by 4 the hole leaves the left edge uncovered... and covers 4 more pixels on the right.
@@ -644,6 +684,35 @@ mod tests {
             [0, 0, 0, 255],
             "a spread of 3 darkens 3 more pixels in"
         );
+    }
+
+    #[test]
+    fn a_fill_blends_over_what_is_there() {
+        let mut picture = patch(area(0, 0, 16, 16), [0, 0, 200, 255]);
+        fill(&mut picture, area(4, 4, 8, 8), Color::new(1.0, 0.0, 0.0, 1.0), 0.5);
+        assert_eq!(pixel(&picture, 8, 8), [128, 0, 100, 255], "half red over blue");
+        assert_eq!(pixel(&picture, 3, 8), [0, 0, 200, 255], "nothing outside the rectangle");
+        fill(&mut picture, area(0, 0, 16, 16), Color::WHITE, 0.0);
+        assert_eq!(
+            pixel(&picture, 8, 8),
+            [128, 0, 100, 255],
+            "a fill of no alpha draws nothing"
+        );
+    }
+
+    #[test]
+    fn an_inset_shadow_fades_with_its_layer() {
+        let mut picture = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
+        Cast::inset(
+            &shadow(6.0, 0.0, (0.0, 0.0)),
+            area(8, 8, 16, 16),
+            0.0,
+            0.5,
+            Scale::IDENTITY,
+        )
+        .draw(&mut picture);
+        let edge = pixel(&picture, 8, 16)[0];
+        assert!((120..140).contains(&edge), "half the shadow at the edge: {edge}");
     }
 
     #[test]

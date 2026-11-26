@@ -803,7 +803,8 @@ fn a_shader_on_the_software_renderer_is_reported_skipped_by_the_renderer() {
 }
 
 /// `background`, `filter` and a `shadow` with `inset` are kinds of the list: the wire keeps each as written, and a renderer
-/// that does not draw them (the software one here) names each in `skipped` as `<kind>: unsupported-by-renderer`.
+/// that does not draw one (the software one here draws a background and an inset shadow, not a filter) names it in
+/// `skipped` as `<kind>: unsupported-by-renderer`.
 #[test]
 fn a_background_a_filter_and_an_inset_shadow_are_accepted_and_reported_skipped_by_the_renderer() {
     let session = Session::start();
@@ -882,12 +883,8 @@ fn a_background_a_filter_and_an_inset_shadow_are_accepted_and_reported_skipped_b
         .expect("the skipped list is published");
     assert_eq!(
         skipped.value_texts,
-        vec![
-            "background: unsupported-by-renderer".to_owned(),
-            "inset-shadow: unsupported-by-renderer".to_owned(),
-            "filter: unsupported-by-renderer".to_owned(),
-        ],
-        "the software renderer draws none of the new kinds, in list order"
+        vec!["filter: unsupported-by-renderer".to_owned()],
+        "the software renderer draws a background and an inset shadow but not a filter"
     );
     session.stop().expect("the session stops cleanly");
 }

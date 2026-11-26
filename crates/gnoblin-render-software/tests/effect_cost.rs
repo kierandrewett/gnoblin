@@ -90,6 +90,7 @@ fn effects() -> Effects {
             opacity: 1.0,
             color: Color::from_rgba8(0, 0, 0, 120),
             frame: false,
+            inset: false,
         }))
         .expect("a shadow");
     effects

@@ -34,7 +34,7 @@
 //!   curve are put back as they were, weighted by the shader's own coverage (`raster::fade`). A layer that is one part of
 //!   a larger frame (a window's content under its titlebar) rounds to the frame's rectangle, its `silhouette`, and not
 //!   to its own.
-//! - **Shadows, borders and the backdrop blur are computed on the CPU** (`layers.rs`, `raster.rs`, `blur.rs`). Pixman
+//! - **Shadows (outer and inset), borders, a background and the backdrop blur are computed on the CPU** (`layers.rs`, `raster.rs`, `blur.rs`). Pixman
 //!   has no soft mask and no blur, so the pixels a layer's effects change are read back, computed in memory with the
 //!   arithmetic of the GLES shaders and written over the damaged pixels. A shadow falls off by the shader's smoothstep
 //!   (an inset one by its reflection), a border's band is anti-aliased at both its edges and at a rounded corner, and
@@ -47,6 +47,8 @@
 //! - **A user shader.** It is WGSL, and running it needs the compiler and the GPU of the other renderers; there is no
 //!   CPU WGSL interpreter. A layer with a shader is drawn without it, the node's `skipped` list says
 //!   `shader: unsupported-by-renderer`, and the log says why once.
+//! - **A `filter`**, the grade and blur of everything the layer paints. It needs the layer drawn into a picture of its
+//!   own and this renderer draws into the output only, so the node's `skipped` list names `filter` and the log says why once.
 //! - **Effects on a layer placed in depth** (a `model` matrix). The layer is drawn flat, as before, without its effects.
 //! - **A blur's `downscale`.** The blur runs at full resolution, as the GLES blur does; the parameter is not honoured
 //!   there either. The cost is in `tests/effect_cost.rs`.
