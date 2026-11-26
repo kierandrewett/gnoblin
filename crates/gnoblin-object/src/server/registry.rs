@@ -15,17 +15,17 @@ use crate::value::{MemberId, Obj, Val};
 /// What a call about an object holds of its native state: a shared borrow for a getter and a member registered `_ref`, a unique one for
 /// the rest. Shared borrows nest, so a `_ref` member may run a closure of the shell that reads a getter or calls another `_ref` member of
 /// the same object.
-pub(crate) enum Native<'a> {
+pub(crate) enum NativeBorrow<'a> {
     Shared(&'a dyn Any),
     Exclusive(&'a mut dyn Any),
 }
 
-impl Native<'_> {
+impl NativeBorrow<'_> {
     /// The state as a shared reference, which either borrow gives.
     pub(crate) fn shared(&self) -> &dyn Any {
         match self {
-            Native::Shared(state) => *state,
-            Native::Exclusive(state) => &**state,
+            NativeBorrow::Shared(state) => *state,
+            NativeBorrow::Exclusive(state) => &**state,
         }
     }
 }
@@ -50,11 +50,11 @@ impl SetFn {
         matches!(self, SetFn::Exclusive(_))
     }
 
-    pub(crate) fn run(&self, native: Native<'_>, cx: &mut Cx<'_>, value: Val) -> Res<()> {
+    pub(crate) fn run(&self, native: NativeBorrow<'_>, cx: &mut Cx<'_>, value: Val) -> Res<()> {
         match (self, native) {
             (SetFn::Shared(write), native) => write(native.shared(), cx, value),
-            (SetFn::Exclusive(write), Native::Exclusive(state)) => write(state, cx, value),
-            (SetFn::Exclusive(_), Native::Shared(_)) => {
+            (SetFn::Exclusive(write), NativeBorrow::Exclusive(state)) => write(state, cx, value),
+            (SetFn::Exclusive(_), NativeBorrow::Shared(_)) => {
                 Err(Fail::err("a setter that changes its object was given a shared borrow"))
             }
         }
@@ -74,11 +74,11 @@ impl MethodFn {
         matches!(self, MethodFn::Exclusive(_))
     }
 
-    pub(crate) fn run(&self, native: Native<'_>, cx: &mut Cx<'_>, args: &[Val]) -> Res<Val> {
+    pub(crate) fn run(&self, native: NativeBorrow<'_>, cx: &mut Cx<'_>, args: &[Val]) -> Res<Val> {
         match (self, native) {
             (MethodFn::Shared(run), native) => run(native.shared(), cx, args),
-            (MethodFn::Exclusive(run), Native::Exclusive(state)) => run(state, cx, args),
-            (MethodFn::Exclusive(_), Native::Shared(_)) => {
+            (MethodFn::Exclusive(run), NativeBorrow::Exclusive(state)) => run(state, cx, args),
+            (MethodFn::Exclusive(_), NativeBorrow::Shared(_)) => {
                 Err(Fail::err("a method that changes its object was given a shared borrow"))
             }
         }

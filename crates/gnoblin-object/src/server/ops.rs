@@ -9,7 +9,7 @@ use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinDropFn, GnoblinInvokeFn};
 use super::Library;
 use super::cx::Cx;
 use super::object::{CtxState, Entry, Listener, Pending, State};
-use super::registry::{Inits, Native};
+use super::registry::{Inits, NativeBorrow};
 use super::shell::ShellImpl;
 use crate::catalog::{ClassDef, MemberDef};
 use crate::client::Api;
@@ -76,22 +76,22 @@ impl Library {
         class: ClassId,
         state: &State,
         exclusive: bool,
-        work: impl FnOnce(Native<'_>) -> Res<R>,
+        work: impl FnOnce(NativeBorrow<'_>) -> Res<R>,
     ) -> Res<R> {
         let busy = || Fail::new(abi::E_BUSY, "the object is in use by a call that is running");
         if self.classes[class as usize - 1].stateless {
             return if exclusive {
-                work(Native::Exclusive(&mut ()))
+                work(NativeBorrow::Exclusive(&mut ()))
             } else {
-                work(Native::Shared(&()))
+                work(NativeBorrow::Shared(&()))
             };
         }
         if exclusive {
             let mut guard = state.try_borrow_mut().map_err(|_| busy())?;
-            work(Native::Exclusive(&mut **guard))
+            work(NativeBorrow::Exclusive(&mut **guard))
         } else {
             let guard = state.try_borrow().map_err(|_| busy())?;
-            work(Native::Shared(&**guard))
+            work(NativeBorrow::Shared(&**guard))
         }
     }
 

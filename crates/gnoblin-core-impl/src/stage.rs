@@ -20,19 +20,19 @@ use crate::values::{OwnedValue, RawScope, blank, read_value};
 
 /// What `set_write_stage` installed.
 #[derive(Clone, Copy)]
-struct Hook {
+struct WriteStageHook {
     stage: GnoblinWriteStageFn,
     peek: Option<GnoblinWriteStagePeekFn>,
     user: *mut c_void,
 }
 
 thread_local! {
-    static HOOK: Cell<Option<Hook>> = const { Cell::new(None) };
+    static HOOK: Cell<Option<WriteStageHook>> = const { Cell::new(None) };
 }
 
 /// Installs the hook, replacing any other.
 pub(crate) fn install(stage: GnoblinWriteStageFn, peek: Option<GnoblinWriteStagePeekFn>, user: *mut c_void) {
-    HOOK.with(|hook| hook.set(Some(Hook { stage, peek, user })));
+    HOOK.with(|hook| hook.set(Some(WriteStageHook { stage, peek, user })));
 }
 
 /// Clears the hook `user` installed. A hook another caller installed since is left alone.

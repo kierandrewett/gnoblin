@@ -26,7 +26,7 @@ type Stage = Box<dyn Fn(NodeId, &str, &Value) -> bool>;
 type Peek = Box<dyn Fn(NodeId, &str) -> Option<Value>>;
 
 /// What the core's trampolines call: the two closures and the value last lent to a read.
-struct Hooks {
+struct StageCallbacks {
     stage: Stage,
     peek: Peek,
     /// The value the last `peek` answered with, which the core reads before its next call.
@@ -37,7 +37,7 @@ struct Hooks {
 /// generation that goes away) leaves the core's setters writing as they did.
 pub struct WriteStage {
     g: Gnoblin,
-    hooks: Box<Hooks>,
+    hooks: Box<StageCallbacks>,
 }
 
 impl std::fmt::Debug for WriteStage {
@@ -48,7 +48,7 @@ impl std::fmt::Debug for WriteStage {
 
 impl WriteStage {
     fn user(&self) -> *mut c_void {
-        core::ptr::from_ref::<Hooks>(&self.hooks).cast_mut().cast()
+        core::ptr::from_ref::<StageCallbacks>(&self.hooks).cast_mut().cast()
     }
 }
 
@@ -78,10 +78,11 @@ unsafe extern "C" fn stage_write(
     key: GnoblinStr,
     value: *const GnoblinValue,
 ) -> i32 {
-    // SAFETY: `user` is the `Hooks` the `WriteStage` holds until it clears the hook, the key and the value are borrowed for the call.
+    // SAFETY: `user` is the `StageCallbacks` the `WriteStage` holds until it clears the hook, the key and the value are
+    // borrowed for the call.
     let (hooks, key, value) = unsafe {
         (
-            &*user.cast::<Hooks>(),
+            &*user.cast::<StageCallbacks>(),
             key_of(key),
             value.as_ref().and_then(|raw| Value::from_raw(raw)),
         )
@@ -94,7 +95,7 @@ unsafe extern "C" fn stage_write(
 
 unsafe extern "C" fn peek_write(user: *mut c_void, node: GnoblinNode, key: GnoblinStr, out: *mut GnoblinValue) -> i32 {
     // SAFETY: as for `stage_write`; `out` is a writable value.
-    let (hooks, key) = unsafe { (&*user.cast::<Hooks>(), key_of(key)) };
+    let (hooks, key) = unsafe { (&*user.cast::<StageCallbacks>(), key_of(key)) };
     let Some(key) = key else {
         return 0;
     };
@@ -130,13 +131,13 @@ impl Gnoblin {
         }
         let guard = WriteStage {
             g: self.clone(),
-            hooks: Box::new(Hooks {
+            hooks: Box::new(StageCallbacks {
                 stage: Box::new(stage),
                 peek: Box::new(peek),
                 lent: RefCell::new(None),
             }),
         };
-        // SAFETY: `user` stays valid until the guard drops, which clears the hook; the trampolines read it as the `Hooks` it is.
+        // SAFETY: `user` stays valid until the guard drops, which clears the hook; the trampolines read it as the `StageCallbacks` it is.
         check(unsafe { (self.api().set_write_stage)(self.ctx(), Some(stage_write), Some(peek_write), guard.user()) })?;
         Ok(guard)
     }
