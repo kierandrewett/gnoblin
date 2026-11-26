@@ -398,14 +398,15 @@ and Python shells of the same example, and checked with `gnoblinctl check --type
 
 Gnoblin reads the shell's imports before it runs any of them, and runs the whole shell on one library:
 
-- **The generated classes alone:** the shell imports only `gnoblin-core/generated/objects`,
-  `gnoblin-core/generated/object_base` and `gnoblin-std/generated/objects`, nothing else from gnoblin, and uses no dynamic
-  `import()`.
-- **The TypeScript library, as before:** every other shell. That covers a shell that imports `gnoblin-core`, `gnoblin-std` or
-  any of their other modules, a shell that imports nothing from gnoblin and reads the global `gnoblin`, a shell that reaches
-  `gnoblin-std/extensions/xr`, and a shell that uses a dynamic `import()`.
+- **The native library:** a shell whose gnoblin imports are only `gnoblin-core`, `gnoblin-std`,
+  `gnoblin-core/generated/objects`, `gnoblin-core/generated/object_base` and `gnoblin-std/generated/objects`. The package
+  entries `gnoblin-core` and `gnoblin-std` re-export the generated classes, and the global `gnoblin` is the native root, so a
+  shell that imports nothing from gnoblin runs here too.
+- **The TypeScript library:** a shell where some module imports any other module of `gnoblin-core` or `gnoblin-std` (for
+  example `gnoblin-std/layout` or `gnoblin-std/focus`), reaches `gnoblin-std/extensions/xr`, or uses a dynamic `import()`.
+  A type-only import does not count.
 
-The generated modules import the same way on both, so a shell that mixes them with `gnoblin-std` keeps working. A reload that
+The generated modules import the same way on both, so a shell that mixes them with a deep module keeps working on the TypeScript library. A reload that
 would move the shell to the other library is refused: the error ends `restart gnoblin to change the stock library`, and the
 running shell keeps serving. Restart gnoblin to load the new code.
 
@@ -418,6 +419,7 @@ writes:
 - `Super+1` to `Super+9` show the workspace at that position, sliding over a quarter of a second, and do nothing when
   there is none, so `Super+1` to `Super+4` work until you declare more;
 - `Super+Left` and `Super+Right` move focus between the columns of a `StripLayout` workspace;
+- `Super` and a left drag moves a window, and `Super` and a right drag resizes it from the corner nearest the pointer;
 - a three-finger swipe slides between workspaces, and the windows follow the fingers;
 - the volume, microphone and media keys run `wpctl` and `playerctl`;
 - a titlebar on every window, with a window menu on a right click;
