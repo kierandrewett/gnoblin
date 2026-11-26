@@ -130,30 +130,34 @@ impl Enter for CallEnter<'_, '_> {
     }
 }
 
-/// Runs `body` with `enter` as the way a callback gets into the running generation.
+/// Runs `body` with `enter` as the way a callback gets into the running generation, and puts back the way that was set before when
+/// `body` ends: a call the script makes inside a callback sets its own (`within_call`), and the callback's dispatch goes on with
+/// the way it had.
 pub(crate) fn with_enter<R>(enter: &dyn Enter, body: impl FnOnce() -> R) -> R {
-    struct Reset;
-    impl Drop for Reset {
+    struct Restore(Option<*const dyn Enter>);
+    impl Drop for Restore {
         fn drop(&mut self) {
-            ENTER.with(|cell| cell.set(None));
+            ENTER.with(|cell| cell.set(self.0));
         }
     }
-    // SAFETY: the pointer is read only while `body` runs, by `entered`, and `Reset` clears it before `enter` can end.
+    // SAFETY: the pointer is read only while `body` runs, by `entered`, and `Restore` puts the previous way back (which an outer
+    // `with_enter` still holds, as the calls nest) before `enter` can end.
     let erased: *const (dyn Enter + 'static) = unsafe { std::mem::transmute(enter as *const dyn Enter) };
-    ENTER.with(|cell| cell.set(Some(erased)));
-    let _reset = Reset;
+    let _restore = Restore(ENTER.with(|cell| cell.replace(Some(erased))));
     body()
 }
 
 /// Runs `work`, a call the script makes into a library, so that a callback the library runs before the call returns (a transition's
-/// `rollback`, the work of `request`) finds the script: the way in is the call's own context, which is already inside the script. A
-/// dispatch's own way in, when there is one, stays.
+/// `rollback`, the work of `request`, a layout of a commit) finds the script: the way in is the call's own context.
+///
+/// The invariant: a call a script makes is running inside the context's lock (`Context::with`), which is not reentrant, so a callback
+/// that runs before the call returns must use that context and never take the lock again. The way in a dispatch set (the shell's
+/// own entry, which takes the lock) is right for a callback the library makes from outside the script, and wrong for one made inside
+/// a call, even when the script itself was entered by that dispatch (a timer, a listener): `Context::with` panics there, with the
+/// runtime's `RefCell` already borrowed. So the call's context replaces the dispatch's way in for the length of `work`, and `work`'s end
+/// puts it back (`with_enter`).
 pub(crate) fn within_call<'js, R>(ctx: &Ctx<'js>, work: impl FnOnce() -> R) -> R {
-    if ENTER.with(Cell::get).is_some() {
-        work()
-    } else {
-        with_enter(&CallEnter(ctx), work)
-    }
+    with_enter(&CallEnter(ctx), work)
 }
 
 /// Runs `f` with the way into the running generation: the turn's own (`with_enter`) when the dispatch that calls back is the
@@ -401,13 +405,8 @@ fn install<'js>(ctx: &Ctx<'js>, ids: &ScriptIds) -> rquickjs::Result<()> {
                 }
                 USED.with(|cell| cell.set(true));
                 // A call the script makes may ask the script back before it returns (a transition's commit runs the layout pass
-                // against the staged state, and a script's layout is a callback): the way in is the call's own context, which
-                // is already inside the script. A callback of a dispatch has its own way in, which stays.
-                let answered = if ENTER.with(Cell::get).is_some() {
-                    library.call(context(), &name, &values)
-                } else {
-                    with_enter(&CallEnter(&ctx), || library.call(context(), &name, &values))
-                };
+                // against the staged state, and a script's layout is a callback): see `within_call`.
+                let answered = within_call(&ctx, || library.call(context(), &name, &values));
                 let answer = answered.map_err(|error| throw(&ctx, &error))?;
                 from_dyn(&ctx, &call_ids, &answer)
             },
