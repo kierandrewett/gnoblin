@@ -303,7 +303,14 @@ where
         let generation = match self.stager.stage() {
             Ok(generation) => generation,
             Err(failure) => {
-                self.failed_files = S::locate(&failure).at.into_iter().map(|(file, _, _)| file).collect();
+                // A file the watcher can watch is one on disk. A failure inside a module the runtime embeds names it by a
+                // label (`<generated>/...`), which is not a path: watching it would only add an error to the report.
+                self.failed_files = S::locate(&failure)
+                    .at
+                    .into_iter()
+                    .map(|(file, _, _)| file)
+                    .filter(|file| file.is_absolute())
+                    .collect();
                 return Err(StageFailure::Runtime(failure));
             }
         };
