@@ -685,16 +685,32 @@ fn a_frame_with_more_sources_than_the_cache_holds_refuses_the_extras_and_builds_
     assert_eq!(full, keys[64..], "the extras, and only they, are cache-full");
     assert_eq!(vulkan.device.shaders.borrow().len(), 64);
     assert!(vulkan.device.shaders.borrow().contains(keys[0]) && !vulkan.device.shaders.borrow().contains(keys[69]));
-    // Steady frames build nothing: the same 64 stay, and a frame is cheap.
+    // Steady frames build nothing: no build is asked of the worker, the same 64 stay, and the 6 refused sources are refused
+    // again each frame (they are not built and not remembered as built). Nothing here depends on how long a frame takes.
+    let asked = vulkan.device.shaders.borrow().requested();
+    assert_eq!(
+        asked, 64,
+        "the first frame asked for the 64 sources the cache holds and no more"
+    );
     for _ in 0..3 {
-        let started = std::time::Instant::now();
         vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
-        let took = started.elapsed();
-        println!("a steady frame of 70 sources took {took:?}");
-        assert!(took < Duration::from_millis(500), "{took:?}");
+        assert_eq!(
+            vulkan.device.shaders.borrow().requested(),
+            asked,
+            "no build is asked for again"
+        );
         assert_eq!(vulkan.device.shaders.borrow().pending(), 0, "nothing is built again");
         assert_eq!(vulkan.device.shaders.borrow().len(), 64);
-        frame.shader_timings().take();
+        assert!(vulkan.device.shaders.borrow().contains(keys[0]) && !vulkan.device.shaders.borrow().contains(keys[69]));
+        let refused: Vec<ShaderKey> = frame
+            .shader_timings()
+            .take()
+            .refused
+            .iter()
+            .filter(|(_, code)| code == "cache-full")
+            .map(|(key, _)| *key)
+            .collect();
+        assert_eq!(refused, keys[64..], "the same extras are refused every frame");
     }
     clean(&vulkan);
 }
