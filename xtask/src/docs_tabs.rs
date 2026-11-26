@@ -214,8 +214,10 @@ pub fn examples(page: &str, text: &str) -> (Vec<Example>, Vec<MarkupProblem>) {
     (found, problems)
 }
 
-/// `text` with every example of the languages other than TypeScript blanked, keeping the line numbers. The documentation parity gate reads
-/// the names a page documents from TypeScript; the Python and Rust spellings of the same example are not names of that surface.
+/// `text` with every example and note of the languages other than TypeScript blanked, keeping the line numbers. The documentation
+/// parity gate reads the names a page documents from TypeScript; the Python and Rust spellings of the same member are not names of
+/// that surface. Blanked are the blocks of a tab group, any other `python` or `rust` fence, and a paragraph or list item that opens by
+/// naming the language (`Python uses ...`, `- **Rust:** ...`, `In Rust the call is ...`) down to the next blank line or item.
 pub fn blank_other_languages(page: &str, text: &str) -> String {
     let (found, _) = examples(page, text);
     let mut lines: Vec<String> = text.lines().map(str::to_owned).collect();
@@ -225,11 +227,71 @@ pub fn blank_other_languages(page: &str, text: &str) -> String {
             line.clear();
         }
     }
+    blank_other_language_prose(&mut lines);
     let mut out = lines.join("\n");
     if text.ends_with('\n') {
         out.push('\n');
     }
     out
+}
+
+/// Blanks the Python and Rust fences and notes of `lines`; the lines of a fence of any other language are left as they are.
+fn blank_other_language_prose(lines: &mut [String]) {
+    let mut at = 0;
+    while at < lines.len() {
+        let trimmed = lines[at].trim_start();
+        if let Some(info) = trimmed.strip_prefix("```") {
+            let other = matches!(info.split_whitespace().next(), Some("python" | "py" | "rust" | "rs"));
+            let mut end = at + 1;
+            while end < lines.len() && !lines[end].trim_start().starts_with("```") {
+                end += 1;
+            }
+            let end = end.min(lines.len() - 1);
+            if other {
+                for line in &mut lines[at..=end] {
+                    line.clear();
+                }
+            }
+            at = end + 1;
+        } else if opens_other_language_note(trimmed) {
+            lines[at].clear();
+            at += 1;
+            while at < lines.len() && continues_note(&lines[at]) {
+                lines[at].clear();
+                at += 1;
+            }
+        } else {
+            at += 1;
+        }
+    }
+}
+
+/// Whether `line` (without its indent) opens a note about Python or Rust: after a list marker and bold, `Python` or `Rust`, or `In`
+/// and one of them, as a word.
+fn opens_other_language_note(line: &str) -> bool {
+    let line = line
+        .strip_prefix("- ")
+        .or_else(|| line.strip_prefix("* "))
+        .unwrap_or(line);
+    let line = line.trim_start_matches('*');
+    let line = line.strip_prefix("In ").unwrap_or(line);
+    ["Python", "Rust"].iter().any(|name| {
+        line.strip_prefix(name)
+            .is_some_and(|rest| !rest.starts_with(|c: char| c.is_alphanumeric()))
+    })
+}
+
+/// Whether `line` carries on the note before it: not blank, and not the start of a list item, heading, table, fence or container.
+fn continues_note(line: &str) -> bool {
+    let line = line.trim_start();
+    !(line.is_empty()
+        || line.starts_with("- ")
+        || line.starts_with("* ")
+        || line.starts_with('#')
+        || line.starts_with('|')
+        || line.starts_with("```")
+        || line.starts_with(":::")
+        || line.starts_with(|c: char| c.is_ascii_digit()))
 }
 
 #[cfg(test)]
