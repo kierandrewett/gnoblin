@@ -130,15 +130,15 @@ nothing.
 
 ## Measuring text
 
-`text.metrics()` of a `Text` widget returns `{ width, height, ascent }` for its string, size and font, in whole pixels. The
-compositor measures, so the answer arrives a frame later. Until then, and when the compositor refuses the question, the
-numbers are estimates: half the size per character of the widest line, one and a half sizes per line, and 1.1 sizes of ascent.
+`text.metrics` of a `Text` widget is `{ width, height, ascent }` for its string, size and font, in logical pixels. It is a
+read-only property, and the library's painter measures the string when you read it.
 
 - `height` is a line box per line.
 - `ascent` is the distance from the top of the first line to its baseline, where the bottom of a capital letter sits. Align
   two texts of different sizes, or a text and an icon, by it.
 
-The answer is kept with the text, size and font it was for. Changing any of them falls back to the estimates and asks again.
+`Ui.estimateText(text, size)` returns the guess the library uses for a string it cannot measure: half the size per
+character of the widest line, one and a half sizes per line, and 1.1 sizes of ascent. It needs no desktop.
 
 A `Text` made with `ellipsize: true` that a row gives less room than it measured draws the share of the text that fits and an
 ellipsis. The stock titlebar's title does, so a long window title never runs under the close button.
