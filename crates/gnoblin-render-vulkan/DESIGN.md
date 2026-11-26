@@ -435,8 +435,8 @@ The uniform stride stays 256 bytes in Vulkan, so the larger block costs nothing 
 | `abi.lock`, the catalog hash and the SDKs are regenerated                                         | as the window-node design's core lane does                            |
 
 A renderer that does not draw a new kind names it in the node's `skipped` as `<kind>: unsupported-by-renderer`, through
-the existing table (`compose.rs:3358`). The software renderer keeps reporting `filter` blur and backdrop blur; it gains
-background, inset shadow and grades cheaply, but that is the software lanes' choice, not this design's.
+the existing table (`compose.rs:3358`). The software renderer now draws the backdrop blur, the background and the inset shadow, and reports a `filter`
+as `unsupported-by-renderer`; that is the software lanes' choice, not this design's.
 
 Out of scope: four different corner radii. The style keeps four (`Radii`, `cascade.rs:225`), but the node has one
 `corner_radius`. Supporting four is a node schema change first; the shaders would then take a `vec4` of radii.

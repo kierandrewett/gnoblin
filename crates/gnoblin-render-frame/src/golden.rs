@@ -18,8 +18,8 @@
 //! under a tint, a shadow darker than the backdrop). They run on every picture, including the one a renderer is about to
 //! write, so a wrong golden written by the first renderer to draw a case is caught.
 //!
-//! The software renderer draws every case below (it computes blur, shadow and border on the CPU), so a case marked
-//! `software` is checked against its picture as well; a new case the software renderer cannot draw is marked `false`.
+//! The software renderer computes blur, shadow, border and background on the CPU, so a case marked `software` is checked
+//! against its picture as well. A case it draws differently, or not at all, is marked `false` with the reason beside it.
 //!
 //! A case that blurs needs a renderer that draws a blur; [`blurs`] says which, so a renderer that does not yet can leave
 //! them out of its run and still be held to the rest.
@@ -323,7 +323,7 @@ pub const CASES: [Case; 14] = [
                 .expect("a border");
             vec![window(chain, Color::WHITE, 1.0)]
         },
-        software: false,
+        software: true,
         tolerance: SHAPE_TOLERANCE,
         probes: |image| {
             assert_eq!(
@@ -360,7 +360,7 @@ pub const CASES: [Case; 14] = [
             chain.push(border(1.0, 0.0, false, green())).expect("a border");
             vec![clear(WINDOW, 4.0, chain)]
         },
-        software: false,
+        software: true,
         tolerance: SHAPE_TOLERANCE,
         probes: |image| {
             let fill = [200, 40, 40];
@@ -383,6 +383,7 @@ pub const CASES: [Case; 14] = [
     Case {
         name: "inset_shadow",
         layers: || vec![clear(Rect::new(6, 5, 20, 13), 4.0, one(inset_shadow()))],
+        // Not marked: the software renderer draws an inset shadow with a weaker edge (up to 33 levels off at the edge).
         software: false,
         tolerance: SHAPE_TOLERANCE,
         probes: |image| {
@@ -417,7 +418,7 @@ pub const CASES: [Case; 14] = [
             let fill = Color::from_rgba8(200, 40, 40, 255);
             vec![window(one(Pass::Background { color: fill }), Color::WHITE, 0.5)]
         },
-        software: false,
+        software: true,
         tolerance: SHAPE_TOLERANCE,
         probes: |image| {
             // Half the fill over the backdrop, then half the window over that: the fill is under the content.
@@ -451,6 +452,7 @@ pub const CASES: [Case; 14] = [
                 .expect("a filter");
             vec![window(chain, Color::WHITE, 1.0)]
         },
+        // Not marked: the software renderer draws no `filter`.
         software: false,
         tolerance: SHAPE_TOLERANCE,
         probes: |image| {
@@ -487,6 +489,7 @@ pub const CASES: [Case; 14] = [
                 glass_of(Rect::new(8, 13, 16, 10), blur(0.25)),
             ]
         },
+        // Not marked: the software renderer blurs the quarter-resolution glass differently (up to 17 levels off).
         software: false,
         tolerance: BLUR_TOLERANCE,
         probes: |image| {
@@ -520,7 +523,7 @@ pub const CASES: [Case; 14] = [
             };
             vec![glass_of(Rect::new(6, 5, 20, 13), grade)]
         },
-        software: false,
+        software: true,
         tolerance: BLUR_TOLERANCE,
         probes: |image| {
             // No saturation takes the backdrop to its luma grey; grain adds the same amount to every channel.
@@ -549,6 +552,7 @@ pub const CASES: [Case; 14] = [
             });
             vec![window(one(filter), Color::WHITE, 1.0)]
         },
+        // Not marked: the software renderer draws no `filter`.
         software: false,
         tolerance: BLUR_TOLERANCE,
         probes: |image| {
@@ -593,7 +597,7 @@ pub const CASES: [Case; 14] = [
                 window_at(Rect::new(19, 5, 10, 8), with_glass, Color::WHITE, 0.5),
             ]
         },
-        software: false,
+        software: true,
         tolerance: BLUR_TOLERANCE,
         probes: |image| {
             // Below each window the shadow lies fully over the backdrop, at its alpha (160 of 255) times the opacity.

@@ -5,8 +5,8 @@ truth is the code, not this page.
 
 ## What each renderer draws
 
-GLES is the renderer with the most effects. Vulkan is getting full parity with GLES. The software renderer draws the
-simpler effects and cannot run user shaders.
+GLES draws every effect. Vulkan draws all but the blurs. The software renderer draws everything but a `filter` and
+cannot run user shaders.
 
 | Effect                                           | GLES                          | Vulkan                        | Software                      |
 | ------------------------------------------------ | ----------------------------- | ----------------------------- | ----------------------------- |

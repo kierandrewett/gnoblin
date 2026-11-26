@@ -200,7 +200,7 @@ window, and the docs say so in one sentence.
   `effects` are applied. A window that has no node (the compositor drops it when it is not shown: compose.rs:3504-3516) has
   no picture: its session gets no frames and is not stopped until the window is gone.
 - `blur` (backdrop) is omitted: there is no backdrop. Shadow, border and corner radius are drawn as far as the renderer
-  draws them (node.toml:176-180: GLES every kind, software shadow/border, Vulkan every kind but `blur`); `skipped` already
+  draws them (node.toml:176-180: GLES every kind, software every kind but `filter`, Vulkan every kind but `blur`); `skipped` already
   says what is not.
 
 ### 3.6 How the compositor changes
