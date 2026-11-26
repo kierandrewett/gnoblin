@@ -403,7 +403,7 @@ fn style_classes_are_ordinary_objects_and_literals_become_them() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the 'not applied: style.shadows: an inset shadow has no effect kind' notice in the shell's diagnostics and styleWarnings"]
+#[ignore = "vrnw: TS internal: an in-place edit of a style list element (`style.shadows[0].blur = 20`) wrote through to the node; generated style lists are copies, a write must assign the list"]
 fn a_resolved_style_becomes_the_node_effects_and_opacity_and_is_rewritten_when_an_element_changes() {
     let mut rig = world("");
     js(
@@ -425,8 +425,8 @@ fn a_resolved_style_becomes_the_node_effects_and_opacity_and_is_rewritten_when_a
         let kinds: Vec<&str> = list.iter().map(|e| e.kind.as_str()).collect();
         assert_eq!(
             kinds,
-            ["blur", "shadow", "shadow"],
-            "backdrop blur, then shadows last to first"
+            ["blur", "shadow", "shadow", "shadow"],
+            "backdrop blur, the outer shadows last to first, then the inset one"
         );
         assert_eq!(
             (list[0].saturation, list[0].brightness, list[0].contrast),
@@ -448,6 +448,11 @@ fn a_resolved_style_becomes_the_node_effects_and_opacity_and_is_rewritten_when_a
             (1.0, 2.0, 8.0, 3.0, "#112233ff"),
             "x, y, blur, spread and the colour, written out in full"
         );
+        assert_eq!(
+            (list[3].inset, list[3].frame, list[3].blur_radius),
+            (true, false, 2.0),
+            "an inset shadow follows the window's own shape"
+        );
     }
     assert_eq!(rig.comp.number(3, "opacity"), 0.7);
     assert_eq!(
@@ -455,20 +460,15 @@ fn a_resolved_style_becomes_the_node_effects_and_opacity_and_is_rewritten_when_a
         0.0,
         "a window whose style sets no opacity is not written"
     );
-    assert_eq!(
-        diagnostics,
-        ["not applied: style.shadows: an inset shadow has no effect kind"],
-        "said once for both windows"
+    assert!(
+        diagnostics.is_empty(),
+        "an inset shadow is drawn, not reported: {diagnostics:?}"
     );
-    assert!(rig.settle().is_empty(), "and not again");
     let out = js(
         &mut rig,
         "return JSON.stringify(gnoblin.clients.get('3').styleWarnings);",
     );
-    assert_eq!(
-        out,
-        r#"["not applied: style.shadows: an inset shadow has no effect kind"]"#
-    );
+    assert_eq!(out, "[]");
 
     // A live element edit: client 4's list is a copy, and writing to its element rewrites the node.
     js(
@@ -544,7 +544,7 @@ fn borders_a_radius_and_a_frame_shadow_reach_the_window_node() {
 
 #[test]
 #[ignore = "vrnw: needs the 'not applied: style.*' notices in the shell's diagnostics"]
-fn what_no_effect_kind_draws_stays_in_computed_style_with_a_warning_and_a_notice() {
+fn what_a_limit_of_the_tree_changes_stays_in_computed_style_with_a_warning_and_a_notice() {
     let mut rig = world("");
     js(
         &mut rig,
@@ -561,16 +561,25 @@ fn what_no_effect_kind_draws_stays_in_computed_style_with_a_warning_and_a_notice
     assert_eq!(
         notices,
         [
-            "not applied: style.backdropFilter: the compositor blurs at a fixed radius of 12, so a BlurFilter's radius only switches the blur on",
-            "not applied: style.background: the tree has no background for a window",
-            "not applied: style.filter: no effect kind filters a window's own content",
+            "not applied: style.backdropFilter: the compositor blurs at a fixed radius of 12, so a BlurFilter's radius only switches the blur on"
         ]
     );
+    let list = effects(&rig, 3);
+    assert_eq!(
+        list.iter().map(|e| e.kind.as_str()).collect::<Vec<_>>(),
+        ["blur", "background", "filter", "border"],
+        "the background and the content filter are effects now"
+    );
+    assert_eq!(list[1].colour, "#000000ff");
+    assert_eq!((list[2].blur_radius, list[2].contrast), (0.0, 1.1));
     let out = js(
         &mut rig,
         "const c = gnoblin.clients.get('3'); return JSON.stringify([c.computedStyle.cornerRadius, c.computedStyle.borders.length, c.styleWarnings.length]);",
     );
-    assert_eq!(out, "[12,1,3]", "the values are still there");
+    assert_eq!(
+        out, "[12,1,1]",
+        "the values are still there, and the one warning is the style's notice"
+    );
     // A second window with the same style says nothing more.
     rig.comp.create_window(9, "late", "foot");
     assert!(rig.settle().is_empty());

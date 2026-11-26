@@ -5,10 +5,11 @@
 //! (`clients.where_(&Query::new().app_id("foo")).style()`, in the order they first got a style) and its own (`client.style()`). Per
 //! property the highest scope that sets it wins, and a list a scope sets replaces the inherited list whole.
 //!
-//! The library applies the resolved style to each window's node in the turn after the layout pass: shadows, borders and a backdrop blur
-//! become the node's `effects` (in paint order: the backdrop blur, the shadows from the last listed to the first, then the borders), the
-//! opacity and the corner radius are written to the node, and [`Client::style_warnings`] names what the tree cannot express (an inset
-//! shadow, a window background, a content filter, per-corner radii) instead of faking it.
+//! The library applies the resolved style to each window's node in the turn after the layout pass: shadows (outer and inset), borders,
+//! a background, a content filter and a backdrop blur become the node's `effects` (in list order: the backdrop blur, the background,
+//! the content filter, the outer shadows from the last listed to the first, the inset ones the same way, then the borders), the opacity
+//! and the corner radius are written to the node, and [`Client::style_warnings`] names what the tree cannot express (per-corner radii,
+//! a blur radius over the limit) instead of faking it, and the effects the renderer does not draw.
 //!
 //! This is `data/js/gnoblin-std/style/`. What differs: a list is a `Vec` read, changed and set whole (there is no array to edit in
 //! place), so the copy-on-write of an inherited list has nothing to do.
@@ -51,7 +52,7 @@ impl Default for Border {
     }
 }
 
-/// A shadow behind a window (or inside it with `inset`, which the tree cannot draw).
+/// A shadow behind a window, or inside its edge with `inset`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shadow {
     /// Horizontal offset in pixels. Default 0.
@@ -459,8 +460,7 @@ impl Style {
         })
     }
 
-    /// Sets the background colour, or clears it with `None`. The tree has no background for a window: it is kept in the computed
-    /// style and reported by [`Client::style_warnings`].
+    /// Sets the background colour, or clears it with `None`. The window's node draws it as a `background` effect under the content.
     ///
     /// # Errors
     ///

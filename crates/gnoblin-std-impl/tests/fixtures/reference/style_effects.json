@@ -53,9 +53,7 @@
         "<Super>Button1",
         "<Super>Button3"
       ],
-      "diagnostics": [
-        "not applied: style.shadows: an inset shadow has no effect kind"
-      ],
+      "diagnostics": [],
       "log": [],
       "step": "shadows_and_backdrop",
       "trees": [
@@ -72,7 +70,8 @@
                   "effects": [
                     "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.5, contrast: 1.0, saturation: 1.25, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
                     "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#ff000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
-                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 8.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 8.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 2.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: true, frame: false, source: \"\", params: [] }"
                   ]
                 },
                 "height": 300.0,
@@ -98,7 +97,8 @@
                   "effects": [
                     "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.5, contrast: 1.0, saturation: 1.25, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
                     "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#ff000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
-                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 8.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 8.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 2.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: true, frame: false, source: \"\", params: [] }"
                   ]
                 },
                 "height": 300.0,
@@ -121,7 +121,8 @@
               "effects": [
                 "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.5, contrast: 1.0, saturation: 1.25, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
                 "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#ff000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
-                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 8.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 8.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 2.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: true, frame: false, source: \"\", params: [] }"
               ]
             }
           },
@@ -139,7 +140,8 @@
               "effects": [
                 "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.5, contrast: 1.0, saturation: 1.25, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
                 "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#ff000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
-                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 8.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 8.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 2.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: true, frame: false, source: \"\", params: [] }"
               ]
             }
           }
@@ -161,9 +163,7 @@
       "log": [
         {
           "label": "warnings",
-          "value": [
-            "not applied: style.shadows: an inset shadow has no effect kind"
-          ]
+          "value": []
         }
       ],
       "step": "warnings",
@@ -197,7 +197,8 @@
                   "effects": [
                     "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.5, contrast: 1.0, saturation: 1.25, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
                     "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#ff000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
-                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 20.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 20.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 2.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: true, frame: false, source: \"\", params: [] }"
                   ]
                 },
                 "height": 300.0,
@@ -220,7 +221,8 @@
               "effects": [
                 "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.5, contrast: 1.0, saturation: 1.25, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
                 "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#ff000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
-                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 20.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 20.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 2.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: true, frame: false, source: \"\", params: [] }"
               ]
             }
           }
@@ -497,12 +499,10 @@
         "<Super>Button3"
       ],
       "diagnostics": [
-        "not applied: style.backdropFilter: the compositor blurs at a fixed radius of 12, so a BlurFilter's radius only switches the blur on",
-        "not applied: style.background: the tree has no background for a window",
-        "not applied: style.filter: no effect kind filters a window's own content"
+        "not applied: style.backdropFilter: the compositor blurs at a fixed radius of 12, so a BlurFilter's radius only switches the blur on"
       ],
       "log": [],
-      "step": "what_no_effect_kind_draws",
+      "step": "a_background_a_filter_and_a_blur_over_the_limit",
       "writes": [
         [
           {
@@ -512,6 +512,8 @@
             "value": {
               "effects": [
                 "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"background\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#000000ff\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"filter\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.1, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 0.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
                 "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }"
               ]
             }
@@ -529,6 +531,8 @@
             "value": {
               "effects": [
                 "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"background\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#000000ff\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"filter\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.1, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 0.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
                 "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }"
               ]
             }
@@ -561,9 +565,7 @@
             12,
             1,
             [
-              "not applied: style.backdropFilter: the compositor blurs at a fixed radius of 12, so a BlurFilter's radius only switches the blur on",
-              "not applied: style.background: the tree has no background for a window",
-              "not applied: style.filter: no effect kind filters a window's own content"
+              "not applied: style.backdropFilter: the compositor blurs at a fixed radius of 12, so a BlurFilter's radius only switches the blur on"
             ]
           ]
         }
@@ -588,6 +590,16 @@
       "log": [],
       "step": "a_second_window_says_nothing_more",
       "writes": [
+        [
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 9
+            }
+          }
+        ],
         [
           {
             "key": "focus",
@@ -630,6 +642,8 @@
             "value": {
               "effects": [
                 "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"background\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#000000ff\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"filter\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.1, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 0.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
                 "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }"
               ]
             }

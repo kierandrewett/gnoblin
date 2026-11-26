@@ -1,10 +1,11 @@
-//! Effects: an ordered list of named passes, blur, shadow, border and the shell's own shader.
+//! Effects: an ordered list of named passes: blur, shadow, border, background, filter and the shell's own shader.
 //!
 //! The plan gives the renderer effects as GLES passes (Renderer card). This
 //! module is the scene-side description of those passes: a pass names what it
 //! is, carries the values the effect needs, and is validated where it enters
 //! the scene, so the renderer never has to guess. A shader the shell wrote is a pass too
-//! ([`ShaderPass`]); the compositor ships blur, shadow and border, and the tree refuses any other kind.
+//! ([`ShaderPass`]); the compositor ships blur, shadow (outer or inset), border, background and filter, and the tree
+//! refuses any other kind.
 //!
 //! Order is the pass order: a list is applied in the order it was pushed, which
 //! is what makes "blur then recolour" a different description from "recolour
@@ -25,13 +26,19 @@ use gnoblin_types::{Color, RectF, Unsupported3d, Unsupported3dField, Vec3};
 /// refused and the caller can simplify the chain.
 pub const MAX_PASSES: usize = 32;
 
-/// The most borders, and the most shadows, one node may carry.
+/// The most borders, the most shadows and the most inset shadows one node may carry.
 ///
 /// A border is a ring and a shadow a falloff, each drawn once per element and per damaged
-/// rectangle, so the count is a frame cost like [`MAX_PASSES`]. The two kinds are counted apart,
-/// so a style of eight shadows and eight borders still fits. The style model of the JS runtime
+/// rectangle, so the count is a frame cost like [`MAX_PASSES`]. The kinds are counted apart (an inset shadow is a kind
+/// of its own, [`Pass::name`]), so a style of eight shadows, eight inset shadows and eight borders still fits. The style model of the JS runtime
 /// caps its lists at the same number.
 pub const MAX_STACKED: usize = 8;
+
+/// The most backgrounds, and the most filters, one node may carry, each counted apart.
+///
+/// A background is one colour under the content and a filter one grade and blur of everything the node paints. A second of
+/// either would only be a different value of the first, so the tree keeps to one of each.
+pub const MAX_SINGLE: usize = 1;
 
 /// The most shader passes one node may carry, counted apart from the other kinds and inside [`MAX_PASSES`].
 ///
@@ -54,11 +61,11 @@ pub const MAX_BLUR_PASSES: u32 = 8;
 /// The smallest fraction of full resolution a blur samples its backdrop at.
 pub const MIN_BLUR_DOWNSCALE: f32 = 0.125;
 
-/// The largest brightness, contrast or saturation multiplier a blur accepts.
+/// The largest brightness, contrast or saturation multiplier a blur or a filter accepts.
 ///
-/// The multipliers are plain gains: 1 leaves the backdrop unchanged, 0 removes the
+/// The multipliers are plain gains: 1 leaves the picture unchanged, 0 removes the
 /// channel, and values above 1 boost it. The bound keeps a gain from blowing the
-/// backdrop out to white in one step.
+/// picture out to white in one step.
 pub const MAX_BLUR_GRADE: f32 = 2.0;
 
 /// A blur pass over the node and how its blurred backdrop is graded.
@@ -133,7 +140,7 @@ impl BlurParams {
     }
 }
 
-/// A drop shadow pass drawn behind the node.
+/// A shadow pass: a drop shadow drawn behind the node, or with `inset` a shadow cast inwards from its edge.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shadow {
     /// Offset of the shadow in the node's local space.
@@ -154,8 +161,14 @@ pub struct Shadow {
     /// outside it, the titlebar above all: a shadow that follows only the content leaves the
     /// bar unshadowed and its top edge floating. The frame is resolved where a layer is built
     /// (it needs the node's children), so a renderer never reads this flag; it reads the
-    /// layer's silhouette.
+    /// layer's silhouette. An inset shadow always follows the layer's own shape and ignores the flag.
     pub frame: bool,
+    /// Whether the shadow lies inside the node's rounded shape instead of outside it.
+    ///
+    /// An inset shadow is the outer falloff reflected: full strength at the shape's edge, fading inwards over `blur`. `offset`
+    /// moves the hole it is cast from and `spread` shrinks that hole on every side. It draws nothing outside the shape, so
+    /// it adds no padding. Its [`Pass::name`] is `inset-shadow`.
+    pub inset: bool,
 }
 
 /// A stroke around the node's silhouette, drawn over its content.
@@ -175,6 +188,67 @@ pub struct Border {
     pub inset: bool,
     /// Stroke colour, straight alpha.
     pub color: Color,
+}
+
+/// A grade and a blur of everything the node paints, the layer's own pixels and not the backdrop behind it.
+///
+/// This is CSS `filter`: `blur` softens the painted picture and lets it spill past the node's edge, and the three gains
+/// grade it in a fixed order, saturation, then brightness, then contrast. A `Pass::Filter` that changes nothing
+/// ([`FilterParams::is_identity`]) is allowed and draws like no filter. Every value has a documented range;
+/// [`FilterParams::clamped`] brings any value into it and [`Pass::validate`] refuses one outside.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FilterParams {
+    /// Blur radius in logical pixels, 0 to [`MAX_BLUR_RADIUS`]; 0 does not blur. The radius means what a backdrop blur's does:
+    /// the Gaussian's sigma is half of it.
+    pub blur: f32,
+    /// Saturation gain, 0 (grey) to [`MAX_BLUR_GRADE`]; 1 is unchanged.
+    pub saturate: f32,
+    /// Brightness gain, 0 to [`MAX_BLUR_GRADE`]; 1 is unchanged.
+    pub brightness: f32,
+    /// Contrast gain about mid grey, 0 to [`MAX_BLUR_GRADE`]; 1 is unchanged.
+    pub contrast: f32,
+}
+
+impl Default for FilterParams {
+    /// No blur and no grading.
+    fn default() -> Self {
+        Self::IDENTITY
+    }
+}
+
+impl FilterParams {
+    /// The filter that changes nothing.
+    pub const IDENTITY: Self = Self {
+        blur: 0.0,
+        saturate: 1.0,
+        brightness: 1.0,
+        contrast: 1.0,
+    };
+
+    /// Whether the filter leaves every pixel as it was.
+    #[must_use]
+    pub fn is_identity(&self) -> bool {
+        *self == Self::IDENTITY
+    }
+
+    /// Whether the filter grades the colours, whatever its blur.
+    #[must_use]
+    pub fn grades(&self) -> bool {
+        self.saturate != 1.0 || self.brightness != 1.0 || self.contrast != 1.0
+    }
+
+    /// These parameters with every value brought into its documented range, as [`BlurParams::clamped`] does: a value
+    /// out of range takes the nearest bound and a non-finite one takes the identity's.
+    #[must_use]
+    pub fn clamped(self) -> Self {
+        let finite = |value: f32, fallback: f32| if value.is_finite() { value } else { fallback };
+        Self {
+            blur: finite(self.blur, Self::IDENTITY.blur).clamp(0.0, MAX_BLUR_RADIUS),
+            saturate: finite(self.saturate, Self::IDENTITY.saturate).clamp(0.0, MAX_BLUR_GRADE),
+            brightness: finite(self.brightness, Self::IDENTITY.brightness).clamp(0.0, MAX_BLUR_GRADE),
+            contrast: finite(self.contrast, Self::IDENTITY.contrast).clamp(0.0, MAX_BLUR_GRADE),
+        }
+    }
 }
 
 /// The smallest key that names a shader source: the hash of its text.
@@ -299,21 +373,41 @@ pub enum Pass {
     Shadow(Shadow),
     /// A border.
     Border(Border),
+    /// One colour filling the node's rounded shape, below its content and above a backdrop blur. The colour has straight
+    /// alpha, so a translucent background tints whatever a blur shows under it.
+    Background {
+        /// The fill, straight alpha.
+        color: Color,
+    },
+    /// A grade and a blur of everything the node paints.
+    Filter(FilterParams),
     /// A shader the shell wrote.
     Shader(ShaderPass),
 }
 
 impl Pass {
     /// Every kind of pass, by [`Pass::name`]. A renderer that draws all of them reports exactly this list.
-    pub const NAMES: &'static [&'static str] = &["blur", "shadow", "border", "shader"];
+    pub const NAMES: &'static [&'static str] = &[
+        "blur",
+        "shadow",
+        "inset-shadow",
+        "border",
+        "background",
+        "filter",
+        "shader",
+    ];
 
-    /// The pass's name, as inspection tools report it.
+    /// The pass's name, as inspection tools report it. An inset shadow is a kind of its own, `inset-shadow`, because a
+    /// renderer may draw one without the other; on the wire both are a `shadow` entry and the entry's `inset` tells them apart.
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
             Self::Blur(_) => "blur",
+            Self::Shadow(shadow) if shadow.inset => "inset-shadow",
             Self::Shadow(_) => "shadow",
             Self::Border(_) => "border",
+            Self::Background { .. } => "background",
+            Self::Filter(_) => "filter",
             Self::Shader(_) => "shader",
         }
     }
@@ -402,6 +496,8 @@ impl Pass {
                 }
                 Ok(())
             }
+            Self::Background { color } => validate_color("background.color", *color),
+            Self::Filter(filter) => validate_filter(filter),
             Self::Shader(shader) => shader.validate(),
         }
     }
@@ -415,6 +511,8 @@ impl Pass {
     #[must_use]
     pub fn padding(&self) -> EffectExtent {
         match self {
+            // The shadow lies inside the shape: nothing is drawn outside it.
+            Self::Shadow(Shadow { inset: true, .. }) => EffectExtent::ZERO,
             Self::Shadow(shadow) => {
                 // Growth is the spread (when positive) plus the blur. A negative
                 // spread shrinks the shadow, so it never adds padding.
@@ -426,7 +524,19 @@ impl Pass {
                     bottom: (blur + shadow.offset.y).max(0.0),
                 }
             }
-            Self::Blur(_) | Self::Shader(_) => EffectExtent::ZERO,
+            // An inset shadow, a background and a backdrop blur stay within the node's own shape.
+            Self::Blur(_) | Self::Background { .. } | Self::Shader(_) => EffectExtent::ZERO,
+            // A filter's blur spills past the edge. The Gaussian's sigma is half the radius, so three sigma is one and a
+            // half radii; two is the conservative round-up.
+            Self::Filter(filter) => {
+                let reach = f64::from(filter.blur.max(0.0)) * 2.0;
+                EffectExtent {
+                    left: reach,
+                    top: reach,
+                    right: reach,
+                    bottom: reach,
+                }
+            }
             Self::Border(border) => {
                 // The outer edge of the stroke is `offset + width` past the silhouette when it lies
                 // outside, and `offset` before it, towards the inside, when it lies inside; a
@@ -460,6 +570,42 @@ fn validate_blur(radius: f32) -> Result<(), EffectError> {
             min: 0.0,
             max: MAX_BLUR_RADIUS,
         });
+    }
+    Ok(())
+}
+
+/// Checks a colour: every channel finite and inside 0 to 1.
+fn validate_color(field: &'static str, color: Color) -> Result<(), EffectError> {
+    if ![color.r, color.g, color.b, color.a]
+        .iter()
+        .all(|value| value.is_finite())
+    {
+        return Err(EffectError::NonFinite { field });
+    }
+    if !color.is_in_unit_range() {
+        return Err(EffectError::OutOfRange {
+            field,
+            min: 0.0,
+            max: 1.0,
+        });
+    }
+    Ok(())
+}
+
+/// Checks every value of a filter pass before the pass is built.
+fn validate_filter(filter: &FilterParams) -> Result<(), EffectError> {
+    for (field, value, max) in [
+        ("filter.blur", filter.blur, MAX_BLUR_RADIUS),
+        ("filter.saturate", filter.saturate, MAX_BLUR_GRADE),
+        ("filter.brightness", filter.brightness, MAX_BLUR_GRADE),
+        ("filter.contrast", filter.contrast, MAX_BLUR_GRADE),
+    ] {
+        if !value.is_finite() {
+            return Err(EffectError::NonFinite { field });
+        }
+        if !(0.0..=max).contains(&value) {
+            return Err(EffectError::OutOfRange { field, min: 0.0, max });
+        }
     }
     Ok(())
 }
@@ -533,6 +679,7 @@ impl Effects {
         let kind = pass.name();
         let cap = match pass {
             Pass::Border(_) | Pass::Shadow(_) => Some(MAX_STACKED),
+            Pass::Background { .. } | Pass::Filter(_) => Some(MAX_SINGLE),
             Pass::Shader(_) => Some(MAX_SHADERS),
             Pass::Blur(_) => None,
         };
@@ -603,12 +750,12 @@ impl Effects {
         self.passes.iter().any(|pass| pass.name() == kind)
     }
 
-    /// Whether a shadow asks to follow the node's whole frame.
+    /// Whether an outer shadow asks to follow the node's whole frame.
     #[must_use]
     pub fn has_frame_shadow(&self) -> bool {
         self.passes
             .iter()
-            .any(|pass| matches!(pass, Pass::Shadow(shadow) if shadow.frame))
+            .any(|pass| matches!(pass, Pass::Shadow(shadow) if shadow.frame && !shadow.inset))
     }
 
     /// The chain without its borders, and the borders alone, each in list order.
@@ -748,6 +895,7 @@ mod tests {
                 opacity: 0.5,
                 color: Color::BLACK,
                 frame: false,
+                inset: false,
             }))
             .expect("valid");
         let padding = effects.padding();
@@ -768,6 +916,7 @@ mod tests {
                 opacity: 1.0,
                 color: Color::BLACK,
                 frame: false,
+                inset: false,
             }))
             .expect_err("must refuse");
         assert!(matches!(error, EffectError::Unsupported3d(_)));
@@ -859,6 +1008,7 @@ mod tests {
             opacity: 1.0,
             color: Color::BLACK,
             frame: false,
+            inset: false,
         };
         let shrunk = Shadow { spread: -3.0, ..grown };
         assert_eq!(Pass::Shadow(grown).padding().left, 10.0);
@@ -943,6 +1093,7 @@ mod tests {
             opacity: 1.0,
             color: Color::BLACK,
             frame: true,
+            inset: false,
         });
         for _ in 0..MAX_STACKED {
             effects.push(shadow.clone()).expect("the kinds are counted apart");
@@ -965,16 +1116,212 @@ mod tests {
                 opacity: 1.0,
                 color: Color::BLACK,
                 frame: false,
+                inset: false,
             }),
+            Pass::Shadow(Shadow {
+                inset: true,
+                ..shadow_of(1.0)
+            }),
+            Pass::Background { color: Color::WHITE },
+            Pass::Filter(FilterParams::default()),
             Pass::Shader(tint_shader()),
         ]
         .iter()
         .map(Pass::name)
         .collect();
-        for name in names {
-            assert!(Pass::NAMES.contains(&name), "{name}");
+        for name in &names {
+            assert!(Pass::NAMES.contains(name), "{name}");
         }
-        assert_eq!(Pass::NAMES.len(), 4);
+        for name in Pass::NAMES {
+            assert!(names.contains(name), "{name} has no pass that carries it");
+        }
+    }
+
+    fn shadow_of(blur: f32) -> Shadow {
+        Shadow {
+            offset: Vec3::ZERO,
+            blur,
+            spread: 0.0,
+            opacity: 1.0,
+            color: Color::BLACK,
+            frame: false,
+            inset: false,
+        }
+    }
+
+    #[test]
+    fn an_inset_shadow_is_a_kind_of_its_own_counted_apart_and_draws_no_padding() {
+        let inset = Shadow {
+            inset: true,
+            blur: 9.0,
+            spread: 4.0,
+            offset: Vec3::new(3.0, 3.0, 0.0),
+            ..shadow_of(9.0)
+        };
+        assert_eq!(Pass::Shadow(inset).name(), "inset-shadow");
+        assert_eq!(Pass::Shadow(shadow_of(9.0)).name(), "shadow");
+        assert_eq!(Pass::Shadow(inset).padding(), EffectExtent::ZERO);
+        let mut effects = Effects::new();
+        for _ in 0..MAX_STACKED {
+            effects.push(Pass::Shadow(shadow_of(1.0))).expect("outer shadows");
+            effects
+                .push(Pass::Shadow(inset))
+                .expect("inset shadows are counted apart");
+        }
+        assert!(matches!(
+            effects.push(Pass::Shadow(inset)),
+            Err(EffectError::TooManyOfKind {
+                kind: "inset-shadow",
+                ..
+            })
+        ));
+        assert!(effects.has("inset-shadow") && effects.has("shadow"));
+        let framed = Shadow { frame: true, ..inset };
+        let mut only_inset = Effects::new();
+        only_inset.push(Pass::Shadow(framed)).expect("valid");
+        assert!(
+            !only_inset.has_frame_shadow(),
+            "an inset shadow never follows the frame"
+        );
+        assert!(
+            Pass::Shadow(Shadow {
+                spread: f32::NAN,
+                ..inset
+            })
+            .validate()
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn a_background_takes_one_colour_and_is_kept_to_one_per_node() {
+        let mut effects = Effects::new();
+        effects
+            .push(Pass::Background {
+                color: Color::new(0.1, 0.2, 0.3, 0.5),
+            })
+            .expect("valid");
+        assert_eq!(effects.padding(), EffectExtent::ZERO);
+        assert!(matches!(
+            effects.push(Pass::Background { color: Color::WHITE }),
+            Err(EffectError::TooManyOfKind {
+                kind: "background",
+                max: 1,
+                ..
+            })
+        ));
+        let nan = Pass::Background {
+            color: Color::new(f32::NAN, 0.0, 0.0, 1.0),
+        };
+        assert_eq!(
+            nan.validate(),
+            Err(EffectError::NonFinite {
+                field: "background.color"
+            })
+        );
+        let out = Pass::Background {
+            color: Color::new(1.5, 0.0, 0.0, 1.0),
+        };
+        assert!(matches!(
+            out.validate(),
+            Err(EffectError::OutOfRange {
+                field: "background.color",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn a_filter_is_validated_by_field_and_its_blur_pads_the_node() {
+        assert!(FilterParams::default().is_identity());
+        assert!(Pass::Filter(FilterParams::IDENTITY).validate().is_ok());
+        for (field, filter) in [
+            (
+                "filter.blur",
+                FilterParams {
+                    blur: MAX_BLUR_RADIUS + 1.0,
+                    ..FilterParams::IDENTITY
+                },
+            ),
+            (
+                "filter.saturate",
+                FilterParams {
+                    saturate: -0.1,
+                    ..FilterParams::IDENTITY
+                },
+            ),
+            (
+                "filter.brightness",
+                FilterParams {
+                    brightness: MAX_BLUR_GRADE + 0.5,
+                    ..FilterParams::IDENTITY
+                },
+            ),
+            (
+                "filter.contrast",
+                FilterParams {
+                    contrast: 9.0,
+                    ..FilterParams::IDENTITY
+                },
+            ),
+        ] {
+            assert!(
+                matches!(Pass::Filter(filter).validate(), Err(EffectError::OutOfRange { field: got, .. }) if got == field),
+                "{field}"
+            );
+        }
+        assert_eq!(
+            Pass::Filter(FilterParams {
+                contrast: f32::INFINITY,
+                ..FilterParams::IDENTITY
+            })
+            .validate(),
+            Err(EffectError::NonFinite {
+                field: "filter.contrast"
+            })
+        );
+        let blurred = Pass::Filter(FilterParams {
+            blur: 10.0,
+            ..FilterParams::IDENTITY
+        });
+        assert_eq!(blurred.padding().left, 20.0, "a blur spills past the edge by two radii");
+        assert_eq!(blurred.padding().bottom, 20.0);
+        let graded = FilterParams {
+            saturate: 0.0,
+            ..FilterParams::IDENTITY
+        };
+        assert!(graded.grades() && !graded.is_identity());
+        assert_eq!(
+            Pass::Filter(graded).padding(),
+            EffectExtent::ZERO,
+            "a grade stays inside the node"
+        );
+        let wild = FilterParams {
+            blur: f32::NAN,
+            saturate: 7.0,
+            brightness: -1.0,
+            contrast: f32::INFINITY,
+        }
+        .clamped();
+        assert_eq!(
+            wild,
+            FilterParams {
+                blur: 0.0,
+                saturate: MAX_BLUR_GRADE,
+                brightness: 0.0,
+                contrast: 1.0
+            }
+        );
+        let mut effects = Effects::new();
+        effects.push(blurred).expect("valid");
+        assert!(matches!(
+            effects.push(Pass::Filter(graded)),
+            Err(EffectError::TooManyOfKind {
+                kind: "filter",
+                max: 1,
+                ..
+            })
+        ));
     }
 
     fn tint_shader() -> ShaderPass {

@@ -2177,6 +2177,7 @@ mod tests {
                 opacity: 0.5,
                 color: gnoblin_types::Color::BLACK,
                 frame: false,
+                inset: false,
             }))
             .expect("shadow");
         scene.set_effects(node, effects).expect("effects");
@@ -2219,6 +2220,7 @@ mod tests {
                 opacity: 1.0,
                 color: gnoblin_types::Color::BLACK,
                 frame,
+                inset: false,
             }))
             .expect("shadow");
         effects

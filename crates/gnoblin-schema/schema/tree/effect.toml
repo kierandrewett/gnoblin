@@ -14,11 +14,19 @@ name = "effect"
 since = "0.2.0"
 record = true
 
-# The kind of effect: `blur`, `shadow`, `border` or `shader`. Any other kind is refused
-# `bad-value` and the whole list is refused with it. A `shader` is refused `bad-value` too
-# while the compositor's `compositor.user-shaders` setting is switched off (it is on by default; the seat's
-# `user_shaders` says which), and when its source does not validate. A node holds at most 8
-# `border`, 8 `shadow` and 4 `shader` elements; a list over any cap is refused `too-large`.
+# The kind of effect: `blur`, `shadow`, `border`, `background`, `filter` or `shader`. Any other
+# kind is refused `bad-value` and the whole list is refused with it. A `shader` is refused
+# `bad-value` too while the compositor's `compositor.user-shaders` setting is switched off (it is
+# on by default; the seat's `user_shaders` says which), and when its source does not validate.
+# A node holds at most 8 `border`, 8 outer `shadow`, 8 inset `shadow` (a `shadow` with `inset`),
+# 4 `shader`, 1 `background` and 1 `filter` elements; a list over any cap is refused `too-large`.
+#
+# One layer paints in a fixed order, whatever the order of the list: outer shadows, the backdrop
+# `blur`, the `background`, inset shadows, the content (a `shader` replaces it) graded by the
+# `filter`, then the borders. Within a kind the list order is the paint order, later on top. The
+# seat's `effect_kinds` names the kinds the renderer draws, as `blur`, `shadow`, `inset-shadow`,
+# `border`, `background`, `filter` and `shader`; a kind it does not draw is named in the node's
+# `skipped` as `<kind>: unsupported-by-renderer`, and `inset-shadow` is a `shadow` with `inset`.
 [[object.property]]
 name = "kind"
 type = "string"
@@ -52,22 +60,25 @@ name = "noise"
 type = "double"
 since = "0.2.0"
 
-# Blur only. Brightness multiplier on the blurred backdrop; 1.0 leaves it unchanged.
-# Default 1.0. Ignored by shadow.
+# Blur and filter. Brightness multiplier, 0.0 to 2.0: on the blurred backdrop for a `blur`, on
+# everything the node paints for a `filter`; 1.0 leaves it unchanged. Default 1.0. Ignored by
+# every other kind.
 [[object.property]]
 name = "brightness"
 type = "double"
 since = "0.2.0"
 
-# Blur only. Contrast multiplier on the blurred backdrop; 1.0 leaves it unchanged.
-# Default 1.0. Ignored by shadow.
+# Blur and filter. Contrast multiplier about mid grey, 0.0 to 2.0: on the blurred backdrop for
+# a `blur`, on everything the node paints for a `filter`; 1.0 leaves it unchanged. Default 1.0.
+# Ignored by every other kind.
 [[object.property]]
 name = "contrast"
 type = "double"
 since = "0.2.0"
 
-# Blur only. Saturation multiplier on the blurred backdrop; 1.0 leaves it unchanged.
-# Default 1.0. Ignored by shadow.
+# Blur and filter. Saturation multiplier, 0.0 (grey) to 2.0: on the blurred backdrop for a
+# `blur`, on everything the node paints for a `filter`; 1.0 leaves it unchanged. Default 1.0.
+# Ignored by every other kind.
 [[object.property]]
 name = "saturation"
 type = "double"
@@ -80,43 +91,49 @@ name = "tint"
 type = "string"
 since = "0.2.0"
 
-# Shadow only. Horizontal offset of the shadow in logical pixels; positive is right.
-# Default 0.0. Ignored by blur.
+# Shadow only. Horizontal offset of the shadow in logical pixels; positive is right. For an
+# inset shadow it moves the hole the shadow is cast from. Default 0.0. Ignored by every other
+# kind.
 [[object.property]]
 name = "offset_x"
 type = "double"
 since = "0.2.0"
 
-# Shadow only. Vertical offset of the shadow in logical pixels; positive is down. Default
-# 0.0. Ignored by blur.
+# Shadow only. Vertical offset of the shadow in logical pixels; positive is down. For an inset
+# shadow it moves the hole the shadow is cast from. Default 0.0. Ignored by every other kind.
 [[object.property]]
 name = "offset_y"
 type = "double"
 since = "0.2.0"
 
-# Shadow only. Blur radius of the shadow edge in logical pixels; 0.0 is a hard edge.
-# Default 12.0. Ignored by blur.
+# Shadow and filter. For a `shadow`, the blur radius of its edge in logical pixels; 0.0 is a
+# hard edge, and the default is 12.0. For a `filter`, the blur of everything the node paints, 0.0
+# to 100.0, with the sigma half the radius as for a backdrop blur; 0.0 is no blur, the filter then
+# only grades, and an SDK's default for a `filter` is 0.0. A filter's blur spills past the node's
+# edge. Ignored by every other kind.
 [[object.property]]
 name = "blur_radius"
 type = "double"
 since = "0.2.0"
 
-# Shadow only. How far the shadow grows beyond the node before blurring, in logical
-# pixels; negative shrinks it. Default 0.0. Ignored by blur.
+# Shadow only. How far the shadow grows beyond the node before blurring, in logical pixels;
+# negative shrinks it. For an inset shadow it shrinks the hole the shadow is cast from on every
+# side, so a larger spread moves the shadow inwards. Default 0.0. Ignored by every other kind.
 [[object.property]]
 name = "spread"
 type = "double"
 since = "0.2.0"
 
-# Shadow only. The shadow colour as `#rrggbb` or `#rrggbbaa`. Default `#00000080`. Ignored
-# by blur.
+# Shadow, border and background. The colour as `#rrggbb` or `#rrggbbaa`; for a `background` it
+# is the fill, which a translucent value lets a backdrop blur show through. Default `#00000080`.
+# Ignored by every other kind.
 [[object.property]]
 name = "colour"
 type = "string"
 since = "0.2.0"
 
 # Border only. The stroke width in logical pixels, 0 to 100. Default 0.0, which draws nothing.
-# Ignored by blur and shadow. A `border` also reads `colour`: `#rrggbb` or `#rrggbbaa`.
+# Ignored by every other kind. A `border` also reads `colour`: `#rrggbb` or `#rrggbbaa`.
 [[object.property]]
 name = "width"
 type = "double"
@@ -125,14 +142,18 @@ since = "0.2.0"
 # Border only. The distance in logical pixels from the silhouette's edge to the stroke's edge
 # nearest it, -100 to 100. Positive moves the stroke away from the silhouette (outwards, or
 # inwards when `inset`); negative moves it back across the edge. Default 0.0. Ignored by
-# blur and shadow. Borders in list order with different offsets make concentric rings.
+# every other kind. Borders in list order with different offsets make concentric rings.
 [[object.property]]
 name = "offset"
 type = "double"
 since = "0.2.0"
 
-# Border only. Whether the stroke lies inside the node's silhouette (`true`) or outside it
-# (`false`, the default). Ignored by blur and shadow.
+# Border and shadow. For a `border`, whether the stroke lies inside the node's silhouette
+# (`true`) or outside it (`false`, the default). For a `shadow`, whether it is an inset shadow:
+# cast inwards from the edge of the node's own rounded shape, strongest at the edge and fading
+# over `blur_radius`, instead of a drop shadow behind the node. An inset shadow draws below the
+# content as CSS does, so an opaque client hides it, and ignores `frame`. Ignored by every other
+# kind.
 [[object.property]]
 name = "inset"
 type = "bool"
@@ -140,7 +161,8 @@ since = "0.2.0"
 
 # Shadow only. Whether the shadow follows the node's whole frame (the node's rectangle
 # together with the decoration children that lie outside it, such as a window's titlebar)
-# rather than the node's own rectangle. Default false. Ignored by blur and border.
+# rather than the node's own rectangle. Default false. Ignored by an inset shadow and by every
+# other kind.
 [[object.property]]
 name = "frame"
 type = "bool"

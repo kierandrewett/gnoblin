@@ -1247,20 +1247,29 @@ impl Painter<'_> {
         };
         for pass in effects.passes() {
             match pass {
-                Pass::Shadow(_) | Pass::Blur(_) | Pass::Border(_) | Pass::Shader(_) if !flat => {
+                Pass::Shadow(_)
+                | Pass::Blur(_)
+                | Pass::Border(_)
+                | Pass::Background { .. }
+                | Pass::Filter(_)
+                | Pass::Shader(_)
+                    if !flat =>
+                {
                     log::warn!(
                         "unsupported-effect-on-3d: a shadow, blur, border or shader on a transformed layer is not drawn"
                     );
                 }
-                Pass::Shadow(shadow) if shadow.opacity > 0.0 && shadow.color.a > 0.0 => {
+                Pass::Shadow(shadow) if !shadow.inset && shadow.opacity > 0.0 && shadow.color.a > 0.0 => {
                     self.shadow(if shadow.frame { shape } else { quad }, radius, shadow)?;
                 }
                 Pass::Blur(blur) if blur.radius > 0.0 => {
                     let blurred = self.blur(quad, *blur, grouped)?;
                     grouped |= blurred;
                 }
-                // A border is a stroke over the layer's own pixels, so it waits until they are down.
-                Pass::Shadow(_) | Pass::Blur(_) | Pass::Border(_) => {}
+                // A border is a stroke over the layer's own pixels, so it waits until they are down. An inset shadow, a
+                // background and a filter are not drawn here yet: the renderer does not list them in `effect_kinds`, so the
+                // composer names them in the node's `skipped`.
+                Pass::Shadow(_) | Pass::Blur(_) | Pass::Border(_) | Pass::Background { .. } | Pass::Filter(_) => {}
                 // A shader draws in place of the layer's own pixels, below.
                 Pass::Shader(_) => {}
             }

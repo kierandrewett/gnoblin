@@ -64,7 +64,7 @@ use gnoblin_animation::{PropertyValue, VisualProperty};
 use gnoblin_secret::SecretText;
 use gnoblin_types::{NodeId, Rect};
 
-use crate::effect::{EffectError, Effects, MAX_SHADERS, MAX_STACKED, Pass};
+use crate::effect::{EffectError, Effects, MAX_SHADERS, MAX_SINGLE, MAX_STACKED, Pass};
 use crate::scene::{NodeSpec, Scene, SceneError};
 use crate::scene_ids::Actor;
 
@@ -1026,6 +1026,9 @@ fn check_value(work: &Scene, classes: &dyn ClassInfo, value: &TreeValue, kind: &
             for (kind, cap) in [
                 ("border", MAX_STACKED),
                 ("shadow", MAX_STACKED),
+                ("inset-shadow", MAX_STACKED),
+                ("background", MAX_SINGLE),
+                ("filter", MAX_SINGLE),
                 ("shader", MAX_SHADERS),
             ] {
                 size_within(passes.iter().filter(|pass| pass.name() == kind).count(), cap)?;
@@ -1076,7 +1079,7 @@ fn check_effect_pass(pass: &Pass) -> Result<(), Code> {
     })
 }
 
-/// Whether any number in a blur or shadow pass is NaN or infinite.
+/// Whether any number in a pass is NaN or infinite.
 fn pass_has_non_finite(pass: &Pass) -> bool {
     match pass {
         Pass::Blur(blur) => [
@@ -1117,6 +1120,12 @@ fn pass_has_non_finite(pass: &Pass) -> bool {
         ]
         .iter()
         .any(|value| !value.is_finite()),
+        Pass::Background { color } => [color.r, color.g, color.b, color.a]
+            .iter()
+            .any(|value| !value.is_finite()),
+        Pass::Filter(filter) => [filter.blur, filter.saturate, filter.brightness, filter.contrast]
+            .iter()
+            .any(|value| !value.is_finite()),
         Pass::Shader(shader) => shader.params().iter().any(|value| !value.is_finite()),
     }
 }

@@ -235,6 +235,7 @@ fn a_rounded_shadow_is_darkest_at_the_edge_and_never_darker_further_out() {
         opacity: 1.0,
         color: Color::BLACK,
         frame: false,
+        inset: false,
     })]);
     let Some(image) = drawn(size, Scale::IDENTITY, Color::WHITE, vec![solid]) else {
         return;
@@ -281,6 +282,7 @@ fn a_frame_shadow_covers_the_decoration_the_content_shadow_leaves_out() {
             opacity: 1.0,
             color: Color::BLACK,
             frame: follows_frame,
+            inset: false,
         })]);
         solid
     };
@@ -372,6 +374,7 @@ fn a_border_and_a_frame_shadow_on_a_projected_layer_draw_nothing_extra() {
                 opacity: 1.0,
                 color: Color::BLACK,
                 frame: true,
+                inset: false,
             }),
         ]);
         layered_frame(Color::WHITE, size, vec![solid])

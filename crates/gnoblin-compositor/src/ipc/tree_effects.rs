@@ -5,14 +5,14 @@
 //! echoes the passes the scene kept. The `window.add_effect` call and the window's `effect`
 //! objects this replaced are gone.
 //!
-//! `blur`, `shadow`, `border` and `shader` exist. Any other kind is an error with a reason, as is a `shader` while the
+//! `blur`, `shadow` (outer, or inset with `inset`), `border`, `background`, `filter` and `shader` exist. Any other kind is an error with a reason, as is a `shader` while the
 //! `compositor.user-shaders` setting is off or when its source does not validate, and the caller refuses the whole list
 //! rather than draw part of it. A value outside the renderer's documented range is refused by [`Pass::validate`], and its
 //! text is the reason.
 
 use gnoblin_proto::tree::effect;
 use gnoblin_render::ShaderKey;
-use gnoblin_render::{BlurParams, Border, MAX_SHADER_PARAMS, Pass, ShaderPass, Shadow};
+use gnoblin_render::{BlurParams, Border, FilterParams, MAX_SHADER_PARAMS, Pass, ShaderPass, Shadow};
 use gnoblin_render_frame::shader;
 use gnoblin_render_frame::shader::watchdog::ShaderRefusals;
 use gnoblin_types::{Color, Vec3};
@@ -60,6 +60,8 @@ pub(super) fn pass_from_wire(entry: &effect::Properties, shaders: &ShaderWrites)
         "blur" => blur_pass(entry),
         "shadow" => shadow_pass(entry),
         "border" => border_pass(entry),
+        "background" => background_pass(entry),
+        "filter" => filter_pass(entry),
         "shader" => shader_pass(entry, shaders),
         other => Err(format!("unknown effect kind `{other}`")),
     }
@@ -89,6 +91,7 @@ pub(super) fn wire_from_pass(pass: &Pass) -> effect::Properties {
             spread: f64::from(shadow.spread),
             colour: hex_colour(shadow.color),
             frame: shadow.frame,
+            inset: shadow.inset,
             ..effect::Properties::default()
         },
         Pass::Border(border) => effect::Properties {
@@ -97,6 +100,19 @@ pub(super) fn wire_from_pass(pass: &Pass) -> effect::Properties {
             offset: f64::from(border.offset),
             inset: border.inset,
             colour: hex_colour(border.color),
+            ..effect::Properties::default()
+        },
+        Pass::Background { color } => effect::Properties {
+            kind: "background".to_owned(),
+            colour: hex_colour(*color),
+            ..effect::Properties::default()
+        },
+        Pass::Filter(filter) => effect::Properties {
+            kind: "filter".to_owned(),
+            blur_radius: f64::from(filter.blur),
+            saturation: f64::from(filter.saturate),
+            brightness: f64::from(filter.brightness),
+            contrast: f64::from(filter.contrast),
             ..effect::Properties::default()
         },
         Pass::Shader(shader) => effect::Properties {
@@ -113,7 +129,7 @@ pub(super) fn wire_from_pass(pass: &Pass) -> effect::Properties {
 fn shader_pass(entry: &effect::Properties, shaders: &ShaderWrites) -> Result<Pass, String> {
     if !shaders.accepted {
         return Err(
-            "user shaders are switched off (`compositor.user-shaders`): use a `blur`, `shadow` or `border` effect, or draw a `Canvas`"
+            "user shaders are switched off (`compositor.user-shaders`): use a `blur`, `shadow`, `border`, `background` or `filter` effect, or draw a `Canvas`"
                 .to_owned(),
         );
     }
@@ -179,6 +195,7 @@ fn shadow_pass(entry: &effect::Properties) -> Result<Pass, String> {
         opacity: 1.0,
         color: parse_colour(&entry.colour)?,
         frame: entry.frame,
+        inset: entry.inset,
     });
     pass.validate().map_err(|error| error.to_string())?;
     Ok(pass)
@@ -191,6 +208,28 @@ fn border_pass(entry: &effect::Properties) -> Result<Pass, String> {
         offset: entry.offset as f32,
         inset: entry.inset,
         color: parse_colour(&entry.colour)?,
+    });
+    pass.validate().map_err(|error| error.to_string())?;
+    Ok(pass)
+}
+
+/// The background pass an entry asks for: its `colour`, validated against the renderer's range.
+fn background_pass(entry: &effect::Properties) -> Result<Pass, String> {
+    let pass = Pass::Background {
+        color: parse_colour(&entry.colour)?,
+    };
+    pass.validate().map_err(|error| error.to_string())?;
+    Ok(pass)
+}
+
+/// The filter pass an entry asks for: `blur_radius` is the blur of everything the node paints, and `saturation`, `brightness`
+/// and `contrast` grade it. Validated against the renderer's ranges.
+fn filter_pass(entry: &effect::Properties) -> Result<Pass, String> {
+    let pass = Pass::Filter(FilterParams {
+        blur: entry.blur_radius as f32,
+        saturate: entry.saturation as f32,
+        brightness: entry.brightness as f32,
+        contrast: entry.contrast as f32,
     });
     pass.validate().map_err(|error| error.to_string())?;
     Ok(pass)
@@ -412,6 +451,81 @@ mod tests {
         let held = pass(&shadow).expect("a shadow");
         assert!(matches!(&held, Pass::Shadow(shadow) if shadow.frame));
         assert!(wire_from_pass(&held).frame);
+    }
+
+    #[test]
+    fn a_shadow_with_inset_is_an_inset_shadow_and_echoes_back_as_one() {
+        let mut shadow = entry("shadow");
+        shadow.inset = true;
+        shadow.offset_x = 2.0;
+        shadow.spread = 3.0;
+        let held = pass(&shadow).expect("an inset shadow");
+        assert!(matches!(&held, Pass::Shadow(held) if held.inset));
+        assert_eq!(held.name(), "inset-shadow");
+        let echoed = wire_from_pass(&held);
+        assert_eq!((echoed.kind.as_str(), echoed.inset), ("shadow", true));
+        assert_eq!((echoed.offset_x, echoed.spread), (2.0, 3.0));
+        assert_eq!(pass(&echoed), Ok(held), "the echo sets back to the same shadow");
+        assert_eq!(
+            pass(&entry("shadow")).map(|held| held.name()),
+            Ok("shadow"),
+            "without the flag it is the outer shadow"
+        );
+    }
+
+    #[test]
+    fn a_background_takes_its_colour_and_echoes_back() {
+        let mut background = entry("background");
+        background.colour = "#10203080".to_owned();
+        let held = pass(&background).expect("a background");
+        assert!(
+            matches!(&held, Pass::Background { color } if *color == Color::from_rgba8(0x10, 0x20, 0x30, 0x80)),
+            "{held:?}"
+        );
+        let echoed = wire_from_pass(&held);
+        assert_eq!(
+            (echoed.kind.as_str(), echoed.colour.as_str()),
+            ("background", "#10203080")
+        );
+        assert_eq!(pass(&echoed), Ok(held));
+        background.colour = "red".to_owned();
+        assert!(pass(&background).is_err_and(|reason| reason.contains("colour")));
+        background.colour = String::new();
+        assert!(pass(&background).is_err(), "a background has no colour to guess");
+    }
+
+    #[test]
+    fn a_filter_carries_its_blur_and_grades_and_refuses_what_is_out_of_range() {
+        let mut filter = entry("filter");
+        filter.blur_radius = 6.0;
+        filter.saturation = 0.5;
+        filter.brightness = 1.25;
+        filter.contrast = 1.5;
+        let held = pass(&filter).expect("a filter");
+        let Pass::Filter(params) = &held else {
+            panic!("a filter entry is a filter pass: {held:?}");
+        };
+        assert_eq!(
+            (params.blur, params.saturate, params.brightness, params.contrast),
+            (6.0, 0.5, 1.25, 1.5)
+        );
+        let echoed = wire_from_pass(&held);
+        assert_eq!(
+            (
+                echoed.kind.as_str(),
+                echoed.blur_radius,
+                echoed.saturation,
+                echoed.brightness,
+                echoed.contrast
+            ),
+            ("filter", 6.0, 0.5, 1.25, 1.5)
+        );
+        assert_eq!(pass(&echoed), Ok(held));
+        filter.saturation = 9.0;
+        assert!(pass(&filter).is_err_and(|reason| reason.contains("filter.saturate")));
+        filter.saturation = 1.0;
+        filter.blur_radius = f64::NAN;
+        assert!(pass(&filter).is_err_and(|reason| reason.contains("filter.blur")));
     }
 
     #[test]

@@ -210,7 +210,7 @@ fn effects_on_the_node() {
         "gnoblin.clients.style.cornerRadius = 12; gnoblin.clients.style.borders = [{ width: 2 }]; gnoblin.clients.style.background = '#000';\n\
          gnoblin.clients.style.filter = [{ contrast: 1.1 }]; gnoblin.clients.style.backdropFilter = [{ blur: 20 }];",
     )
-    .step("what_no_effect_kind_draws");
+    .step("a_background_a_filter_and_a_blur_over_the_limit");
     s.eval("const c = gnoblin.clients.get('3'); rec('kept', [c.computedStyle.cornerRadius, c.computedStyle.borders.length, c.styleWarnings]);").step("kept_in_computed_style");
     s.open(9, "late", "foot").step("a_second_window_says_nothing_more");
     s.eval("gnoblin.clients.style.reset();").step("reset_third");

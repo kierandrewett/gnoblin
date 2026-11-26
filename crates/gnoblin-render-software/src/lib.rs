@@ -486,6 +486,7 @@ impl Software {
             if flat {
                 for pass in effects.passes() {
                     if let Pass::Shadow(held) = pass
+                        && !held.inset
                         && held.opacity > 0.0
                         && held.color.a > 0.0
                     {

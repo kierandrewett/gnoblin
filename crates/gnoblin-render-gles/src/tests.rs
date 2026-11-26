@@ -263,6 +263,7 @@ fn a_shadow_darkens_next_to_the_edge_and_fades() {
             opacity: 0.5,
             color: Color::BLACK,
             frame: false,
+            inset: false,
         }))
         .expect("a shadow");
     solid.effects = effects;
@@ -321,6 +322,7 @@ fn a_shadow_does_not_leave_the_damage() {
             opacity: 1.0,
             color: Color::BLACK,
             frame: false,
+            inset: false,
         }))
         .expect("a shadow");
     solid.effects = effects;
@@ -829,6 +831,7 @@ fn an_effect_on_a_projected_layer_draws_nothing_extra() {
             opacity: 0.5,
             color: Color::BLACK,
             frame: false,
+            inset: false,
         }))
         .expect("a shadow");
     effects.push(Pass::Blur(blur(6.0))).expect("a blur");

@@ -107,6 +107,7 @@ fn shadow(frame: bool) -> Pass {
         opacity: 1.0,
         color: Color::BLACK,
         frame,
+        inset: false,
     })
 }
 

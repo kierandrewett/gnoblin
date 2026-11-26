@@ -227,11 +227,14 @@ whole.
 | `backdropFilter` | a list of filters, at most 8              | none    | a blur: GLES                          |
 | `cornerRadius`   | a number of at least 0, or one per corner | 0       | one radius: GLES, software and Vulkan |
 | `borders`        | a list of `Border`, at most 8             | none    | GLES and software                     |
-| `filter`         | a list of filters, at most 8              | none    | not drawn                             |
-| `background`     | a colour or the empty text                | none    | not drawn                             |
+| `filter`         | a list of filters, at most 8              | none    | shaders: GLES and Vulkan              |
+| `background`     | a colour or the empty text                | none    | no renderer yet                       |
 
-A colour is `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`. A property that no renderer draws is still stored and reported
-in the computed style; see "What is drawn" below.
+A colour is `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
+
+A style element the active renderer does not draw is still written to the window's node, and the node's `skipped` list
+names it. No renderer draws a `background`, an inset shadow or the blur and grades of `filter` yet. See
+"What is drawn" below.
 
 ### Shadow
 
@@ -239,7 +242,9 @@ in the computed style; see "What is drawn" below.
 - `blur` is the softness of the edge, from 0 to 100. Default 12.
 - `spread` grows the shadow, from -100 to 100. Default 0.
 - `color` defaults to `#00000080`.
-- An `inset` shadow is kept and not drawn.
+- An `inset` shadow lies inside the window's rounded edge, strongest at the edge and fading inwards over `blur`. `x` and
+  `y` move the hole it is cast from and `spread` shrinks that hole on every side. It is painted below the window's content,
+  as CSS does, so an opaque client hides it.
 
 The first shadow of the list is on top.
 
@@ -442,7 +447,7 @@ is reported when it is applied and the node keeps the effects it had.
 
 ## What is drawn
 
-The tree has four effect kinds (blur, shadow, border and shader), a node `corner_radius` and a node opacity. A style becomes:
+The tree has six effect kinds (blur, shadow, border, background, filter and shader), a node `corner_radius` and a node opacity. A style becomes:
 
 - `opacity` as the window node's `opacity`.
 - `cornerRadius` as the node's `corner_radius`. It rounds the window's whole frame: the content, the titlebar above it,
@@ -451,6 +456,8 @@ The tree has four effect kinds (blur, shadow, border and shader), a node `corner
   `not applied: style.cornerRadius: ...`.
 - The outer `shadows` as `shadow` effects with `frame` set, painted from the last to the first so the first is on top.
   A shadow follows the window's frame, the titlebar included, not the content alone.
+- The `inset` shadows as `shadow` effects with `inset` set, after the outer ones and painted the same way, last to first.
+  An inset shadow follows the window's own shape, not its frame.
 - `borders` as `border` effects in list order, after the shadows. A border is a stroke of `width` along the frame's
   rounded edge: outside it by default, inside it with `inset`, moved `offset` pixels from the edge. Borders with
   different offsets make concentric rings.
@@ -460,14 +467,23 @@ The tree has four effect kinds (blur, shadow, border and shader), a node `corner
   chain they have nothing to draw.
 - A `ShaderFilter` of either filter list as one `shader` effect, after the blur and before the shadows, at most four of
   them. While the compositor's custom shaders are switched off it is not written and the style reports it as
-  `not applied: style.filter: ...`. The other `filter` elements have no effect kind and are not applied.
+  `not applied: style.filter: ...`.
+- `background` as one `background` effect, the colour filling the window's rounded shape below its content and above a
+  backdrop blur, so a translucent background tints the blur.
+- The other `filter` elements as one `filter` effect: its blurs add up as Gaussians do (the root of the sum of their
+  squares, at most 100) and its `SaturateFilter`, `BrightnessFilter` and `ContrastFilter` multiply, each at most 2. The
+  effect blurs and grades everything the window paints, and its blur spills past the window's edge. A value over its
+  limit is drawn as the limit and reported `not applied: style.filter: ...`.
 
-| Kind or property | GLES | Software                         | Vulkan                 |
-| ---------------- | ---- | -------------------------------- | ---------------------- |
-| `corner_radius`  | yes  | yes (hard edge)                  | yes                    |
-| `shadow`         | yes  | yes (hard edge, stepped falloff) | no, reported `skipped` |
-| `border`         | yes  | yes (hard edge)                  | no, reported `skipped` |
-| `blur`           | yes  | no, reported `skipped`           | no, reported `skipped` |
+| Kind or property | GLES                   | Software                         | Vulkan                 |
+| ---------------- | ---------------------- | -------------------------------- | ---------------------- |
+| `corner_radius`  | yes                    | yes (hard edge)                  | yes                    |
+| `shadow`         | yes                    | yes (hard edge, stepped falloff) | no, reported `skipped` |
+| `border`         | yes                    | yes (hard edge)                  | no, reported `skipped` |
+| `blur`           | yes                    | no, reported `skipped`           | no, reported `skipped` |
+| `inset-shadow`   | no, reported `skipped` | no, reported `skipped`           | no, reported `skipped` |
+| `background`     | no, reported `skipped` | no, reported `skipped`           | no, reported `skipped` |
+| `filter`         | no, reported `skipped` | no, reported `skipped`           | no, reported `skipped` |
 
 Two decorated windows on the GLES renderer with `cornerRadius: 12`, a 2 pixel inset border and a shadow. The corners are
 cut from the frame, the titlebar included, the border runs over the titlebar's top edge and round the arc, and the shadow
@@ -491,10 +507,16 @@ as follows:
 
 `seat.effect_kinds` lists the kinds the renderer draws.
 
-`background`, the `filter` elements that are not a `ShaderFilter` and inset shadows have no effect kind and are not applied yet. They stay in the computed style, and
-each one a style sets is reported once per reload as `not applied: style.<property>: <reason>`.
+No renderer draws these kinds yet, so on every renderer the node's `skipped` list names them:
 
-A window holds at most 16 effects (at most 8 shadows and 8 borders, and the blur).
+- `background: unsupported-by-renderer`
+- `inset-shadow: unsupported-by-renderer`
+- `filter: unsupported-by-renderer`
+
+`seat.effect_kinds` does not list them either. The style reports as `not applied: style.<property>: <reason>` only what a
+limit of the tree changes.
+
+A window holds at most 16 effects in all, whatever their kinds.
 
 ::: tabs
 

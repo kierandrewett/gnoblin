@@ -539,6 +539,8 @@ pub(crate) unsafe fn read_value(raw: *const GnoblinValue, want: u32) -> Result<M
                         abi::EFFECT_SHADOW => "shadow",
                         abi::EFFECT_BORDER => "border",
                         abi::EFFECT_SHADER => "shader",
+                        abi::EFFECT_BACKGROUND => "background",
+                        abi::EFFECT_FILTER => "filter",
                         other => return Err(ValueError::Type(format!("{other} is not an effect kind"))),
                     };
                     let params = if item.n_params == 0 {
@@ -795,6 +797,45 @@ mod tests {
                 .iter()
                 .all(|effect| effect.source.is_empty() && effect.params.is_empty())
         );
+    }
+
+    #[test]
+    fn a_background_a_filter_and_an_inset_shadow_read_as_their_wire_kinds() {
+        let mut background = first_effect(abi::EFFECT_BACKGROUND);
+        background.texts[2] = GnoblinStr::borrowed("#10203080");
+        let mut filter = first_effect(abi::EFFECT_FILTER);
+        filter.numbers[1] = 1.25;
+        filter.numbers[2] = 1.5;
+        filter.numbers[3] = 0.5;
+        filter.numbers[6] = 4.0;
+        let mut shadow = first_effect(abi::EFFECT_SHADOW);
+        shadow.inset = 1;
+        shadow.numbers[7] = 3.0;
+        let records = [background, filter, shadow];
+        // SAFETY: `records` is a live array of three 152-byte records whose text borrows are static.
+        let read = unsafe { read_value(&effects_value(records.as_ptr().cast(), 3), abi::VALUE_EFFECTS) };
+        let Ok(MirrorValue::Effects(effects)) = read else {
+            panic!("the array did not read: {read:?}");
+        };
+        assert_eq!(
+            effects.iter().map(|effect| effect.kind.as_str()).collect::<Vec<_>>(),
+            ["background", "filter", "shadow"]
+        );
+        assert_eq!(effects[0].colour, "#10203080");
+        assert_eq!(
+            (
+                effects[1].blur_radius,
+                effects[1].saturation,
+                effects[1].brightness,
+                effects[1].contrast
+            ),
+            (4.0, 0.5, 1.25, 1.5)
+        );
+        assert_eq!((effects[2].inset, effects[2].spread), (true, 3.0));
+        let unknown = first_effect(7);
+        // SAFETY: a live array of one record.
+        let read = unsafe { read_value(&effects_value((&raw const unknown).cast(), 1), abi::VALUE_EFFECTS) };
+        assert!(matches!(read, Err(ValueError::Type(_))), "{read:?}");
     }
 
     #[test]

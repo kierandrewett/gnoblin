@@ -800,6 +800,137 @@ fn a_blur_on_the_software_renderer_is_reported_skipped_by_the_renderer() {
     session.stop().expect("the session stops cleanly");
 }
 
+/// `background`, `filter` and a `shadow` with `inset` are kinds of the list: the wire keeps each as written, and a renderer
+/// that does not draw them (the software one here) names each in `skipped` as `<kind>: unsupported-by-renderer`.
+#[test]
+fn a_background_a_filter_and_an_inset_shadow_are_accepted_and_reported_skipped_by_the_renderer() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create(1000, attached.root);
+    ops.push(set_effects(
+        1000,
+        vec![
+            effect::Properties {
+                kind: "background".to_owned(),
+                colour: "#10203080".to_owned(),
+                ..Default::default()
+            },
+            effect::Properties {
+                kind: "shadow".to_owned(),
+                inset: true,
+                offset_y: 2.0,
+                blur_radius: 6.0,
+                spread: 1.0,
+                colour: "#000000c0".to_owned(),
+                ..Default::default()
+            },
+            effect::Properties {
+                kind: "filter".to_owned(),
+                blur_radius: 4.0,
+                saturation: 0.5,
+                brightness: 1.0,
+                contrast: 1.25,
+                ..Default::default()
+            },
+        ],
+    ));
+    transact(&mut wire, 2, 0, 1, ops);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut replied = false;
+    let mut changes: Vec<change::Properties> = Vec::new();
+    while !replied
+        || !changes
+            .iter()
+            .any(|change| change.node == 1000 && change.key == "skipped")
+    {
+        assert!(Instant::now() < deadline, "no skipped list arrived: {changes:?}");
+        let envelope = wire.receive().expect("a frame");
+        match envelope.member.as_str() {
+            "transact" => {
+                let reply = envelope.payload_as::<ReplyPayload>().expect("the reply decodes");
+                assert!(reply.applied, "the new kinds validate: {reply:?}");
+                replied = true;
+            }
+            "changes" => changes.extend(
+                envelope
+                    .payload_as::<ChangesPayload>()
+                    .expect("the batch decodes")
+                    .changes,
+            ),
+            other => panic!("unexpected frame `{other}`"),
+        }
+    }
+    let effects = changes
+        .iter()
+        .find(|change| change.node == 1000 && change.key == "effects")
+        .expect("the effects set is published");
+    let kinds: Vec<(&str, bool)> = effects
+        .value_effects
+        .iter()
+        .map(|entry| (entry.kind.as_str(), entry.inset))
+        .collect();
+    assert_eq!(kinds, [("background", false), ("shadow", true), ("filter", false)]);
+    assert_eq!(effects.value_effects[2].contrast, 1.25);
+    let skipped = changes
+        .iter()
+        .rev()
+        .find(|change| change.node == 1000 && change.key == "skipped")
+        .expect("the skipped list is published");
+    assert_eq!(
+        skipped.value_texts,
+        vec![
+            "background: unsupported-by-renderer".to_owned(),
+            "inset-shadow: unsupported-by-renderer".to_owned(),
+            "filter: unsupported-by-renderer".to_owned(),
+        ],
+        "the software renderer draws none of the new kinds, in list order"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+/// A node holds one background and one filter, and an out-of-range filter is refused with the list.
+#[test]
+fn a_second_background_or_filter_is_too_large_and_an_out_of_range_grade_is_refused() {
+    let background = effect::Properties {
+        kind: "background".to_owned(),
+        colour: "#ffffffff".to_owned(),
+        ..Default::default()
+    };
+    let filter = effect::Properties {
+        kind: "filter".to_owned(),
+        saturation: 1.0,
+        brightness: 1.0,
+        contrast: 1.0,
+        ..Default::default()
+    };
+    for (name, twice) in [("background", background.clone()), ("filter", filter.clone())] {
+        let session = Session::start();
+        let one = write_effects(&session, vec![twice.clone()]);
+        assert!(one.applied, "one {name} fits: {one:?}");
+        session.stop().expect("the session stops cleanly");
+
+        let session = Session::start();
+        let refused = write_effects(&session, vec![twice.clone(), twice]);
+        assert!(!refused.applied, "two {name}s do not fit");
+        assert_eq!(refused.code, "too-large", "{name}");
+        session.stop().expect("the session stops cleanly");
+    }
+    let session = Session::start();
+    let graded = effect::Properties {
+        saturation: 3.0,
+        ..filter
+    };
+    let refused = write_effects(&session, vec![background, graded]);
+    assert!(!refused.applied, "a saturation of 3 is over the limit");
+    assert_eq!(
+        refused.code, "bad-value",
+        "the reason goes to the log, the reply carries the code"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
 /// Create one node of class `canvas` under `parent`.
 fn create_canvas(id: u64, parent: u64) -> Vec<op::Properties> {
     let mut ops = create(id, parent);

@@ -799,7 +799,7 @@ fn effects_on_the_node() {
     global.set("background", t("#000"));
     global.set("filter", list_of(vec![grade(CONTRAST, 1.1)]));
     global.set("backdrop_filter", list_of(vec![grade(BLUR, 20.0)]));
-    r.step("what_no_effect_kind_draws");
+    r.step("a_background_a_filter_and_a_blur_over_the_limit");
 
     let c = computed(&r.rig, 3);
     r.rec(

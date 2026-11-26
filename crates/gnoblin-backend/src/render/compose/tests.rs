@@ -3993,6 +3993,7 @@ fn an_effect_on_a_node_placed_in_3d_is_reported_skipped_and_cleared_when_it_is_f
             opacity: 1.0,
             color: Color::BLACK,
             frame: false,
+            inset: false,
         }))
         .expect("a shadow");
     composer.with_scene(|scene| {
@@ -4062,6 +4063,7 @@ fn blur_and_shadow() -> Effects {
             opacity: 1.0,
             color: Color::BLACK,
             frame: false,
+            inset: false,
         }))
         .expect("a shadow");
     chain
@@ -4113,6 +4115,79 @@ fn an_effect_the_renderer_cannot_draw_is_reported_skipped_by_kind() {
     );
 }
 
+/// An inset shadow, a background and a filter, in that order.
+fn inset_background_and_filter() -> Effects {
+    use gnoblin_render::{FilterParams, Shadow};
+    let mut chain = Effects::new();
+    chain
+        .push(Pass::Shadow(Shadow {
+            offset: Vec3::ZERO,
+            blur: 6.0,
+            spread: 0.0,
+            opacity: 1.0,
+            color: Color::BLACK,
+            frame: false,
+            inset: true,
+        }))
+        .expect("an inset shadow");
+    chain
+        .push(Pass::Background { color: Color::WHITE })
+        .expect("a background");
+    chain
+        .push(Pass::Filter(FilterParams {
+            blur: 3.0,
+            ..FilterParams::default()
+        }))
+        .expect("a filter");
+    chain
+}
+
+#[test]
+fn an_inset_shadow_a_background_and_a_filter_are_skipped_by_a_renderer_that_does_not_list_them() {
+    use crate::render::renderer::RendererKind;
+    let (mut composer, _output) = screen();
+    let node = NodeId::new(0x4000);
+    composer.with_scene(|scene| {
+        scene
+            .insert(node, NodeSpec::new(Rect::new(0, 0, 100, 100)))
+            .expect("the node");
+        scene
+            .set_effects(node, inset_background_and_filter())
+            .expect("the effects");
+    });
+    composer.take_tree_changes();
+
+    // No renderer lists the three kinds yet, so each one names all of them, in list order.
+    let want: Vec<String> = ["inset-shadow", "background", "filter"]
+        .into_iter()
+        .map(|kind| format!("{kind}: unsupported-by-renderer"))
+        .collect();
+    for renderer in [RendererKind::Software, RendererKind::Gles, RendererKind::Vulkan] {
+        assert!(
+            !["inset-shadow", "background", "filter"]
+                .iter()
+                .any(|kind| renderer.effect_kinds().contains(kind)),
+            "{} lists a kind it does not draw yet",
+            renderer.name()
+        );
+        composer.set_effect_kinds(renderer.effect_kinds());
+        composer.publish_skipped_effects();
+        let published = queued_skipped(&mut composer, node);
+        if renderer == RendererKind::Software {
+            assert_eq!(published, Some(want.clone()), "the first publication names every kind");
+        } else {
+            assert_eq!(published, None, "{}: the same list is not republished", renderer.name());
+        }
+    }
+    composer.set_effect_kinds(Pass::NAMES);
+    composer.publish_skipped_effects();
+    assert_eq!(
+        queued_skipped(&mut composer, node),
+        Some(Vec::new()),
+        "a renderer that draws every kind skips nothing"
+    );
+}
+
 #[test]
 fn an_effect_with_both_reasons_names_both_on_one_entry() {
     let (mut composer, _output) = screen();
@@ -4152,12 +4227,7 @@ fn the_main_seat_publishes_the_effect_kinds_the_renderer_draws() {
     composer.take_tree_changes();
 
     composer.set_effect_kinds(Pass::NAMES);
-    let want = TreeValue::ListText(vec![
-        "blur".to_owned(),
-        "shadow".to_owned(),
-        "border".to_owned(),
-        "shader".to_owned(),
-    ]);
+    let want = TreeValue::ListText(Pass::NAMES.iter().map(|kind| (*kind).to_owned()).collect());
     assert!(composer.take_tree_changes().iter().any(|change| matches!(
         change,
         TreeChange::Set { node, key, value } if *node == seat && key == "effect_kinds" && *value == want

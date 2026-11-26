@@ -324,6 +324,7 @@ mod tests {
             opacity: 1.0,
             color: Color::BLACK,
             frame,
+            inset: false,
         })
     }
 

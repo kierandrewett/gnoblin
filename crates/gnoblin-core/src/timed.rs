@@ -45,12 +45,16 @@ impl Timing {
 pub enum EffectKind {
     /// A blur of what is behind the node.
     Blur,
-    /// A shadow behind the node.
+    /// A shadow behind the node, or with [`Effect::inset`] inside its edge.
     Shadow,
     /// A stroke around the node.
     Border,
     /// A shader the shell wrote, in WGSL.
     Shader,
+    /// One colour filling the node's rounded shape, below its content and above a backdrop blur.
+    Background,
+    /// A blur and a grade of everything the node paints, not of what is behind it.
+    Filter,
 }
 
 /// One entry of a node's `effects` list, with the schema's field names. A field the kind does not use is ignored by the
@@ -67,11 +71,11 @@ pub struct Effect {
     pub algorithm: String,
     /// Blur: grain from 0 to 1.
     pub noise: f64,
-    /// Blur: brightness multiplier.
+    /// Blur and filter: brightness multiplier.
     pub brightness: f64,
-    /// Blur: contrast multiplier.
+    /// Blur and filter: contrast multiplier.
     pub contrast: f64,
-    /// Blur: saturation multiplier.
+    /// Blur and filter: saturation multiplier.
     pub saturation: f64,
     /// Blur: the tint, or empty for none.
     pub tint: String,
@@ -79,17 +83,17 @@ pub struct Effect {
     pub offset_x: f64,
     /// Shadow: vertical offset in logical pixels.
     pub offset_y: f64,
-    /// Shadow: blur radius in logical pixels.
+    /// Shadow: blur radius in logical pixels. Filter: the blur of everything the node paints, 0 for none.
     pub blur_radius: f64,
     /// Shadow: how far the shadow grows before blurring.
     pub spread: f64,
-    /// Shadow and border: the colour as `#rrggbb` or `#rrggbbaa`.
+    /// Shadow, border and background: the colour as `#rrggbb` or `#rrggbbaa`.
     pub colour: String,
     /// Border: stroke width in logical pixels.
     pub width: f64,
     /// Border: distance from the silhouette's edge.
     pub offset: f64,
-    /// Border: the stroke lies inside the silhouette.
+    /// Border: the stroke lies inside the silhouette. Shadow: the shadow lies inside the node's shape.
     pub inset: bool,
     /// Shadow: the shadow follows the whole frame.
     pub frame: bool,
@@ -100,7 +104,8 @@ pub struct Effect {
 }
 
 impl Effect {
-    /// An effect of `kind` with the schema's documented defaults for every parameter.
+    /// An effect of `kind` with the schema's documented defaults for every parameter. The blur radius defaults to 12 pixels for a
+    /// shadow and to 0 for a [`EffectKind::Filter`], which then only grades.
     pub fn new(kind: EffectKind) -> Effect {
         Effect {
             kind,
@@ -114,7 +119,7 @@ impl Effect {
             tint: String::new(),
             offset_x: 0.0,
             offset_y: 0.0,
-            blur_radius: 12.0,
+            blur_radius: if kind == EffectKind::Filter { 0.0 } else { 12.0 },
             spread: 0.0,
             colour: "#00000080".to_owned(),
             width: 0.0,
@@ -154,6 +159,8 @@ impl Effect {
                 EffectKind::Shadow => abi::EFFECT_SHADOW,
                 EffectKind::Border => abi::EFFECT_BORDER,
                 EffectKind::Shader => abi::EFFECT_SHADER,
+                EffectKind::Background => abi::EFFECT_BACKGROUND,
+                EffectKind::Filter => abi::EFFECT_FILTER,
             },
             downscale: self.downscale,
             passes: self.passes,

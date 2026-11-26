@@ -239,6 +239,9 @@ pub(crate) struct Mapping {
 /// The compositor's fixed backdrop blur radius.
 const BACKDROP_BLUR_RADIUS: f64 = 12.0;
 
+/// The largest blur a `filter` effect takes, in logical pixels (`gnoblin-render`'s `MAX_BLUR_RADIUS`).
+const MAX_FILTER_BLUR: f64 = 100.0;
+
 impl Computed {
     pub(crate) fn list(&self, prop: ListProp) -> &[Entry] {
         self.lists.get(&prop).map_or(&[], Vec::as_slice)
@@ -663,11 +666,13 @@ fn wire_colour(text: &str) -> String {
 }
 
 /// What a resolved style becomes on the node: a node `corner_radius`, and the `effects` list in paint order. Outer `shadows` are
-/// `shadow` effects that follow the window's whole frame, `borders` are `border` effects and the `backdropFilter` is one backdrop blur
-/// whose saturation, brightness and contrast are the products of the chain's. A `ShaderFilter` of either filter list is one `shader`
-/// effect (the `backdropFilter`'s first), placed after the blur: it is written only while `user_shaders` (the seat's capability) is
-/// on, and at most [`MAX_SHADERS`] of them. `background`, the other `filter` elements and inset shadows stay in the computed style;
-/// each comes back as an `unapplied` text when the style has a non-default value for it.
+/// `shadow` effects that follow the window's whole frame, inset `shadows` are `shadow` effects with `inset` that follow its own
+/// shape, `borders` are `border` effects and the `backdropFilter` is one backdrop blur whose saturation, brightness and contrast are
+/// the products of the chain's. A `ShaderFilter` of either filter list is one `shader` effect (the `backdropFilter`'s first), placed
+/// after the blur: it is written only while `user_shaders` (the seat's capability) is on, and at most [`MAX_SHADERS`] of them. The
+/// `background` is one `background` effect. The `filter`'s other elements are one `filter` effect: its blurs add as Gaussians do (the
+/// root of the sum of their squares) and its saturation, brightness and contrast are the products of the chain's, as for the
+/// backdrop. Whether the renderer draws a kind is the compositor's to say (the node's `skipped`), not the style's.
 pub(crate) fn map_style(computed: &Computed, user_shaders: bool) -> Mapping {
     let mut effects = Vec::new();
     let mut unapplied = Vec::new();
@@ -763,33 +768,41 @@ pub(crate) fn map_style(computed: &Computed, user_shaders: bool) -> Mapping {
             effects.push(Effect::shader(source, params));
         }
     }
-    let shadows = computed.list(ListProp::Shadows);
-    for entry in shadows.iter().rev() {
-        if let Entry::Shadow {
-            x,
-            y,
-            blur,
-            spread,
-            color,
-            inset: false,
-        } = entry
-        {
-            let mut shadow = Effect::new(EffectKind::Shadow);
-            shadow.offset_x = *x;
-            shadow.offset_y = *y;
-            shadow.blur_radius = *blur;
-            shadow.spread = *spread;
-            shadow.colour = wire_colour(color);
-            // A window's shadow is the whole frame's, titlebar and all, not the content's alone.
-            shadow.frame = true;
-            effects.push(shadow);
-        }
+    if let Some(background) = &computed.background {
+        let mut fill = Effect::new(EffectKind::Background);
+        fill.colour = wire_colour(background);
+        effects.push(fill);
     }
-    if shadows
-        .iter()
-        .any(|entry| matches!(entry, Entry::Shadow { inset: true, .. }))
-    {
-        unapplied.push("shadows: an inset shadow has no effect kind".to_owned());
+    if let Some(filter) = map_filter(computed.list(ListProp::Filter), &mut unapplied) {
+        effects.push(filter);
+    }
+    // The style's first shadow is the top one, as in CSS, and a list's later effects paint on top: the list is walked backwards.
+    let shadows = computed.list(ListProp::Shadows);
+    for inset in [false, true] {
+        for entry in shadows.iter().rev() {
+            if let Entry::Shadow {
+                x,
+                y,
+                blur,
+                spread,
+                color,
+                inset: held,
+            } = entry
+                && *held == inset
+            {
+                let mut shadow = Effect::new(EffectKind::Shadow);
+                shadow.offset_x = *x;
+                shadow.offset_y = *y;
+                shadow.blur_radius = *blur;
+                shadow.spread = *spread;
+                shadow.colour = wire_colour(color);
+                shadow.inset = inset;
+                // A window's shadow is the whole frame's, titlebar and all, not the content's alone; an inset one lies inside
+                // the shape it is cast from and has no frame.
+                shadow.frame = !inset;
+                effects.push(shadow);
+            }
+        }
     }
     for entry in computed.list(ListProp::Borders) {
         if let Entry::Border {
@@ -819,21 +832,49 @@ pub(crate) fn map_style(computed: &Computed, user_shaders: bool) -> Mapping {
             largest
         }
     };
-    if computed.background.is_some() {
-        unapplied.push("background: the tree has no background for a window".to_owned());
-    }
-    if computed
-        .list(ListProp::Filter)
-        .iter()
-        .any(|entry| !matches!(entry, Entry::Shader { .. }))
-    {
-        unapplied.push("filter: no effect kind filters a window's own content".to_owned());
-    }
     Mapping {
         effects,
         corner_radius,
         unapplied,
     }
+}
+
+/// The one `filter` effect the non-shader elements of a `filter` list make, `None` when they change nothing. The blurs of a chain
+/// run one after the other, and Gaussians add their variances, so the radius is the root of the sum of the squares; the grades
+/// multiply like kinds, as the `backdropFilter`'s do. A radius or a grade over the renderer's limit is drawn as the limit and
+/// said in `unapplied`.
+fn map_filter(filter: &[Entry], unapplied: &mut Vec<String>) -> Option<Effect> {
+    let mut variance = 0.0;
+    let (mut saturation, mut brightness, mut contrast) = (1.0, 1.0, 1.0);
+    for entry in filter {
+        match entry {
+            Entry::Blur(radius) => variance += radius * radius,
+            Entry::Saturate(amount) => saturation *= amount,
+            Entry::Brightness(amount) => brightness *= amount,
+            Entry::Contrast(amount) => contrast *= amount,
+            Entry::Border { .. } | Entry::Shadow { .. } | Entry::Shader { .. } => {}
+        }
+    }
+    let blur = f64::sqrt(variance);
+    if blur == 0.0 && saturation == 1.0 && brightness == 1.0 && contrast == 1.0 {
+        return None;
+    }
+    if blur > MAX_FILTER_BLUR {
+        unapplied.push(format!(
+            "filter: the blurs of a filter add up to {blur}, and the compositor blurs at most {MAX_FILTER_BLUR}, so {MAX_FILTER_BLUR} is drawn"
+        ));
+    }
+    if [saturation, brightness, contrast].iter().any(|n| *n > MAX_GRADE) {
+        unapplied.push(format!(
+            "filter: a combined saturate, brightness or contrast above {MAX_GRADE} is drawn as {MAX_GRADE}"
+        ));
+    }
+    let mut effect = Effect::new(EffectKind::Filter);
+    effect.blur_radius = blur.min(MAX_FILTER_BLUR);
+    effect.saturation = saturation.min(MAX_GRADE);
+    effect.brightness = brightness.min(MAX_GRADE);
+    effect.contrast = contrast.min(MAX_GRADE);
+    Some(effect)
 }
 
 #[cfg(test)]
@@ -945,16 +986,188 @@ mod tests {
         );
     }
 
+    fn inset(x: f64, y: f64, blur: f64, spread: f64, color: &str) -> Entry {
+        Entry::Shadow {
+            x,
+            y,
+            blur,
+            spread,
+            color: color.to_owned(),
+            inset: true,
+        }
+    }
+
+    fn outer(blur: f64, color: &str) -> Entry {
+        Entry::Shadow {
+            x: 0.0,
+            y: 0.0,
+            blur,
+            spread: 0.0,
+            color: color.to_owned(),
+            inset: false,
+        }
+    }
+
     #[test]
-    fn a_content_filter_that_is_not_a_shader_is_still_reported_unapplied() {
+    fn a_content_filter_is_one_filter_effect_and_nothing_is_left_unapplied() {
         let only_a_shader = style_with(&[(ListProp::Filter, vec![shader("content", &[])])]);
-        assert!(map_style(&only_a_shader, true).unapplied.is_empty());
+        let mapping = map_style(&only_a_shader, true);
+        assert!(mapping.unapplied.is_empty());
+        assert_eq!(kinds(&mapping).len(), 1, "a shader alone is no filter effect");
         let with_a_blur = style_with(&[(ListProp::Filter, vec![shader("content", &[]), Entry::Blur(4.0)])]);
         let mapping = map_style(&with_a_blur, true);
+        assert!(mapping.unapplied.is_empty(), "{:?}", mapping.unapplied);
         assert_eq!(
-            mapping.unapplied,
-            ["filter: no effect kind filters a window's own content"]
+            kinds(&mapping).iter().map(|(kind, _)| *kind).collect::<Vec<_>>(),
+            [EffectKind::Shader, EffectKind::Filter],
+            "the shader, then the filter"
         );
-        assert_eq!(kinds(&mapping).len(), 1, "the shader is drawn, the blur has no kind");
+        let filter = &mapping.effects[1];
+        assert_eq!(
+            (
+                filter.blur_radius,
+                filter.saturation,
+                filter.brightness,
+                filter.contrast
+            ),
+            (4.0, 1.0, 1.0, 1.0)
+        );
+    }
+
+    #[test]
+    fn a_filter_adds_its_blurs_as_gaussians_and_multiplies_its_grades() {
+        let computed = style_with(&[(
+            ListProp::Filter,
+            vec![
+                Entry::Blur(3.0),
+                Entry::Saturate(0.5),
+                Entry::Blur(4.0),
+                Entry::Contrast(1.5),
+                Entry::Saturate(0.5),
+                Entry::Brightness(1.2),
+            ],
+        )]);
+        let mapping = map_style(&computed, true);
+        assert!(mapping.unapplied.is_empty(), "{:?}", mapping.unapplied);
+        let [filter] = mapping.effects.as_slice() else {
+            panic!("one filter effect: {:?}", mapping.effects);
+        };
+        assert_eq!(filter.kind, EffectKind::Filter);
+        assert_eq!(filter.blur_radius, 5.0, "the root of 3 squared and 4 squared");
+        assert_eq!(
+            (filter.saturation, filter.brightness, filter.contrast),
+            (0.25, 1.2, 1.5)
+        );
+    }
+
+    #[test]
+    fn a_filter_that_changes_nothing_writes_no_effect_and_one_over_the_limits_says_so() {
+        let neutral = style_with(&[(
+            ListProp::Filter,
+            vec![Entry::Blur(0.0), Entry::Saturate(1.0), Entry::Contrast(1.0)],
+        )]);
+        let mapping = map_style(&neutral, true);
+        assert!(mapping.effects.is_empty() && mapping.unapplied.is_empty());
+
+        let over = style_with(&[(
+            ListProp::Filter,
+            vec![
+                Entry::Blur(80.0),
+                Entry::Blur(80.0),
+                Entry::Brightness(2.0),
+                Entry::Brightness(2.0),
+            ],
+        )]);
+        let mapping = map_style(&over, true);
+        let [filter] = mapping.effects.as_slice() else {
+            panic!("one filter effect: {:?}", mapping.effects);
+        };
+        assert_eq!((filter.blur_radius, filter.brightness), (100.0, 2.0));
+        assert_eq!(mapping.unapplied.len(), 2, "{:?}", mapping.unapplied);
+        assert!(mapping.unapplied[0].starts_with("filter: the blurs of a filter add up to"));
+        assert!(mapping.unapplied[1].starts_with("filter: a combined saturate, brightness or contrast above 2"));
+    }
+
+    #[test]
+    fn a_background_is_one_background_effect_with_its_colour_in_full() {
+        let mut computed = style_with(&[]);
+        computed.background = Some("#123".to_owned());
+        let mapping = map_style(&computed, true);
+        assert!(mapping.unapplied.is_empty(), "{:?}", mapping.unapplied);
+        let [fill] = mapping.effects.as_slice() else {
+            panic!("one background effect: {:?}", mapping.effects);
+        };
+        assert_eq!((fill.kind, fill.colour.as_str()), (EffectKind::Background, "#112233ff"));
+        computed.background = None;
+        assert!(
+            map_style(&computed, true).effects.is_empty(),
+            "no background, no effect"
+        );
+    }
+
+    #[test]
+    fn inset_shadows_are_shadow_effects_with_inset_after_the_outer_ones_and_follow_no_frame() {
+        let computed = style_with(&[(
+            ListProp::Shadows,
+            vec![
+                inset(1.0, 2.0, 6.0, 3.0, "#000"),
+                outer(8.0, "#111"),
+                inset(0.0, 0.0, 2.0, 0.0, "#fff8"),
+                outer(4.0, "#222"),
+            ],
+        )]);
+        let mapping = map_style(&computed, true);
+        assert!(mapping.unapplied.is_empty(), "{:?}", mapping.unapplied);
+        let held: Vec<(bool, bool, f64)> = mapping
+            .effects
+            .iter()
+            .map(|effect| (effect.inset, effect.frame, effect.blur_radius))
+            .collect();
+        assert_eq!(
+            held,
+            [
+                (false, true, 4.0),
+                (false, true, 8.0),
+                (true, false, 2.0),
+                (true, false, 6.0)
+            ],
+            "outer shadows last to first, then the inset ones last to first"
+        );
+        let first_inset = &mapping.effects[3];
+        assert_eq!(
+            (
+                first_inset.offset_x,
+                first_inset.offset_y,
+                first_inset.spread,
+                first_inset.colour.as_str()
+            ),
+            (1.0, 2.0, 3.0, "#000000ff")
+        );
+    }
+
+    #[test]
+    fn the_background_and_the_filter_sit_after_the_shaders_and_before_the_shadows() {
+        let mut computed = style_with(&[
+            (ListProp::BackdropFilter, vec![Entry::Blur(12.0)]),
+            (ListProp::Filter, vec![shader("content", &[]), Entry::Saturate(0.5)]),
+            (
+                ListProp::Shadows,
+                vec![outer(8.0, "#000"), inset(0.0, 0.0, 3.0, 0.0, "#000")],
+            ),
+        ]);
+        computed.background = Some("#fff".to_owned());
+        let mapping = map_style(&computed, true);
+        assert_eq!(
+            kinds(&mapping).iter().map(|(kind, _)| *kind).collect::<Vec<_>>(),
+            [
+                EffectKind::Blur,
+                EffectKind::Shader,
+                EffectKind::Background,
+                EffectKind::Filter,
+                EffectKind::Shadow,
+                EffectKind::Shadow
+            ]
+        );
+        assert!(mapping.unapplied.is_empty(), "{:?}", mapping.unapplied);
     }
 }

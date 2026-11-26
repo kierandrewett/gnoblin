@@ -1948,7 +1948,7 @@ reason = "the library's record of a transition and the SDK's handle on it by id"
 left = "gnoblin-core::EffectKind"
 right = "gnoblin-render::Pass"
 kind = "same-shape"
-reason = "blur, shadow and border: the SDK's name for the kinds of effect a shell writes, and the renderer's passes; the SDK tier cannot depend on the renderer"
+reason = "blur, shadow, border, background, filter and shader: the SDK's name for the kinds of effect a shell writes, and the renderer's passes; the SDK tier cannot depend on the renderer"
 
 [[allow]]
 left = "gnoblin-a11y::Effect"

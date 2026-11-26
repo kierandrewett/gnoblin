@@ -107,6 +107,7 @@ fn shadow() -> Pass {
         opacity: 1.0,
         color: Color::from_rgba8(0, 0, 0, 160),
         frame: false,
+        inset: false,
     })
 }
 

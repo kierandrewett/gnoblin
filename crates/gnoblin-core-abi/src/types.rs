@@ -158,6 +158,10 @@ abi_consts! {
     pub const EFFECT_BORDER: u32 = 3;
     /// `GnoblinEffect.kind`: a user shader pass, written in WGSL (`source` and `params`).
     pub const EFFECT_SHADER: u32 = 4;
+    /// `GnoblinEffect.kind`: a background colour under the node's content (`colour`).
+    pub const EFFECT_BACKGROUND: u32 = 5;
+    /// `GnoblinEffect.kind`: a blur and a grade of what the node paints (`blur_radius`, `saturation`, `brightness`, `contrast`).
+    pub const EFFECT_FILTER: u32 = 6;
     /// `GnoblinValue.kind`: opaque bytes in `ptr` and `len`.
     pub const VALUE_BYTES: u32 = 10;
     /// `GnoblinValue.kind`: secret text in `ptr` and `len`. Never logged; the receiver copies it out.
@@ -420,29 +424,29 @@ abi_structs! {
     pub struct GnoblinEffect {
         /// Size of this struct, set by the caller.
         pub size: u32,
-        /// `EFFECT_BLUR`, `EFFECT_SHADOW`, `EFFECT_BORDER` or `EFFECT_SHADER`.
+        /// `EFFECT_BLUR`, `EFFECT_SHADOW`, `EFFECT_BORDER`, `EFFECT_SHADER`, `EFFECT_BACKGROUND` or `EFFECT_FILTER`.
         pub kind: u32,
         /// Blur: the backdrop is sampled at `1 / downscale` of full resolution.
         pub downscale: u32,
         /// Blur: the number of passes.
         pub passes: u32,
-        /// Border: the stroke lies inside the silhouette when nonzero.
+        /// Border: the stroke lies inside the silhouette when nonzero. Shadow: the shadow lies inside the node's shape.
         pub inset: u32,
         /// Shadow: the shadow follows the whole frame (titlebar included) when nonzero.
         pub frame: u32,
         /// Blur: grain from 0 to 1.
         pub noise: f64,
-        /// Blur: brightness multiplier, 1 leaves it.
+        /// Blur and filter: brightness multiplier, 1 leaves it.
         pub brightness: f64,
-        /// Blur: contrast multiplier, 1 leaves it.
+        /// Blur and filter: contrast multiplier, 1 leaves it.
         pub contrast: f64,
-        /// Blur: saturation multiplier, 1 leaves it.
+        /// Blur and filter: saturation multiplier, 1 leaves it.
         pub saturation: f64,
         /// Shadow: horizontal offset in logical pixels.
         pub offset_x: f64,
         /// Shadow: vertical offset in logical pixels.
         pub offset_y: f64,
-        /// Shadow: blur radius in logical pixels.
+        /// Shadow: blur radius in logical pixels. Filter: the blur of what the node paints, 0 for none.
         pub blur_radius: f64,
         /// Shadow: how far the shadow grows before blurring.
         pub spread: f64,
@@ -454,7 +458,7 @@ abi_structs! {
         pub algorithm: GnoblinStr,
         /// Blur: the tint as `#rrggbb` or `#rrggbbaa`; empty is none.
         pub tint: GnoblinStr,
-        /// Shadow and border: the colour as `#rrggbb` or `#rrggbbaa`.
+        /// Shadow, border and background: the colour as `#rrggbb` or `#rrggbbaa`.
         pub colour: GnoblinStr,
         /// Shader: the WGSL source, at most 16 KiB; empty for any other kind.
         pub source: GnoblinStr,

@@ -159,9 +159,9 @@ since = "0.2.0"
 default = []
 
 # The node's effects in paint order, first to last. Each element is an `effect` object
-# (`effect.toml`). This is the only way to give a node a blur or a shadow. The compositor
-# draws blur and shadow; any other kind, a shader included, refuses the whole list
-# `bad-value`. Setting the list replaces it, and it is echoed in a snapshot. An effect the
+# (`effect.toml`). This is the only way to give a node a blur, a shadow, a border, a
+# background, a filter of what it paints or a shader. A kind the tree does not know refuses the
+# whole list `bad-value`. Setting the list replaces it, and it is echoed in a snapshot. An effect the
 # compositor cannot draw stays in the list and is named in `skipped`.
 [[object.property]]
 name = "effects"
@@ -171,8 +171,9 @@ default = []
 
 # The effects in `effects` that are not drawn, one text each as `<kind>: <reasons>`, in list
 # order; empty when every effect is drawn. Two reasons exist. `unsupported-by-renderer`: the
-# active renderer draws no effect of that kind (GLES draws blur, shadow and border, the software renderer
-# shadow and border, and Vulkan only the `shader` kind; `seat.effect_kinds` lists what is drawn). `unsupported-effect-on-3d`:
+# active renderer draws no effect of that kind (an inset shadow is the kind `inset-shadow`; `seat.effect_kinds`
+# lists what is drawn: GLES draws blur, shadow, border and shader, the software renderer shadow and border, and Vulkan
+# only the `shader` kind, until each draws the rest). `unsupported-effect-on-3d`:
 # a blur, shadow or border on a node whose placement carries depth (a rotation about x or y, a
 # `z`, or a perspective `Camera` above it) is not drawn, because the renderer has no depth
 # pass for backdrop and shadow passes. An effect with both reasons names both on one text,

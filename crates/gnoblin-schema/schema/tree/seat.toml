@@ -160,10 +160,12 @@ since = "0.2.0"
 default = false
 readonly = true
 
-# The effect kinds the active renderer draws: `blur`, `shadow` and `border` for GLES, `shadow` and `border` for the
-# software renderer, none for Vulkan, and `shader` for a renderer that draws a user shader pass. Read-only: the renderer
-# sets it once at startup. A shell reads it to adapt before it sets a node's `effects`; an effect of a kind not listed
-# stays in the list and is named in the node's `skipped` as `<kind>: unsupported-by-renderer`.
+# The effect kinds the active renderer draws, each one of `blur`, `shadow`, `inset-shadow`, `border`, `background`,
+# `filter` and `shader`. An inset shadow is a `shadow` element with `inset`, and is the kind `inset-shadow` here
+# because a renderer may draw one and not the other. Today GLES lists `blur`, `shadow`, `border` and `shader`, the software
+# renderer `shadow` and `border`, and Vulkan `shader`. Read-only: the renderer sets it once at startup. A shell reads it to
+# adapt before it sets a node's `effects`; an effect of a kind not listed stays in the list and is named in the node's
+# `skipped` as `<kind>: unsupported-by-renderer`.
 [[object.property]]
 name = "effect_kinds"
 type = "list<string>"
