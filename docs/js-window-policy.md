@@ -14,7 +14,8 @@ Rust `move_with_keys()?`.
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import "gnoblin-std/generated/objects";
 
 const client = gnoblin.clients.at(0);
 client?.moveWithKeys();
@@ -23,14 +24,14 @@ client?.resizeWithKeys();
 
 ```python
 from gnoblin.objects.model import Gnoblin
-import gnoblin.objects.std  # adds the keyboard modes to the window
+from gnoblin.objects.std import ClientAugment
 
 gnoblin = Gnoblin.get()
 
 client = gnoblin.clients.at(0)
 if client is not None:
-    client.move_with_keys()
-    client.resize_with_keys()
+    ClientAugment.get().move_with_keys(client)
+    ClientAugment.get().resize_with_keys(client)
 ```
 
 ```rust
@@ -67,7 +68,7 @@ The window menu's Move and Resize start these.
 ::: tabs
 
 ```typescript
-import { PinchActionBinding, SwipeActionBinding } from "gnoblin-std";
+import { PinchActionBinding, SwipeActionBinding } from "gnoblin-std/generated/objects";
 
 const swipe = new SwipeActionBinding({ trigger: "Swipe4" });
 swipe.setAction("up", "window.toggle-maximise");
@@ -164,7 +165,8 @@ While the seat's `reduced_motion` is true, `gnoblin.motion(duration)` is 0. Pass
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import "gnoblin-std/generated/objects";
 
 const duration = gnoblin.motion(250); // 0 while the seat asks for reduced motion
 gnoblin.requestTransition(() => {}, { duration });
@@ -172,12 +174,12 @@ gnoblin.requestTransition(() => {}, { duration });
 
 ```python
 from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import TransitionOptions
+from gnoblin.objects.std import GnoblinAugment, TransitionOptions
 
 gnoblin = Gnoblin.get()
 
 duration = gnoblin.motion(250.0)  # 0.0 while the seat asks for reduced motion
-gnoblin.request_transition(lambda: None, TransitionOptions(duration=duration))
+GnoblinAugment.get().request_transition(lambda: None, TransitionOptions(duration=duration))
 ```
 
 ```rust
@@ -297,22 +299,21 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { Workspaces } from "gnoblin-std/generated/objects";
 
-const dev = gnoblin.workspaces.byId("dev");
-if (dev && !gnoblin.workspaces.remove(dev)) {
+const workspaces = Workspaces.get();
+const dev = workspaces.byId("dev");
+if (dev && !workspaces.remove(dev)) {
     console.log("the last workspace stays");
 }
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-import gnoblin.objects.std  # adds `workspaces` to the root
+from gnoblin.objects.std import Workspaces
 
-gnoblin = Gnoblin.get()
-
-dev = gnoblin.workspaces.by_id("dev")
-if dev is not None and not gnoblin.workspaces.remove(dev):
+workspaces = Workspaces.get()
+dev = workspaces.by_id("dev")
+if dev is not None and not workspaces.remove(dev):
     print("the last workspace stays")
 ```
 

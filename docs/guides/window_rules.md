@@ -14,41 +14,35 @@ This moves every editor window to workspace `dev` and maximises it:
 ::: tabs
 
 ```typescript
-import { ClientCollectionListener } from "gnoblin-core";
-import type { Client } from "gnoblin-core";
+import { gnoblin } from "gnoblin-core/generated/objects";
 
-gnoblin.clients.addListener(
-    new (class extends ClientCollectionListener {
-        onAdded(client: Client) {
-            if (client.appId === "org.example.Editor") {
-                client.maximised = true;
-            }
-        }
-    })(),
-);
+gnoblin.clients.on("added", (client) => {
+    if (client.appId === "org.example.Editor") {
+        client.maximised = true;
+    }
+});
 ```
 
 ```python
-from gnoblin import gnoblin
+from gnoblin.objects.model import Gnoblin
 
 
-@gnoblin.clients.on("added")
+@Gnoblin.get().clients.on("added")
 def rule(client):
     if client.app_id == "org.example.Editor":
         client.maximised = True
 ```
 
 ```rust
-use gnoblin_core::objects::{Client, ModelRoot};
+use gnoblin_core::objects::{Client, ClientCollection, ModelRoot};
 use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
-    let clients = ModelRoot::get(&objects)?.clients()?.expect("the model has clients");
+    let clients = ModelRoot::get(&g.objects()?)?.clients()?.expect("the model has clients");
     clients
-        .on_added(|client: Client| {
+        .on_added(|client: Client, _clients: ClientCollection| {
             if client.app_id().unwrap_or_default() == "org.example.Editor" {
                 let _ = client.set_maximised(true);
             }
@@ -84,43 +78,38 @@ Declare a workspace and move a window to it. Look the workspace up by id, and ha
 ::: tabs
 
 ```typescript
-import { ClientCollectionListener } from "gnoblin-core";
-import { Workspace } from "gnoblin-std";
-import type { Client } from "gnoblin-core";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { Workspace, Workspaces } from "gnoblin-std/generated/objects";
 
-gnoblin.workspaces.add(new Workspace("code"));
+Workspaces.get().add(new Workspace("code"));
 
-gnoblin.clients.addListener(
-    new (class extends ClientCollectionListener {
-        onAdded(client: Client) {
-            if (client.appId !== "org.example.Editor") {
-                return;
-            }
-            const code = gnoblin.workspaces.byId("code");
-            if (code !== undefined) {
-                client.moveToWorkspace(code);
-            }
-        }
-    })(),
-);
+gnoblin.clients.on("added", (client) => {
+    if (client.appId !== "org.example.Editor") {
+        return;
+    }
+    const code = Workspaces.get().byId("code");
+    if (code !== undefined) {
+        client.moveToWorkspace(code);
+    }
+});
 ```
 
 ```python
-from gnoblin import gnoblin
+from gnoblin.objects.model import Gnoblin
 from gnoblin.objects.std import Workspace, Workspaces
 
 code = Workspace("code")
 Workspaces.get().add(code)
 
 
-@gnoblin.clients.on("added")
+@Gnoblin.get().clients.on("added")
 def rule(client):
     if client.app_id == "org.example.Editor":
         client.move_to_workspace(code)
 ```
 
 ```rust
-use gnoblin_core::objects::{Client, ModelRoot};
+use gnoblin_core::objects::{Client, ClientCollection, ModelRoot};
 use gnoblin_core::Gnoblin;
 use gnoblin_std::objects::{Workspace, Workspaces};
 use gnoblin_std::prelude::*;
@@ -130,9 +119,9 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
     let code = Workspace::new(&objects, "code")?;
     Workspaces::get(&objects)?.add(&code)?;
-    let clients = ModelRoot::get(&objects)?.clients()?.expect("the model has clients");
+    let clients = ModelRoot::get(&g.objects()?)?.clients()?.expect("the model has clients");
     clients
-        .on_added(move |client: Client| {
+        .on_added(move |client: Client, _clients: ClientCollection| {
             if client.app_id().unwrap_or_default() == "org.example.Editor" {
                 let _ = client.move_to_workspace(&code);
             }
@@ -160,26 +149,21 @@ screen captures:
 ::: tabs
 
 ```typescript
-import { ClientCollectionListener } from "gnoblin-core";
-import type { Client } from "gnoblin-core";
+import { gnoblin } from "gnoblin-core/generated/objects";
 
-gnoblin.clients.addListener(
-    new (class extends ClientCollectionListener {
-        onAdded(client: Client) {
-            if (client.appId === "org.example.Player") {
-                client.secure = true;
-                client.floating = true;
-            }
-        }
-    })(),
-);
+gnoblin.clients.on("added", (client) => {
+    if (client.appId === "org.example.Player") {
+        client.secure = true;
+        client.floating = true;
+    }
+});
 ```
 
 ```python
-from gnoblin import gnoblin
+from gnoblin.objects.model import Gnoblin
 
 
-@gnoblin.clients.on("added")
+@Gnoblin.get().clients.on("added")
 def rule(client):
     if client.app_id == "org.example.Player":
         client.secure = True
@@ -187,16 +171,15 @@ def rule(client):
 ```
 
 ```rust
-use gnoblin_core::objects::{Client, ModelRoot};
+use gnoblin_core::objects::{Client, ClientCollection, ModelRoot};
 use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
-    let clients = ModelRoot::get(&objects)?.clients()?.expect("the model has clients");
+    let clients = ModelRoot::get(&g.objects()?)?.clients()?.expect("the model has clients");
     clients
-        .on_added(|client: Client| {
+        .on_added(|client: Client, _clients: ClientCollection| {
             if client.app_id().unwrap_or_default() == "org.example.Player" {
                 let _ = client.set_secure(true);
                 let _ = client.set_floating(true);
