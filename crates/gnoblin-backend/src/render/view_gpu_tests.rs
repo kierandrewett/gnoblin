@@ -1,4 +1,4 @@
-//! A View on the GPU path: what the composer describes, and that the GLES renderer draws it as the CPU rig does.
+//! A View on the GPU path: what the composer describes, and that the GPU renderers (GLES, and Vulkan where it is built in) draw it as the CPU rig does.
 //!
 //! The composer has two ways to draw a View. On the CPU path ([`Composer::set_gpu_views`] off) it rasterises the source
 //! subtree itself and hands the renderer a picture. On the GPU path it hands the renderer the subtree as a
@@ -15,6 +15,7 @@
 //! about, so none is measured here: see `crates/gnoblin-render-software/tests/view_cost.rs`.
 
 use gnoblin_render::{NodeSpec, Scene};
+use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_gles::Gles;
 use gnoblin_types::Vec3;
 
@@ -183,15 +184,74 @@ fn scene_of(composer: &Composer) -> Arc<ViewScene> {
         .1
 }
 
-/// A renderer, or a printed reason when this machine cannot make a GLES context.
-fn gles() -> Option<Gles> {
-    match Gles::new(Size::new(8, 8)) {
+/// The GPU renderers a View is read back from: GLES where the machine has a surfaceless EGL context, and Vulkan where it is
+/// built in and the machine has a device. A case runs on every renderer it has, so the two are held to the same pictures.
+struct Readers {
+    gles: Option<Gles>,
+    #[cfg(feature = "vulkan")]
+    vulkan: Option<gnoblin_render_vulkan::Vulkan>,
+}
+
+impl Readers {
+    /// Every renderer's picture of `scene`, each with the name of the driver that drew it.
+    fn pictures(&mut self, scene: &ViewScene, capture: bool) -> Result<Vec<(String, Image)>, RenderError> {
+        let mut pictures = Vec::new();
+        if let Some(gles) = self.gles.as_mut() {
+            let driver = format!("GLES on {}", gles.driver());
+            pictures.push((driver, gles.view_pixels(scene, capture)?));
+        }
+        #[cfg(feature = "vulkan")]
+        if let Some(vulkan) = self.vulkan.as_mut() {
+            let driver = format!("Vulkan on {}", vulkan.device().name);
+            pictures.push((driver, vulkan.view_pixels(scene, capture)?));
+        }
+        Ok(pictures)
+    }
+
+    /// The picture the cases compare with the CPU's. When both renderers drew it, they must agree with each other: a case
+    /// that is exact on the CPU path is then exact on both.
+    fn view_pixels(&mut self, scene: &ViewScene, capture: bool) -> Result<Image, RenderError> {
+        let mut pictures = self.pictures(scene, capture)?.into_iter();
+        let Some((first_driver, first)) = pictures.next() else {
+            return Err(RenderError::Unsupported);
+        };
+        for (driver, other) in pictures {
+            assert_eq!(
+                differing(&first, &other),
+                0,
+                "{driver} draws a different picture from {first_driver} (more than {TOLERANCE} on some channel)"
+            );
+        }
+        Ok(first)
+    }
+}
+
+/// The renderers this machine has, or a printed reason for each it lacks. `None` when it has none.
+fn readers() -> Option<Readers> {
+    let gles = match Gles::new(Size::new(8, 8)) {
         Ok(renderer) => Some(renderer),
         Err(error) => {
             println!("skipping the GLES half of the case: {error} (no surfaceless EGL context on this machine)");
             None
         }
-    }
+    };
+    #[cfg(feature = "vulkan")]
+    let vulkan = match gnoblin_render_vulkan::Vulkan::new(Size::new(8, 8)) {
+        Ok(renderer) => Some(renderer),
+        Err(error) => {
+            println!("skipping the Vulkan half of the case: {error} (no Vulkan device on this machine)");
+            None
+        }
+    };
+    #[cfg(feature = "vulkan")]
+    let any = gles.is_some() || vulkan.is_some();
+    #[cfg(not(feature = "vulkan"))]
+    let any = gles.is_some();
+    any.then_some(Readers {
+        gles,
+        #[cfg(feature = "vulkan")]
+        vulkan,
+    })
 }
 
 /// How many pixels of two pictures differ by more than [`TOLERANCE`] on some channel.
@@ -210,23 +270,25 @@ fn differing(cpu: &Image, gpu: &Image) -> usize {
         .count()
 }
 
-/// Builds the world, draws the View both ways and asserts that at most `share` of the picture's pixels differ.
+/// Builds the world, draws the View both ways and asserts that at most `share` of the picture's pixels differ, on every GPU
+/// renderer this machine has.
 fn assert_parity(name: &str, share: f64, build: impl Fn(&mut Composer)) {
     let (cpu, gpu) = both(build);
-    let Some(mut gles) = gles() else {
+    let Some(mut reader) = readers() else {
         return;
     };
     let expected = cpu_picture(&cpu.0);
-    let drawn = gles
-        .view_pixels(&scene_of(&gpu.0), false)
-        .expect("the GLES renderer draws the scene");
+    let drawn = reader
+        .pictures(&scene_of(&gpu.0), false)
+        .expect("the GPU renderers draw the scene");
     let total = expected.size().width as usize * expected.size().height as usize;
-    let wrong = differing(&expected, &drawn);
-    let driver = gles.driver();
-    assert!(
-        wrong as f64 <= share * total as f64,
-        "{name}: {wrong} of {total} pixels differ by more than {TOLERANCE} (allowed {share}) on {driver}"
-    );
+    for (driver, picture) in drawn {
+        let wrong = differing(&expected, &picture);
+        assert!(
+            wrong as f64 <= share * total as f64,
+            "{name}: {wrong} of {total} pixels differ by more than {TOLERANCE} (allowed {share}) on {driver}"
+        );
+    }
 }
 
 const FLAT: Size = Size::new(80, 60);
@@ -428,11 +490,11 @@ fn a_secure_node_is_masked_in_the_capture_variant_exactly_as_on_the_cpu() {
         scene.has_capture_variant(),
         "a secure node gives the scene a capture variant"
     );
-    let Some(mut gles) = gles() else {
+    let Some(mut reader) = readers() else {
         return;
     };
     let expected = cpu_picture(&cpu.0);
-    let capture = gles.view_pixels(&scene, true).expect("the capture variant is drawn");
+    let capture = reader.view_pixels(&scene, true).expect("the capture variant is drawn");
     assert_eq!(
         differing(&expected, &capture),
         0,
@@ -440,7 +502,7 @@ fn a_secure_node_is_masked_in_the_capture_variant_exactly_as_on_the_cpu() {
     );
     assert_eq!(capture.colour_at(10, 10), Some(GREY), "the secure node is the mask");
     assert_eq!(capture.colour_at(60, 45), Some(GREEN), "the node beside it is drawn");
-    let display = gles.view_pixels(&scene, false).expect("the display variant is drawn");
+    let display = reader.view_pixels(&scene, false).expect("the display variant is drawn");
     assert_eq!(
         display.colour_at(10, 10),
         Some(RED_ACCENTED),
@@ -459,10 +521,10 @@ fn omitting_a_secure_node_leaves_what_lies_beneath_it_in_both_variants_alike() {
         secure_world(composer);
     };
     let (cpu, gpu) = both(build);
-    let Some(mut gles) = gles() else {
+    let Some(mut reader) = readers() else {
         return;
     };
-    let capture = gles.view_pixels(&scene_of(&gpu.0), true).expect("drawn");
+    let capture = reader.view_pixels(&scene_of(&gpu.0), true).expect("drawn");
     assert_eq!(differing(&cpu_picture(&cpu.0), &capture), 0);
     assert_eq!(
         capture.colour_at(10, 10),
@@ -778,11 +840,11 @@ fn the_cost_of_one_view_redraw_on_each_path() {
             transform.opacity = if step.is_multiple_of(2) { 1.0 } else { 0.99 }
         });
     };
-    let Some(mut gles) = Gles::new(Size::new(800, 600)).ok() else {
+    let Some(mut reader) = Gles::new(Size::new(800, 600)).ok() else {
         println!("no GLES context on this machine: the GPU columns cannot be measured");
         return;
     };
-    println!("GLES driver: {} (software: {})", gles.driver(), gles.is_software());
+    println!("GLES driver: {} (software: {})", reader.driver(), reader.is_software());
     println!(
         "| View size | camera | CPU path, compositor thread | GPU path, compositor thread | GPU path, GL draw | readback |"
     );
@@ -823,11 +885,11 @@ fn the_cost_of_one_view_redraw_on_each_path() {
                 composer.compose(output, &mut frame);
                 composer.end_frame();
                 let started = Instant::now();
-                gles.draw(&frame, Scale::IDENTITY).expect("the frame is drawn");
+                reader.draw(&frame, Scale::IDENTITY).expect("the frame is drawn");
                 let drawn = started.elapsed();
                 let scene = scene_of(&composer);
                 let started = Instant::now();
-                let image = gles.view_pixels(&scene, true).expect("the picture is read back");
+                let image = reader.view_pixels(&scene, true).expect("the picture is read back");
                 let read_back = started.elapsed();
                 assert_eq!(image.size(), size);
                 if step >= WARM_UP {

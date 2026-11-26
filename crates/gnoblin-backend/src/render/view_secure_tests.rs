@@ -12,11 +12,11 @@
 //!    replaces it ([`OutputFrame::redacted`]) and no consumer reaches the pixels through the View;
 //! 4. **the window's own layers**, fades included: a closing window keeps the mark it had.
 //!
-//! Each case runs on the CPU path and on the GPU path (a [`ViewScene`] the GLES renderer draws, read back for a
-//! capture), with the window's pixels in shared memory (a snapshot, the stand-in a composer test can make) and in a
+//! Each case runs on the CPU path and on the GPU path (a [`ViewScene`] the GPU renderers draw, GLES and Vulkan, read back
+//! for a capture), with the window's pixels in shared memory (a snapshot, the stand-in a composer test can make) and in a
 //! DMA-BUF (`dmabuf_source`, a descriptor on `/dev/null`: the shape of a GPU buffer, which is all the composer reads).
-//! A case that needs the GLES renderer prints the reason and skips its GPU half on a machine with no surfaceless EGL
-//! context; the structural assertions on the scene (which source each capture layer samples) still run there.
+//! A case prints the reason and skips the half of a renderer the machine lacks (no surfaceless EGL context, no Vulkan
+//! device); the structural assertions on the scene (which source each capture layer samples) still run there.
 
 use gnoblin_render_software::Software;
 use smithay::backend::allocator::dmabuf::Dmabuf;
@@ -129,23 +129,23 @@ fn draw_reading(composer: &mut Composer, output: OutputId) -> OutputFrame {
 ///
 /// Each composer gets a renderer of its own: a renderer keeps a View's texture for the `(id, revision)` it drew, and
 /// two composers count revisions each from one.
-fn session(gpu: bool, treatment: SecureTreatment) -> (Composer, OutputId, Option<Gles>) {
+fn session(gpu: bool, treatment: SecureTreatment) -> (Composer, OutputId, Option<Readers>) {
     let (mut composer, output) = composer();
     composer.set_gpu_views(gpu);
     composer.set_secure_treatment(treatment);
-    (composer, output, gpu.then(gles).flatten())
+    (composer, output, gpu.then(readers).flatten())
 }
 
 /// What a capture of the View reads: the CPU path's capture picture, or the GPU scene's capture variant read back.
 /// `None` when the GPU path has no renderer to read it on.
-fn captured(composer: &Composer, gles: &mut Option<Gles>) -> Option<Image> {
-    captured_view(composer, VIEW, gles)
+fn captured(composer: &Composer, reader: &mut Option<Readers>) -> Option<Image> {
+    captured_view(composer, VIEW, reader)
 }
 
 /// [`captured`] for the View `view`.
-fn captured_view(composer: &Composer, view: NodeId, gles: &mut Option<Gles>) -> Option<Image> {
+fn captured_view(composer: &Composer, view: NodeId, reader: &mut Option<Readers>) -> Option<Image> {
     if let Some(scene) = scene_view(composer, view) {
-        return gles.as_mut()?.view_pixels(&scene, true).ok();
+        return reader.as_mut()?.view_pixels(&scene, true).ok();
     }
     composer
         .view_pictures()
@@ -163,9 +163,9 @@ fn scene_view(composer: &Composer, view: NodeId) -> Option<Arc<ViewScene>> {
 }
 
 /// What the View shows on the screen: the CPU picture, or the GPU display variant read back.
-fn displayed(composer: &Composer, gles: &mut Option<Gles>) -> Option<Image> {
+fn displayed(composer: &Composer, reader: &mut Option<Readers>) -> Option<Image> {
     if composer.has_view_scene(VIEW) {
-        return gles.as_mut()?.view_pixels(&scene_of(composer), false).ok();
+        return reader.as_mut()?.view_pixels(&scene_of(composer), false).ok();
     }
     composer.views.get(&VIEW)?.image.as_deref().cloned()
 }
@@ -271,7 +271,7 @@ fn a_secure_window_is_redacted_in_a_views_capture_whatever_holds_its_pixels() {
             for marking in [Marking::Window, Marking::NodeValue] {
                 for treatment in [SecureTreatment::Mask, SecureTreatment::Omit] {
                     let label = format!("gpu: {gpu}, {buffer:?}, {marking:?}, {treatment:?}");
-                    let (mut composer, output, mut gles) = session(gpu, treatment);
+                    let (mut composer, output, mut reader) = session(gpu, treatment);
                     let node = map_window(&mut composer, buffer);
                     view_of(&mut composer, node);
                     mark(&mut composer, node, marking);
@@ -280,8 +280,8 @@ fn a_secure_window_is_redacted_in_a_views_capture_whatever_holds_its_pixels() {
                     if gpu {
                         assert_scene_sources(&scene_of(&composer), buffer, true, treatment, &label);
                     }
-                    let Some(capture) = captured(&composer, &mut gles) else {
-                        assert!(gpu && gles.is_none(), "{label}: a capture has a picture");
+                    let Some(capture) = captured(&composer, &mut reader) else {
+                        assert!(gpu && reader.is_none(), "{label}: a capture has a picture");
                         continue;
                     };
                     assert!(
@@ -293,7 +293,7 @@ fn a_secure_window_is_redacted_in_a_views_capture_whatever_holds_its_pixels() {
                     // with no DRM device, llvmpipe prints "dmabuf import failed: fd has no data" and the process then
                     // dies of SIGSEGV in an llvmpipe thread. The guard comes first so that case is never drawn.
                     if !(gpu && buffer == Buffer::Dmabuf)
-                        && let Some(display) = displayed(&composer, &mut gles)
+                        && let Some(display) = displayed(&composer, &mut reader)
                     {
                         let expected = if buffer == Buffer::Shm { RED } else { GREEN };
                         assert!(
@@ -313,23 +313,23 @@ fn a_secure_window_is_redacted_in_a_views_capture_whatever_holds_its_pixels() {
 #[test]
 fn without_the_mark_a_capture_reads_the_real_pixels_of_a_gpu_buffer_and_an_unreadable_one_is_masked() {
     for buffer in BUFFERS {
-        let (mut composer, output, mut gles) = session(false, SecureTreatment::Mask);
+        let (mut composer, output, mut reader) = session(false, SecureTreatment::Mask);
         let node = map_window(&mut composer, buffer);
         view_of(&mut composer, node);
         draw_reading(&mut composer, output);
-        let capture = captured(&composer, &mut gles).expect("the CPU path drew a picture");
+        let capture = captured(&composer, &mut reader).expect("the CPU path drew a picture");
         let expected = if buffer == Buffer::Shm { RED } else { GREEN };
         assert!(all_are(&capture, expected), "{buffer:?}: the real pixels are captured");
     }
 
     // No reader: the CPU path cannot read a GPU buffer and fails closed, drawing the neutral grey.
-    let (mut composer, output, mut gles) = session(false, SecureTreatment::Mask);
+    let (mut composer, output, mut reader) = session(false, SecureTreatment::Mask);
     let node = map_window(&mut composer, Buffer::Dmabuf);
     view_of(&mut composer, node);
     composer.damage_output(output);
     composer.begin_frame();
     composer.end_frame();
-    let capture = captured(&composer, &mut gles).expect("a picture");
+    let capture = captured(&composer, &mut reader).expect("a picture");
     assert!(all_are(&capture, GREY), "a GPU buffer nothing can read is masked");
 
     // The GPU path samples the buffer itself in both variants when nothing is secure.
@@ -353,7 +353,7 @@ fn without_the_mark_a_capture_reads_the_real_pixels_of_a_gpu_buffer_and_an_unrea
 #[test]
 fn the_same_gpu_buffer_is_redacted_with_the_mark_and_shown_without_it() {
     for gpu in [false, true] {
-        let (mut composer, output, mut gles) = session(gpu, SecureTreatment::Mask);
+        let (mut composer, output, mut reader) = session(gpu, SecureTreatment::Mask);
         let node = map_window(&mut composer, Buffer::Dmabuf);
         view_of(&mut composer, node);
         draw_reading(&mut composer, output);
@@ -368,7 +368,7 @@ fn the_same_gpu_buffer_is_redacted_with_the_mark_and_shown_without_it() {
             );
             assert_scene_sources(&scene, Buffer::Dmabuf, true, SecureTreatment::Mask, "marked");
         }
-        if let Some(capture) = captured(&composer, &mut gles) {
+        if let Some(capture) = captured(&composer, &mut reader) {
             assert!(all_are(&capture, GREY), "gpu: {gpu}: marked, the buffer is the mask");
         }
         composer.set_window_secure(WINDOW, false);
@@ -382,7 +382,7 @@ fn the_same_gpu_buffer_is_redacted_with_the_mark_and_shown_without_it() {
                 "cleared",
             );
         } else {
-            let capture = captured(&composer, &mut gles).expect("a picture");
+            let capture = captured(&composer, &mut reader).expect("a picture");
             assert!(all_are(&capture, GREEN), "cleared, the buffer's real pixels are back");
         }
     }
@@ -450,7 +450,7 @@ fn a_source_below_a_secure_ancestor_is_redacted_in_the_views_capture_and_the_vie
         ] {
             for treatment in [SecureTreatment::Mask, SecureTreatment::Omit] {
                 let label = format!("gpu: {gpu}, {above:?}, {treatment:?}");
-                let (mut composer, output, mut gles) = session(gpu, treatment);
+                let (mut composer, output, mut reader) = session(gpu, treatment);
                 below_a_secure_ancestor(&mut composer, above);
                 let frame = draw_reading(&mut composer, output);
 
@@ -460,13 +460,13 @@ fn a_source_below_a_secure_ancestor_is_redacted_in_the_views_capture_and_the_vie
                         "{label}: a source below a secure ancestor has a capture variant"
                     );
                 }
-                if let Some(capture) = captured(&composer, &mut gles) {
+                if let Some(capture) = captured(&composer, &mut reader) {
                     assert!(
                         all_are(&capture, redaction(treatment)),
                         "{label}: a capture of a View of secure content holds none of it"
                     );
                 } else {
-                    assert!(gpu && gles.is_none(), "{label}: a capture has a picture");
+                    assert!(gpu && reader.is_none(), "{label}: a capture has a picture");
                 }
                 assert!(
                     view_layers(&frame).iter().all(|layer| layer.secure),
@@ -547,11 +547,11 @@ fn a_window_below_a_secure_node_is_a_secure_layer() {
 #[test]
 fn moving_a_source_under_a_secure_node_redacts_it_at_once_and_a_sibling_is_not_secure() {
     for gpu in [false, true] {
-        let (mut composer, output, mut gles) = session(gpu, SecureTreatment::Mask);
+        let (mut composer, output, mut reader) = session(gpu, SecureTreatment::Mask);
         canvas_world(&mut composer);
         ancestor(&mut composer, true);
         draw_reading(&mut composer, output);
-        let open = captured(&composer, &mut gles);
+        let open = captured(&composer, &mut reader);
         if let Some(open) = &open {
             assert_eq!(
                 open.colour_at(30, 30),
@@ -561,7 +561,7 @@ fn moving_a_source_under_a_secure_node_redacts_it_at_once_and_a_sibling_is_not_s
         }
         reparent(&mut composer, SOURCE, ANCESTOR);
         draw_reading(&mut composer, output);
-        if let Some(moved) = captured(&composer, &mut gles) {
+        if let Some(moved) = captured(&composer, &mut reader) {
             assert!(
                 all_are(&moved, GREY),
                 "gpu: {gpu}: below the secure node the canvas is the mask"
@@ -574,7 +574,7 @@ fn moving_a_source_under_a_secure_node_redacts_it_at_once_and_a_sibling_is_not_s
         });
         reparent(&mut composer, SOURCE, NodeId::new(NODE_OUTSIDE));
         draw_reading(&mut composer, output);
-        if let Some(shown) = captured(&composer, &mut gles) {
+        if let Some(shown) = captured(&composer, &mut reader) {
             assert_eq!(
                 shown.colour_at(30, 30),
                 Some(RED),
@@ -602,18 +602,18 @@ fn second_source(composer: &mut Composer) {
 #[test]
 fn a_view_keeps_no_pixels_of_a_source_it_had_and_each_source_is_redacted_on_its_own_status() {
     for gpu in [false, true] {
-        let (mut composer, output, mut gles) = session(gpu, SecureTreatment::Mask);
+        let (mut composer, output, mut reader) = session(gpu, SecureTreatment::Mask);
         view_of_source(&mut composer, Size::new(SIDE, SIDE));
         canvas(&mut composer, 1, 101, Rect::new(0, 0, SIDE, 30), RED, BLUE);
         second_source(&mut composer);
         draw_reading(&mut composer, output);
-        let at = |composer: &Composer, gles: &mut Option<Gles>, x, y| {
-            captured(composer, gles).and_then(|image| image.colour_at(x, y))
+        let at = |composer: &Composer, reader: &mut Option<Readers>, x, y| {
+            captured(composer, reader).and_then(|image| image.colour_at(x, y))
         };
         let label = |step: &str| format!("gpu: {gpu}: {step}");
-        if gles.is_some() || !gpu {
+        if reader.is_some() || !gpu {
             assert_eq!(
-                at(&composer, &mut gles, 30, 20),
+                at(&composer, &mut reader, 30, 20),
                 Some(RED),
                 "{}",
                 label("the first source")
@@ -622,15 +622,15 @@ fn a_view_keeps_no_pixels_of_a_source_it_had_and_each_source_is_redacted_on_its_
 
         composer.with_scene(|scene| scene.set_source(VIEW, Some(NodeId::new(70))).expect("a new source"));
         draw_reading(&mut composer, output);
-        if gles.is_some() || !gpu {
+        if reader.is_some() || !gpu {
             assert_eq!(
-                at(&composer, &mut gles, 5, 5),
+                at(&composer, &mut reader, 5, 5),
                 Some(GREEN),
                 "{}",
                 label("the second source")
             );
             assert_eq!(
-                at(&composer, &mut gles, 30, 20),
+                at(&composer, &mut reader, 30, 20),
                 Some(BLACK),
                 "{}",
                 label("where only the first source drew, nothing is left of it")
@@ -639,8 +639,8 @@ fn a_view_keeps_no_pixels_of_a_source_it_had_and_each_source_is_redacted_on_its_
 
         set_secure(&mut composer, NodeId::new(2), true);
         draw_reading(&mut composer, output);
-        if gles.is_some() || !gpu {
-            let capture = captured(&composer, &mut gles).expect("a picture");
+        if reader.is_some() || !gpu {
+            let capture = captured(&composer, &mut reader).expect("a picture");
             assert_eq!(
                 capture.colour_at(5, 5),
                 Some(GREY),
@@ -656,15 +656,15 @@ fn a_view_keeps_no_pixels_of_a_source_it_had_and_each_source_is_redacted_on_its_
 
         composer.with_scene(|scene| scene.set_source(VIEW, Some(SOURCE)).expect("back to the first"));
         draw_reading(&mut composer, output);
-        if gles.is_some() || !gpu {
+        if reader.is_some() || !gpu {
             assert_eq!(
-                at(&composer, &mut gles, 30, 20),
+                at(&composer, &mut reader, 30, 20),
                 Some(RED),
                 "{}",
                 label("the first source is not secure because the second was")
             );
             assert!(
-                !pixels(&captured(&composer, &mut gles).expect("a picture")).contains(&GREY),
+                !pixels(&captured(&composer, &mut reader).expect("a picture")).contains(&GREY),
                 "{}",
                 label("no mask left")
             );
@@ -678,7 +678,7 @@ fn a_view_keeps_no_pixels_of_a_source_it_had_and_each_source_is_redacted_on_its_
 fn the_readback_of_one_view_never_carries_the_pixels_of_a_view_of_another_secure_status() {
     let other = NodeId::new(200);
     for gpu in [false, true] {
-        let (mut composer, output, mut gles) = session(gpu, SecureTreatment::Mask);
+        let (mut composer, output, mut reader) = session(gpu, SecureTreatment::Mask);
         view_of_source(&mut composer, Size::new(SIDE, SIDE));
         canvas(&mut composer, 1, 101, Rect::new(0, 0, SIDE, SIDE), RED, RED);
         second_source(&mut composer);
@@ -686,19 +686,19 @@ fn the_readback_of_one_view_never_carries_the_pixels_of_a_view_of_another_secure
         view_node(&mut composer, other, NodeId::new(70), None);
         set_secure(&mut composer, NodeId::new(1), true);
         draw_reading(&mut composer, output);
-        if gpu && gles.is_none() {
+        if gpu && reader.is_none() {
             continue;
         }
-        let read = |composer: &Composer, gles: &mut Option<Gles>, view| {
-            captured_view(composer, view, gles).expect("a picture")
+        let read = |composer: &Composer, reader: &mut Option<Readers>, view| {
+            captured_view(composer, view, reader).expect("a picture")
         };
         for round in 0..3 {
-            let first = read(&composer, &mut gles, VIEW);
+            let first = read(&composer, &mut reader, VIEW);
             assert!(
                 all_are(&first, GREY),
                 "gpu: {gpu}, round {round}: the secure View is the mask only"
             );
-            let second = read(&composer, &mut gles, other);
+            let second = read(&composer, &mut reader, other);
             assert!(
                 !pixels(&second).contains(&GREY) && !pixels(&second).contains(&RED),
                 "gpu: {gpu}, round {round}: the plain View holds nothing of the secure one"
@@ -713,19 +713,19 @@ fn the_readback_of_one_view_never_carries_the_pixels_of_a_view_of_another_secure
         set_secure(&mut composer, NodeId::new(1), false);
         set_secure(&mut composer, NodeId::new(70), true);
         draw_reading(&mut composer, output);
-        let first = read(&composer, &mut gles, VIEW);
+        let first = read(&composer, &mut reader, VIEW);
         assert!(
             all_are(&first, RED),
             "gpu: {gpu}: the View of the first source, no longer secure, shows it whole and holds no mask"
         );
-        let second = read(&composer, &mut gles, other);
+        let second = read(&composer, &mut reader, other);
         assert!(
             pixels(&second).contains(&GREY) && !pixels(&second).contains(&GREEN),
             "gpu: {gpu}: the View of the second source, now secure, draws the mask where its canvases are and no green"
         );
         set_secure(&mut composer, NodeId::new(70), false);
         draw_reading(&mut composer, output);
-        let second = read(&composer, &mut gles, other);
+        let second = read(&composer, &mut reader, other);
         assert_eq!(
             second.colour_at(15, 15),
             Some(GREEN),
@@ -739,15 +739,15 @@ fn the_readback_of_one_view_never_carries_the_pixels_of_a_view_of_another_secure
 #[test]
 fn a_secure_node_redacts_itself_and_what_is_below_it_and_nothing_beside_it() {
     for gpu in [false, true] {
-        let (mut composer, output, mut gles) = session(gpu, SecureTreatment::Mask);
+        let (mut composer, output, mut reader) = session(gpu, SecureTreatment::Mask);
         view_of_source(&mut composer, Size::new(SIDE, SIDE));
         plain(&mut composer, 4, 101, Rect::new(0, 0, 20, SIDE));
         canvas(&mut composer, 1, 4, Rect::new(0, 0, 20, SIDE), RED, RED);
         canvas(&mut composer, 2, 101, Rect::new(20, 0, 20, SIDE), GREEN, GREEN);
         set_secure(&mut composer, NodeId::new(4), true);
         draw_reading(&mut composer, output);
-        let Some(capture) = captured(&composer, &mut gles) else {
-            assert!(gpu && gles.is_none());
+        let Some(capture) = captured(&composer, &mut reader) else {
+            assert!(gpu && reader.is_none());
             continue;
         };
         assert_eq!(
@@ -795,8 +795,8 @@ fn a_secure_node_is_redacted_in_both_eyes_of_a_stereo_view_as_on_the_cpu() {
         "and neither eye samples anything but the mask"
     );
     let mut pictures = vec![("the CPU rig", Image::clone(&expected))];
-    if let Some(mut gles) = gles() {
-        let capture = gles.view_pixels(&scene, true).expect("the capture variant is drawn");
+    if let Some(mut reader) = readers() {
+        let capture = reader.view_pixels(&scene, true).expect("the capture variant is drawn");
         let wrong = differing(&expected, &capture);
         assert!(
             wrong <= 80 * 40 * 3 / 100,
@@ -868,13 +868,13 @@ fn a_secure_node_stays_redacted_wherever_the_head_camera_is_written_to_stand() {
 #[test]
 fn a_node_that_becomes_secure_is_redacted_in_the_next_picture_though_the_view_is_paced() {
     for gpu in [false, true] {
-        let (mut composer, output, mut gles) = session(gpu, SecureTreatment::Mask);
+        let (mut composer, output, mut reader) = session(gpu, SecureTreatment::Mask);
         view_of_source(&mut composer, Size::new(SIDE, SIDE));
         canvas(&mut composer, 1, 101, Rect::new(0, 0, SIDE, SIDE), RED, RED);
         composer.with_scene(|scene| scene.set_value(VIEW, "fps", TreeValue::Uint(1)).expect("fps"));
         draw_reading(&mut composer, output);
         let first = scene_for(&composer, gpu).map(|scene| scene.revision());
-        if let Some(open) = captured(&composer, &mut gles) {
+        if let Some(open) = captured(&composer, &mut reader) {
             assert_eq!(open.colour_at(30, 30), Some(RED), "gpu: {gpu}: the first picture");
         }
         composer.advance_motion(20);
@@ -888,7 +888,7 @@ fn a_node_that_becomes_secure_is_redacted_in_the_next_picture_though_the_view_is
             );
             assert!(scene.has_capture_variant());
         }
-        if let Some(masked) = captured(&composer, &mut gles) {
+        if let Some(masked) = captured(&composer, &mut reader) {
             assert!(
                 all_are(&masked, GREY),
                 "gpu: {gpu}: the very next picture holds the mask"
@@ -905,7 +905,7 @@ fn a_secure_window_that_shows_a_gpu_buffer_stays_secure_while_it_fades() {
         for closing in [true, false] {
             for gpu in [false, true] {
                 let label = format!("{buffer:?}, closing: {closing}, gpu: {gpu}");
-                let (mut composer, output, mut gles) = session(gpu, SecureTreatment::Mask);
+                let (mut composer, output, mut reader) = session(gpu, SecureTreatment::Mask);
                 composer.set_reduced_motion(false);
                 composer.set_stock_motion();
                 let node = map_window(&mut composer, buffer);
@@ -944,7 +944,7 @@ fn a_secure_window_that_shows_a_gpu_buffer_stays_secure_while_it_fades() {
                     "{label}: a capture of the output draws no pixel of the fading window"
                 );
 
-                if let Some(capture) = captured(&composer, &mut gles) {
+                if let Some(capture) = captured(&composer, &mut reader) {
                     assert!(
                         !pixels(&capture).contains(&RED) && !pixels(&capture).contains(&GREEN),
                         "{label}: a capture of a View of the fading window holds none of its pixels"
