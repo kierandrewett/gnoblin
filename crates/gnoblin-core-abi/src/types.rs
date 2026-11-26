@@ -1450,6 +1450,15 @@ abi_structs! {
         /// (`table_has`) belongs to a core built before it, whose object writes cannot be staged. Shell thread.
         pub set_write_stage: unsafe extern "C" fn(ctx: GnoblinCtx, stage: Option<GnoblinWriteStageFn>, peek: Option<GnoblinWriteStagePeekFn>, user: *mut c_void) -> i32,
 
+        /// The serial of the last write of `node`'s `effects` that this shell made, written to `out`: zero when it made none. The node
+        /// API's writes of `effects` (`write_set`, `write_set_timed`) each take the next serial of the session, so a caller that read
+        /// the serial after its own write knows later that the list is still its own when the serial is unchanged, and that
+        /// some other write replaced it when it is not. A write that a staged generation made and that was rolled back with its stage
+        /// gives its serial back to the one before it. The effects themselves are not carried out by `node_get`; this is the only
+        /// read of them. `E_NO_SUCH_NODE` for a node the tree does not hold. A table too short to hold this field (`table_has`)
+        /// belongs to a core built before it, which cannot say. Shell thread.
+        pub node_effects_serial: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, out: *mut u64) -> i32,
+
         /// ABI 1.1 (test builds only): milliseconds since the core started.
         #[cfg(feature = "next-minor")]
         pub uptime_ms: unsafe extern "C" fn() -> u64,

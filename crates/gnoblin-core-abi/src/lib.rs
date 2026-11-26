@@ -218,9 +218,10 @@ mod tests {
     #[test]
     fn the_next_minor_table_is_one_function_longer() {
         let table = size_of::<GnoblinApi>();
-        // `object_api` is the last function of the ABI 1.0 table (`wake_fd`, `call`, `subscribe` and `object_api` were appended
-        // after `report_config_rejected`; the ABI is unstable until 0.2.0 ships, so 1.0 may still grow).
-        let base = offset_of!(GnoblinApi, object_api) + size_of::<unsafe extern "C" fn()>();
+        // `node_effects_serial` is the last function of the ABI 1.0 table (`wake_fd`, `call`, `subscribe`, `object_api`,
+        // `set_write_stage` and `node_effects_serial` were appended after `report_config_rejected`; the ABI is unstable until 0.2.0
+        // ships, so 1.0 may still grow).
+        let base = offset_of!(GnoblinApi, node_effects_serial) + size_of::<unsafe extern "C" fn()>();
         if cfg!(feature = "next-minor") {
             assert_eq!(ABI_MINOR, 1);
             assert_eq!(table, base + size_of::<usize>());

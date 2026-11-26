@@ -10,7 +10,7 @@ use core::ffi::c_void;
 
 use gnoblin_core_abi::{self as abi, GnoblinEffect, GnoblinStr, GnoblinTiming, GnoblinValue};
 
-use crate::error::{Result, check};
+use crate::error::{CoreError, ErrorKind, Result, check};
 use crate::owned::Value;
 use crate::tree::Node;
 use crate::value::{MemberKind, NodeId};
@@ -204,6 +204,30 @@ impl Node {
         value.with_raw(|raw| {
             check(unsafe { (g.api().write_set_timed)(g.ctx(), self.id().0, member.id, raw, &raw_timing) })
         })
+    }
+
+    /// The serial of the last write of this node's `effects` that this shell made: zero when it made none. Every write of the list
+    /// (`set_effects`) takes the next serial of the shell, so a caller that read the serial after its own
+    /// write knows later whether the list is still its own: the same serial says nothing wrote it since, another says something did.
+    /// The effects themselves are not read back; this is the only read of them. A write a failed reload's stage made is not counted.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorKind::Unsupported`](crate::ErrorKind) on a core built before the call, and [`ErrorKind::NoSuchNode`](crate::ErrorKind)
+    /// for a node the tree does not hold.
+    pub fn effects_serial(&self) -> Result<u64> {
+        let g = self.gnoblin();
+        let end = core::mem::offset_of!(abi::GnoblinApi, node_effects_serial) + size_of::<usize>();
+        if !abi::table_has(g.api().size, end) {
+            return Err(CoreError::new(
+                ErrorKind::Unsupported,
+                "the installed core predates the effects serial, so a node's effects cannot be told from another write's",
+            ));
+        }
+        let mut serial = 0u64;
+        // SAFETY: `node_effects_serial` takes the context, a node id and a writable `u64`.
+        check(unsafe { (g.api().node_effects_serial)(g.ctx(), self.id().0, &raw mut serial) })?;
+        Ok(serial)
     }
 
     /// Replaces the node's `effects` list with `effects`, in paint order.
