@@ -92,6 +92,7 @@ mod commands;
 mod connection;
 mod console;
 mod dump;
+mod init;
 mod js;
 mod logs;
 mod output;
@@ -139,7 +140,7 @@ pub fn run(
         cli::Invocation::Completions { shell, output } => completions(shell, output, out, err),
         cli::Invocation::Log { request } => logs::run(&request, out, err),
         cli::Invocation::Check { file, types, json } => {
-            if js::is_module(&file) {
+            if js::runs_in_dry_run_host(&file) {
                 js::check(&file, types, json, out, err)
             } else {
                 // Not a module the shell runtime loads: the configuration check, as `config validate`.
@@ -150,7 +151,7 @@ pub fn run(
             }
         }
         cli::Invocation::TypesInit { dir, json } => js::types_init(dir.as_deref(), json, out, err),
-        cli::Invocation::ConfigInit { dir, force, json } => js::config_init(dir.as_deref(), force, json, out, err),
+        cli::Invocation::ConfigInit(options) => init::config_init(&options, out, err),
         cli::Invocation::ShellList { json } => match shell::list(json, out) {
             Ok(code) => code,
             Err(failure) => failure.report(err, json),
@@ -160,7 +161,7 @@ pub fn run(
             verb: verbs::Verb::ConfigValidate { path },
             json,
         } => {
-            if js::is_module(&path) {
+            if js::runs_in_dry_run_host(&path) {
                 // A TypeScript or JavaScript config is checked in process, as `check` does: it runs in the dry-run
                 // host, so the file is refused for the reasons the shell would give.
                 js::check(&path, false, json, out, err)

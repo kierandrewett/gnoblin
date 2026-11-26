@@ -37,11 +37,17 @@ const TSC_NAMES: &[&str] = &["tsc", "tsc6", "tsgo"];
 const NO_TSC: &str =
     "type check skipped: no TypeScript compiler found; install one with `npm i -g typescript` or set GNOBLIN_TSC";
 
-/// Whether `check` runs `path` through the JavaScript runtime rather than the configuration check.
+/// Whether `path` is a script module the type checker reads: the extensions of [`MODULE_EXTENSIONS`].
 pub(crate) fn is_module(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| MODULE_EXTENSIONS.contains(&extension))
+}
+
+/// Whether `check` runs `path` in the dry-run host rather than the configuration check: a module, or a Python shell, which
+/// the host runs through the Python runtime.
+pub(crate) fn runs_in_dry_run_host(path: &Path) -> bool {
+    is_module(path) || path.extension().is_some_and(|extension| extension == "py")
 }
 
 /// `check FILE` for a module: the dry-run host, then the types when asked.
@@ -190,13 +196,13 @@ fn anchors() -> Vec<PathBuf> {
 
 /// The directories the stock library is looked for in: `$GNOBLIN_JS_STOCK_DIR`, the data directories, and the prefix this
 /// executable is installed in (`share/gnoblin/js`), as the runtime looks.
-fn stock_dirs() -> Vec<PathBuf> {
+pub(crate) fn stock_dirs() -> Vec<PathBuf> {
     stock_search_path(&|name| std::env::var(name).ok(), &anchors())
 }
 
 /// The starter, the text of the packaged default shell: the `shells/default/shell.ts` of a stock directory laid out as a source tree, else
 /// `<prefix>/share/gnoblin/default-shell/shell.ts`.
-fn starter_text() -> io::Result<String> {
+pub(crate) fn starter_text() -> io::Result<String> {
     let path = stock_dirs()
         .into_iter()
         .find_map(|dir| source_starter(&dir))
@@ -613,7 +619,7 @@ pub(crate) fn types_init(dir: Option<&Path>, json: bool, out: &mut dyn Write, er
 }
 
 /// The file `config init` writes: the conventional user shell, which discovery finds in the config directory.
-const INIT_FILE: &str = "shell.ts";
+pub(crate) const INIT_FILE: &str = "shell.ts";
 
 /// A conventional shell file of `dir` other than `keep` that is there. Writing `keep` beside it would make the two
 /// equally preferred, which discovery refuses to guess between, so the session would not start.
@@ -624,123 +630,6 @@ pub(crate) fn rival_shell_file(dir: &Path, keep: &str) -> Option<PathBuf> {
         .filter(|name| name != keep)
         .map(|name| dir.join(name))
         .find(|file| file.exists())
-}
-
-/// Writes the starter `shell.ts`, refusing to replace a file unless `force`.
-fn write_starter(dir: &Path, init: &Path, force: bool) -> io::Result<()> {
-    // Read first: a starter that is not installed must not leave an empty `shell.ts` behind.
-    let starter = starter_text()?;
-    std::fs::create_dir_all(dir)?;
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true);
-    if force {
-        options.create(true).truncate(true);
-    } else {
-        options.create_new(true);
-    }
-    options.open(init)?.write_all(starter.as_bytes())
-}
-
-/// `config init [DIR] [--force]`: write a short, commented `shell.ts` and the editor files (`types init`), and say what
-/// to do next. Nothing is replaced unless `--force` is given, so a config you have is never lost to a first-run
-/// command.
-pub(crate) fn config_init(dir: Option<&Path>, force: bool, json: bool, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
-    let theme_err = theme(io::stderr().is_terminal());
-    let fail = |err: &mut dyn Write, summary: String, why: Option<String>, hint: &str| {
-        let report = ErrorReport {
-            summary,
-            why,
-            hints: vec![hint.to_owned()],
-        };
-        let _ = writeln!(err, "{}", error_block(&theme_err, &report));
-        1
-    };
-    let Some(dir) = dir
-        .map(Path::to_path_buf)
-        .or_else(|| Environment::from_env().config_dir())
-    else {
-        return fail(
-            err,
-            "neither XDG_CONFIG_HOME nor HOME is set, so there is no config directory".to_owned(),
-            None,
-            "name the directory: `gnoblinctl config init DIR`",
-        );
-    };
-    let init = dir.join(INIT_FILE);
-    let replaced = init.exists();
-    if !force {
-        let found = if replaced {
-            Some((init.clone(), "the shell already has a config to read".to_owned()))
-        } else {
-            rival_shell_file(&dir, INIT_FILE).map(|rival| {
-                (
-                    rival,
-                    format!(
-                        "a {INIT_FILE} written here would make the two equally preferred, and no shell would start"
-                    ),
-                )
-            })
-        };
-        if let Some((existing, why)) = found {
-            return fail(
-                err,
-                format!("{} already exists, so nothing was written", existing.display()),
-                Some(why),
-                "edit that file, or run `gnoblinctl config init --force` to write the starter over it",
-            );
-        }
-    }
-    if let Err(error) = write_starter(&dir, &init, force) {
-        return fail(
-            err,
-            format!("cannot write {}: {error}", init.display()),
-            None,
-            "check that the directory is writable, or name another: `gnoblinctl config init DIR`",
-        );
-    }
-    let written = match write_editor_files(&dir) {
-        Ok(written) => written,
-        Err(error) => {
-            return fail(
-                err,
-                format!("{} was written, but the editor files were not: {error}", init.display()),
-                None,
-                "check that the directory is writable, then run `gnoblinctl types init`",
-            );
-        }
-    };
-    let next = vec![
-        format!("Open {} in your editor.", init.display()),
-        format!("Check it with `gnoblinctl check --types {}`.", init.display()),
-        "Save it: a running shell reloads the file on save, and `gnoblinctl config reload` does it on request."
-            .to_owned(),
-    ];
-    let result = if json {
-        let mut document = editor_json(&written, &dir);
-        document["init"] = json!(init);
-        document["replaced"] = json!(replaced);
-        document["next"] = json!(next);
-        writeln!(out, "{document}")
-    } else {
-        let theme = theme(io::stdout().is_terminal());
-        let verb = if replaced { "replaced" } else { "written" };
-        let steps: String = next
-            .iter()
-            .enumerate()
-            .map(|(number, step)| format!("\n  {}. {step}", number + 1))
-            .collect();
-        let text = format!(
-            "{}\n{}\n\nNext:{steps}",
-            status_line(
-                &theme,
-                LineOutcome::Ok,
-                &format!("{INIT_FILE} {verb}: {}", init.display())
-            ),
-            editor_lines(&theme, &written, &dir),
-        );
-        writeln!(out, "{text}")
-    };
-    u8::from(result.is_err())
 }
 
 #[cfg(test)]

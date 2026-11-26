@@ -1,0 +1,18 @@
+[package]
+name = "myshell"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# A shell is a project of its own, so a Cargo workspace around the directory does not adopt it.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+# The SDK crates are not on crates.io: `gnoblinctl config init` writes a git dependency on the repository, or a path
+# dependency on a checkout when it is given `--sdk`. Cargo builds only their safe wrapper code, never the compositor; the
+# shell links the installed libgnoblin-core and libgnoblin-std.
+[dependencies]
+gnoblin-core = @SDK_CORE@
+gnoblin-std = @SDK_STD@

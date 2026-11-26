@@ -22,6 +22,7 @@ use clap::{Arg, ArgAction, ArgMatches, Command, value_parser};
 use gnoblin_model::Fields;
 
 use crate::args;
+use crate::init;
 use crate::js;
 use crate::logs::{self, Filter};
 use crate::tree::{self, CliObject};
@@ -52,12 +53,8 @@ pub(crate) enum Invocation {
     Check { file: PathBuf, types: bool, json: bool },
     /// Write the editor files for a TypeScript configuration.
     TypesInit { dir: Option<PathBuf>, json: bool },
-    /// Write a starter `shell.ts` and the editor files, for `config init`.
-    ConfigInit {
-        dir: Option<PathBuf>,
-        force: bool,
-        json: bool,
-    },
+    /// Write a starter shell in TypeScript, Python or Rust, for `config init`.
+    ConfigInit(init::InitOptions),
     /// Every shell discovery can see, for `shell list`.
     ShellList { json: bool },
     /// A live prompt into the running JavaScript shell, or one expression of it.
@@ -519,18 +516,44 @@ fn verb_commands() -> Vec<Command> {
             )
             .subcommand(
                 Command::new("init")
-                    .about("Write a starter shell.ts and the editor files, so the shell has a config to edit.")
+                    .about("Write a starter shell in TypeScript, Python or Rust, so the shell has a config to edit.")
+                    .long_about(
+                        "Write a starter shell, so the shell has a config to edit. TypeScript writes shell.ts and the \
+                         editor files, Python writes shell.py and a pyrightconfig.json, and Rust writes a Cargo project \
+                         in the rust-shell directory and prints the commands that build it and make gnoblin find the \
+                         library.",
+                    )
                     .arg(
                         Arg::new("dir")
                             .value_name("DIR")
                             .value_parser(value_parser!(PathBuf))
-                            .help("Where to write them; defaults to the config directory, $XDG_CONFIG_HOME/gnoblin."),
+                            .help("The config directory; defaults to $XDG_CONFIG_HOME/gnoblin."),
+                    )
+                    .arg(
+                        Arg::new("language")
+                            .long("language")
+                            .short('l')
+                            .value_name("LANGUAGE")
+                            .value_parser(PossibleValuesParser::new([
+                                PossibleValue::new("typescript").alias("ts"),
+                                PossibleValue::new("python").alias("py"),
+                                PossibleValue::new("rust").alias("rs"),
+                            ]))
+                            .default_value("typescript")
+                            .help("The language of the starter: typescript (shell.ts), python (shell.py) or rust (a Cargo project)."),
                     )
                     .arg(
                         Arg::new("force")
                             .long("force")
                             .action(ArgAction::SetTrue)
-                            .help("Overwrite an existing shell.ts."),
+                            .help("Overwrite an existing starter: shell.ts, shell.py, or the Rust project's Cargo.toml and src/lib.rs."),
+                    )
+                    .arg(
+                        Arg::new("sdk")
+                            .long("sdk")
+                            .value_name("PATH")
+                            .value_parser(value_parser!(PathBuf))
+                            .help("Rust only: depend on the SDK crates of the Gnoblin checkout at PATH instead of the git repository."),
                     ),
             ),
     ]
@@ -647,11 +670,24 @@ fn config_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usa
             return object_invocation(object, matches, json);
         }
         "init" => {
-            return Ok(Invocation::ConfigInit {
+            let language = init::StarterLanguage::from_name(
+                sub.get_one::<String>("language").expect("the language has a default"),
+            )
+            .expect("the parser only lets the known languages through");
+            let sdk = sub.get_one::<PathBuf>("sdk").cloned();
+            if sdk.is_some() && language != init::StarterLanguage::Rust {
+                return Err(Usage {
+                    text: "error: --sdk names the SDK of a Rust starter, so it needs --language rust\n".to_owned(),
+                    help: false,
+                });
+            }
+            return Ok(Invocation::ConfigInit(init::InitOptions {
                 dir: sub.get_one::<PathBuf>("dir").cloned(),
+                language,
                 force: sub.get_flag("force"),
+                sdk,
                 json,
-            });
+            }));
         }
         other => unreachable!("clap refuses `config {other}`"),
     };
