@@ -129,10 +129,16 @@ fn connect(cx: &Cx<'_>) -> bool {
 }
 
 /// Moves a watch to what the reading says, and tells it when that changed its state.
+///
+/// The holds this generation made count even when the reading does not have them yet: a hold is sent to the compositor and is in the
+/// next reading, and a watch made after it in the same script must not hear the session go idle in between (and resume a turn later).
+/// A hold the compositor has counted is in the reading too, so the larger of the two is the number of holds.
 fn evaluate(cx: &Cx<'_>, watch: Obj, reading: Option<(u64, u64)>) {
-    let Some((idle_ms, inhibitors)) = reading else {
+    let Some((idle_ms, counted)) = reading else {
         return;
     };
+    let own = IDLE.with(|idle| idle.with(cx.ctx(), |table| table.holds.len())) as u64;
+    let inhibitors = counted.max(own);
     let moved = cx
         .with_state::<IdleWatchState, _>(watch, |state| {
             let idle = inhibitors == 0 && idle_ms as f64 >= state.ms;

@@ -865,6 +865,23 @@ fn an_inhibitor_delays_idle_and_one_that_appears_while_idle_resumes_the_watch() 
 }
 
 #[test]
+fn a_watch_made_after_a_hold_does_not_hear_idle_before_the_compositor_counts_the_hold() {
+    // The reading has the session idle for longer than the watch and no hold yet, because the compositor has not answered the call:
+    // the script's own hold counts all the same, so the watch never tells idle and takes nothing back a turn later.
+    let rig = Rig::new();
+    let idle = rig.service("idle");
+    let log = Rc::new(RefCell::new(Vec::new()));
+    rig.owner.idle(5000, 0);
+    rig.call(idle, "inhibit", &[Val::Text("movie".to_owned())]);
+    rig.call(idle, "watch", &[Val::Double(1000.0), idle_listener(&rig, &log, "w")]);
+    rig.settle();
+    assert!(log.borrow().is_empty(), "{:?}", log.borrow());
+    rig.owner.idle(6000, 1);
+    rig.settle();
+    assert!(log.borrow().is_empty(), "{:?}", log.borrow());
+}
+
+#[test]
 fn a_hold_is_sent_once_per_holder_given_back_with_release_and_a_refused_one_is_not_a_hold() {
     let rig = Rig::new();
     let idle = rig.service("idle");

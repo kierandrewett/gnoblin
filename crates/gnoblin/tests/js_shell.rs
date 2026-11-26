@@ -5174,7 +5174,6 @@ fn an_idle_hold_delays_the_watch_and_a_reload_that_retires_its_generation_gives_
 /// the role, which closes its sockets and gives nothing back, as a killed process does) leaves no hold behind: the
 /// compositor counts none, and a watch of the next shell hears the session go idle.
 #[test]
-#[ignore = "vrnw: needs gnoblin.idle.inhibit to hold a watch: the compositor counts the hold (inhibitors 1) and the watch has already fired (probe `idle`, expected empty)"]
 fn the_compositor_gives_back_the_idle_hold_of_a_shell_that_died_without_retiring() {
     let session = Session::start();
     let ipc = session.ipc();
