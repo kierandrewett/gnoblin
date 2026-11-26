@@ -77,6 +77,11 @@ fn backdrop() -> OutputFrame {
 
 /// The window layer, with `effects`, `tint` and group `opacity`.
 fn window(effects: Effects, tint: Color, opacity: f32) -> Layer {
+    window_at(WINDOW, effects, tint, opacity)
+}
+
+/// The window layer over `dst`, with `effects`, `tint` and group `opacity`.
+fn window_at(dst: Rect, effects: Effects, tint: Color, opacity: f32) -> Layer {
     Layer::Surface(Surface {
         source: SurfaceSource::Snapshot(window_picture()),
         src: RectF {
@@ -85,7 +90,7 @@ fn window(effects: Effects, tint: Color, opacity: f32) -> Layer {
             width: 16.0,
             height: 9.0,
         },
-        dst: WINDOW,
+        dst,
         transform: smithay::utils::Transform::Normal,
         opacity,
         tint,
@@ -220,7 +225,7 @@ pub struct Case {
 }
 
 /// The scenes every renderer is held to.
-pub const CASES: [Case; 13] = [
+pub const CASES: [Case; 14] = [
     Case {
         name: "shadow",
         layers: || vec![window(one(shadow()), Color::WHITE, 1.0)],
@@ -562,6 +567,59 @@ pub const CASES: [Case; 13] = [
             );
             assert_eq!(rgb(image, 30, 1), PALE, "what is far behind the window is not blurred");
             assert_eq!(rgb(image, 3, 3), BLUE, "on either side");
+        },
+    },
+    Case {
+        name: "shadow_opacity",
+        layers: || {
+            // Two half-opaque windows with the same shadow: one over the blue half, one over the pale half and with
+            // glass. The layer's opacity fades its shadow too, whether or not the layer is a group.
+            let shadow = || {
+                Pass::Shadow(Shadow {
+                    offset: Vec3::new(0.0, 3.0, 0.0),
+                    blur: 4.0,
+                    spread: 1.0,
+                    opacity: 1.0,
+                    color: Color::from_rgba8(0, 0, 0, 160),
+                    frame: false,
+                    inset: false,
+                })
+            };
+            let mut with_glass = Effects::new();
+            with_glass.push(shadow()).expect("a shadow");
+            with_glass.push(blur()).expect("a blur");
+            vec![
+                window_at(Rect::new(3, 5, 10, 8), one(shadow()), Color::WHITE, 0.5),
+                window_at(Rect::new(19, 5, 10, 8), with_glass, Color::WHITE, 0.5),
+            ]
+        },
+        software: false,
+        tolerance: BLUR_TOLERANCE,
+        probes: |image| {
+            // Below each window the shadow lies fully over the backdrop, at its alpha (160 of 255) times the opacity.
+            let fade = 1.0 - 160.0 / 255.0 * 0.5;
+            let under = |backdrop: [u8; 3]| rounded(floats(backdrop).map(|channel| channel * fade));
+            assert_close(
+                rgb(image, 8, 14),
+                under(BLUE),
+                SHAPE_TOLERANCE,
+                "the shadow of the plain window is half faded",
+            );
+            assert_close(
+                rgb(image, 24, 14),
+                under(PALE),
+                SHAPE_TOLERANCE,
+                "and so is the shadow of the glass one",
+            );
+            let window_pixel = rgb(image, 8, 9);
+            let want = rounded(over(floats(ORANGE), 0.5, floats(under(BLUE))));
+            assert_close(
+                window_pixel,
+                want,
+                SHAPE_TOLERANCE,
+                "the window is half over its own faded shadow",
+            );
+            assert_eq!(rgb(image, 30, 1), PALE, "far from both nothing changes");
         },
     },
 ];

@@ -1286,7 +1286,7 @@ impl Painter<'_> {
             return self.content(&paint, opacity, false);
         }
         if !picture {
-            self.shadows(&paint)?;
+            self.shadows(&paint, opacity)?;
         }
         let mut grouped = false;
         for pass in effects.passes() {

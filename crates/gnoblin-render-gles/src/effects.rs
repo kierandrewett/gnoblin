@@ -3,7 +3,7 @@
 //!
 //! The order is by kind, whatever order the effects are listed in; within a kind the list order is the paint order.
 //!
-//! 1. Outer shadows, on the frame.
+//! 1. Outer shadows, on the frame, at the layer's opacity as well as their own.
 //! 2. Backdrop blur, into a group the layer's own paint joins.
 //! 3. Backgrounds, then 4. inset shadows, then 5. the layer's pixels, in that group (or on the frame).
 //! 6. Borders, on the frame: a border reaches outside the layer, past the group's corner clip.
@@ -254,8 +254,9 @@ impl Painter<'_> {
         Ok(())
     }
 
-    /// Draws the layer's outer shadows behind it, in list order.
-    pub(crate) fn shadows(&mut self, paint: &Paint<'_>) -> Result<(), RenderError> {
+    /// Draws the layer's outer shadows behind it, in list order, at the layer's `opacity` as well as their own: opacity
+    /// fades the whole element, its shadows included.
+    pub(crate) fn shadows(&mut self, paint: &Paint<'_>, opacity: f32) -> Result<(), RenderError> {
         let factor = self.scale.as_f64() as f32;
         for pass in paint.effects.passes() {
             let Pass::Shadow(shadow) = pass else { continue };
@@ -267,7 +268,7 @@ impl Painter<'_> {
                 quad,
                 grade::apply(paint.grade, shadow.color),
                 Color::WHITE,
-                shadow.opacity,
+                shadow.opacity * opacity,
             );
             uniforms.corner = paint.radius;
             uniforms.params = [blur, blur, blur, 0.0];
@@ -626,7 +627,7 @@ impl Painter<'_> {
         device.clear(canvas, Color::TRANSPARENT);
         device.scissor(Some(area));
         self.clip = area;
-        self.shadows(local)?;
+        self.shadows(local, 1.0)?;
         self.backgrounds(local, 1.0)?;
         self.inset_shadows(local, 1.0)?;
         self.content(local, 1.0, false)?;
