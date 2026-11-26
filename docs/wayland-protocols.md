@@ -88,11 +88,20 @@ have it.
 | `wp_presentation`                                      | 2       | Presentation feedback                                                           | Everyone   |                                                                                                                                                               |
 | `wp_security_context_manager_v1`                       | 1       | Mark an application sandbox                                                     | Everyone   | Hidden from a connection that is already sandboxed.                                                                                                           |
 | `zwp_linux_dmabuf_v1`                                  | 4       | GPU buffers from clients                                                        | Everyone   | Conditional: GLES needs a render node to serve it, Vulkan serves linear buffers. A plane that is no dma-buf is refused.                                       |
-| `wp_linux_drm_syncobj_manager_v1`                      | 1       | Explicit sync of GPU buffers                                                    | Everyone   | Conditional: only when the renderer reports when the GPU is done with a buffer (Vulkan on a render node); never lavapipe, GLES or software.                   |
+| `wp_linux_drm_syncobj_manager_v1`                      | 1       | Explicit sync of GPU buffers                                                    | Everyone   | Conditional: headless and nested backends on a Vulkan device with a render node; never the DRM backend, lavapipe, GLES or software.                           |
 | `xwayland_shell_v1`                                    | 1       | Associate X11 windows with surfaces                                             | Everyone   | Conditional: only in a session that runs Xwayland, and only Xwayland uses it.                                                                                 |
 | `zwp_xwayland_keyboard_grab_manager_v1`                | 1       | Keyboard grabs for X11 clients                                                  | Everyone   | Conditional: only in a session that runs Xwayland.                                                                                                            |
 
 The version is the highest the compositor serves. Bind the version the running compositor advertises, or a lower one.
+
+`wp_linux_drm_syncobj_manager_v1` is served when the backend can say when the GPU has finished a frame:
+
+- The headless and nested backends serve it when the Vulkan device names a DRM render node whose kernel supports syncobj
+  eventfds (Linux 6.6 and later).
+- The DRM backend, lavapipe, GLES and the software renderer do not serve it, and a client there keeps implicit sync.
+
+A surface may have 16 commits queued on points and a client 64 acquire waits at once. A client past either limit is ended
+with `wl_display.error.no_memory`.
 
 Standard requests, events, and enums are documented in the
 [Wayland book](https://wayland.freedesktop.org/docs/book/) and the
