@@ -1,10 +1,17 @@
 //! The docs-parity gate: a name that a shell-api or events page documents must be implemented.
 //!
-//! The implemented surface is what a script imports: the library's own sources (`data/js/gnoblin-core` and
-//! `data/js/gnoblin-std`) with the modules `gnoblin-sdkgen` generates for them (`generated/*`, rendered here, because no
-//! generated file is committed), which `gnoblinctl types init` hands an editor as they are, and the schema's signals. A
-//! dotted `gnoblin.` name is followed member by member from the `Gnoblin` class through the types it names. A
-//! `gnoblin.<object>.<signal>` event is a signal of the schema. A `.method(` call is matched by name across every
+//! The implemented surface is what a script imports, read from two sources that are joined:
+//!
+//! - The native library, which a bare `import ... from "gnoblin-core"` / `"gnoblin-std"` runs on: the declarations of its generated
+//!   classes (the `object-types` target of `gnoblin-sdkgen`, the files `crates/gnoblin-js/build.rs` embeds and `gnoblinctl types
+//!   init` hands an editor), rendered here because no generated file is committed. The members `gnoblin-std` adds to the core's
+//!   classes are `declare module` augmentations in them.
+//! - The TypeScript library (`data/js/gnoblin-core` and `data/js/gnoblin-std`) with the modules `gnoblin-sdkgen` generates for it
+//!   (`generated/*`). It stays in the union for now: pages still document it for a shell that imports `gnoblin-std/native`, and
+//!   `data/js` is deleted later, at which point only the native source remains.
+//!
+//! Plus the schema's signals. A dotted `gnoblin.` name is followed member by member from the `Gnoblin` class through the types it
+//! names. A `gnoblin.<object>.<signal>` event is a signal of the schema. A `.method(` call is matched by name across every
 //! class and interface, because a page does not say which object the receiver is.
 //!
 //! A documented name that is not implemented must be listed in `xtask/docs-parity-allow.toml` with the
@@ -110,11 +117,13 @@ pub struct AllowEntry {
 }
 
 /// A class or interface of the declarations: what it extends, and its members by name. A member that
-/// names a declared type carries that type, so a dotted path can be followed through it.
+/// names a declared type carries that type, so a dotted path can be followed through it. Both libraries declare some
+/// classes (`Gnoblin`, `Client`) and the same member may be declared in each with its own type, so a member keeps every type
+/// it was declared with.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct TypeDecl {
     bases: Vec<String>,
-    members: BTreeMap<String, Option<String>>,
+    members: BTreeMap<String, Vec<Option<String>>>,
     /// `Prefixed<"Client", ClientListener>` bases, as `(prefix, listener)`: a subscription `on<Prefix><Event>` for each
     /// method `on<Event>` of the listener.
     prefixed: Vec<(String, String)>,
@@ -143,28 +152,45 @@ impl Implemented {
         self.events.contains(&name) || self.events.iter().any(|event| event.starts_with(&prefix)) || self.reaches(&name)
     }
 
-    /// Follow `gnoblin.a.b.c` from the root type. A member whose type is not declared here (a primitive, a
-    /// union, a type of the language) ends the check: nothing is known beyond it, so the rest is accepted.
+    /// Follow `gnoblin.a.b.c` from the root type, through every type a member was declared with. A member declared with a type
+    /// that is not declared here (a primitive, a union, a type of the language, or none at all) ends the check: nothing is known
+    /// beyond it, so the rest is accepted.
     fn reaches(&self, name: &str) -> bool {
-        let mut current = ROOT_TYPE.to_owned();
+        let mut current: BTreeSet<String> = BTreeSet::from([ROOT_TYPE.to_owned()]);
         for segment in name.split('.').skip(1) {
-            match self.member(&current, segment, 0) {
-                None => return false,
-                Some(Some(next)) if self.types.contains_key(&next) => current = next,
-                Some(_) => return true,
+            let mut next = BTreeSet::new();
+            let mut found = false;
+            let mut unknown = false;
+            for ty in &current {
+                for declared in self.member(ty, segment, 0) {
+                    found = true;
+                    match declared.filter(|declared| self.types.contains_key(declared)) {
+                        Some(declared) => {
+                            next.insert(declared);
+                        }
+                        None => unknown = true,
+                    }
+                }
             }
+            if !found {
+                return false;
+            }
+            if unknown {
+                return true;
+            }
+            current = next;
         }
         true
     }
 
-    /// The member `name` of a type or of a type it extends: `None` when there is none, else its declared type.
-    fn member(&self, ty: &str, name: &str, depth: usize) -> Option<Option<String>> {
-        let decl = self.types.get(ty)?;
-        if let Some(found) = decl.members.get(name) {
-            return Some(found.clone());
-        }
+    /// The declared types of the member `name` of a type or of the types it extends: empty when there is none.
+    fn member(&self, ty: &str, name: &str, depth: usize) -> Vec<Option<String>> {
+        let Some(decl) = self.types.get(ty) else {
+            return Vec::new();
+        };
+        let mut found = decl.members.get(name).cloned().unwrap_or_default();
         if depth > 8 {
-            return None;
+            return found;
         }
         // A subscription a `Prefixed` base generates is a member that has the listener's method behind it.
         for (prefix, listener) in &decl.prefixed {
@@ -172,12 +198,15 @@ impl Implemented {
                 .strip_prefix("on")
                 .and_then(|rest| rest.strip_prefix(prefix.as_str()));
             if let Some(event) = event.filter(|event| !event.is_empty())
-                && self.member(listener, &format!("on{event}"), depth + 1).is_some()
+                && !self.member(listener, &format!("on{event}"), depth + 1).is_empty()
             {
-                return Some(None);
+                found.push(None);
             }
         }
-        decl.bases.iter().find_map(|base| self.member(base, name, depth + 1))
+        for base in &decl.bases {
+            found.extend(self.member(base, name, depth + 1));
+        }
+        found
     }
 }
 
@@ -205,14 +234,17 @@ pub struct DocsReport {
 
 /// Read the classes and interfaces a `.d.ts` declares. A declaration is a line that opens `class` or
 /// `interface` (a header that a formatter broke over several lines is one line to this reader); its members are the
-/// lines one indent level deeper, up to the closing brace. Lines at any other depth (parameters, object types,
-/// comments) are not members.
+/// lines at the indent of its first member, up to the closing brace, whatever the indent unit is (the TypeScript library is
+/// written with four spaces, the declarations of the native library with two). Lines at any other depth (parameters, object
+/// types, comments) are not members. A declaration inside a `declare module` block is read like any other, so what a library
+/// adds to another's class there is a member of that class.
 ///
 /// Two bases are generated sets of subscriptions, not types: `Subscriptions<Listener>` is the methods of the listener
 /// (a subscription for each), and `Prefixed<"Client", Listener>` is the same under `onClient<Event>` names.
 pub fn parse_declarations(text: &str) -> Implemented {
     let mut implemented = Implemented::default();
-    let mut open: Option<(usize, String)> = None;
+    // The declaration being read: where it was declared, its name, and the indent of its members once the first is seen.
+    let mut open: Option<(usize, String, Option<usize>)> = None;
     let mut lines = text.lines();
     while let Some(first) = lines.next() {
         let mut line = first.to_owned();
@@ -228,10 +260,10 @@ pub fn parse_declarations(text: &str) -> Implemented {
             }
         }
         let body = line.trim();
-        if let Some((declared_at, owner)) = &open {
+        if let Some((declared_at, owner, member_indent)) = &mut open {
             if indent == *declared_at && body.starts_with('}') {
                 open = None;
-            } else if indent == declared_at + 4 {
+            } else if !body.is_empty() && indent > *declared_at && indent == *member_indent.get_or_insert(indent) {
                 read_member(owner, body, &mut implemented);
             }
         } else if let Some((name, bases)) = declaration(body) {
@@ -243,7 +275,7 @@ pub fn parse_declarations(text: &str) -> Implemented {
                 }
             }
             if body.ends_with('{') {
-                open = Some((indent, name));
+                open = Some((indent, name, None));
             }
         }
     }
@@ -422,7 +454,10 @@ fn read_member(owner: &str, body: &str, implemented: &mut Implemented) {
         implemented.methods.insert(format!(".{name}"));
     }
     let decl = implemented.types.entry(owner.to_owned()).or_default();
-    decl.members.insert(name, declared_type);
+    let declared = decl.members.entry(name).or_default();
+    if !declared.contains(&declared_type) {
+        declared.push(declared_type);
+    }
 }
 
 /// The first type a member's type text names: `Collection<Client> | null` is `Collection`.
@@ -608,11 +643,10 @@ fn load_docs(root: &Path) -> Result<Vec<Mention>, String> {
     Ok(mentions)
 }
 
-/// The text the implemented surface is read from: every source of the library under `LIBRARY`, package by package and
+/// The text the TypeScript library is read from: every source of the library under `LIBRARY`, package by package and
 /// in path order within each, with the generated modules of the package at the paths they are imported by. The library is the
-/// real TypeScript that `gnoblinctl types init` hands an editor, so a name the docs promise is checked against the classes a
-/// script imports and not against a second declaration of them.
-fn load_surface(root: &Path) -> Result<String, String> {
+/// real TypeScript that `gnoblinctl types init` hands an editor for a shell that imports `gnoblin-std/native`.
+fn typescript_surface(root: &Path) -> Result<String, String> {
     let spec = gnoblin_sdkgen::SdkSpec::load(root)?;
     let generated = gnoblin_sdkgen::files_of(&gnoblin_sdkgen::render(&spec, Some("typescript"))?);
     let mut text = String::new();
@@ -642,6 +676,44 @@ fn load_surface(root: &Path) -> Result<String, String> {
             text.push_str(&source);
         }
     }
+    Ok(text)
+}
+
+/// The declarations of the native library: what `gnoblin-sdkgen` renders for the `object-types` target, rendered here the way
+/// `crates/gnoblin-js/build.rs` renders them (`gnoblin_sdkgen::emit_for_build`) and `gnoblinctl types init` hands them to an
+/// editor. A bare `import ... from "gnoblin-core"` or `"gnoblin-std"` runs on the classes these declare
+/// (`js/gnoblin-core/generated/{object_base,objects}.d.ts`, `js/gnoblin-std/generated/objects.d.ts`), whose JavaScript is the
+/// `object-js` target of the same catalog. The members `gnoblin-std` adds to the core's classes (`gnoblin.workspaces`) are
+/// declared in `declare module` blocks of the std file.
+fn native_surface(root: &Path) -> Result<String, String> {
+    let spec = gnoblin_sdkgen::SdkSpec::load(root)?;
+    let rendered = gnoblin_sdkgen::files_of(&gnoblin_sdkgen::render(&spec, Some("object-types"))?);
+    let packages: Vec<&str> = LIBRARY
+        .iter()
+        .map(|package| package.rsplit('/').next().unwrap_or(package))
+        .collect();
+    let mut files: Vec<(String, String)> = rendered
+        .into_iter()
+        .filter(|(path, _)| {
+            path.ends_with(".d.ts")
+                && path
+                    .strip_prefix("js/")
+                    .and_then(|rest| rest.split('/').next())
+                    .is_some_and(|package| packages.contains(&package))
+        })
+        .collect();
+    files.sort();
+    Ok(files.iter().fold(String::new(), |mut text, (_, source)| {
+        text.push('\n');
+        text.push_str(source);
+        text
+    }))
+}
+
+/// The implemented surface: what a bare import gets ([`native_surface`]) and the TypeScript library ([`typescript_surface`]).
+fn load_surface(root: &Path) -> Result<String, String> {
+    let mut text = native_surface(root)?;
+    text.push_str(&typescript_surface(root)?);
     Ok(text)
 }
 
@@ -797,14 +869,17 @@ declare module "gnoblin-core" {
         assert!(!surface.methods.contains(".opacity"), "a property is not a method");
         assert_eq!(surface.types["Client"].bases, ["Node"]);
         assert_eq!(surface.types["Rect"].bases, ["Vec2", "Size2D"]);
-        assert_eq!(surface.types["Client"].members["style"].as_deref(), Some("ClientStyle"));
         assert_eq!(
-            surface.types["Gnoblin"].members["clients"].as_deref(),
-            Some("Collection")
+            surface.types["Client"].members["style"],
+            [Some("ClientStyle".to_owned())]
         );
         assert_eq!(
-            surface.types["Gnoblin"].members["extensions"].as_deref(),
-            Some("Holder")
+            surface.types["Gnoblin"].members["clients"],
+            [Some("Collection".to_owned())]
+        );
+        assert_eq!(
+            surface.types["Gnoblin"].members["extensions"],
+            [Some("Holder".to_owned())]
         );
     }
 
@@ -975,7 +1050,7 @@ declare module "gnoblin-core" {
             assert!(surface.provides(name), "{name}");
         }
         assert!(!surface.provides("gnoblin.no_such_member"));
-        assert!(!surface.provides("gnoblin.on"), "the string-named bus is gone");
+        assert!(surface.provides("gnoblin.on"), "the native root has the generated `on`");
     }
 
     /// A listener, and the objects that take it, as the library declares them: the subscriptions are generated from the
@@ -1031,5 +1106,76 @@ export interface Gnoblin
         ] {
             assert!(!surface.provides(name), "{name} is not generated");
         }
+    }
+
+    /// The declarations a native shell gets (`object-types`): two-space indent, accessors as properties, a generated `on`, and the
+    /// members `gnoblin.std` adds to the core's classes in a `declare module` block.
+    const NATIVE_DECLARATIONS: &str = r#"
+export declare class Gnoblin {
+  static get(): Gnoblin;
+  readonly clients: ClientCollection | undefined;
+  shell(command: string): Process;
+  on<K extends keyof GnoblinEvents>(event: K, handler: (...args: GnoblinEvents[K]) => void): Listener;
+}
+export declare class ClientCollection {
+  toList(): Client[];
+}
+export declare class Workspaces {
+  readonly list: Workspace[];
+  byId(id: string): Workspace | undefined;
+  static formatMode(width: number, height: number): string;
+}
+
+declare module "gnoblin-core/generated/objects" {
+  /** What `gnoblin.std` adds to the core's `Gnoblin`. */
+  interface Gnoblin {
+    readonly workspaces: Workspaces;
+    show(workspace: Workspace): void;
+  }
+}
+"#;
+
+    #[test]
+    fn the_members_of_two_space_native_declarations_are_read() {
+        let surface = parse_declarations(NATIVE_DECLARATIONS);
+        for name in [
+            "gnoblin.clients",
+            "gnoblin.shell",
+            "gnoblin.on",
+            "gnoblin.workspaces",
+            "gnoblin.workspaces.list",
+            "gnoblin.workspaces.byId",
+            "gnoblin.show",
+            ".toList",
+            ".shell",
+            ".on",
+            ".byId",
+            ".formatMode",
+            ".show",
+        ] {
+            assert!(surface.provides(name), "{name}");
+        }
+        assert!(!surface.provides("gnoblin.workspaces.no_such_member"));
+        assert!(!surface.provides(".explode"));
+    }
+
+    #[test]
+    fn a_member_only_the_native_library_has_counts_as_implemented() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("the xtask lives in the repository");
+        let typescript = parse_declarations(&typescript_surface(root).expect("the TypeScript library reads"));
+        let native = parse_declarations(&load_surface(root).expect("the library reads"));
+        for name in [
+            ".toList",
+            ".showById",
+            ".snapTo",
+            "gnoblin.workspaces.list",
+            "gnoblin.shell",
+        ] {
+            assert!(!typescript.provides(name), "{name} is in the TypeScript library");
+            assert!(native.provides(name), "{name} is not in the native surface");
+        }
+        assert!(!native.provides("gnoblin.workspaces.no_such_member"));
     }
 }
