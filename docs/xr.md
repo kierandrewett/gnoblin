@@ -565,7 +565,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         return Ok(());
     };
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(client) = model.clients()?.map(|clients| clients.focused()).transpose()?.flatten() else {
+    let Some(client) = model.clients()?.focused()? else {
         return Ok(());
     };
     room.pin_to_head(&client, Some(&HeadPanelOptions { x: 0.1, y: -0.2, z: -1.0, scale: None }))?;
@@ -637,13 +637,14 @@ room = xr.room if xr is not None else None
 if room is not None:
     spatial = SpatialLayout(triggers=SpatialTriggers(move="Grip+Drag", resize="Grip+Trigger+Drag", rotate=""))
     bindings = spatial.bindings
-    bindings.add(ViewScaleBinding(min_scale=0.5, max_scale=2.0))
-    # The stock `move` holds the id, so remove it before adding a ray drag in its place.
-    bindings.remove("move")
-    bindings.add(ViewMoveBinding(id="move", tracking=ViewTracking.RAY, rotation=ViewRotation.KEEP))
-    resize = bindings.find("resize")
-    if resize is not None:
-        resize.enabled = False
+    if bindings is not None:
+        bindings.add(ViewScaleBinding(min_scale=0.5, max_scale=2.0))
+        # The stock `move` holds the id, so remove it before adding a ray drag in its place.
+        bindings.remove("move")
+        bindings.add(ViewMoveBinding(id="move", tracking=ViewTracking.RAY, rotation=ViewRotation.KEEP))
+        resize = bindings.find("resize")
+        if resize is not None:
+            resize.enabled = False
     room.layout = spatial
 ```
 
@@ -753,15 +754,17 @@ class Nudge(XRDragHandler):
     hand = 0.0
 
     def on_start(self, event: XRDragEvent) -> bool:
-        if event.view is None:
+        pose = event.controller.pose
+        if event.view is None or pose is None:
             return False
         self.start = event.view.x
-        self.hand = event.controller.pose.position.x
+        self.hand = pose.position.x
         return True
 
     def on_update(self, event: XRDragEvent) -> None:
-        if event.view is not None:
-            event.view.x = self.start + event.controller.pose.position.x - self.hand
+        pose = event.controller.pose
+        if event.view is not None and pose is not None:
+            event.view.x = self.start + pose.position.x - self.hand
 
     def on_cancel(self, event: XRDragEvent) -> None:
         if event.view is not None:
@@ -770,8 +773,10 @@ class Nudge(XRDragHandler):
 
 xr = Extensions.get().xr
 room = xr.room if xr is not None else None
-if room is not None and room.layout is not None:
-    room.layout.bindings.add(XRControllerDragBinding(id="nudge", trigger="Primary+Drag", handler=Nudge()))
+layout = room.layout if room is not None else None
+bindings = layout.bindings if layout is not None else None
+if bindings is not None:
+    bindings.add(XRControllerDragBinding(id="nudge", trigger="Primary+Drag", handler=Nudge()))
 ```
 
 ```rust
