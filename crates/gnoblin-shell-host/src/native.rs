@@ -5,7 +5,9 @@
 //! 1. Refuse the load when the retire list is full ([`LoadError::TooManyRetained`]): retired native code is never unmapped,
 //!    so the number kept is bounded, and past the bound the user restarts.
 //! 2. Copy the module to a private path and `dlopen` the copy with `RTLD_NOW | RTLD_LOCAL`, then unlink the copy. Opening
-//!    the same path twice returns the same handle and shares statics, so a reload must be a different file.
+//!    the same path twice returns the same handle and shares statics, so a reload must be a different file. A shell that lists
+//!    `libgnoblin-std.so.1` as `NEEDED` has std opened first, from beside the core ([`crate::std_library`]), because a shell has
+//!    no run path and the loader's own path may not hold std; a shell that does not list it never causes std to be opened.
 //! 3. Look up `gnoshell_entry_v1` and check the descriptor's ABI major.
 //! 4. Make a generation for it (staged) and call `init(api, ctx)` under `catch_unwind`.
 //! 5. A failed module, and a retired one, is never `dlclose`d by default: a callback, a thread or a TLS destructor may still
@@ -26,7 +28,7 @@ use std::os::unix::fs::{DirBuilderExt as _, MetadataExt as _, OpenOptionsExt as 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use gnoblin_core_abi::{self as abi, GnoblinApi, GnoblinCtx, GnoblinShellEntry, GnoblinShellStats, GnoblinStr};
 
@@ -36,6 +38,7 @@ use crate::handle::{KIND_CTX, encode};
 use crate::log;
 use crate::retire::{Retained, RetainedStats, RetainedWhy, RetireList, RoomError};
 use crate::runtime::{self, LoadedRuntime, ModuleKind};
+use crate::std_library;
 
 unsafe extern "C" {
     pub(crate) fn dlopen(path: *const c_char, flags: c_int) -> *mut c_void;
@@ -58,6 +61,16 @@ pub enum Copying {
     Unique,
     /// Open the path itself. Only for a test that shows what happens when a reload does not copy.
     SamePath,
+}
+
+/// What the host found when a shell that links `libgnoblin-std.so.1` could not have it: the payload of
+/// [`LoadError::StdMissing`].
+#[derive(Debug)]
+pub struct StdMissing {
+    /// The files std was looked for as, which the install and `$GNOBLIN_STD_DIR` name.
+    pub searched: Vec<PathBuf>,
+    /// A file that is there and did not load, and what the loader said.
+    pub broken: Option<(PathBuf, String)>,
 }
 
 /// Why a module did not load.
@@ -100,6 +113,14 @@ pub enum LoadError {
         needed: String,
         /// The ABI major that file name carries.
         major: u32,
+    },
+    /// The shell links `libgnoblin-std.so.1`, which is not installed beside the core or on the loader's path (or is there and
+    /// does not load).
+    StdMissing {
+        /// The module path as asked for.
+        path: PathBuf,
+        /// Where std was looked for and what became of it.
+        missing: StdMissing,
     },
     /// The file loaded but exports no `gnoshell_entry_v1`.
     NotAShell {
@@ -203,6 +224,35 @@ impl fmt::Display for LoadError {
                 abi::ABI_MINOR,
                 abi::SONAME
             ),
+            LoadError::StdMissing { path, missing } => match &missing.broken {
+                Some((file, why)) => write!(
+                    f,
+                    "{}: this shell uses gnoblin-std, but {} is installed and does not load: {why}",
+                    path.display(),
+                    file.display()
+                ),
+                None => {
+                    let places: Vec<String> = missing
+                        .searched
+                        .iter()
+                        .filter_map(|file| file.parent())
+                        .map(|dir| dir.display().to_string())
+                        .collect();
+                    write!(
+                        f,
+                        "{}: this shell uses gnoblin-std, and `{}` is not installed: it is not in {} or on the dynamic \
+                         loader's search path. Install gnoblin-std (the package, or `cargo xtask stage` in a build tree), or use a \
+                         shell that links the core only",
+                        path.display(),
+                        std_library::SONAME,
+                        if places.is_empty() {
+                            "any directory beside the core".to_owned()
+                        } else {
+                            places.join(", ")
+                        }
+                    )
+                }
+            },
             LoadError::NotAShell { path } => write!(
                 f,
                 "{}: not a gnoblin shell: the library exports no `gnoshell_entry_v1` (was it built with gnoblin-core and #[gnoblin::main]?)",
@@ -549,22 +599,25 @@ impl<E: 'static> NativeLoader<E> {
             let handle = unsafe { dlopen(c_path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
             if handle.is_null() { Err(dl_error()) } else { Ok(handle) }
         };
-        let mut opened = open();
-        // A std shell names `libgnoblin-std.so.1` and has no run path, so the loader looks for it only on its own default
-        // path. Installed under another prefix (/usr/local, /opt), std is beside the core: load that one, and open the shell
-        // again; the loader resolves the shell's DT_NEEDED to the library in memory, by its SONAME. A shell that needs only
-        // the core never fails this way, so std is not loaded for it.
-        if let Err(message) = &opened
-            && message.contains(STD_SONAME)
-            && load_std_beside_core()
-        {
-            opened = open();
-        }
+        // A std shell names `libgnoblin-std.so.1` and records no run path, and the loader does not use the launcher's run path
+        // for a library that is `dlopen`ed, so it would look for std only on its own default path. Installed under another
+        // prefix (/usr/local, /opt), std is beside the core: open that one first, by the rule the stock session uses, and the
+        // loader resolves the shell's `NEEDED` to the library in memory by its SONAME. Only a shell that lists std causes it to
+        // be opened, so a core-only shell never maps it. When std is nowhere beside the core the shell is still opened, since the
+        // loader's own path may hold std; its refusal then names what is missing.
+        let std = std_library::needs_std(&target).then(open_std);
+        let opened = open();
         if copying == Copying::Unique {
             // The mapping keeps the inode alive; the name is no longer needed.
             let _ = fs::remove_file(&target);
         }
-        let handle = opened.map_err(|message| classify_dlopen(path, &target, &message))?;
+        let handle = opened.map_err(|message| match std {
+            Some(Err(missing)) if message.contains(std_library::SONAME) => LoadError::StdMissing {
+                path: path.to_owned(),
+                missing,
+            },
+            _ => classify_dlopen(path, &target, &message),
+        })?;
         // SAFETY: `handle` is a live handle from `dlopen`, and the symbol name is a NUL-terminated literal.
         let symbol = unsafe { dlsym(handle, c"gnoshell_entry_v1".as_ptr()) };
         if symbol.is_null() {
@@ -1004,42 +1057,46 @@ pub(crate) fn dl_error() -> String {
     }
 }
 
-/// The std library's SONAME, which a std shell names in its DT_NEEDED.
-const STD_SONAME: &str = "libgnoblin-std.so.1";
-
-/// Loads `libgnoblin-std.so.1` from the directory of the library this code runs in (the core's, in a shipped build), and
-/// keeps it loaded for the life of the process, as a std shell's own dependency would be. False when there is no such file
-/// or it does not load; the shell's load then fails with the loader's first message.
-fn load_std_beside_core() -> bool {
-    let Some(core) = runtime::library_containing(load_std_beside_core as fn() -> bool as *const ()) else {
-        return false;
-    };
-    let Some(std_path) = core
-        .parent()
-        .map(|dir| dir.join(STD_SONAME))
-        .filter(|path| path.exists())
-    else {
-        return false;
-    };
-    let Ok(c_path) = CString::new(std_path.as_os_str().as_bytes()) else {
-        return false;
-    };
-    // SAFETY: `c_path` is a valid NUL-terminated string for the call. The handle is never closed: std stays loaded for as
-    // long as a shell that links it may run, which is the process.
-    let handle = unsafe { dlopen(c_path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
-    if handle.is_null() {
-        log::warn!(
-            "{}: the std library beside the core does not load: {}",
-            std_path.display(),
-            dl_error()
-        );
-        return false;
+/// Opens `libgnoblin-std.so.1` where the install put it and keeps it for the life of the process, as a std shell's own dependency
+/// would be. The places are [`std_library::candidates`] but for the bare name, which the shell's own load searches the loader's
+/// path for. Opening a library that is already open returns the same mapping, so the next shell finds std where it is.
+fn open_std() -> Result<PathBuf, StdMissing> {
+    static OPENED: OnceLock<PathBuf> = OnceLock::new();
+    if let Some(path) = OPENED.get() {
+        return Ok(path.clone());
     }
-    log::info!(
-        "{}: loaded for a shell that needs it, which the dynamic loader's own path does not reach",
-        std_path.display()
-    );
-    true
+    let mut searched = Vec::new();
+    let mut broken = None;
+    for path in std_library::candidates()
+        .into_iter()
+        .filter(|path| path.components().count() > 1)
+    {
+        if !path.is_file() {
+            searched.push(path);
+            continue;
+        }
+        let Ok(c_path) = CString::new(path.as_os_str().as_bytes()) else {
+            searched.push(path);
+            continue;
+        };
+        // SAFETY: `c_path` is a valid NUL-terminated string for the call. The handle is never closed: std stays loaded for as
+        // long as a shell that links it may run, which is the process.
+        let handle = unsafe { dlopen(c_path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
+        if handle.is_null() {
+            let why = dl_error();
+            log::warn!("{}: the std library does not load: {why}", path.display());
+            broken.get_or_insert((path.clone(), why));
+            searched.push(path);
+            continue;
+        }
+        log::info!(
+            "{}: opened for a shell that links std, which the dynamic loader's own path does not reach",
+            path.display()
+        );
+        let _ = OPENED.set(path.clone());
+        return Ok(path);
+    }
+    Err(StdMissing { searched, broken })
 }
 
 /// Turns the dynamic loader's complaint about the module into the error that tells the user what to do. A symbol the core

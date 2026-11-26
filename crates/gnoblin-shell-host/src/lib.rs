@@ -18,6 +18,8 @@
 //! - [`supervisor`]: the strike policy that decides between restaging a faulted generation and giving up.
 //! - [`watch`]: the debounced file watcher, with a caller-supplied test of which files matter.
 //! - [`process`]: the programs a shell starts, owned by generation, adopted across a reload, ended with a report.
+//! - [`std_library`]: where `libgnoblin-std.so.1` is, and whether a shell links it, so the loader opens std beside the core before a
+//!   std shell under a prefix the loader's own path does not reach.
 //! - [`guard`] and [`handle`]: panic containment with the per-thread last-error text, and handle encoding.
 //!
 //! Nothing here names QuickJS, Python or the compositor's tree. `gnoblin-js` consumes the supervisor, the watcher, the
@@ -34,5 +36,6 @@ pub mod reload;
 pub mod retire;
 pub mod runtime;
 pub mod stage;
+pub mod std_library;
 pub mod supervisor;
 pub mod watch;

@@ -6,9 +6,10 @@
 //! `libgnoblin-std.so.1` itself, when the library is installed, and asks it to register its defaults on a context of the
 //! host's own: not a shell generation, so the registrations live as long as the process and survive every shell reload.
 //!
-//! The library is found beside the core (`<libdir>/libgnoblin-std.so.1`, which is where an install and a build tree put it),
-//! then through `$GNOBLIN_STD_DIR`, then by its name through the dynamic loader's own search. A session that cannot find it
-//! runs core-only, says so once, and works: `NullWm` and `no-ui` are the safe defaults, not failures.
+//! The library is found through `$GNOBLIN_STD_DIR`, then beside the core (`<libdir>/libgnoblin-std.so.1`, which is where an
+//! install and a build tree put it), then by its name through the dynamic loader's own search
+//! (`gnoblin_shell_host::std_library::candidates`, the rule a native shell that links std is loaded by too). A session that
+//! cannot find it runs core-only, says so once, and works: `NullWm` and `no-ui` are the safe defaults, not failures.
 //!
 //! This module names no std crate. It opens a library by name and calls the one function the library exports for this
 //! (`gnoblin_std_init`), so the core is the same bytes whether std is installed or not.
@@ -19,15 +20,10 @@ use std::ffi::CString;
 use std::path::PathBuf;
 
 use gnoblin_core_abi::{GnoblinCtx, LANG_NATIVE};
+use gnoblin_shell_host::std_library;
 
 use crate::log;
 use crate::registry;
-
-/// The file name of the std library.
-const SONAME: &str = "libgnoblin-std.so.1";
-
-/// The environment variable that names the directory std is looked for in first.
-pub const DIR_VARIABLE: &str = "GNOBLIN_STD_DIR";
 
 /// The symbol the library exports to register its defaults: `int gnoblin_std_init(uint64_t ctx)`.
 const INIT_SYMBOL: &CStr = c"gnoblin_std_init";
@@ -50,22 +46,6 @@ pub enum StdHostOutcome {
     CoreOnly(String),
 }
 
-/// The places std is looked for, in order.
-fn candidates() -> Vec<PathBuf> {
-    let mut found = Vec::new();
-    if let Some(dir) = std::env::var_os(DIR_VARIABLE).filter(|dir| !dir.is_empty()) {
-        found.push(PathBuf::from(dir).join(SONAME));
-    }
-    if let Some(core) = gnoblin_shell_host::runtime::library_containing(candidates as fn() -> Vec<PathBuf> as *const ())
-        && let Some(dir) = core.parent()
-    {
-        found.push(dir.join(SONAME));
-    }
-    // By name, through the dynamic loader's own search path.
-    found.push(PathBuf::from(SONAME));
-    found
-}
-
 fn error_text() -> String {
     // SAFETY: `dlerror` returns null or a NUL-terminated message owned by the loader, read at once.
     let message = unsafe { dlerror() };
@@ -80,7 +60,7 @@ fn error_text() -> String {
 /// Opens std and registers its defaults on a context of the host's own. Call it on the thread that then runs the compositor:
 /// the context belongs to the calling thread, as a shell's belongs to its shell thread.
 pub fn install() -> StdHostOutcome {
-    let tried = candidates();
+    let tried = std_library::candidates();
     let mut why = Vec::new();
     for path in &tried {
         // A path that is a bare name is searched for; a path that names a file is opened only when it exists, so a missing

@@ -108,13 +108,14 @@ golden-check:
 # binary with shells of every language on a headless backend: the `modular` target (examples 2, 3, 4, 5, 6, 7, 9, 11 and 17 for scripts,
 # the duplicate-core check, the document the script role commits), `native_shell*` (examples 1 and 8, the failures, the verbs),
 # `reload_session` and `reload_scripts` (examples 10, 11 and 18 and the bound on retired libraries), `startup` (examples 13 to 16, and
-# `--shell NAME` for example 14), `failed_start`, `std_providers` (example 17), and `abi_upgrade` (example 12: the golden shells on the
+# `--shell NAME` for example 14), `failed_start`, `std_providers` (example 17), `shell_prefix` (a std shell and a core-only
+# shell started from a prefix the loader does not search), and `abi_upgrade` (example 12: the golden shells on the
 # next minor, refused on another major, and the dependency validation with `readelf -d`, `nm -D`, `ldd` and `/proc/PID/maps`). Then the
 # crates whose tests drive the real core and std libraries with a fake compositor: lifetimes, stale callbacks, generations, the C ABI.
 # Add a suite here when it joins the 18.
 modular:
     cargo xtask stage
-    cargo test --locked -p gnoblin --test modular --test abi_upgrade --test native_shell --test native_shell_failures --test native_shell_verbs --test native_shell_spelling --test std_providers --test reload_session --test reload_scripts --test startup --test failed_start --test roles
+    cargo test --locked -p gnoblin --test modular --test abi_upgrade --test native_shell --test native_shell_failures --test native_shell_verbs --test native_shell_spelling --test std_providers --test shell_prefix --test reload_session --test reload_scripts --test startup --test failed_start --test roles
     cargo test --locked -p gnoblin-core-impl -p gnoblin-shell-host -p gnoblin-std-impl
     # `gnoblinctl check` is the launcher's `check` role over the staged libraries: the launcher the line above built.
     cargo test --locked -p gnoblinctl
@@ -209,7 +210,10 @@ stage *args:
 # prefix with lib, a /usr stage with lib64, a /usr stage with a multiarch library directory) and checks each with the rules
 # of `cargo xtask dist-check`: the core's SONAME and exports, no Rust runtime symbols, a shell fixture that needs the
 # core only and defines no gnoblin_*, every gnoblin NEEDED resolving inside the tree, links, header, pkg-config, the manifest
-# and the glibc floor. Needs a C compiler and pkg-config (a machine that links Rust has the first). See xtask/src/dist_check.rs.
+# and the glibc floor. The trees the launcher can run from (`--run`) also load a core-only shell and a std shell and start a
+# headless session with each, reading /proc/PID/maps: a std shell runs on the std beside the core and a core-only shell maps
+# no std, from a prefix the loader does not search. Needs a C compiler and pkg-config (a machine that links Rust has the
+# first). See xtask/src/dist_check.rs.
 dist-check:
     #!/usr/bin/env bash
     set -euo pipefail

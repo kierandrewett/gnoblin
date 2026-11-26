@@ -378,8 +378,10 @@ as `/usr/local` on some distributions or `$HOME/gnoblin`. You do not need to set
 a run path.
 
 - The launcher finds the core through its own run path.
-- When a shell needs `libgnoblin-std.so.1` and the loader cannot find it, `gnoblin` loads the one beside the core and
-  loads the shell again. A core-only shell never causes `libgnoblin-std.so.1` to load.
+- When a shell lists `libgnoblin-std.so.1` among its `NEEDED` libraries, `gnoblin` opens the one beside the core
+  (`$GNOBLIN_STD_DIR` first) before it loads the shell. A core-only shell never causes `libgnoblin-std.so.1` to load.
+- With no std beside the core and none on the loader's path, the shell is refused with a message that names the library,
+  the directories looked in and what to install.
 
 To find the compile and link flags, use pkg-config. The [install layout](install-layout.md) lists every installed file,
 including `gnoblin-core.pc`:

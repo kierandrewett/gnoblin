@@ -18,13 +18,18 @@
 //! section 11, resolves every gnoblin library the launcher needs the way the loader would (run path, then the tree's own
 //! library directory for a `/usr` prefix), and checks every shell found in `<libdir>/gnoblin/shells`. With `--staged` it
 //! checks the build tree `cargo xtask stage` made: `target/<profile>/gnoblin` and `libgnoblin-core.so.1`. `--run` also runs
-//! the launcher from its own tree with `LD_LIBRARY_PATH` cleared. Individual files can be named; each flag checks that file
+//! the launcher from its own tree with `LD_LIBRARY_PATH` cleared, loads every shell it is given with it, and starts a session
+//! with each (`gnoblin --role compositor SHELL`, headless): a core-only shell must run with no std library mapped, a std shell
+//! with the one beside the core mapped, wherever the tree was installed. Individual files can be named; each flag checks that file
 //! only. The glibc floor of every file is printed; `--max-glibc X.Y` fails a file that needs more.
 
 use std::collections::BTreeSet;
 use std::fs;
+use std::os::unix::fs::DirBuilderExt as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::{Duration, Instant};
 
 use gnoblin_core_abi as abi;
 
@@ -556,6 +561,175 @@ pub fn check_shell_loads(launcher: &Path, shell: &Path) -> Vec<String> {
     }
 }
 
+/// What a started shell is expected to link.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShellKind {
+    /// A shell that needs the core only: the process must map no std library.
+    CoreOnly,
+    /// A shell that links `libgnoblin-std.so.1`: the process must map one, from beside the core it runs.
+    Std,
+}
+
+/// How long a started session has to say its shell serves.
+const START_PATIENCE: Duration = Duration::from_secs(60);
+
+/// A scratch directory for one started session, owner-only as a runtime directory has to be.
+fn start_directory() -> Result<PathBuf, String> {
+    static COUNT: AtomicU32 = AtomicU32::new(0);
+    let directory = std::env::temp_dir().join(format!(
+        "gnoblin-dist-start-{}-{}",
+        std::process::id(),
+        COUNT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&directory)
+        .map_err(|error| format!("{}: {error}", directory.display()))?;
+    for name in ["state", "config", "data", "share", "cache", "home", "fixture"] {
+        fs::create_dir(directory.join(name)).map_err(|error| format!("{}: {error}", directory.join(name).display()))?;
+    }
+    Ok(directory)
+}
+
+/// The last lines of a session's log, for a failure to quote.
+fn log_tail(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    lines[lines.len().saturating_sub(8)..].join(" | ")
+}
+
+/// The files of the process's mapped libraries of one kind (`core` or `std`), by the file name they were mapped from. `maps` is
+/// the text of `/proc/<pid>/maps`: the loader resolves links, so a library installed under its SONAME is mapped as its
+/// versioned file (`libgnoblin-core.so.1.0.0`), or as the build tree's `libgnoblin_core_impl.so`.
+fn mapped_libraries(maps: &str, kind: &str) -> BTreeSet<PathBuf> {
+    maps.lines()
+        .filter_map(|line| line.split_whitespace().nth(5))
+        .filter(|path| path.starts_with('/'))
+        .map(PathBuf::from)
+        .filter(|path| {
+            path.file_name().and_then(|name| name.to_str()).is_some_and(|name| {
+                name.starts_with(&format!("libgnoblin-{kind}.")) || name.starts_with(&format!("libgnoblin_{kind}_"))
+            })
+        })
+        .collect()
+}
+
+/// What a started session's process maps, against what its shell is: one core, and std only for a std shell, from the
+/// directory the core is in.
+fn check_mapped_libraries(maps: &str, kind: ShellKind) -> Vec<String> {
+    let mut problems = Vec::new();
+    let cores = mapped_libraries(maps, "core");
+    let stds = mapped_libraries(maps, "std");
+    if cores.len() != 1 {
+        problems.push(format!(
+            "the process maps {} cores, expected one: {cores:?}",
+            cores.len()
+        ));
+    }
+    match kind {
+        ShellKind::CoreOnly if !stds.is_empty() => problems.push(format!(
+            "a shell that needs the core only runs in a process that maps std: {stds:?}"
+        )),
+        ShellKind::CoreOnly => {}
+        ShellKind::Std => match (stds.iter().next(), cores.iter().next()) {
+            (None, _) => problems.push("a std shell runs in a process that maps no std library".to_owned()),
+            (Some(std), Some(core)) if std.parent() != core.parent() => problems.push(format!(
+                "the std library mapped ({}) is not the one beside the core ({})",
+                std.display(),
+                core.display()
+            )),
+            _ => {}
+        },
+    }
+    problems
+}
+
+/// Starts the installed launcher as a session would (`gnoblin --role compositor SHELL`, headless, in a scratch home), with the
+/// loader's own environment and `GNOBLIN_STD_DIR` cleared, waits until it says the shell serves, and reads what the process maps
+/// (`/proc/<pid>/maps`). A shell is only loaded, never started, by [`check_shell_loads`]; this is the session itself. It proves
+/// the shell runs from wherever the tree was installed, and that std is opened for a std shell and for no other.
+pub fn check_shell_starts(launcher: &Path, shell: &Path, kind: ShellKind) -> Vec<String> {
+    let directory = match start_directory() {
+        Ok(directory) => directory,
+        Err(error) => return vec![error],
+    };
+    let problems = start_and_inspect(launcher, shell, kind, &directory);
+    let _ = fs::remove_dir_all(&directory);
+    problems
+}
+
+fn start_and_inspect(launcher: &Path, shell: &Path, kind: ShellKind, directory: &Path) -> Vec<String> {
+    let log_path = directory.join("log");
+    let log = match fs::File::create(&log_path).and_then(|log| Ok((log.try_clone()?, log))) {
+        Ok(log) => log,
+        Err(error) => return vec![format!("{}: {error}", log_path.display())],
+    };
+    let command = format!("`{} --role compositor {}`", launcher.display(), shell.display());
+    let mut child = match Command::new(launcher)
+        .args(["--role", "compositor"])
+        .arg(shell)
+        .env_remove("LD_LIBRARY_PATH")
+        .env_remove("LD_PRELOAD")
+        .env_remove("GNOBLIN_STD_DIR")
+        .env_remove("GNOBLIN_SHELL")
+        .env_remove("WAYLAND_DISPLAY")
+        .env("XDG_RUNTIME_DIR", directory)
+        .env("XDG_STATE_HOME", directory.join("state"))
+        .env("XDG_CONFIG_HOME", directory.join("config"))
+        .env("XDG_DATA_HOME", directory.join("data"))
+        .env("XDG_DATA_DIRS", directory.join("share"))
+        .env("XDG_CACHE_HOME", directory.join("cache"))
+        .env("HOME", directory.join("home"))
+        .env("GNOBLIN_IPC_SOCKET", directory.join("ipc.sock"))
+        .env("GNOBLIN_FIXTURE_DIR", directory.join("fixture"))
+        .env("GNOBLIN_BACKEND", "headless")
+        .env("GNOBLIN_LOG", "info")
+        .env("GNOBLIN_LOG_FORMAT", "plain")
+        .stdin(Stdio::null())
+        .stdout(log.0)
+        .stderr(log.1)
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(error) => return vec![format!("cannot run {command}: {error}")],
+    };
+    let deadline = Instant::now() + START_PATIENCE;
+    let outcome = loop {
+        // The status first: what the session wrote before it ended is then in the log this reads.
+        let exited = child.try_wait();
+        let text = fs::read_to_string(&log_path).unwrap_or_default();
+        if let Ok(Some(status)) = exited {
+            break Err(format!(
+                "{command} exited with {status} before its shell served: {}",
+                log_tail(&text)
+            ));
+        }
+        if text
+            .lines()
+            .any(|line| line.contains("the shell ") && line.contains(" serves "))
+        {
+            break Ok(fs::read_to_string(format!("/proc/{}/maps", child.id())).unwrap_or_default());
+        }
+        if Instant::now() > deadline {
+            break Err(format!(
+                "{command} did not say its shell serves within {} s: {}",
+                START_PATIENCE.as_secs(),
+                log_tail(&text)
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+    match outcome {
+        Ok(maps) => check_mapped_libraries(&maps, kind)
+            .into_iter()
+            .map(|problem| format!("{command}: {problem}"))
+            .collect(),
+        Err(problem) => vec![problem],
+    }
+}
+
 /// The symlink chain of a versioned library: `<stem>.so.<major>.<minor>.<patch>` is the file, `<stem>.so.<major>` points at
 /// it, and `<stem>.so` points at that, all relative links in one directory.
 pub fn check_links(dir: &Path, stem: &str, major: u32, minor: u32, patch: u32) -> Vec<String> {
@@ -1017,10 +1191,23 @@ fn run_checks(options: &CheckOptions) -> Result<usize, String> {
         }
         if options.run {
             outcome.report(&format!("{} runs from its own tree", path.display()), &check_runs(path));
-            for shell in options.shells.iter().chain(&options.std_shells) {
+            for (shell, kind) in options
+                .shells
+                .iter()
+                .map(|shell| (shell, ShellKind::CoreOnly))
+                .chain(options.std_shells.iter().map(|shell| (shell, ShellKind::Std)))
+            {
                 outcome.report(
                     &format!("{} loads {}", path.display(), shell.display()),
                     &check_shell_loads(path, shell),
+                );
+                outcome.report(
+                    &format!(
+                        "{} starts a session with {} ({kind:?})",
+                        path.display(),
+                        shell.display()
+                    ),
+                    &check_shell_starts(path, shell, kind),
                 );
             }
         }

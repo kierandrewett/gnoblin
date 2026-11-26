@@ -29,8 +29,9 @@ manifest lists and still holds what the install wrote.
 A prefix that is not on the loader's search path needs no `LD_LIBRARY_PATH`: `gnoblin` looks for its libraries in the
 `lib` and `lib64` directories under its own prefix.
 
-A shell that links `libgnoblin-std` needs a library path of its own; [Write a shell in
-Rust](rust-shell.md#link-to-the-installed-libraries) shows how.
+A shell that uses the std library needs nothing either. Before `gnoblin` loads such a shell it opens the std library
+from beside the core, so the shell runs under any prefix. [Write a shell in
+Rust](rust-shell.md#link-to-the-installed-libraries) has the details.
 
 A multiarch library directory works for a prefix the loader already searches, such as `/usr`.
 
