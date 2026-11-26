@@ -19,6 +19,20 @@
 //! Build it with `cargo build` and run it with `gnoblin ./target/debug/libmyshell.so`. The build needs a C compiler (the
 //! link stub, see `gnoblin_core_abi::build_support`) and `panic = "unwind"`, which is Cargo's default.
 //!
+//! ## What is where
+//!
+//! - [`Gnoblin`]: a generation's handle on the compositor, which the entry function receives. It logs, spawns processes, binds keys,
+//!   listens to events, and opens the typed object model.
+//! - [`objects`]: the typed object model of the core: the root [`objects::ModelRoot`] and its windows, outputs, input, session and processes as
+//!   classes with typed properties, methods and signals. `g.objects()?` is the way in.
+//! - [`Window`] (also named [`Client`]) and [`Node`]: the tree of the compositor, for the windows and nodes a shell reads and moves.
+//! - [`Poster`]: the handle another thread uses to log and to post work back to the shell thread.
+//! - [`main`]: the attribute that marks the entry function.
+//!
+//! The desktop above the core (workspaces, layouts, styles and the scene) is the optional `gnoblin-std` crate. The guide to
+//! [shells in Rust](https://gnoblin.org/docs/rust-shell) walks through a first shell, and the same API is also documented for
+//! [TypeScript](https://gnoblin.org/reference/typescript/) and [Python](https://gnoblin.org/reference/python/).
+//!
 //! ## Threads
 //!
 //! Everything a shell does happens on one thread, the shell thread, and a [`Gnoblin`] belongs to it: it is neither `Send`
