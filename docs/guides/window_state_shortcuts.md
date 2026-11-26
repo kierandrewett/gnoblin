@@ -11,7 +11,7 @@ A key is a function, and the function can read and write the focused window:
 ```typescript
 gnoblin.input.primary.bind("Super+Down", () => {
     const client = gnoblin.input.primary.focusedClient;
-    if (client === null) {
+    if (!client) {
         return;
     }
     if (client.maximised) {
@@ -46,8 +46,8 @@ use gnoblin_core::objects::ModelRoot;
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
     g.bind("Super+Down", move || -> gnoblin::Result<()> {
-        let Some(input) = model.input()? else { return Ok(()) };
-        let Some(primary) = input.primary()? else { return Ok(()) };
+        let input = model.input()?;
+        let primary = input.primary()?;
         let Some(client) = primary.focused_client()? else { return Ok(()) };
         if client.maximised()? {
             client.set_maximised(false)?;

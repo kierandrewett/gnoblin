@@ -65,9 +65,7 @@ use gnoblin_std::prelude::*;
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
     let objects = g.std()?.objects()?;
-    let Some(outputs) = model.outputs()? else {
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     let profiles = outputs.profiles()?;
 
     let main = OutputProfile::new_with(

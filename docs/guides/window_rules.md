@@ -40,7 +40,7 @@ use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?.expect("the model has clients");
+    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
     clients
         .on_added(|client: Client, _clients: ClientCollection| {
             if client.app_id().unwrap_or_default() == "org.example.Editor" {
@@ -119,7 +119,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
     let code = Workspace::new(&objects, "code")?;
     Workspaces::get(&objects)?.add(&code)?;
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?.expect("the model has clients");
+    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
     clients
         .on_added(move |client: Client, _clients: ClientCollection| {
             if client.app_id().unwrap_or_default() == "org.example.Editor" {
@@ -177,7 +177,7 @@ use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?.expect("the model has clients");
+    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
     clients
         .on_added(|client: Client, _clients: ClientCollection| {
             if client.app_id().unwrap_or_default() == "org.example.Player" {

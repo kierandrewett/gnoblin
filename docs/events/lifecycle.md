@@ -79,9 +79,7 @@ use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let Some(session) = ModelRoot::get(&g.objects()?)?.session()? else {
-        return Ok(());
-    };
+    let session = ModelRoot::get(&g.objects()?)?.session()?;
     let toasts = g.std()?.objects()?;
     session
         .on_lock_state_changed(move |_session, state, _revision| {

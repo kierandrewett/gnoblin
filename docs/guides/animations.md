@@ -92,9 +92,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.objects()?;
-    let Some(clients) = ModelRoot::get(&objects)?.clients()? else {
-        return Ok(());
-    };
+    let clients = ModelRoot::get(&objects)?.clients()?;
     clients
         .on_added(move |client, _collection| {
             if client.app_id().unwrap_or_default() == "org.gnome.TextEditor" {

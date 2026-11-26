@@ -62,12 +62,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.objects()?;
     let std_objects = g.std()?.objects()?;
     let model = ModelRoot::get(&objects)?;
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(context) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let context = input.primary()?;
 
     let close = GestureBindingHandlers {
         on_begin: Box::new(|_| Ok(true)),

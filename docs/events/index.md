@@ -49,9 +49,7 @@ use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let Some(session) = ModelRoot::get(&g.objects()?)?.session()? else {
-        return Ok(());
-    };
+    let session = ModelRoot::get(&g.objects()?)?.session()?;
     let toasts = g.std()?.objects()?;
     session
         .on_bell(move |_session, count| {
@@ -139,9 +137,7 @@ use gnoblin_core::Gnoblin;
 use gnoblin_core::objects::ModelRoot;
 
 fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
-    let Some(clients) = ModelRoot::get(&g.objects()?)?.clients()? else {
-        return Ok(());
-    };
+    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
     clients
         .on_added(|client, _collection| {
             println!("window {} opened", client.app_id().unwrap_or_default());
@@ -194,9 +190,8 @@ use gnoblin_core::objects::ModelRoot;
 
 fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
     let objects = g.objects()?;
-    if let Some(session) = ModelRoot::get(&objects)?.session()? {
-        session.on_bell(|_session, count| println!("Bell number {count}"))?.keep();
-    }
+    let session = ModelRoot::get(&objects)?.session()?;
+    session.on_bell(|_session, count| println!("Bell number {count}"))?.keep();
     Ok(())
 }
 ```
