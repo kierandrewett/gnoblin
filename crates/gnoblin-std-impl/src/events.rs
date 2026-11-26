@@ -104,6 +104,9 @@ impl State {
                 preexisting,
                 last_pos: (position.x, position.y),
                 parent: nodes::node_ref(&self.g, id, "parent_window"),
+                // A window an earlier generation fitted keeps that frame's room as its baseline, so this generation's frame (or
+                // none) moves the content by what the frame gained or lost.
+                fitted: crate::fit::carried_fit(id),
                 ..ClientRec::default()
             },
         );
@@ -132,6 +135,7 @@ impl State {
 
     /// A window left the tree: its listeners hear it close, it leaves its workspace and the clients, and the keyboard passes on.
     fn client_destroyed(&mut self, id: NodeId) {
+        crate::fit::forget_fit(id);
         let Some(rec) = self.rec.get(&id) else {
             return;
         };
