@@ -27,7 +27,7 @@ use crate::log;
 fn refused(error: &DmabufError) -> RenderError {
     log::warn!(area = "render", %error, "a dmabuf could not be used by the Vulkan renderer");
     match error {
-        DmabufError::Map(_) => RenderError::Failed,
+        DmabufError::Map(_) | DmabufError::Plane(_) => RenderError::Failed,
         _ => RenderError::Unsupported,
     }
 }

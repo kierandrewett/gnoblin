@@ -4,10 +4,11 @@
 //! `Backend::dmabuf` from the formats its device draws, so `zwp_linux_dmabuf_v1` is served: a software driver has no DRM
 //! render node, so version 3, which names formats and modifiers and no device. A client then shares buffers through
 //! `zwp_linux_buffer_params_v1`, and the compositor's answer is the renderer's: a single linear plane in an offered format
-//! is created, and a buffer with a tiled modifier is refused with `failed` before any pixel is touched.
+//! is created when it is a real dma-buf (`/dev/udmabuf`), a file that only has the shape of one is refused because it could be
+//! resized under the renderer's copy, and a buffer with a tiled modifier is refused with `failed` before any pixel is touched.
 //!
 //! What this cannot prove on a machine with no `/dev/udmabuf` and no `/dev/dri` (the Agent37 boxes) is the pixels of a real
-//! GPU buffer: the buffer here is a temporary file that has the shape of a linear dmabuf, which is all the import checks read. The
+//! GPU buffer, and the created half of this test: both need a dma-buf source, and a temporary file is refused. The
 //! pixel proof of the linear path is `gnoblin-render-vulkan`'s `tests::dmabuf`, which runs where `udmabuf` loads. The test
 //! says which of the two it ran.
 
@@ -20,7 +21,8 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::{Headless, HeadlessConfig};
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server};
-use smithay::backend::allocator::Fourcc;
+use smithay::backend::allocator::udmabuf::UdmabufAllocator;
+use smithay::backend::allocator::{Allocator, Fourcc, Modifier};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::wl_registry;
 use wayland_client::{Connection, Dispatch, QueueHandle};
@@ -169,47 +171,74 @@ fn the_vulkan_renderer_offers_linear_buffers_creates_one_and_refuses_a_tiled_one
 
         let (width, height) = (16u32, 8u32);
         let stride = width * 4;
-        let share = |modifier: u64| {
+        let share = |fd: std::os::fd::BorrowedFd<'_>, modifier: u64| {
             let params = global.create_params(&qh, ());
-            let fd = plane((stride * height) as usize);
-            params.add(
-                std::os::fd::AsFd::as_fd(&fd),
-                0,
-                0,
-                stride,
-                (modifier >> 32) as u32,
-                modifier as u32,
-            );
+            params.add(fd, 0, 0, stride, (modifier >> 32) as u32, modifier as u32);
             params.create(width as i32, height as i32, argb, params::Flags::empty());
-            fd
         };
-        let _linear = share(LINEAR);
+        let answered = |app: &mut App, queue: &mut wayland_client::EventQueue<App>, count: usize| {
+            let deadline = Instant::now() + TIMEOUT;
+            while app.created + app.failed < count {
+                assert!(
+                    Instant::now() < deadline,
+                    "the compositor never answered buffer {count}"
+                );
+                queue.roundtrip(app).expect("a round trip");
+            }
+        };
+
+        // A file shaped like a linear plane is no dma-buf: the renderer reads the plane in the compositor's own process,
+        // so a file the client can resize would fault the copy. It is refused, and the session lives on.
+        let file = plane((stride * height) as usize);
+        share(std::os::fd::AsFd::as_fd(&file), LINEAR);
         queue.roundtrip(&mut app).expect("a round trip");
-        let deadline = Instant::now() + TIMEOUT;
-        while app.created + app.failed < 1 {
-            assert!(
-                Instant::now() < deadline,
-                "the compositor never answered the linear buffer"
-            );
-            queue.roundtrip(&mut app).expect("a round trip");
-        }
+        answered(&mut app, &mut queue, 1);
         assert_eq!(
             (app.created, app.failed),
-            (1, 0),
-            "a single linear plane in an offered format is created"
+            (0, 1),
+            "a plane that is no dma-buf is refused, whatever shape it has"
         );
-        let _tiled = share(X_TILED);
-        let deadline = Instant::now() + TIMEOUT;
-        while app.created + app.failed < 2 {
-            assert!(
-                Instant::now() < deadline,
-                "the compositor never answered the tiled buffer"
-            );
-            queue.roundtrip(&mut app).expect("a round trip");
-        }
+
+        // A real dma-buf, which needs `/dev/udmabuf`, is created.
+        let mut expected = (0, 1);
+        let real = UdmabufAllocator::new()
+            .map_err(|error| error.to_string())
+            .and_then(|mut allocator| {
+                allocator
+                    .create_buffer(width, height, Fourcc::Argb8888, &[Modifier::Linear])
+                    .map_err(|error| error.to_string())
+            });
+        let _real = match real {
+            Ok(buffer) => {
+                let fd = buffer
+                    .handles()
+                    .next()
+                    .expect("a plane")
+                    .try_clone_to_owned()
+                    .expect("a copy");
+                share(std::os::fd::AsFd::as_fd(&fd), LINEAR);
+                answered(&mut app, &mut queue, 2);
+                assert_eq!(
+                    (app.created, app.failed),
+                    (1, 1),
+                    "a single linear dma-buf plane in an offered format is created"
+                );
+                expected = (1, 1);
+                Some((buffer, fd))
+            }
+            Err(reason) => {
+                println!("skipping the created half: no dma-buf source here ({reason}); it runs where udmabuf loads");
+                None
+            }
+        };
+
+        let tiled = plane((stride * height) as usize);
+        share(std::os::fd::AsFd::as_fd(&tiled), X_TILED);
+        answered(&mut app, &mut queue, 2 + usize::from(expected.0 == 1));
+        expected.1 += 1;
         assert_eq!(
             (app.created, app.failed),
-            (1, 1),
+            expected,
             "a tiled buffer is refused cleanly, and the session lives on"
         );
         queue.roundtrip(&mut app).expect("the connection is still up");

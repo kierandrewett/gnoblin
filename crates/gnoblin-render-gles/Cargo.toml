@@ -33,9 +33,6 @@ gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 gnoblin-render = { path = "../gnoblin-render" }
 # `[tag]` log lines for a failed compile, a refused frame and a lost device.
 gnoblin-log = { path = "../gnoblin-log" }
-# A client's dmabuf plane is checked against the kernel (`fstatfs`, `fstat`) before the driver maps it; `rustix` wraps
-# both without `unsafe`.
-rustix = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
 # The golden scenes both GPU renderers are checked against.

@@ -249,6 +249,10 @@ Feedback:
 
 Import, in `dmabuf.rs`:
 
+0. `gnoblin_render_frame::dmabuf::unmappable` runs before any plane is mapped or its fd handed to a driver: every plane
+   must be a dma-buf (the kernel's `DMA_BUF_MAGIC` on `fstatfs`) holding `offset + stride * rows` bytes. A regular file
+   or a pipe passes the protocol's own `lseek` size check, and one the client resizes would fault the copy with SIGBUS
+   in the compositor. A refusal is `DmabufError::Plane`.
 1. `DmabufSupport::check` (size, plane count, offered pair) runs first, as for GLES.
 2. Create the image with the explicit modifier, import each plane's fd with `VkImportMemoryFdInfoKHR`, dedicated
    allocation, bind.

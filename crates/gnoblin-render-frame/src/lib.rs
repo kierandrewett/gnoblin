@@ -14,6 +14,7 @@
 //! | [`shader`]   | the WGSL passes and the uniform block: written once, no GPU API         |
 //! | [`view_scene`] | a View's source subtree, for a renderer that draws it into a texture    |
 //! | [`image`]    | the RGBA8 readback a screenshot, capture and the parity probes use      |
+//! | [`dmabuf`]   | whether each plane of a client's dmabuf is a dma-buf the renderer may map |
 //! | [`error`]    | [`error::RenderError`], the small `Copy` reason a renderer could not draw |
 //! | [`shm`]      | the one writer of a client's `wl_shm` pool                              |
 //! | [`footprint`] | the bytes a renderer holds for one output, by what holds them          |
@@ -28,6 +29,8 @@
 //! into it; that module opens with `#[allow(unsafe_code)]` and a `SAFETY:` comment per
 //! block. Nothing else in the crate contains `unsafe`.
 
+/// The kernel's answer on a client's dmabuf planes, asked before a renderer maps one.
+pub mod dmabuf;
 /// Why a renderer could not draw.
 pub mod error;
 /// The bytes a renderer holds for one output, by what holds them.

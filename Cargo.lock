@@ -2020,6 +2020,7 @@ dependencies = [
  "gnoblin-render",
  "gnoblin-types",
  "naga",
+ "rustix 1.1.6",
  "smithay",
 ]
 
@@ -2034,7 +2035,6 @@ dependencies = [
  "gnoblin-render-software",
  "gnoblin-types",
  "naga",
- "rustix 1.1.6",
  "smithay",
 ]
 

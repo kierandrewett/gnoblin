@@ -14,12 +14,15 @@
 //!
 //! 1. **A buffer is read as something it is not.** Only a single linear plane in an offered format is accepted; anything else
 //!    is [`DmabufError`] before a byte is read: `tests::a_refused_dmabuf_is_an_error_not_a_crash`.
-//! 2. **A row reads past the mapping.** The stride, offset and height are checked against the mapping's length first.
-//! 3. **A buffer is read while its writer is writing.** The read is bracketed by the kernel's sync ioctl:
+//! 2. **A plane that is no dma-buf is mapped.** A file the client resizes, or a pipe, passes the protocol's size check and
+//!    would fault the compositor mid-copy; [`linear`] asks the kernel first (`gnoblin_render_frame::dmabuf::unmappable`).
+//! 3. **A row reads past the mapping.** The stride, offset and height are checked against the mapping's length first.
+//! 4. **A buffer is read while its writer is writing.** The read is bracketed by the kernel's sync ioctl:
 //!    `tests::a_writer_fence_is_waited_before_sampling` needs a dmabuf source and runs in CI.
 
 use std::fmt;
 
+use gnoblin_render_frame::dmabuf::unmappable;
 use gnoblin_render_frame::image::Image;
 use gnoblin_types::{Point, Rect, Size};
 use smithay::backend::allocator::dmabuf::Dmabuf;
@@ -39,6 +42,8 @@ pub enum DmabufError {
     Planes,
     /// The buffer's rows or size do not fit its mapping.
     Layout,
+    /// A plane is not a dma-buf the renderer may map: a regular file, a pipe, or a dma-buf too small for the rows.
+    Plane(String),
     /// The plane could not be mapped or synchronised.
     Map(String),
 }
@@ -50,6 +55,7 @@ impl fmt::Display for DmabufError {
             Self::Modifier => formatter.write_str("the dmabuf's modifier is not linear"),
             Self::Planes => formatter.write_str("the dmabuf has more than one plane"),
             Self::Layout => formatter.write_str("the dmabuf's rows do not fit its mapping"),
+            Self::Plane(reason) => write!(formatter, "the dmabuf's plane cannot be mapped: {reason}"),
             Self::Map(reason) => write!(formatter, "the dmabuf could not be mapped: {reason}"),
         }
     }
@@ -73,6 +79,11 @@ pub(super) struct Linear {
 ///
 /// The [`DmabufError`] that names what is wrong.
 pub(super) fn linear(dmabuf: &Dmabuf) -> Result<Linear, DmabufError> {
+    // The plane is mapped and copied in this process, so a descriptor that is no dma-buf (a regular file the client
+    // truncates, a pipe) would take the compositor down with SIGBUS mid-copy: the kernel is asked first.
+    if let Some((plane, fault)) = unmappable(dmabuf) {
+        return Err(DmabufError::Plane(format!("plane {plane}: {fault}")));
+    }
     if dmabuf.format().modifier != Modifier::Linear {
         return Err(DmabufError::Modifier);
     }

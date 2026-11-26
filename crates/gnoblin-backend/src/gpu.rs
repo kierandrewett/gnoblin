@@ -18,7 +18,7 @@ use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::view_scene::ViewScene;
 use gnoblin_types::{Rect, Scale};
 
-use crate::render::renderer::{AnyRenderer, CaptureRequest, capture_redacted};
+use crate::render::renderer::{AnyRenderer, CaptureRequest, RendererKind, capture_redacted};
 use crate::{DmabufCopy, DmabufCopyError, DmabufImportError, DmabufProvider, DmabufSource, DmabufSupport};
 
 /// The pieces of a target a GPU-facing call reads, borrowed together because a redacted read needs the renderer
@@ -68,6 +68,17 @@ pub(crate) trait GpuTarget {
     /// What this target's renderer imports of a client's GPU buffers; see [`AnyRenderer::dmabuf_support`].
     fn dmabuf_support(&mut self) -> Option<DmabufSupport> {
         self.parts().renderer.dmabuf_support()
+    }
+
+    /// What clients are offered of [`GpuTarget::dmabuf_support`]: all of it, except that a GLES display with no render node
+    /// offers nothing. Mesa's llvmpipe on a surfaceless display imports a client's plane through EGL and samples it on its
+    /// own threads, so no device exists that a client could allocate on, and the protocol is not served there. The Vulkan
+    /// renderer maps and copies a linear plane in this process under `gnoblin_render_frame::dmabuf::unmappable`, so a
+    /// software driver is still served version 3 (design decision 12).
+    fn client_dmabuf_support(&mut self) -> Option<DmabufSupport> {
+        let gles = self.parts().renderer.kind() == RendererKind::Gles;
+        self.dmabuf_support()
+            .filter(|support| support.main_device.is_some() || !gles)
     }
 
     /// Imports a client's GPU buffer into this target's renderer.
@@ -158,11 +169,6 @@ pub(crate) trait GpuTarget {
     }
 }
 
-/// Whether a renderer's answer names the device a client allocates its buffers on.
-fn has_device(support: &DmabufSupport) -> bool {
-    support.main_device.is_some()
-}
-
 /// What clients were offered, and the stand-in importer a test may install.
 ///
 /// The offer is remembered so each import and each copy is checked against the formats clients were told, before
@@ -187,14 +193,12 @@ impl DmabufHub {
     }
 
     /// What the session can import of a client's GPU buffers: the provider's answer, or the first output's
-    /// renderer's, when that renderer has a render node. `None` when nothing imports (the software renderer, or no
-    /// output) and when the renderer has no device a client could allocate on (Mesa's llvmpipe on a surfaceless
-    /// display): the protocol is not served there, so a client sends shared memory and no buffer of its own reaches
-    /// a software rasteriser that cannot map it.
+    /// renderer's ([`GpuTarget::client_dmabuf_support`]). `None` when nothing imports (the software renderer, or no
+    /// output) and for a GLES display with no render node.
     pub fn query<T: GpuTarget>(&mut self, first: Option<&mut T>) -> Option<DmabufSupport> {
         let support = match self.provider.as_mut() {
             Some(provider) => provider.support(),
-            None => first.and_then(GpuTarget::dmabuf_support).filter(has_device),
+            None => first.and_then(GpuTarget::client_dmabuf_support),
         };
         self.support.clone_from(&support);
         support
@@ -217,13 +221,13 @@ impl DmabufHub {
         }
     }
 
-    /// What a capture may be written into: the provider's answer, or the first output's renderer's, when that
-    /// renderer has a render node (see [`DmabufHub::query`]). Remembered, so each copy checks a buffer against the
+    /// What a capture may be written into: the provider's answer, or the first output's renderer's (see
+    /// [`DmabufHub::query`]). Remembered, so each copy checks a buffer against the
     /// formats a capture client was told.
     pub fn query_capture<T: GpuTarget>(&mut self, first: Option<&mut T>) -> Option<DmabufSupport> {
         let support = match self.provider.as_mut() {
             Some(provider) => provider.capture_support(),
-            None => first.and_then(GpuTarget::dmabuf_support).filter(has_device),
+            None => first.and_then(GpuTarget::client_dmabuf_support),
         };
         self.capture.clone_from(&support);
         support

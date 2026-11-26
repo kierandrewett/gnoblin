@@ -28,6 +28,9 @@ gnoblin-types.workspace = true
 gnoblin-render = { path = "../gnoblin-render" }
 # The front end and the validator of the user shader pass (`shader::user`), the same `naga` the renderers compile with.
 naga.workspace = true
+# A client's dmabuf plane is described by the kernel (`fstatfs`, `fstat`) before a renderer maps it; `rustix` wraps both without
+# `unsafe`.
+rustix = { workspace = true, features = ["fs"] }
 
 [features]
 # The golden scenes and their checker (`golden`), for the renderers' own tests.

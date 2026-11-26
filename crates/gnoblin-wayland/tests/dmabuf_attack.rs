@@ -1,13 +1,16 @@
 //! A client that sends GPU buffers no driver can map must not take the compositor down (bead gnoblin-992m).
 //!
-//! The session is the real compositor on the GLES renderer. A client binds `zwp_linux_dmabuf_v1`, shares a buffer whose
-//! plane is no GPU memory, attaches it to a window and commits, and the output is read back while the window shows it.
-//! Mesa's llvmpipe on a machine with no `/dev/dri` imports such a plane without complaint and takes the compositor down
-//! when the surface pass samples it (SIGSEGV on its rasteriser thread; the bead saw it on `/dev/null`).
+//! The session is the real compositor on the GLES renderer, and again on the Vulkan renderer. A client binds
+//! `zwp_linux_dmabuf_v1`, shares a buffer whose plane is no GPU memory, attaches it to a window and commits, and the output
+//! is read back while the window shows it. Mesa's llvmpipe on a machine with no `/dev/dri` imports such a plane without
+//! complaint and takes the compositor down when the surface pass samples it (the bead saw SIGSEGV on its rasteriser thread
+//! on `/dev/null`); the Vulkan renderer copies a linear plane's rows in the compositor's own process, so a file the client
+//! resizes faults that copy with SIGBUS.
 //!
 //! The planes: `/dev/null` and a short file, which the protocol's own size check refuses; a regular file of the buffer's
-//! size, one the client empties once the compositor holds the buffer, and a pipe, which pass that check (a pipe cannot be
-//! seeked, so the check never learns its size) and only the compositor's own look at the descriptor stops.
+//! size, one the client empties once the compositor holds the buffer, one a thread keeps resizing while the output is read
+//! back, and a pipe, which pass that check (a pipe cannot be seeked, so the check never learns its size) and only the
+//! compositor's own look at the descriptor stops.
 //!
 //! The compositor is right when it does either of two things: serves no `zwp_linux_dmabuf_v1` at all (a renderer with
 //! no render node has no device a client could allocate on), or fails the client's buffer with a protocol error. What it
@@ -22,6 +25,7 @@ use gnoblin_wayland_testkit::stock;
 use std::fs::File;
 use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -154,6 +158,8 @@ struct Attack {
     plane: OwnedFd,
     /// A handle on the same file, which the client empties once the compositor has taken the buffer.
     shrink: Option<File>,
+    /// A handle on the same file, which the client resizes in a loop for as long as the compositor draws the buffer.
+    flap: Option<File>,
 }
 
 fn attacks() -> Vec<Attack> {
@@ -164,6 +170,8 @@ fn attacks() -> Vec<Attack> {
     regular.set_len(full).expect("a file of the buffer's size");
     let shrinking = tempfile::tempfile().expect("a temporary file");
     shrinking.set_len(full).expect("a file of the buffer's size");
+    let flapping = tempfile::tempfile().expect("a temporary file");
+    flapping.set_len(full).expect("a file of the buffer's size");
     let (pipe, writer) = std::io::pipe().expect("a pipe");
     // The writer is kept open by leaking it for the test's life: a closed pipe is a different attack.
     std::mem::forget(writer);
@@ -173,11 +181,13 @@ fn attacks() -> Vec<Attack> {
             name: "/dev/null",
             plane: File::open("/dev/null").expect("/dev/null opens").into(),
             shrink: None,
+            flap: None,
         },
         Attack {
             name: "a file far smaller than the buffer",
             plane: small.into(),
             shrink: None,
+            flap: None,
         },
         // These pass it: a file of the right size, one that is emptied after the buffer is taken, and a descriptor that
         // cannot be seeked, whose size the check never learns.
@@ -185,16 +195,25 @@ fn attacks() -> Vec<Attack> {
             name: "a regular file of the buffer's size, which is no GPU memory",
             plane: regular.into(),
             shrink: None,
+            flap: None,
         },
         Attack {
             name: "a regular file emptied once the compositor holds the buffer",
             plane: shrinking.try_clone().expect("a second handle").into(),
             shrink: Some(shrinking),
+            flap: None,
+        },
+        Attack {
+            name: "a regular file a thread keeps resizing while the compositor draws it",
+            plane: flapping.try_clone().expect("a second handle").into(),
+            shrink: None,
+            flap: Some(flapping),
         },
         Attack {
             name: "a pipe, whose size no check can read",
             plane: pipe.into(),
             shrink: None,
+            flap: None,
         },
     ]
 }
@@ -278,13 +297,33 @@ fn attack(socket: &std::path::Path, attack: &Attack, draw: &dyn Fn()) -> Result<
         if let Some(file) = &attack.shrink {
             file.set_len(0).expect("the client empties its own file");
         }
-        // The output is read back while the window shows the buffer, which is when the surface pass samples it.
-        for _ in 0..3 {
+        // The output is read back while the window shows the buffer, which is when the renderer reads it. A buffer whose
+        // file is being resized is read many times, so a read that lands past the new end is likely to happen.
+        let stop = Arc::new(AtomicBool::new(false));
+        let flapper = attack.flap.as_ref().map(|file| {
+            let file = file.try_clone().expect("a handle for the resizing thread");
+            let stop = Arc::clone(&stop);
+            let full = u64::from(WIDTH) * u64::from(HEIGHT) * 4;
+            thread::spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    let _ = file.set_len(0);
+                    let _ = file.set_len(full);
+                }
+            })
+        });
+        let rounds = if flapper.is_some() { 400 } else { 3 };
+        for _ in 0..rounds {
             accepted = accepted && queue.roundtrip(&mut app).is_ok();
             if accepted {
                 draw();
             }
-            thread::sleep(Duration::from_millis(20));
+            if flapper.is_none() {
+                thread::sleep(Duration::from_millis(20));
+            }
+        }
+        stop.store(true, Ordering::Relaxed);
+        if let Some(flapper) = flapper {
+            flapper.join().expect("the resizing thread ends");
         }
     }
     drop((connection, buffer));
@@ -292,11 +331,20 @@ fn attack(socket: &std::path::Path, attack: &Attack, draw: &dyn Fn()) -> Result<
 }
 
 #[test]
-fn a_buffer_no_driver_can_map_never_reaches_the_driver() {
-    let backend = match Headless::with_config(HeadlessConfig::gles()) {
+fn a_buffer_no_driver_can_map_never_reaches_the_gles_driver() {
+    never_reaches_the_renderer("GLES", HeadlessConfig::gles());
+}
+
+#[test]
+fn a_buffer_no_driver_can_map_never_reaches_the_vulkan_renderer() {
+    never_reaches_the_renderer("Vulkan", HeadlessConfig::vulkan());
+}
+
+fn never_reaches_the_renderer(name: &str, config: HeadlessConfig) {
+    let backend = match Headless::with_config(config) {
         Ok(backend) => backend,
         Err(error) => {
-            println!("skipping the dmabuf attack test: no GLES renderer on this machine ({error})");
+            println!("skipping the dmabuf attack test: no {name} renderer on this machine ({error})");
             return;
         }
     };
