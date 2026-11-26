@@ -120,6 +120,12 @@ impl JsShell {
     pub fn frame(&mut self) -> Result<JsFrame, JsShellError> {
         let mut incoming = std::mem::take(&mut self.incoming);
         incoming.extend(self.link.poll().map_err(|e| JsShellError::Link(e.0))?);
+        if !self.legacy() {
+            // On the native library the core hears the session for the script. The engine's own session connection is read here
+            // only for the request to reload the configuration (`gnoblinctl config reload`, `runtime.reloadConfig()`), which the
+            // host answers by reloading; nothing on this library listens to its other events, so they are let go.
+            drop(self.state.borrow_mut().api.poll());
+        }
         // A turn on which nothing arrived and nothing is due does no work: see `gate`.
         if incoming.is_empty() && !self.frame_due() {
             self.note_quiet_turn();
