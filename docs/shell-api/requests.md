@@ -6,10 +6,10 @@ authentication. The compositor draws the dialog itself, so it works with no shel
 
 ```ts
 import { DialogListener } from "gnoblin-core";
-import type { ConsentRequest } from "gnoblin-core";
+import type { DialogRequest } from "gnoblin-core";
 
 class NoScreenCasts extends DialogListener {
-    onConsentRequest(request: ConsentRequest) {
+    onConsentRequest(request: DialogRequest) {
         if (request.subject === "ScreenCast") {
             request.decline("screen casts are off");
         }
@@ -35,7 +35,6 @@ past its time budget leaves the request to the dialog. `decline` after the windo
 | -------------------------- | ---------------------------- |
 | `addListener(listener)`    | Attaches a `DialogListener`. |
 | `removeListener(listener)` | Detaches it.                 |
-| `listeners`                | The attached listeners.      |
 
 A `DialogListener` can define these methods. Both are optional.
 

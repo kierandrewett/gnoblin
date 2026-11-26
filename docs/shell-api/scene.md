@@ -2,23 +2,25 @@
 
 The scene is the tree of nodes a script makes.
 
-- Plain `Node` objects, `View`s that draw a client or a workspace as a picture, and cameras are in it.
+- Plain `SceneNode` objects, `View`s that draw a client or a workspace as a picture, and cameras are in it.
 - `gnoblin.scene.root` is where a script mounts them.
 - A node is placed with `position`, `rotation`, `scale` or one `transform`.
 - A property of a node or a window can follow the properties it was computed from.
 
 ```ts
-import { ArcLayout, Node, View, Workspace } from "gnoblin-std";
+import { ArcLayout, SceneNode, View, Workspace } from "gnoblin-std";
 
-const desktop = new Workspace({ id: "desktop", layout: new ArcLayout({ radius: 1200, spacing: 0.35 }) });
+const desktop = new Workspace("desktop", { layout: new ArcLayout({ radius: 1200, spacing: 0.35 }) });
 gnoblin.workspaces.add(desktop);
 
-const overview = new Node({ id: "overview" });
-overview.add(new View({ content: desktop, size: { width: 700, height: 400 } }));
+const overview = new SceneNode({ id: "overview" });
+const picture = new View({ size: { width: 700, height: 400 } });
+picture.showWorkspace(desktop);
+overview.add(picture);
 gnoblin.scene.root.add(overview);
 
-const client = gnoblin.clients.focused;
-client?.properties.bind("opacity", () => (client.focused ? 1 : 0.7));
+const client = gnoblin.input.primary.focusedClient;
+client?.properties.bindDouble("opacity", () => (client.focused ? 1 : 0.7));
 ```
 
 Put the file in `~/.config/gnoblin/shell.ts`. The windows of `desktop` sit on an arc, the scene holds a small picture of the
@@ -28,41 +30,48 @@ workspace, and the focused window is drawn at full opacity while the others are 
 
 `gnoblin.scene` is the one scene. Its members:
 
-| Member          | Type   | Meaning                                                                                |
-| --------------- | ------ | -------------------------------------------------------------------------------------- |
-| `root`          | `Node` | The root of the tree. `root.add(node)` mounts a node under it. It cannot be destroyed. |
-| `metresPerUnit` | number | Metres in one scene unit. Default 1, which is logical units. The script keeps it.      |
+| Member          | Type         | Meaning                                                                                |
+| --------------- | ------------ | -------------------------------------------------------------------------------------- |
+| `root`          | `SceneNode`  | The root of the tree. `root.add(node)` mounts a node under it. It cannot be destroyed. |
+| `metresPerUnit` | number       | Metres in one scene unit. Default 1, which is logical units. The script keeps it.      |
+| `cameras`       | `Camera3D[]` | The cameras a script made.                                                             |
+| `add(node)`     | method       | Mounts a node under the root and returns it.                                           |
+| `find(name)`    | method       | The node with that name, or `undefined`.                                               |
 
 `root.children` lists the nodes a script made. Windows are reached through `gnoblin.clients` and workspaces through
 `gnoblin.workspaces`: a workspace is a script object and not a tree node, so neither is in `children`.
 
 ## Place a node
 
-A node made with `new Node(options)` is in the tree under no parent until it is added to one. Every option is optional.
+A node made with `new SceneNode(options)` is in the tree under no parent until it is added to one. Every option is optional.
 
-| Option or member     | Type                                       | Meaning                                                                                          |
-| -------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `id`                 | string                                     | The node's stable id. It is also its `name`, and `node.id` answers with it.                      |
-| `position`           | `{ x, y, z }` or `[x, y, z]`               | Where the node is, in its parent's units. Reads give a vector with `distanceTo`.                 |
-| `rotation`           | `{ x, y, z }`, `[x, y, z]` or a quaternion | Angles about X, Y and Z in radians. A quaternion `{ x, y, z, w }` is stored as its Euler angles. |
-| `scale`              | number, `{ x, y, z }` or `[x, y, z]`       | A number scales every axis.                                                                      |
-| `transform`          | `{ position, rotation, scale }`            | Any of the three parts. A part left out is not written.                                          |
-| `visible`, `opacity` | boolean, number                            | As on a window.                                                                                  |
-| `input`              | `"forward"`, `"capture"`, `"none"`         | What a pointer ray does at the node. See [Input](#input).                                        |
-| `metresPerUnit`      | number                                     | Metres in one unit of this node's space. Default 1.                                              |
+| Option or member     | Type                               | Meaning                                                                     |
+| -------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
+| `id`                 | string                             | The node's stable id. It is also its `name`, and `node.id` answers with it. |
+| `position`           | `{ x, y, z }`                      | Where the node is, in its parent's units.                                   |
+| `rotation`           | `{ x, y, z }`                      | Angles about X, Y and Z in radians.                                         |
+| `scale`              | `{ x, y, z }`                      | The scale along each axis.                                                  |
+| `transform`          | `{ position, rotation, scale }`    | All three parts: `scale` is one number for every axis.                      |
+| `visible`, `opacity` | boolean, number                    | As on a window.                                                             |
+| `input`              | `"forward"`, `"capture"`, `"none"` | What a pointer ray does at the node. See [Input](#input).                   |
+| `metresPerUnit`      | number                             | Metres in one unit of this node's space. Default 1.                         |
 
-- `rotation` and `scale` read back as three numbers that also answer to `x`, `y` and `z`.
-- So `node.rotation.y` and `node.rotation[1]` are the same turn. Rotations turn about X, then Y, then Z.
+- A rotation, a position and a scale read back as a `Vec3` with `x`, `y` and `z`. Rotations turn about X, then Y, then Z.
 - A write is checked before anything is written. A value that is not finite throws a `TypeError` that names the node and
-  the member, as in `Node#12.rotation`.
+  the member, as in `SceneNode#12.rotation`.
 
-`transform` is one write. `node.transform = { rotation: { x: 0, y: 0.12, z: 0 } }` changes the rotation and leaves the
-position and the scale alone. All the parts are checked first, so one bad part writes nothing, and the writes of a frame
-go out in one transaction.
+`place(parts)` is one write of the parts you name. `node.place({ rotation: { x: 0, y: 0.12, z: 0 } })` turns the node
+and leaves everything else alone.
+
+- `parts` also takes `uniformScale` for one number on every axis, and `orientation`, a quaternion `{ x, y, z, w }`
+  that is stored as its Euler angles.
+- All the parts are checked first, so one bad part writes nothing, and the writes of a frame go out in one transaction.
 
 ```ts
-const room = new Node({ id: "xr-room", position: { x: 0, y: 1.2, z: -2 }, scale: 1 });
-room.transform = { rotation: { x: 0, y: Math.PI / 4, z: 0 } };
+import { SceneNode } from "gnoblin-std";
+
+const room = new SceneNode({ id: "xr-room", position: { x: 0, y: 1.2, z: -2 } });
+room.place({ rotation: { x: 0, y: Math.PI / 4, z: 0 }, uniformScale: 1 });
 ```
 
 ### Input
@@ -84,54 +93,64 @@ room.transform = { rotation: { x: 0, y: Math.PI / 4, z: 0 } };
   point where the picture shows nothing of the client (the margin of a View larger than its client) reaches nobody.
   The script is sent nothing for the View.
 - `"capture"` lands on the View itself. The client is not given the pointer (and keeps its keyboard focus), and the View
-  hears `onPointerEnter`, `onPointerMotion`, `onPointerLeave`, `onPointerPress` and `onPointerRelease`, each with
-  `{ node, x, y, button }` in the View's own plane. A script can use this to draw its own interaction over a client's
-  picture.
+  has a `pointer` event with `{ edge, x, y, button }` in the View's own plane, where `edge` is `enter`, `motion`, `leave`,
+  `press` or `release`. A script can use this to draw its own interaction over a client's picture.
 - A node that is not a View of a client has nothing to forward to, so `"forward"` and `"capture"` both send the script
   its pointer events. A View with no `content` is the same.
-- The handlers are plain members, set as in `panel.onPointerPress = (event) => { ... }`. A throw in one is reported
-  like a throw in a listener.
+- The handler is set with `panel.on("pointer", (event) => { ... })`. A throw in one is reported like a throw in a listener.
 
 ```ts
-const panel = new View({ content: client, size: { width: 400, height: 300 }, input: "capture" });
-panel.onPointerPress = (event) => {
-    if (event.x < 40 && event.y < 40) {
-        client.close();
-    } else {
-        panel.input = "forward"; // from the next move, the client gets the pointer
-    }
-};
+import { View } from "gnoblin-std";
+
+const client = gnoblin.input.primary.focusedClient;
+if (client) {
+    const panel = new View({ size: { width: 400, height: 300 }, input: "capture" });
+    panel.showClient(client);
+    panel.on("pointer", (event) => {
+        if (event.edge !== "press") return;
+        if (event.x < 40 && event.y < 40) {
+            client.close();
+        } else {
+            panel.input = "forward"; // from the next move, the client gets the pointer
+        }
+    });
+    gnoblin.scene.root.add(panel);
+}
 ```
 
 ## Views
 
-A `View` draws another node as a picture. Its `content` is a client or a workspace, and neither is moved or reparented.
+A `View` draws another node as a picture. `showClient(client)` or `showWorkspace(workspace)` says what it shows, and
+neither is moved or reparented.
 
-| Option or member | Type                                | Meaning                                                         |
-| ---------------- | ----------------------------------- | --------------------------------------------------------------- |
-| `content`        | client, workspace or `null`         | What the View shows.                                            |
-| `size`           | `{ width, height }`                 | The View's rectangle. The same numbers as `width` and `height`. |
-| `contentFit`     | `"contain"`, `"cover"`, `"stretch"` | How the picture is fitted to `size`. Default `"stretch"`.       |
-| `camera`         | `Camera3D` or `null`                | The camera the content is drawn through. `null` is flat.        |
+| Option or member   | Type                                | Meaning                                                                 |
+| ------------------ | ----------------------------------- | ----------------------------------------------------------------------- |
+| `showClient(c)`    | method                              | Shows a client.                                                         |
+| `showWorkspace(w)` | method                              | Shows a workspace.                                                      |
+| `size`             | `{ width, height }`                 | The View's rectangle. The same numbers as `width` and `height`.         |
+| `fit`              | `"contain"`, `"cover"`, `"stretch"` | How the picture is fitted to `size`. Default `"stretch"`.               |
+| `camera`           | `Camera3D`                          | The camera the content is drawn through. `clearCamera()` makes it flat. |
+| `orphaned`         | boolean                             | `true` once what the View showed is gone.                               |
 
 ```ts
-const panel = new View({
-    content: gnoblin.clients.focused,
-    size: { width: 0.9, height: 0.55 },
-    contentFit: "contain",
-    input: "forward",
-});
+import { View } from "gnoblin-std";
+
+const panel = new View({ size: { width: 0.9, height: 0.55 }, fit: "contain", input: "forward" });
+const focused = gnoblin.input.primary.focusedClient;
+if (focused) {
+    panel.showClient(focused);
+}
 gnoblin.scene.root.add(panel);
 ```
 
-A View of a client is that client's picture, drawn by the compositor at `size`. The compositor stretches it, so
-`contentFit` is kept and read back for a client but only changes how a workspace is drawn.
+A View of a client is that client's picture, drawn by the compositor at `size`. The compositor stretches it, so `fit` is
+kept and read back for a client but only changes how a workspace is drawn.
 
 A workspace is not a tree node, so the compositor has no node to draw for it. The View keeps a picture made of one child
 View for each window on the workspace, each showing that window and placed where the window sits in the workspace's area.
 
 - The area is the output that shows the workspace, or the smallest rectangle that holds its windows.
-- `contentFit` scales the picture into `size`. `"contain"` keeps the aspect ratio and centres it. `"cover"` keeps it and
+- `fit` scales the picture into `size`. `"contain"` keeps the aspect ratio and centres it. `"cover"` keeps it and
   fills `size`; what falls outside is not clipped. `"stretch"` scales each axis on its own.
 - The picture follows the workspace. A window that opens, closes, moves or resizes changes it in the same frame.
 - A window that its layout hides, such as the others of a monocle layout, is hidden in the picture, and so are minimised
@@ -143,25 +162,34 @@ as against `width` and `height`, which are what the shell asked for.
 
 ## Place a window with a transform
 
-- A window takes the same `position`, `rotation`, `scale` and `transform` as a node.
+- A window has `position`, `rotation` and `scale` as lists of three numbers, as a node has them as vectors.
 - A window's `position` is its `x`, `y` and its depth `z`.
-- A transform that gives a position moves the window's rectangle, and a layout that places the window will place it again.
+- A position that is written moves the window's rectangle, and a layout that places the window will place it again.
 - The rotation and the scale are the window's own.
 
 ```ts
-client.set({ opacity: 0.92, transform: { rotation: { x: 0, y: 0.12, z: 0 } } }, { duration: 250, easing: "ease-out" });
-client.set({ opacity: 1, visible: true, transform: { rotation: [0, 0, 0], scale: 1 } });
+const client = gnoblin.input.primary.focusedClient;
+if (client) {
+    gnoblin.requestTransition(
+        () => {
+            client.opacity = 0.92;
+            client.rotation = [0, 0.12, 0];
+        },
+        { duration: 250, easing: "ease-out" },
+    );
+}
 ```
 
-`set` is one `requestTransition`. With options the compositor animates the change, and without them it is atomic and
-immediate. See [Animation](/js-transitions).
+`requestTransition` animates the change. Plain writes are atomic and immediate. See [Animation](/js-transitions).
 
 ## Spatial layouts
 
-A layout's `compute` may return a `transform` for a node instead of, or as well as, `bounds`. `ArcLayout` does: it puts the
-nodes on an arc around the viewer, the focused one at the front.
+A layout's `compute` may return more than `bounds` for a node: a depth, a turn, a scale and an offset. `ArcLayout` does:
+it puts the nodes on an arc around the viewer, the focused one at the front.
 
 ```ts
+import { ArcLayout } from "gnoblin-std";
+
 const arc = new ArcLayout({ radius: 1200, spacing: 0.35 });
 ```
 
@@ -172,11 +200,10 @@ const arc = new ArcLayout({ radius: 1200, spacing: 0.35 });
 
 What a flat workspace does with a `transform` placement:
 
-- `position.x` and `position.y` move the window from the centre of its `bounds`. With no `bounds` the starting rectangle is
+- `offsetX` and `offsetY` move the window from the centre of its `bounds`. With no `bounds` the starting rectangle is
   the window's own size, centred in the workspace's area. The unit is pixels, with y down, and the result is rounded to whole
   pixels.
-- `position.z` is the window's depth `z`. The rotation and the scale are the window's `rotation` and `scale`.
-- A `z`, `rotation` or `scale` given on the placement itself wins over the transform's.
+- `z` is the window's depth. The rotation and the scale are the window's `rotation` and `scale`.
 
 So an arc on a flat workspace shows the windows in a row, each offset across by `radius * sin(angle)`, with the depth and
 the turn about Y that the compositor draws for a window placed in 3D.
@@ -186,30 +213,32 @@ camera on the workspace, which is not built.
 
 ## Bind a property
 
-`properties.bind(name, compute)` makes a property follow a function. It sets the property now, and sets it again when
-anything the function read has changed. `bind(name, compute)` on the same object does the same.
+`properties.bindDouble(name, compute)` makes a number property of a window follow a function. It sets the property now, and
+sets it again when anything the function read has changed.
+
+- A window's `properties` also has `bindBool`, `bindString` and `bindList`.
+- A scene node's `properties` has `bindNumber`, `bindFlag`, `bindText` and `bindNumbers`.
 
 ```ts
-client.properties.bind("opacity", () => Math.max(0.25, 1 - client.x / 2500));
-
-const development = gnoblin.workspaces.get("development");
-development?.properties.bind("name", () => (development.clients.length > 4 ? "busy" : "quiet"));
+const client = gnoblin.input.primary.focusedClient;
+client?.properties.bindDouble("opacity", () => Math.max(0.25, 1 - client.x / 2500));
 ```
 
 What it follows:
 
 - The properties of windows and nodes that `compute` reads: `x`, `opacity`, `position`, `committedSize` and the rest.
-- The membership of a collection that `compute` reads: `workspace.clients.length`, `gnoblin.clients`, a selection.
+- The membership of a collection that `compute` reads: `gnoblin.clients.length`, a selection.
 
 - A binding runs when one of those changed and at no other time: there is no timer and no polling.
 - A frame runs each changed binding once.
 - A binding's write can change what another binding read, so the frame repeats, up to 8 passes.
 - A binding still changing after that is in a cycle. The shell reports it once, with the properties it reads.
 
-`bind` returns a `PropertyBinding` with `property`, `alive` and `dispose()`.
+Each bind call returns a `PropertyBinding` (a `NodeBinding` for a scene node) with `property`, `alive` and `dispose()`.
+`properties.unbind(name)` ends the binding of a property, and `properties.dispose()` ends them all.
 
 - Disposing it keeps the last value.
-- A binding also ends when its owner is destroyed or, for a workspace, removed from `gnoblin.workspaces`.
+- A binding also ends when its owner is destroyed.
 - A second binding of the same property replaces the first.
 - A direct assignment to a bound property stands until a value that was read changes.
 
@@ -227,10 +256,11 @@ none of them sees the compositor as before.
 
 **The compositor's own animations.** In a session that has the std library (a shell that imports `gnoblin-std`, or the stock
 desktop), the compositor fades a window in when it maps, fades it out when it is closed, unmapped or hidden, and tweens a
-change of its placement over 200 ms: the library sets those lengths as it opens. In a core-only session nothing sets them
-and they are zero, so a window appears, moves and leaves at once and the shell animates its own windows. The seat's
-`builtin_motion` (boolean, `true` by default) turns all three off in a session that has them: a window then appears, moves and leaves at once, and only the shell's own timed writes
-play.
+change of its placement over 200 ms: the library sets those lengths as it opens.
+
+In a core-only session nothing sets them and they are zero, so a window appears, moves and leaves at once and the shell
+animates its own windows. The seat's `builtin_motion` (boolean, `true` by default) turns all three off in a session that
+has them: a window then appears, moves and leaves at once, and only the shell's own timed writes play.
 
 - It is one switch for the session, not a property of each window. The fade in starts as the window's node is made,
   before a shell has had a frame to write anything on that node.
@@ -343,4 +373,4 @@ client set.
 ## Not built
 
 - A perspective camera that projects a flat workspace's windows is not built, so `ArcLayout` is not seen as a ring.
-- `contentFit` does not fit a client's picture; see [Views](#views).
+- `fit` does not fit a client's picture; see [Views](#views).

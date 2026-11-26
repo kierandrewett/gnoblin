@@ -63,22 +63,25 @@ following the objects: a window that later gets the matching title joins it, and
 listen to it and style it like any collection.
 
 ```ts
+import "gnoblin-std";
+
 const terminals = gnoblin.clients.where({ appId: "foot" });
 terminals.style.opacity = 0.9;
 ```
 
-- A query value is compared with `===`. An array matches when the property equals any of its entries.
+- A query value is compared with `===`. To match any of several values, use `anyId`, `anyAppId` or `anyTitle` (windows)
+  or `anyId` or `anyName` (outputs) with an array: the property equals any of its entries.
 - The keys depend on the collection. Windows take `id`, `appId`, `title`, `focused`, `fullscreen`, `x`, `y`, `width` and
-  `height`. Workspaces take `id`, `name`, `index` and `active`. Outputs take `id`, `name`, `make`, `model`, `mode`,
-  `scale`, `primary`, `enabled`, `x`, `y`, `width` and `height`.
-- `where(query, { priority })` ranks the selection's `style` among the other selections that style a window: the higher
+  `height`. Outputs take `id`, `name`, `make`, `model`, `mode`, `scale`, `primary`, `enabled`, `x`, `y`, `width` and
+  `height`. Workspaces have no `where`: select them with `gnoblin.find("Workspace", filter)`.
+- `where(query, priority)` ranks the selection's `style` among the other selections that style a window: the higher
   priority wins. See [window style](/js-style).
 
 ## Choosing between them
 
 - Use `find` to act once on what exists now, as a key handler does.
 - Use `where` to keep a rule true as windows come and go, such as a style for every terminal.
-- Use the collection's own `find(predicate)` and `filter(predicate)` when you want a single object or an array in plain
+- Use `toList()` on a collection, then `find` or `filter` on the array, when you want a single object or an array in plain
   JavaScript: [Windows](windows#read-windows).
 
 `gnoblin.focus.history(filter?)` returns the windows in the order they were last focused: [Focus and activation](focus-activation#focus-history).

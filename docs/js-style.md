@@ -1,15 +1,18 @@
 # JavaScript window style
 
 A window's look is a style: plain objects you set from `shell.ts` or from any listener.
-Import the classes from `gnoblin`:
+Import the classes from `gnoblin-std`:
 
 ```ts
-import { ClientStyle, Shadow } from "gnoblin-std";
+import "gnoblin-std";
 
 gnoblin.clients.style.opacity = 0.95;
 gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];
 gnoblin.clients.where({ appId: "firefox" }).style.shadows = [];
-gnoblin.clients.get("42").style.opacity = 0.8;
+const client = gnoblin.clients.get("42");
+if (client) {
+    client.style.opacity = 0.8;
+}
 ```
 
 ## Scopes
@@ -109,6 +112,8 @@ client.style.backdropFilter[0] instanceof BlurFilter; // true
 The entries of a list are objects, and changing one changes the style:
 
 ```ts
+import "gnoblin-std";
+
 gnoblin.clients.style.shadows = [{ blur: 10 }];
 gnoblin.clients.style.shadows[0].blur = 20; // every client that inherits the list follows
 ```
@@ -120,21 +125,25 @@ reaches that scope and nobody else:
 client.style.shadows[0].blur = 40; // client now has its own list [40]; other clients still inherit [20]
 ```
 
-A list also takes `add` and `remove`, which check and apply at once. `add` takes an element or the literal that makes one and
-returns the element; `remove` takes an element out and says whether it was there. Both copy an inherited list first, as a
-write to an element does:
+A style also has a list object for each list: `borderList()`, `shadowList()`, `filterList()` and `backdropFilterList()`.
+
+- A list object has `add`, `insert`, `replace`, `remove(index)`, `clear`, `unset` and `items`, which check and apply at once.
+- `add` takes an element or the literal that makes one, and returns the element.
+- Each copies an inherited list first, as a write to an element does.
+
+For example:
 
 ```ts
-import { ClientStyle, Border, Shadow, BlurFilter } from "gnoblin-std";
+import { BlurFilter, Border } from "gnoblin-std";
 
-const style = new ClientStyle({ cornerRadius: 12 });
-style.borders.add(new Border({ width: 2, color: "#7c3aed" }));
-style.shadows.add({ y: 8, blur: 24, color: "#0006" });
-style.backdropFilter.add(new BlurFilter({ radius: 18 }));
-gnoblin.clients.style = style;
+const style = gnoblin.clients.style;
+style.cornerRadius = 12;
+style.borderList().add(new Border({ width: 2, color: "#7c3aed" }));
+style.shadowList().add({ y: 8, blur: 24, color: "#0006" });
+style.backdropFilterList().add(new BlurFilter({ radius: 18 }));
 ```
 
-A bad entry, a ninth entry and an element that is already in the list throw and leave the list as it was.
+A bad entry and a ninth entry throw and leave the list as it was.
 
 After that the client does not follow later edits of the inherited list. You can also change an array in place with
 `push` or `splice`. The shell checks each array once per frame and takes the change then.
@@ -202,6 +211,8 @@ each one a style sets is reported once per reload as `not applied: style.<proper
 A window holds at most 16 effects (at most 8 shadows and 8 borders, and the blur).
 
 ```ts
+import "gnoblin-std";
+
 gnoblin.clients.style.cornerRadius = 12;
 gnoblin.clients.style.borders = [{ width: 1, color: "#ffffff33", inset: true }];
 gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];

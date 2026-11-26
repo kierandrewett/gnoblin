@@ -13,7 +13,7 @@ API: see [Settings with no object](/js-settings). Read the order windows were fo
 was. To raise the window as well, call `client.raise()`.
 
 ```ts
-const client = gnoblin.clients.find((c) => c.appId === "foot");
+const client = gnoblin.clients.toList().find((c) => c.appId === "foot");
 client?.focus();
 client?.raise();
 ```

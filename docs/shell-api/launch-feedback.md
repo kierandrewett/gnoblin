@@ -12,7 +12,7 @@ gnoblin.input.primary.bind("Super+e", () => {
             onTimedOut: () => gnoblin.spawn(["notify-send", "The terminal did not open"]),
         },
     });
-    gnoblin.spawn("foot");
+    gnoblin.spawn(["foot"]);
 });
 ```
 

@@ -7,7 +7,7 @@ describes. Each method receives `gnoblin.session` or `gnoblin.runtime` first, th
 ## Session
 
 Attach a `SessionListener` with `gnoblin.session.addListener(listener)`. Every method is optional, and each is also a
-named subscription, `gnoblin.session.onBell(handler)`, that returns the function that detaches it.
+named subscription, `gnoblin.session.on("bell", handler)`, that returns a `Listener` whose `stop()` detaches it.
 
 | Method                                         | Compositor signal                    | When                                                                |
 | ---------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------- |
@@ -34,12 +34,13 @@ anything. A script that wants to start a reload calls `gnoblin.runtime.reloadCon
 
 ```ts
 import { SessionListener } from "gnoblin-core";
-import { toast } from "gnoblin-std";
+import type { LockState, Session } from "gnoblin-core";
+import { Toast } from "gnoblin-std";
 
 class LockToast extends SessionListener {
-    onLockStateChanged(session, state) {
+    onLockStateChanged(_session: Session, state: LockState) {
         if (state === "locked") {
-            toast("Locked");
+            Toast.show("Locked");
         }
     }
 }

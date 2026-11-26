@@ -20,7 +20,7 @@ The stock setup binds a three-finger swipe to `WorkspaceSlideBinding`, which fol
 ```ts
 import { WorkspaceSlideBinding } from "gnoblin-std";
 
-gnoblin.input.primary.bind("Swipe3", new WorkspaceSlideBinding());
+new WorkspaceSlideBinding({ trigger: "Swipe3" }).install();
 ```
 
 A trigger that is already bound at the same priority is refused, so delete the stock line before you bind a three-finger

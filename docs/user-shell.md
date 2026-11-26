@@ -133,7 +133,7 @@ Your code runs in the shell's own JavaScript engine, not in a browser or Node.
 - It has the language's objects: `Date`, `JSON`, `RegExp`, `Map`, `Set`, `Promise`, typed arrays and the rest of ECMAScript.
 - It has `console`, which writes to the shell's log: see [Debugging](/typescript-shell#debugging).
 - It has no files, no network, no `setTimeout` and no packages. Start a program with `gnoblin.spawn`, wait with
-  `gnoblin.timers.after`, and show a message with `toast(text)`.
+  `gnoblin.timers.after`, and show a message with `Toast.show(text)`.
 - Output of a program you start goes where its `stdout` option says: see [Processes](/shell-api/processes).
 
 ## Time and memory limits

@@ -9,7 +9,7 @@ const pad = gnoblin.input.devices.find((device) => device.name === "Elgato Strea
 pad?.bind(
     "F13",
     () => {
-        gnoblin.spawn("foot");
+        gnoblin.spawn(["foot"]);
     },
     { only: true },
 );
@@ -22,30 +22,34 @@ the device types nothing into a window.
 
 `gnoblin.input` has these members:
 
-| Member     | Meaning                                                          |
-| ---------- | ---------------------------------------------------------------- |
-| `contexts` | The seats, each an `InputContext`, then the ones a script added. |
-| `primary`  | The first seat. It throws when the compositor reports no seat.   |
-| `devices`  | Every device of every seat.                                      |
+| Member                                | Meaning                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------------- |
+| `contexts`                            | The seats, each an `InputContext`, then the ones a script added, as an array.   |
+| `primary`                             | The first seat, or `undefined` when the compositor reports no seat.             |
+| `devices`                             | Every device of every seat, as an array.                                        |
+| `focusedClient`                       | The window that holds the keyboard focus, or `undefined`.                       |
+| `addContext(context)`                 | Adds a context you made. See [Your own input context](#your-own-input-context). |
+| `removeContext(context)`              | Removes it. Returns `true` when it was there.                                   |
+| `findDevice(id)`, `findContext(name)` | The device or context with that id or name, or `undefined`.                     |
 
 An `InputContext` is one seat:
 
-| Member                     | Meaning                                                                       |
-| -------------------------- | ----------------------------------------------------------------------------- |
-| `name`                     | The seat's name.                                                              |
-| `devices`                  | The devices on this seat.                                                     |
-| `bindings`                 | The context's bindings, by id.                                                |
-| `focusedClient`            | The window that holds the keyboard focus, or `null`. Read on every access.    |
-| `pointer`                  | The pointer in compositor coordinates, `{ x, y }`.                            |
-| `settings`                 | The window-management settings the seat publishes. See below.                 |
-| `clearFocus()`             | Takes the keyboard focus from every window.                                   |
-| `hitTest(position)`        | The topmost window under a point and the point in its coordinates, or `null`. |
-| `bind(trigger, action)`    | Binds a chord for every device. See [Keyboard shortcuts](keyboard-shortcuts). |
-| `describeBindings()`       | Every binding on the seat with its owner, priority and rank.                  |
-| `makeBindingOnly(name)`    | Makes the devices called `name` binding-only.                                 |
-| `releaseBindingOnly(name)` | Gives that up. Returns `false` when there was none.                           |
-| `isBindingOnly(name)`      | Whether those devices are binding-only.                                       |
-| `id`, `alive`              | The name, and whether the context is still in `gnoblin.input.contexts`.       |
+| Member                     | Meaning                                                                            |
+| -------------------------- | ---------------------------------------------------------------------------------- |
+| `name`                     | The seat's name.                                                                   |
+| `devices`                  | The devices on this seat.                                                          |
+| `bindings`                 | The context's bindings, by id.                                                     |
+| `focusedClient`            | The window that holds the keyboard focus, or `undefined`.                          |
+| `pointer`                  | The pointer in compositor coordinates, `{ x, y }`.                                 |
+| `settings`                 | The window-management settings the seat publishes. See below.                      |
+| `clearFocus()`             | Takes the keyboard focus from every window.                                        |
+| `hitTest(position)`        | The topmost window under a point and the point in its coordinates, or `undefined`. |
+| `bind(trigger, action)`    | Binds a chord for every device. See [Keyboard shortcuts](keyboard-shortcuts).      |
+| `describeBindings()`       | Every binding on the seat with its owner, priority and rank.                       |
+| `makeBindingOnly(name)`    | Makes the devices called `name` binding-only.                                      |
+| `releaseBindingOnly(name)` | Gives that up. Returns `false` when there was none.                                |
+| `isBindingOnly(name)`      | Whether those devices are binding-only.                                            |
+| `id`, `alive`              | The name, and whether the context is still in `gnoblin.input.contexts`.            |
 
 `settings` holds the values the compositor publishes for the seat. A file reads them and cannot change them:
 
@@ -128,7 +132,7 @@ A device is an instance of the class its capabilities name. Test with `instanceo
 - A device that is none of these, such as a lid switch, is a plain `InputDevice`.
 
 ```ts
-import { gnoblin, Keyboard, Mouse, Touchpad } from "gnoblin-core";
+import { Keyboard, Mouse, Touchpad } from "gnoblin-core";
 
 for (const device of gnoblin.input.devices) {
     if (device instanceof Mouse) {
@@ -159,7 +163,7 @@ What backs them:
 
 - The compositor reads device settings from the configuration document's `input` section, once for each kind of device. A
   write on one `Mouse` is the setting of every mouse, and another mouse reads the value back. A setting nobody wrote reads
-  `undefined`, and assigning `undefined` gives it back to the system's value.
+  `undefined`, and `reset(name)` gives it back to the system's value.
 - The shell commits the document with these writes when the entry loads, and again on the frame after a later write (for
   example from a key handler). A value outside the range throws a `RangeError` at the write; one the document refuses
   throws a `GnoblinError` with code `config_rejected` and the document's reason.
@@ -172,17 +176,17 @@ What backs them:
 
 ## Your own input context
 
-`new InputContext({ name })` makes a context, and `gnoblin.input.contexts.add(context)` puts it in the list. A device
+`new InputContext(name)` makes a context, and `gnoblin.input.addContext(context)` puts it in the list. A device
 assigned to it with `device.context = context` is held by it, and the context's bindings match only the events of the
 devices it holds:
 
 ```ts
-import { gnoblin, InputContext } from "gnoblin-core";
+import { InputContext } from "gnoblin-core";
 
-const other = new InputContext({ name: "secondary" });
-gnoblin.input.contexts.add(other);
+const other = new InputContext("secondary");
+gnoblin.input.addContext(other);
 other.bind("Super+Return", () => {
-    gnoblin.spawn("foot");
+    gnoblin.spawn(["foot"]);
 });
 
 const keyboard = gnoblin.input.devices.find((device) => device.name === "USB Keyboard");
@@ -203,26 +207,11 @@ Be exact about what is native and what is not. The compositor has one input seat
 - A layout's bindings (move and resize drags) stay with the seat's own context.
 - Moving a device cancels a drag its old bindings run, so no button is left held. A device that is unplugged and plugged in
   again is a new device, back in its seat's context. A context cannot take a device of another seat.
-- `contexts.add` throws a `GnoblinError` with code `already_exists` for a name that is taken, and `unavailable` when the compositor
-  reports no seat.
-- `contexts.remove(context)` hands the devices back to their seat's context and returns `true`. The seats' own contexts
+- `addContext` throws a `GnoblinError` with code `already_exists` for a name that is taken, and `unavailable` when the
+  compositor reports no seat.
+- `removeContext(context)` hands the devices back to their seat's context and returns `true`. The seats' own contexts
   cannot be removed (code `denied`).
 - A context that is not in the list throws code `invalid_state` from `pointer`, `clearFocus`, `makeBindingOnly` and
   `attachLayout`.
 
-`gnoblin.input.contexts` and `devices` are live lists: `length`, `at(index)`, `get(id)`, `find`, `filter`, `map`, `flatMap`
-and iteration read what is there when they are called.
-
-## Extensions
-
-The registry lists the optional extensions the shell knows:
-
-- Each entry has an `id` and a `status`.
-- The XR program runs out of process, so its entry is `ready` while it has a session and `unloaded` otherwise.
-- `gnoblin.extensions.xr` is `null` while it is unloaded.
-
-```ts
-for (const extension of gnoblin.extensions) {
-    console.log(extension.id, extension.status);
-}
-```
+`gnoblin.input.contexts` and `devices` are arrays: each read gives what is there when you read it.

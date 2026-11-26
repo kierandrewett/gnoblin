@@ -1,23 +1,23 @@
 # Window snapping
 
 Snapping tiles a window to an edge of the work area. Dropping a dragged window on an edge snaps it, and the stock move
-binding does that. A script can snap a window by itself with the helpers `gnoblin` exports.
+binding does that. A script can snap a window by itself with `ClientState` and `Snap`, which `gnoblin-std` exports.
 
 ```ts
-import { snapClient, unsnapClient } from "gnoblin-std";
+import { ClientState } from "gnoblin-std";
 
 const input = gnoblin.input.primary;
 input.bind("Super+Shift+Left", () => {
-    const client = gnoblin.clients.focused;
+    const client = input.focusedClient;
     const area = gnoblin.workspaces.area;
     if (client && area) {
-        snapClient(client, "left", { edgeTiling: true, area });
+        ClientState.of(client).snapTo("left", area, true);
     }
 });
 input.bind("Super+Shift+Down", () => {
-    const client = gnoblin.clients.focused;
+    const client = input.focusedClient;
     if (client) {
-        unsnapClient(client);
+        ClientState.of(client).unsnap();
     }
 });
 ```
@@ -39,21 +39,22 @@ A corner counts as the left or right edge before the top. The halves are whole p
 
 Edge tiling is on. The older `edgeTiling` and `dragConstraint` settings have no object in the API, so a file cannot turn them off (see [Settings with no object](/js-settings)).
 
-The stock move drag, `ClientMoveBinding`, snaps a window dropped within `snap` pixels of an edge. The default is 4, and
+The stock move drag, `MoveBinding`, snaps a window dropped within `snapMargin` pixels of an edge. The default is 4, and
 `snap: false` never snaps.
 
 ## Functions
 
-| Function                            | Does                                                                                                   |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `edgeZone(x, y, area, margin?)`     | The zone a point is within `margin` pixels of, or `null`. `margin` defaults to 4.                      |
-| `tileRect(zone, area)`              | The rectangle a window tiles to in a zone, or `null` for a name that is not a zone.                    |
-| `snapClient(client, zone, options)` | Tiles a window. Returns `false`, and moves nothing, when edge tiling is off or the zone does not tile. |
-| `unsnapClient(client)`              | Puts a snapped window back where it floated. Returns `false` when it is not snapped.                   |
-| `snappedZone(client)`               | The zone a window is snapped to, or `null`.                                                            |
+| Function                                                 | Does                                                                                                   |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `Snap.edgeZone(x, y, area, margin?)`                     | The zone a point is within `margin` pixels of, as `{ zone }`, or `undefined`. `margin` defaults to 4.  |
+| `Snap.tileRect(zone, area)`                              | The rectangle a window tiles to in a zone.                                                             |
+| `ClientState.of(client).snapTo(zone, area, edgeTiling?)` | Tiles a window. Returns `false`, and moves nothing, when edge tiling is off or the zone does not tile. |
+| `ClientState.of(client).unsnap()`                        | Puts a snapped window back where it floated. Returns `false` when it is not snapped.                   |
+| `ClientState.of(client).snap`                            | The snap of a window: its `zone` and the rectangle it floated at, or `undefined`.                      |
+| `ClientState.of(client).forgetSnap()`                    | Forgets the snap and leaves the window where it is.                                                    |
 
-`options` of `snapClient` is `{ edgeTiling, area }`: whether edge tiling is on, and the work area the window tiles in, such as
-`gnoblin.workspaces.area` or `output.area`.
+`area` of `snapTo` is the work area the window tiles in, such as `gnoblin.workspaces.area`. `edgeTiling` says whether edge
+tiling is on, and it defaults to on.
 
 A maximised window floats first, so unsnapping returns it to the rectangle it had before it was maximised. A window that is
 already snapped keeps the rectangle it first floated at. The snap record is kept beside the window, never on it, so a

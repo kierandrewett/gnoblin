@@ -114,8 +114,8 @@ A dialog has no View of its own. Its parent's View shows it, because the dialog 
 A client that is `secure` never gets a View, and one that turns secure loses it. The compositor enforces that on its
 own: it masks a secure node in every View's picture.
 
-A script can keep other windows out of the room with an `accept` function. It runs every frame, so a window comes in
-when it starts to say yes:
+A script on the TypeScript library can keep other windows out of the room with an `accept` function. It runs every frame,
+so a window comes in when it starts to say yes:
 
 ```ts
 gnoblin.extensions.configure("xr", {
@@ -275,6 +275,11 @@ switching hands. On a Touch-style controller B is the secondary input, so it sen
 comes from the right hand only.
 
 ## Scripting XR in TypeScript
+
+XR scripting belongs to the TypeScript library. The native `gnoblin-core` and `gnoblin-std` have no `gnoblin.extensions`,
+so a shell that uses `gnoblin.extensions` or imports `gnoblin-std/extensions/xr` runs on the TypeScript library, as
+[Which library a shell runs on](/typescript-shell#which-library-a-shell-runs-on) says. The examples below are for that
+library.
 
 The classes of `gnoblin-std/extensions/xr` are in the TypeScript shell. They are objects over the tree's nodes, like a
 `Client`: the XR program is a separate process, and nothing here loads into the shell.

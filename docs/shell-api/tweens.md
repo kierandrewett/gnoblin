@@ -1,12 +1,20 @@
 # Tweens and easing
 
-`client.set(values, options)` moves a window's properties to new values over time. The compositor plays the animation in
-its render loop, so each frame follows the display and the script does not run per frame.
+`gnoblin.requestTransition(work, options)` moves a window's properties to new values over time. The callback `work` writes
+the new values, and the compositor plays the animation in its render loop, so each frame follows the display and the
+script does not run per frame.
 
 ```ts
 gnoblin.input.primary.bind("Super+o", () => {
-    const client = gnoblin.clients.focused;
-    client?.set({ opacity: client.opacity < 1 ? 1 : 0.5 }, { duration: 300 });
+    const client = gnoblin.input.primary.focusedClient;
+    if (client !== undefined) {
+        gnoblin.requestTransition(
+            () => {
+                client.opacity = client.opacity < 1 ? 1 : 0.5;
+            },
+            { duration: 300 },
+        );
+    }
 });
 ```
 
@@ -15,8 +23,8 @@ on the next press.
 
 ## Animate a window
 
-`set(values, options)` takes the values to write and the options of the movement. It is `gnoblin.requestTransition` for one
-object, so it has the same options and returns the same `Transition`. See [Animation](/js-transitions).
+`gnoblin.requestTransition(work, options)` runs `work` once, now. Every write it makes to a window is staged, and the
+options say how the window moves to the staged values. It returns a `Transition`. See [Animation](/js-transitions).
 
 | Option     | Values                                                 | Default    | Meaning                                                   |
 | ---------- | ------------------------------------------------------ | ---------- | --------------------------------------------------------- |
@@ -24,7 +32,7 @@ object, so it has the same options and returns the same `Transition`. See [Anima
 | `easing`   | `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out` | `ease-out` | The curve between the start and the end, as CSS names it. |
 | `delay`    | milliseconds, 0 or more                                | 0          | How long the compositor holds the start before it begins. |
 
-Without `options` the values are written at once.
+Without `options` the movement takes 250 ms along `ease-out`.
 
 The properties the compositor moves over time:
 
@@ -37,8 +45,18 @@ The properties the compositor moves over time:
 | `scale`                     | `[x, y, z]` numbers | Scale along each axis.                     |
 
 Any other writable property, such as `visible`, is written at once with the rest. Reading a property back right after the
-call gives the end value; the compositor draws the way there. A property that is not writable, a value of the wrong kind or
-a `duration` below 0 throws a `TypeError`, and nothing is written.
+call gives the end value; the compositor draws the way there. A write the tree refuses or a `duration` below 0 throws, and
+nothing is written.
+
+To move one window or workspace, call its `set(values, options)`. It is `requestTransition` for that one object:
+
+- Every key of `values` must be a writable property, or the call throws a `TypeError` and writes nothing.
+- It takes the same options and returns the same `Transition`.
+- Without options it writes the values at once.
+
+```ts
+gnoblin.input.primary.focusedClient?.set({ x: 0, y: 0 }, { duration: 400, easing: "ease-out" });
+```
 
 The curves are the CSS timing functions of the same names:
 
@@ -49,8 +67,17 @@ The curves are the CSS timing functions of the same names:
 - `ease-in-out` speeds up in the first half and slows down in the second.
 
 ```ts
-const client = gnoblin.clients.focused;
-client?.set({ x: 0, y: 0, rotation: [0, 0, 0.1] }, { duration: 400, easing: "ease-out" });
+const client = gnoblin.input.primary.focusedClient;
+if (client !== undefined) {
+    gnoblin.requestTransition(
+        () => {
+            client.x = 0;
+            client.y = 0;
+            client.rotation = [0, 0, 0.1];
+        },
+        { duration: 400, easing: "ease-out" },
+    );
+}
 ```
 
 The compositor draws a window's own open, close and minimise animations itself, and a value you set while one plays can be
@@ -62,29 +89,42 @@ To animate with a transition object that you can pause, reverse or cancel, see [
 
 ## Workspace slides
 
-`gnoblin.show(workspace, { duration })` slides the windows of the two workspaces over `duration` milliseconds. The stock keys
+`gnoblin.workspaces.show(workspace, { duration })` slides the windows of the two workspaces over `duration` milliseconds. The stock keys
 `Super+1` to `Super+9` slide over 250 ms. See [Workspaces](workspaces#show-a-workspace).
 
 ## Reduced motion
 
 `gnoblin.motion(duration)` returns `duration` milliseconds, or 0 while the seat's `reducedMotion` setting is on. The stock animations call
-it, so a workspace slide, `client.set` with a duration and the titlebar's close fade take no time for a user who asks for
-reduced motion. Pass your own durations through it:
+it, so a workspace slide and the titlebar's close fade take no time for a user who asks for reduced motion. Pass your own
+durations through it:
 
 ```ts
 const duration = gnoblin.motion(300);
 ```
 
-`client.set` and `gnoblin.show` apply it themselves, so call `motion` only for a duration you use elsewhere, such as
-`gnoblin.timers.after`.
+`gnoblin.workspaces.show` applies it itself, so call `motion` for the duration you give `requestTransition` and for one you
+use elsewhere, such as `gnoblin.timers.after`.
 
 ## Run something after an animation
 
-`set` returns a `Transition`. Its `finished` promise resolves when the animation ends:
+`requestTransition` returns a `Transition`. Its `finished` event runs when the animation ends, and tells whether it was
+cancelled:
 
 ```ts
-const client = gnoblin.clients.focused;
-client?.set({ opacity: 0 }, { duration: 200 }).finished.then(() => client.close());
+const client = gnoblin.input.primary.focusedClient;
+if (client !== undefined) {
+    const fade = gnoblin.requestTransition(
+        () => {
+            client.opacity = 0;
+        },
+        { duration: 200 },
+    );
+    fade.on("finished", (cancelled) => {
+        if (!cancelled) {
+            client.close();
+        }
+    });
+}
 ```
 
 `gnoblin.timers.after(ms, fn)` runs at the first frame after the time. See [Operations, errors and timers](errors#timers).
@@ -96,30 +136,5 @@ config can read the setting, as `gnoblin.input.primary.settings.reducedMotion`, 
 
 ## Animate a window yourself
 
-`client.set(values, options)` moves properties to `values` over `options.duration` milliseconds along a named curve.
-
-- The properties that move over time are `x`, `y`, `width`, `height`, `opacity`, `z`, `rotation` and `scale`.
-- The curves are the CSS names `linear`, `ease`, `ease-in`, `ease-out` (the default) and `ease-in-out`.
-- A duration of `0`, or no options, writes at once.
-- `gnoblin.motion(duration)` returns `0` while reduced motion is on, so a script that passes its duration through it
-  respects the setting.
-
-This fades each Text Editor window in when it opens:
-
-```ts
-import { CollectionListener } from "gnoblin-core";
-import type { Client } from "gnoblin-core";
-
-gnoblin.clients.addListener(
-    new (class extends CollectionListener {
-        onAdded(client: Client) {
-            if (client.appId === "org.gnome.TextEditor") {
-                client.opacity = 0;
-                client.set({ opacity: 1 }, { duration: 300, easing: "ease-out" });
-            }
-        }
-    })(),
-);
-```
-
-Replace the app id with the value `gnoblinctl window list` prints.
+[Animate a window yourself](/guides/animations#animate-a-window-yourself) has a complete example that fades each window
+in when it opens.

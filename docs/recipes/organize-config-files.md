@@ -7,12 +7,12 @@ In `windows.ts`:
 
 ```ts
 // windows.ts
-import { CollectionListener } from "gnoblin-core";
+import { ClientCollectionListener } from "gnoblin-core";
 import type { Client } from "gnoblin-core";
 
 export function placeWindows(): void {
     gnoblin.clients.addListener(
-        new (class extends CollectionListener {
+        new (class extends ClientCollectionListener {
             onAdded(client: Client) {
                 if (client.appId === "org.gnome.TextEditor") {
                     client.maximised = true;

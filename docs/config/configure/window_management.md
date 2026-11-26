@@ -14,19 +14,16 @@ A client that draws its own titlebar handles those clicks itself, and GTK apps u
 
 ## Move and resize with the pointer
 
-The floating layout binds `Super` and a left drag to move a window and `Super` and a right drag to resize it from the
-nearest corner. These gestures work on application windows with client or server decorations. To bind another drag, set
-the layout's triggers when you build it:
+`MoveBinding` binds `Super` and a left drag to move a window, and `ResizeBinding` binds `Super` and a right drag to resize
+it from the nearest corner. These gestures work on application windows with client or server decorations. The stock
+`shell.ts` installs both. To bind another drag, give the binding a `trigger` and install it:
 
 ```ts
-import { FloatingLayout, Workspace } from "gnoblin-std";
+import { FloatingLayout, MoveBinding, ResizeBinding, Workspace } from "gnoblin-std";
 
-gnoblin.workspaces.add(
-    new Workspace({
-        id: "main",
-        layout: new FloatingLayout({ triggers: { move: "Alt+MouseLeft+Drag", resize: "Alt+MouseRight+Drag" } }),
-    }),
-);
+gnoblin.workspaces.add(new Workspace("main", { layout: new FloatingLayout() }));
+new MoveBinding({ trigger: "Alt+MouseLeft+Drag" }).install();
+new ResizeBinding({ trigger: "Alt+MouseRight+Drag" }).install();
 ```
 
 ## Workspaces

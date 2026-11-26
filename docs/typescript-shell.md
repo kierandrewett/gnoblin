@@ -11,11 +11,11 @@ A `shell.ts` is a program. It runs top to bottom, and each line reads or changes
 short:
 
 ```ts
-import { MasterStackLayout, Workspace, startDecorations } from "gnoblin-std";
+import { Decorations, MasterStackLayout, Workspace } from "gnoblin-std";
 
-startDecorations();
+Decorations.get().start();
 
-const code = new Workspace({ id: "code", name: "Code", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) });
+const code = new Workspace("code", { name: "Code", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) });
 gnoblin.workspaces.add(code);
 
 gnoblin.clients.style.cornerRadius = 12;
@@ -61,8 +61,10 @@ Open the file. As written it does exactly what the shell does when there is no `
 edit it. The lines that start with `// ` are examples. Remove the `// ` to switch one on:
 
 ```ts
-gnoblin.workspaces.add(new Workspace({ id: "work", name: "Work", layout: new MasterStackLayout() }));
-input.bind("Super+Return", () => {
+import { MasterStackLayout, Workspace } from "gnoblin-std";
+
+gnoblin.workspaces.add(new Workspace("work", { name: "Work", layout: new MasterStackLayout() }));
+gnoblin.input.primary.bind("Super+Return", () => {
     gnoblin.spawn(["foot"]);
 });
 ```
@@ -222,8 +224,8 @@ Everything is an object in the [shell API](/shell-api/). The ones the starter us
 - `gnoblin.input.primary.bind(trigger, fn)` binds a key, a gesture or a pointer chord.
 - `gnoblin.clients` is every window, and `gnoblin.clients.style` is how they all look.
 - `gnoblin.outputs.profiles` holds the settings of your monitors.
-- `startDecorations()`, `startWindowMenu()` and `startNotRespondingAlert()` start the parts of the stock desktop that
-  you may want to leave out.
+- `Decorations.get().start()`, `WindowMenus.get().start()` and `NotRespondingAlerts.get().start()` start the parts of the
+  stock desktop that you may want to leave out.
 
 A name that does not exist is a type error under `gnoblinctl check --types`, and a throw at load. A reload that throws
 leaves the running file in place.
@@ -232,6 +234,8 @@ Some settings of the older configuration have no object in the API, so a file ca
 object](js-settings.md) lists them.
 
 ## The native std binding: `gnoblin-std/native`
+
+A shell that imports `gnoblin-std/native` runs on the TypeScript library, as [Which library a shell runs on](#which-library-a-shell-runs-on) says.
 
 `import { ... } from "gnoblin-std/native"` is the **generated** binding of `libgnoblin-std.so.1`: the same collections, workspaces, layouts, bindings, transitions, styles and scene nodes the Rust and Python SDKs have, written by `gnoblin-sdkgen` (at build time, never committed) from the library's function table ([the generator](sdk-generator.md)) and calling it through `__gnoblinStd`, which the JavaScript runtime library installs.
 
@@ -443,13 +447,13 @@ and no bar.
 ![A terminal under the shell's titlebar on an empty screen](images/js-shell/default-desktop.png)
 
 A workspace with a layout tiles its windows. This file tiles three terminals with a master on the left and a gap of 12
-pixels. It calls `startDecorations()` because a file that leaves it out draws no titlebars:
+pixels. It starts the decorations because a file that leaves them out draws no titlebars:
 
 ```ts
-import { MasterStackLayout, Workspace, startDecorations } from "gnoblin-std";
+import { Decorations, MasterStackLayout, Workspace } from "gnoblin-std";
 
-startDecorations();
-gnoblin.workspaces.add(new Workspace({ id: "dev", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }));
+Decorations.get().start();
+gnoblin.workspaces.add(new Workspace("dev", { layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }));
 ```
 
 ![Three terminals tiled with a master on the left and a gap of 12 pixels](images/js-shell/master-stack.png)
@@ -507,7 +511,7 @@ A shell that tests the failure of a call the old way does not match. The old fai
 ## Window requests
 
 A client asks the compositor for a change of its window: fullscreen, minimise, maximise, raise, activate, move, resize.
-The compositor changes nothing until the shell answers, and the stock shell answers every kind:
+The compositor changes nothing until the shell answers. `WindowState.get().start()` makes the shell answer every kind:
 
 | Request          | What the shell does                                                                                              |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -525,29 +529,35 @@ it leaves, minimises or closes. A tiling layout leaves a fullscreen or maximised
 
 ### Answering a request yourself
 
-A `ClientListener` with an `onRequest(client, request)` method hears every request first. Call `request.handle()` to
+A `RequestListener` with an `onRequest(request)` method hears every request first. Call `request.handle()` to
 answer it yourself: the built-in answer does not run, and no later listener hears it.
 
 ```ts
-import { ClientListener, gnoblin } from "gnoblin-core";
-import { windowState } from "gnoblin-std";
+import { RequestListener, WindowState } from "gnoblin-std";
+import type { ClientRequest } from "gnoblin-std";
 
-class KeepOnTop extends ClientListener {
-    onRequest(client, request) {
+const state = WindowState.get();
+
+class KeepOnTop extends RequestListener {
+    onRequest(request: ClientRequest) {
+        const client = gnoblin.clients.get(request.client);
+        if (client === undefined) return;
         if (request.kind === "minimize" && client.appId === "org.example.Clock") {
             request.handle(); // this window never minimises
         } else if (request.kind === "maximize") {
             request.handle();
-            windowState.enterFullscreen(client); // answer a maximise as a fullscreen
+            state.enterFullscreen(client); // answer a maximise as a fullscreen
         }
     }
 }
-gnoblin.clients.addListener(new KeepOnTop());
+
+state.addListener(new KeepOnTop());
+state.start();
 ```
 
-The listeners attached to the client itself are asked first, then those of the collections that hold it, each in the
-order it was attached. The first one to call `request.handle()` wins. A listener that throws is reported and skipped.
-`request.kind` is one of:
+`addListener(listener, client)` with a window as the second argument hears only that window's requests. Those listeners
+are asked first, then the ones for every window, each in the order it was added. The first one to call `request.handle()`
+wins. A listener that throws is reported and skipped. `request.kind` is one of:
 
 - `maximize` and `unmaximize`
 - `fullscreen` and `unfullscreen`
@@ -555,7 +565,7 @@ order it was attached. The first one to call `request.handle()` wins. A listener
 - `close`, `raise`, `lower` and `activate`
 - `move`, `resize` and `menu`
 
-`windowState` is the policy the built-in answer calls. Its methods return whether they ran, so a listener can answer a
+`WindowState` is the policy the built-in answer calls. Its methods return whether they ran, so a listener can answer a
 request with the stock behaviour of another kind:
 
 - `maximise` and `unmaximise`
@@ -679,8 +689,8 @@ shell host without it says so at the first call.
 
 ## Console and inspector
 
-`gnoblinctl console` opens a live prompt into the running shell, and `inspect.clients()`, `inspect.workspaces()`
-and `inspect.bindings()` return what the shell holds as plain data. See
+`gnoblinctl console` opens a live prompt into the running shell, where `gnoblin.clients.toList()`,
+`gnoblin.workspaces.list` and `gnoblin.input.primary.describeBindings()` return what the shell holds. See
 [Console and inspector](/js-console).
 
 ## Idle, authentication and launches
@@ -693,7 +703,10 @@ draws the password dialog and checks the password itself), and
 
 ## XR
 
-`gnoblin.extensions.xr` is `null` until the XR program has a session, so a config guards it and works without a headset.
+`gnoblin.extensions.xr` is a member of the TypeScript library. The native library has no `gnoblin.extensions`, so a shell
+that scripts XR runs on the TypeScript library. There, `gnoblin.extensions.xr` is `null` until the XR program has a session,
+so a config guards it and works without a headset.
+
 The stock shell builds the room and places the panels when the session starts. See
 [XR mode](/xr#scripting-xr-in-typescript) for the room, the viewport and the bindings that move and resize a panel.
 

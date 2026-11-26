@@ -4,7 +4,7 @@ The runtime API is what a TypeScript shell sees: the `gnoblin` global and the cl
 to read compositor state, place and style windows, handle input and events, and ask the session for things.
 
 ```ts
-for (const client of gnoblin.clients) {
+for (const client of gnoblin.clients.toList()) {
     gnoblin.spawn(["notify-send", `${client.appId} is open`]);
 }
 ```
@@ -16,26 +16,25 @@ global, so a listener or a key handler may use it too. To write your first confi
 
 ## The `gnoblin` object
 
-| Member                            | What it is                                                                  | Page                                      |
-| --------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------- |
-| `clients`                         | The live collection of windows.                                             | [Windows](windows)                        |
-| `workspaces`                      | The workspaces.                                                             | [Workspaces](workspaces)                  |
-| `outputs`                         | The connected displays.                                                     | [Outputs](outputs)                        |
-| `find(kind, filter?)`             | Selects windows, workspaces or outputs.                                     | [Find objects](find)                      |
-| `focus`                           | The windows in the order they were focused.                                 | [Focus and activation](focus-activation)  |
-| `input`                           | The seats and their devices, and bindings.                                  | [Input and seats](input)                  |
-| `idle`                            | Watches for the session going idle, and holds that keep it awake.           | [Idle watches](idle)                      |
-| `launches`                        | Launch feedback.                                                            | [Launch feedback](launch-feedback)        |
-| `process`, `spawn`                | Programs the shell started.                                                 | [Processes](processes)                    |
-| `session`, `runtime`, `version()` | The session, reloads and the build.                                         | [Session and runtime](session-runtime)    |
-| `dialogs`                         | The compositor's consent and passphrase dialogs.                            | [Requests and dialogs](requests)          |
-| `authentication`                  | Polkit authentication requests.                                             | [Authentication prompts](authentication)  |
-| `timers`                          | Calls that run later, and the monotonic clock.                              | [Operations, errors and timers](errors)   |
-| `motion(duration)`, `gestures`    | Animation durations that obey reduced motion, and touchpad gesture helpers. | [Tweens and easing](tweens)               |
-| `on`, `once`, `off`               | Compositor signals.                                                         | [Events](/events/)                        |
-| `show(workspace, options?)`       | Shows a workspace.                                                          | [Workspaces](workspaces#show-a-workspace) |
-| `extensions`                      | Optional extensions, such as XR.                                            | [XR mode](/xr#scripting-xr-in-typescript) |
-| `scene`                           | The scene: the nodes and views a script makes, and property bindings.       | [Scene and views](scene)                  |
+| Member                            | What it is                                                                  | Page                                     |
+| --------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------- |
+| `clients`                         | The live collection of windows.                                             | [Windows](windows)                       |
+| `workspaces`                      | The workspaces.                                                             | [Workspaces](workspaces)                 |
+| `outputs`                         | The connected displays.                                                     | [Outputs](outputs)                       |
+| `find(kind, filter?)`             | Selects windows, workspaces or outputs.                                     | [Find objects](find)                     |
+| `focus`                           | The windows in the order they were focused.                                 | [Focus and activation](focus-activation) |
+| `input`                           | The seats and their devices, and bindings.                                  | [Input and seats](input)                 |
+| `idle`                            | Watches for the session going idle, and holds that keep it awake.           | [Idle watches](idle)                     |
+| `launches`                        | Launch feedback.                                                            | [Launch feedback](launch-feedback)       |
+| `process`, `spawn`                | Programs the shell started.                                                 | [Processes](processes)                   |
+| `session`, `runtime`, `version()` | The session, reloads and the build.                                         | [Session and runtime](session-runtime)   |
+| `dialogs`                         | The compositor's consent and passphrase dialogs.                            | [Requests and dialogs](requests)         |
+| `authentication`                  | Polkit authentication requests.                                             | [Authentication prompts](authentication) |
+| `timers`                          | Calls that run later, and the monotonic clock.                              | [Operations, errors and timers](errors)  |
+| `motion(duration)`, `gestures`    | Animation durations that obey reduced motion, and touchpad gesture helpers. | [Tweens and easing](tweens)              |
+| `on(event, handler)`              | Compositor signals.                                                         | [Events](/events/)                       |
+| `requestTransition(work, ...)`    | Draws a change of state as one animation.                                   | [Tweens and easing](tweens)              |
+| `scene`                           | The scene: the nodes and views a script makes, and property bindings.       | [Scene and views](scene)                 |
 
 ## More pages
 

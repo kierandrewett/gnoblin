@@ -4,12 +4,12 @@ Give workspaces stable IDs in `shell.ts`, then place each matching new window on
 the example app IDs with the values reported by `gnoblinctl window list --json`.
 
 ```ts
-import { CollectionListener } from "gnoblin-core";
+import { ClientCollectionListener } from "gnoblin-core";
 import { FloatingLayout, Workspace } from "gnoblin-std";
 import type { Client } from "gnoblin-core";
 
 for (const id of ["code", "web", "chat"]) {
-    gnoblin.workspaces.add(new Workspace({ id, layout: new FloatingLayout() }));
+    gnoblin.workspaces.add(new Workspace(id, { layout: new FloatingLayout() }));
 }
 
 const homes: Record<string, string> = {
@@ -19,10 +19,10 @@ const homes: Record<string, string> = {
 };
 
 gnoblin.clients.addListener(
-    new (class extends CollectionListener {
+    new (class extends ClientCollectionListener {
         onAdded(client: Client) {
             const id = homes[client.appId];
-            const target = id === undefined ? undefined : gnoblin.workspaces.get(id);
+            const target = id === undefined ? undefined : gnoblin.workspaces.byId(id);
             if (target !== undefined) {
                 client.moveToWorkspace(target);
             }
@@ -31,7 +31,7 @@ gnoblin.clients.addListener(
 );
 ```
 
-Each `Workspace` has a unique non-empty `id`, and `gnoblin.workspaces.get(id)` finds it. The first one added is shown when
+Each `Workspace` has a unique non-empty `id`, and `gnoblin.workspaces.byId(id)` finds it. The first one added is shown when
 the shell starts.
 
 | Part                        | Values and default                    | Effect                                                         |

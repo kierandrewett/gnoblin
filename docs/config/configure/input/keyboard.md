@@ -19,7 +19,7 @@ for (const device of gnoblin.input.devices) {
 | `repeatRate`  | Number, 0.1 to 1000      | The system's | Key repeats per second.                       |
 | `repeatDelay` | Whole number, 1 to 10000 | The system's | Milliseconds a key is held before it repeats. |
 
-`undefined` takes a property back to the system's value. The shell writes `repeatRate` as the reciprocal, in whole
+`device.reset("repeat_rate")` and `device.reset("repeat_delay")` take a property back to the system's value. The shell writes `repeatRate` as the reciprocal, in whole
 milliseconds, to the document's `input.keyboard.repeat-interval`, and `repeatDelay` to `input.keyboard.delay`.
 
 The XKB options (`caps:escape`, `compose:ralt`), Num Lock state and the keyboard accessibility features (slow keys,

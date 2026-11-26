@@ -9,7 +9,7 @@ There is no config object to fill in. Delete a statement and that part of the se
 
 ## Device settings
 
-Devices are in `gnoblin.input.devices`. A `Keyboard`, `Mouse` or `Touchpad` has the settings below, and `undefined`
+Devices are in `gnoblin.input.devices`. A `Keyboard`, `Mouse` or `Touchpad` has the settings below, and `reset(name)`
 puts one back to the system's value. The compositor keeps one setting for each kind of device, so a write on one mouse
 is the setting of every mouse.
 
@@ -37,21 +37,23 @@ Each device page lists the properties and their ranges: [keyboard](/config/confi
 
 ## Outputs
 
-An `OutputProfile` describes the mode, scale, transform and position of the output that matches it, and survives
-hotplug. Add it to `gnoblin.outputs.profiles`. See [monitors](/config/configure/monitors).
+An `OutputProfile` is made from what it matches, and its `settings` describe the mode, scale, transform and position of
+the output that matches it. It survives hotplug. Add it to `gnoblin.outputs.profiles`. See
+[monitors](/config/configure/monitors).
 
 ```ts
 import { OutputProfile } from "gnoblin-std";
 
-const main = new OutputProfile({
-    match: { connector: "DP-1" },
-    mode: { width: 3440, height: 1440, refreshRate: 144 },
-    scale: 1.25,
-    position: { x: 0, y: 0 },
-});
+const main = new OutputProfile(
+    { connector: "DP-1" },
+    { settings: { mode: "3440x1440@144", scale: 1.25, position: { kind: "absolute", x: 0, y: 0 } } },
+);
 gnoblin.outputs.profiles.add(main);
 gnoblin.outputs.profiles.add(
-    new OutputProfile({ match: { connector: "HDMI-A-1" }, position: { rightOf: main, align: "top" } }),
+    new OutputProfile(
+        { connector: "HDMI-A-1" },
+        { settings: { position: { kind: "right_of", profile: main, align: "top" } } },
+    ),
 );
 ```
 
@@ -61,6 +63,8 @@ gnoblin.outputs.profiles.add(
 `gnoblin.clients.where({ appId })` selects some windows. See [window style](/js-style).
 
 ```ts
+import "gnoblin-std";
+
 gnoblin.clients.style.cornerRadius = 12;
 gnoblin.clients.where({ appId: "foot" }).style.opacity = 0.9;
 ```
@@ -74,8 +78,7 @@ overrides the inner one. See [workspaces](/shell-api/workspaces).
 import { MasterStackLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(
-    new Workspace({
-        id: "dev",
+    new Workspace("dev", {
         name: "Development",
         layout: new MasterStackLayout({ gap: 12 }),
         gaps: { outer: 8 },
@@ -120,8 +123,8 @@ gnoblin.dialogs.addListener(
 ## Compositor settings
 
 `gnoblin.compositor` holds the settings of the compositor itself that a shell may write. The compositor reads them when it
-starts, so a change is accepted at once and applies from the next login. Set a property to `undefined` to take it back to
-the default.
+starts, so a change is accepted at once and applies from the next login. `gnoblin.compositor.reset("user_shaders")` takes it back
+to the default.
 
 | Property      | Accepted values   | Default | Effect                                                                                   |
 | ------------- | ----------------- | ------- | ---------------------------------------------------------------------------------------- |

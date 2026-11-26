@@ -26,9 +26,11 @@ config can read the setting, as `gnoblin.input.primary.settings.reducedMotion`, 
 
 ## Animate a window yourself
 
-`client.set(values, options)` moves properties to `values` over `options.duration` milliseconds along a named curve.
+`gnoblin.requestTransition(work, options)` runs `work` once and moves what it changed to the new values over
+`options.duration` milliseconds along a named curve. See [animation in TypeScript](/js-transitions) for what the callback
+may do.
 
-- The properties that move over time are `x`, `y`, `width`, `height`, `opacity`, `z`, `rotation` and `scale`.
+- The properties of a window that move over time are `x`, `y`, `z` and `opacity`. The others land at once.
 - The curves are the CSS names `linear`, `ease`, `ease-in`, `ease-out` (the default) and `ease-in-out`.
 - A duration of `0` writes at once.
 - `gnoblin.motion(duration)` returns `0` while reduced motion is on, so a script that passes its duration through it
@@ -37,15 +39,20 @@ config can read the setting, as `gnoblin.input.primary.settings.reducedMotion`, 
 This fades each Text Editor window in when it opens:
 
 ```ts
-import { CollectionListener } from "gnoblin-core";
+import { ClientCollectionListener } from "gnoblin-core";
 import type { Client } from "gnoblin-core";
 
 gnoblin.clients.addListener(
-    new (class extends CollectionListener {
+    new (class extends ClientCollectionListener {
         onAdded(client: Client) {
             if (client.appId === "org.gnome.TextEditor") {
                 client.opacity = 0;
-                client.set({ opacity: 1 }, { duration: 300, easing: "ease-out" });
+                gnoblin.requestTransition(
+                    () => {
+                        client.opacity = 1;
+                    },
+                    { duration: gnoblin.motion(300), easing: "ease-out" },
+                );
             }
         }
     })(),

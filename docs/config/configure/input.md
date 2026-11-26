@@ -3,7 +3,7 @@
 Input settings are properties of the device objects in `gnoblin.input.devices`. A device is a `Keyboard`, a `Mouse`, a
 `Touchpad`, a `Touchscreen` or a `Tablet`.
 
-Use `instanceof` to tell them apart, and set a property to `undefined` to take it back to the system's value.
+Use `instanceof` to tell them apart, and call `device.reset(name)` to take a setting back to the system's value.
 
 ```ts
 import { Keyboard, Mouse } from "gnoblin-core";
