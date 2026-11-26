@@ -154,6 +154,11 @@ fn clear(dst: Rect, radius: f32, effects: Effects) -> Layer {
     Layer::Solid(layer)
 }
 
+/// A glass layer over `dst` that blurs with `params` and draws nothing of its own.
+fn glass_of(dst: Rect, params: BlurParams) -> Layer {
+    clear(dst, 0.0, one(Pass::Blur(params)))
+}
+
 /// An inset shadow: the colour falls from the hole's edge inwards over `blur`.
 fn inset_shadow() -> Pass {
     Pass::Shadow(Shadow {
@@ -215,7 +220,7 @@ pub struct Case {
 }
 
 /// The scenes every renderer is held to.
-pub const CASES: [Case; 10] = [
+pub const CASES: [Case; 13] = [
     Case {
         name: "shadow",
         layers: || vec![window(one(shadow()), Color::WHITE, 1.0)],
@@ -459,6 +464,103 @@ pub const CASES: [Case; 10] = [
             );
             assert_close(rgb(image, 7, 10), graded(green()), SHAPE_TOLERANCE, "so is its border");
             assert_eq!(rgb(image, 30, 1), PALE, "what is behind the window is not");
+            assert_eq!(rgb(image, 3, 3), BLUE, "on either side");
+        },
+    },
+    Case {
+        name: "blur_downscale",
+        layers: || {
+            // Two glasses across the backdrop's edge, one blurring at half the resolution and one at a quarter.
+            let blur = |downscale: f32| BlurParams {
+                radius: 4.0,
+                passes: 2,
+                downscale,
+                ..BlurParams::default()
+            };
+            vec![
+                glass_of(Rect::new(8, 1, 16, 10), blur(0.5)),
+                glass_of(Rect::new(8, 13, 16, 10), blur(0.25)),
+            ]
+        },
+        software: false,
+        tolerance: BLUR_TOLERANCE,
+        probes: |image| {
+            for y in [5, 17] {
+                let blue_side = rgb(image, 15, y);
+                let pale_side = rgb(image, 16, y);
+                assert!(
+                    blue_side[0] > BLUE[0] + 20,
+                    "row {y}: blue is blurred towards pale: {blue_side:?}"
+                );
+                assert!(
+                    pale_side[0] < PALE[0] - 20,
+                    "row {y}: pale is blurred towards blue: {pale_side:?}"
+                );
+                assert_close(rgb(image, 8, y), BLUE, 12, "the glass's far edge keeps its backdrop");
+                assert_close(rgb(image, 23, y), PALE, 12, "and so does its other side");
+            }
+            assert_eq!(rgb(image, 15, 11), BLUE, "the gap between the glasses is not blurred");
+            assert_eq!(rgb(image, 16, 12), PALE, "on either side of the edge");
+        },
+    },
+    Case {
+        name: "backdrop_grade",
+        layers: || {
+            let grade = BlurParams {
+                radius: 4.0,
+                passes: 2,
+                saturation: 0.0,
+                noise: 0.5,
+                ..BlurParams::default()
+            };
+            vec![glass_of(Rect::new(6, 5, 20, 13), grade)]
+        },
+        software: false,
+        tolerance: BLUR_TOLERANCE,
+        probes: |image| {
+            // No saturation takes the backdrop to its luma grey; grain adds the same amount to every channel.
+            for x in 20..25 {
+                let pixel = rgb(image, x, 10);
+                assert!(
+                    pixel.iter().all(|channel| channel.abs_diff(pixel[0]) <= 1),
+                    "x {x}: the backdrop is grey: {pixel:?}"
+                );
+            }
+            let row: Vec<u8> = (19..26).map(|x| rgb(image, x, 11)[0]).collect();
+            assert!(
+                row.windows(2).any(|pair| pair[0] != pair[1]),
+                "grain makes a flat backdrop uneven: {row:?}"
+            );
+            assert_eq!(rgb(image, 30, 1), PALE, "outside the glass nothing is graded");
+            assert_eq!(rgb(image, 3, 3), BLUE, "on either side");
+        },
+    },
+    Case {
+        name: "filter_blur",
+        layers: || {
+            let filter = Pass::Filter(FilterParams {
+                blur: 4.0,
+                ..FilterParams::default()
+            });
+            vec![window(one(filter), Color::WHITE, 1.0)]
+        },
+        software: false,
+        tolerance: BLUR_TOLERANCE,
+        probes: |image| {
+            let inside = rgb(image, 16, 11);
+            assert_close(inside, ORANGE, 8, "the middle of the window keeps its colour");
+            let left = rgb(image, 7, 10);
+            let right = rgb(image, 24, 10);
+            assert!(
+                left[0] > BLUE[0] + 10,
+                "the blurred window spills past its left edge: {left:?}"
+            );
+            assert!(right[1] < PALE[1] - 10, "and past its right edge: {right:?}");
+            assert!(
+                rgb(image, 8, 10)[0] < ORANGE[0] - 10,
+                "its own edge is softened to the backdrop"
+            );
+            assert_eq!(rgb(image, 30, 1), PALE, "what is far behind the window is not blurred");
             assert_eq!(rgb(image, 3, 3), BLUE, "on either side");
         },
     },
