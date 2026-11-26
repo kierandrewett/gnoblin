@@ -20,9 +20,6 @@
 //!
 //! The software renderer computes blur, shadow, border and background on the CPU, so a case marked `software` is checked
 //! against its picture as well. A case it draws differently, or not at all, is marked `false` with the reason beside it.
-//!
-//! A case that blurs needs a renderer that draws a blur; [`blurs`] says which, so a renderer that does not yet can leave
-//! them out of its run and still be held to the rest.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -351,24 +348,63 @@ pub const CASES: [Case; 14] = [
     Case {
         name: "corners",
         layers: || {
+            // Shadow, glass, a half-opaque background and a border on one layer with a radius of 4. The glass is a flat white
+            // (a blur tinted all the way), so the corner it must not reach is plain to see.
             let mut chain = Effects::new();
             chain.push(shadow()).expect("a shadow");
             chain
+                .push(Pass::Blur(BlurParams {
+                    radius: 4.0,
+                    passes: 2,
+                    tint: Color::WHITE,
+                    ..BlurParams::default()
+                }))
+                .expect("a blur");
+            chain
                 .push(Pass::Background {
-                    color: Color::from_rgba8(200, 40, 40, 255),
+                    color: Color::from_rgba8(200, 40, 40, 128),
                 })
                 .expect("a background");
             chain.push(border(1.0, 0.0, false, green())).expect("a border");
             vec![clear(WINDOW, 4.0, chain)]
         },
-        software: true,
-        tolerance: SHAPE_TOLERANCE,
+        // The software renderer draws this blur too, but not these pixels: it composes the layer's passes as one group and cuts
+        // the group by the rounded edge once, where the GPU renderers blend each pass with the edge's coverage. The eight
+        // anti-aliased pixels of the four arcs differ by up to 14 levels (tolerance 4); every other pixel is within 3.
+        software: false,
+        tolerance: BLUR_TOLERANCE,
         probes: |image| {
-            let fill = [200, 40, 40];
-            assert_eq!(rgb(image, 16, 10), fill, "the background fills the layer");
-            assert_eq!(rgb(image, 12, 7), fill, "up to the straight part of its edge");
-            assert_ne!(rgb(image, 8, 7), fill, "but the corner is cut by the radius");
-            assert_ne!(rgb(image, 23, 15), fill, "at every corner");
+            // The background at 128 of 255 over the white glass.
+            let share = 128.0 / 255.0;
+            let fill = [200.0, 40.0, 40.0].map(|channel| 255.0 * (1.0 - share) + channel * share);
+            let fill = rounded(fill);
+            assert_close(
+                rgb(image, 16, 10),
+                fill,
+                BLUR_TOLERANCE,
+                "the background is over the glass",
+            );
+            assert_close(
+                rgb(image, 12, 7),
+                fill,
+                BLUR_TOLERANCE,
+                "up to the straight part of its edge",
+            );
+            for (x, y) in [(8, 7), (23, 15)] {
+                let corner = rgb(image, x, y);
+                assert_ne!(
+                    corner,
+                    [255, 255, 255],
+                    "the glass does not reach the corner ({x}, {y}) the radius cut away"
+                );
+                assert!(
+                    corner
+                        .iter()
+                        .zip(fill)
+                        .any(|(got, plain)| got.abs_diff(plain) > BLUR_TOLERANCE),
+                    "nor does the background: {corner:?}"
+                );
+            }
             assert_eq!(
                 rgb(image, 7, 11),
                 bytes(green()),
@@ -635,23 +671,6 @@ fn assert_close(got: [u8; 3], want: [u8; 3], tolerance: u8, what: &str) {
         got.iter().zip(want).all(|(got, want)| got.abs_diff(want) <= tolerance),
         "{what}: drew {got:?}, expected {want:?}"
     );
-}
-
-/// Whether the case's layers blur: a backdrop blur or a filter with a blur. A renderer that draws no blur yet leaves
-/// such a case out of its run.
-#[must_use]
-pub fn blurs(case: &Case) -> bool {
-    (case.layers)().iter().any(|layer| {
-        let effects = match layer {
-            Layer::Solid(solid) => &solid.effects,
-            Layer::Surface(surface) => &surface.effects,
-            Layer::Overlay(_) => return false,
-        };
-        effects
-            .passes()
-            .iter()
-            .any(|pass| matches!(pass, Pass::Blur(_)) || matches!(pass, Pass::Filter(filter) if filter.blur > 0.0))
-    })
 }
 
 /// The frame of a case: the backdrop with the case's layers over it.
