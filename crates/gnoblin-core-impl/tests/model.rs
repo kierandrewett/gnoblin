@@ -14,14 +14,14 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use gnoblin_core_abi::{self as abi, GnoblinStr};
+use gnoblin_core_abi::{self as abi, GnoblinStr, GnoblinValue};
 use gnoblin_core_impl::host::{self, AttachMode, TreeLinkProvider};
 use gnoblin_object::client::{Api, Reg, closure};
-use gnoblin_object::{ClassId, MemberId, Obj, Res, Val};
+use gnoblin_object::{ClassId, MemberId, Obj, Res, Timing, Val};
 use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_testkit::compositor::{FakeCompositor, text};
 use gnoblin_testkit::oracle::{Fixtures, Value, json};
-use gnoblin_tree_client::tree_mirror::{LinkError, MirrorValue, TreeLink};
+use gnoblin_tree_client::tree_mirror::{LinkError, MirrorValue, TreeLink, TxOp};
 
 /// The core's registry is one per process, so the tests of this file take turns.
 fn process_lock() -> MutexGuard<'static, ()> {
@@ -1416,4 +1416,270 @@ fn a_list_of_a_shell_tells_its_listeners_what_joins_and_leaves() {
         .map(|line| line.as_str().unwrap().to_owned())
         .collect();
     assert_eq!(lines, ["added 3", "added 4", "title 4", "removed 3", "removed 4"]);
+}
+
+// ---- the write stage -----------------------------------------------------------------------------------------------------------
+
+/// A write stage for the tests: it keeps the number writes it is told to keep, offered or not, and answers reads with what it kept.
+#[derive(Default)]
+struct Stage {
+    keep: bool,
+    offered: Vec<(u64, String, f64)>,
+    held: std::collections::HashMap<(u64, String), f64>,
+}
+
+unsafe extern "C" fn stage_write(
+    user: *mut std::ffi::c_void,
+    node: u64,
+    key: GnoblinStr,
+    value: *const GnoblinValue,
+) -> i32 {
+    // SAFETY: `user` is the `RefCell<Stage>` the test keeps alive until it clears the hook; the key and the value are lent for the call.
+    let (stage, key, value) = unsafe {
+        (
+            &*user.cast::<RefCell<Stage>>(),
+            std::str::from_utf8(std::slice::from_raw_parts(key.ptr, key.len)).expect("a key"),
+            &*value,
+        )
+    };
+    assert_eq!(
+        value.kind,
+        abi::VALUE_DOUBLE,
+        "a window's number is offered as a double"
+    );
+    let number = f64::from_bits(value.bits);
+    let mut stage = stage.borrow_mut();
+    stage.offered.push((node, key.to_owned(), number));
+    if stage.keep {
+        stage.held.insert((node, key.to_owned()), number);
+    }
+    i32::from(stage.keep)
+}
+
+unsafe extern "C" fn stage_peek(
+    user: *mut std::ffi::c_void,
+    node: u64,
+    key: GnoblinStr,
+    out: *mut GnoblinValue,
+) -> i32 {
+    // SAFETY: as for `stage_write`; `out` is a writable value.
+    let (stage, key) = unsafe {
+        (
+            &*user.cast::<RefCell<Stage>>(),
+            std::str::from_utf8(std::slice::from_raw_parts(key.ptr, key.len)).expect("a key"),
+        )
+    };
+    let Some(number) = stage.borrow().held.get(&(node, key.to_owned())).copied() else {
+        return 0;
+    };
+    // SAFETY: `out` is writable.
+    unsafe {
+        *out = GnoblinValue {
+            size: size_of::<GnoblinValue>() as u32,
+            kind: abi::VALUE_DOUBLE,
+            flags: 0,
+            reserved: 0,
+            bits: number.to_bits(),
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+    }
+    1
+}
+
+/// A `Set` the shell sent: `(value, seconds, delay, tween, samples in the curve)`.
+type SentSet = (MirrorValue, Option<f64>, Option<f64>, Option<u64>, usize);
+
+impl Rig {
+    /// Installs `stage` as the write stage; the test keeps it alive until it clears the hook.
+    fn stage_writes(&self, stage: &RefCell<Stage>) -> i32 {
+        // SAFETY: `set_write_stage` is a function of the core's table, and `stage` outlives the hook.
+        unsafe {
+            (host::api().set_write_stage)(
+                self.ctx,
+                Some(stage_write),
+                Some(stage_peek),
+                std::ptr::from_ref(stage).cast_mut().cast(),
+            )
+        }
+    }
+
+    fn clear_stage(&self, stage: *const RefCell<Stage>) -> i32 {
+        // SAFETY: clearing takes no value.
+        unsafe { (host::api().set_write_stage)(self.ctx, None, None, stage.cast_mut().cast()) }
+    }
+
+    /// The sets of `key` the shell sent after `mark`.
+    fn sets(&self, mark: usize, key: &str) -> Vec<SentSet> {
+        self.comp
+            .ops_since(mark)
+            .into_iter()
+            .filter_map(|op| match op {
+                TxOp::Set {
+                    key: written,
+                    value,
+                    seconds,
+                    delay,
+                    tween,
+                    samples,
+                    ..
+                } if written == key => Some((value, seconds, delay, tween, samples.map_or(0, |list| list.len()))),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+#[test]
+fn a_write_stage_that_keeps_a_window_write_sends_nothing_and_the_window_reads_it_back() {
+    let rig = Rig::new("model_dead_objects", &[]);
+    let window = rig.client(3);
+    let stage = RefCell::new(Stage {
+        keep: true,
+        ..Stage::default()
+    });
+    assert_eq!(rig.stage_writes(&stage), abi::E_OK);
+    let node_before = rig.comp.number(3, "opacity");
+    let mark = rig.comp.sent_count();
+    rig.set(window, "opacity", &Val::Double(0.5)).unwrap();
+    rig.settle();
+    assert_eq!(rig.comp.sent_count(), mark, "a write the stage keeps is not sent");
+    assert_eq!(stage.borrow().offered, [(3, "opacity".to_owned(), 0.5)]);
+    assert_eq!(
+        rig.prop(window, "opacity").double().unwrap(),
+        0.5,
+        "the window reads what it staged"
+    );
+    assert_eq!(
+        rig.comp.number(3, "opacity"),
+        node_before,
+        "and the compositor's node is as it was"
+    );
+
+    // A property the stage holds nothing for reads from the tree.
+    assert_eq!(rig.prop(window, "width").double().unwrap(), rig.comp.number(3, "width"));
+
+    // The stage declines: the write goes on as it does without one, and reads the tree's value again.
+    stage.borrow_mut().keep = false;
+    stage.borrow_mut().held.clear();
+    rig.set(window, "opacity", &Val::Double(0.25)).unwrap();
+    rig.settle();
+    assert_eq!(
+        rig.sets(mark, "opacity").len(),
+        1,
+        "a write the stage declines is sent plain"
+    );
+    assert_eq!(
+        rig.sets(mark, "opacity")[0],
+        (MirrorValue::Double(0.25), None, None, None, 0)
+    );
+
+    // Another caller's clear leaves the hook; its own clear ends it, and the write is not offered again.
+    let other = RefCell::new(Stage::default());
+    assert_eq!(rig.clear_stage(&other), abi::E_OK);
+    rig.set(window, "opacity", &Val::Double(0.125)).unwrap();
+    rig.settle();
+    assert_eq!(
+        stage.borrow().offered.len(),
+        3,
+        "the hook is still there after another caller's clear"
+    );
+    assert_eq!(rig.clear_stage(&stage), abi::E_OK);
+    rig.set(window, "opacity", &Val::Double(0.0625)).unwrap();
+    rig.settle();
+    assert_eq!(stage.borrow().offered.len(), 3, "a cleared hook is offered nothing");
+    assert_eq!(rig.sets(mark, "opacity").len(), 3);
+}
+
+#[test]
+fn a_timed_write_of_a_window_is_sent_with_its_timing_and_never_offered_to_the_stage() {
+    let rig = Rig::new("model_dead_objects", &[]);
+    let window = rig.client(3);
+    let member = member_of(rig.api, window, abi::MEMBER_PROPERTY, "opacity").expect("opacity");
+    let stage = RefCell::new(Stage {
+        keep: true,
+        ..Stage::default()
+    });
+    assert_eq!(rig.stage_writes(&stage), abi::E_OK);
+    let mark = rig.comp.sent_count();
+    let timing = Timing {
+        seconds: 0.3,
+        delay: 0.1,
+        tween: 0,
+        samples: vec![0.0, 0.5, 1.0],
+    };
+    rig.api.set_timed(window, member, &Val::Double(0.25), &timing).unwrap();
+    rig.settle();
+    assert_eq!(
+        rig.sets(mark, "opacity"),
+        [(MirrorValue::Double(0.25), Some(0.3), Some(0.1), None, 3)],
+        "the timing is the write's seconds, delay and curve"
+    );
+    assert!(stage.borrow().offered.is_empty(), "a timed write is not staged");
+
+    // A timing with no curve plays along a straight line.
+    let mark = rig.comp.sent_count();
+    let plain = Timing {
+        samples: Vec::new(),
+        delay: 0.0,
+        ..timing.clone()
+    };
+    rig.api.set_timed(window, member, &Val::Double(0.75), &plain).unwrap();
+    rig.settle();
+    assert_eq!(
+        rig.sets(mark, "opacity"),
+        [(MirrorValue::Double(0.75), Some(0.3), None, None, 2)]
+    );
+
+    // A tween that is not in the tree, and a curve outside 0 to 1, are refused before anything is sent.
+    let mark = rig.comp.sent_count();
+    let refused = rig
+        .api
+        .set_timed(
+            window,
+            member,
+            &Val::Double(0.5),
+            &Timing {
+                tween: 999,
+                ..timing.clone()
+            },
+        )
+        .expect_err("no such tween");
+    assert!(refused.message.contains("no tween node 999"), "{}", refused.message);
+    let refused = rig
+        .api
+        .set_timed(
+            window,
+            member,
+            &Val::Double(0.5),
+            &Timing {
+                samples: vec![0.0, 2.0],
+                ..timing
+            },
+        )
+        .expect_err("a sample out of range");
+    assert!(refused.message.contains("outside 0 to 1"), "{}", refused.message);
+    rig.settle();
+    assert_eq!(rig.comp.sent_count(), mark);
+    assert_eq!(rig.clear_stage(&stage), abi::E_OK);
+}
+
+#[test]
+fn the_write_stage_is_installed_for_a_live_context_and_cleared_without_one() {
+    let rig = Rig::new("model_dead_objects", &[]);
+    let stage = RefCell::new(Stage::default());
+    // SAFETY: a bogus context handle and a hook that is never called.
+    let code = unsafe {
+        (host::api().set_write_stage)(
+            0xdead_beef,
+            Some(stage_write),
+            None,
+            std::ptr::from_ref(&stage).cast_mut().cast(),
+        )
+    };
+    assert_eq!(code, abi::E_STALE, "a context that is not one cannot install a hook");
+    // SAFETY: clearing takes no value, and no hook is installed.
+    let code = unsafe { (host::api().set_write_stage)(0, None, None, std::ptr::null_mut()) };
+    assert_eq!(code, abi::E_OK, "clearing never fails, whatever the context");
+    drop(rig);
 }

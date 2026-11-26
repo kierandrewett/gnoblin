@@ -87,6 +87,7 @@ pub(crate) static API: GnoblinApi = GnoblinApi {
     call: api_call,
     subscribe: api_subscribe,
     object_api: api_object_api,
+    set_write_stage: api_set_write_stage,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };
@@ -799,6 +800,26 @@ unsafe extern "C" fn api_subscribe(
 ) -> GnoblinReg {
     guard(0, "subscribe", || {
         verbs_abi::subscribe(ctx, class, signal, cb, user, drop_user)
+    })
+}
+
+unsafe extern "C" fn api_set_write_stage(
+    ctx: GnoblinCtx,
+    stage: Option<abi::GnoblinWriteStageFn>,
+    peek: Option<abi::GnoblinWriteStagePeekFn>,
+    user: *mut c_void,
+) -> i32 {
+    guard(abi::E_PANIC, "set_write_stage", || {
+        let Some(stage) = stage else {
+            // Clearing never fails: a caller clears on every path, after its context retired too.
+            crate::stage::clear(user);
+            return abi::E_OK;
+        };
+        if let Err(code) = registry::check_ctx(ctx, "set_write_stage", true) {
+            return code;
+        }
+        crate::stage::install(stage, peek, user);
+        abi::E_OK
     })
 }
 

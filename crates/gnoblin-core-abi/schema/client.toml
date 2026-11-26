@@ -275,24 +275,28 @@ readonly = true
 name = "x"
 type = "double"
 since = "0.2.0"
+animated = true
 
 # Vertical position in logical pixels.
 [[object.property]]
 name = "y"
 type = "double"
 since = "0.2.0"
+animated = true
 
 # Width in logical pixels.
 [[object.property]]
 name = "width"
 type = "double"
 since = "0.2.0"
+animated = true
 
 # Height in logical pixels.
 [[object.property]]
 name = "height"
 type = "double"
 since = "0.2.0"
+animated = true
 
 # The layout geometry. Assigning writes all four values.
 [[object.property]]
@@ -337,24 +341,28 @@ since = "0.2.0"
 name = "opacity"
 type = "double"
 since = "0.2.0"
+animated = true
 
 # The window's place in depth; negative is in front of the camera.
 [[object.property]]
 name = "z"
 type = "double"
 since = "0.2.0"
+animated = true
 
 # Rotation about the x, y and z axes in radians.
 [[object.property]]
 name = "rotation"
 type = "list<double>"
 since = "0.2.0"
+animated = true
 
 # Scale along the x, y and z axes. Assigning one number is not accepted here: give three.
 [[object.property]]
 name = "scale"
 type = "list<double>"
 since = "0.2.0"
+animated = true
 
 # Where the window is: `x`, `y` and its depth `z`. Assigning writes the three.
 [[object.property]]

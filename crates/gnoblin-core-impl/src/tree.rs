@@ -276,7 +276,7 @@ pub(crate) fn insert(ctx: GnoblinCtx, parent: u64, node: u64, index: i64) -> i32
 }
 
 /// The curve a timed write plays: linear. The compositor needs one and the ABI carries none yet.
-const LINEAR: [f64; 2] = [0.0, 1.0];
+pub(crate) const LINEAR: [f64; 2] = [0.0, 1.0];
 
 /// The animation a write carries, once its arguments are checked, or the reason they are not.
 type Animation = Result<TxAnimation, String>;
@@ -354,6 +354,46 @@ pub(crate) unsafe fn set(ctx: GnoblinCtx, node: u64, prop: u32, value: *const Gn
     }
 }
 
+/// The animation of a timed write once its arguments are checked, or the reason they are not: a duration above zero, a delay of up to
+/// an hour, a curve of at least two samples within 0 to 1, and a `tween` node that is one when given (zero is none). `what` names the
+/// call in the reason.
+pub(crate) fn timed_animation(
+    tree: &gnoblin_tree_client::session::TreeSession,
+    what: &str,
+    seconds: f64,
+    delay: f64,
+    tween: u64,
+    samples: &[f64],
+) -> Animation {
+    if !seconds.is_finite() || seconds <= 0.0 {
+        return Err(format!("{what}: {seconds} is not a duration"));
+    }
+    if !delay.is_finite() || !(0.0..=3600.0).contains(&delay) {
+        return Err(format!("{what}: {delay} is not a delay"));
+    }
+    if samples.len() < 2 {
+        return Err(format!("{what}: a curve needs at least two samples"));
+    }
+    if samples.iter().any(|sample| !(0.0..=1.0).contains(sample)) {
+        return Err(format!("{what}: a curve sample is outside 0 to 1"));
+    }
+    let tween = if tween == 0 {
+        None
+    } else {
+        match tree.class_of(tween) {
+            Some(class) if class == "tween" || class == "Tween" => Some(tween),
+            Some(class) => return Err(format!("{what}: node {tween} is a `{class}`, not a tween")),
+            None => return Err(format!("{what}: no tween node {tween}")),
+        }
+    };
+    Ok(TxAnimation {
+        seconds: Some(seconds),
+        delay: (delay > 0.0).then_some(delay),
+        tween,
+        samples: Some(samples.to_vec()),
+    })
+}
+
 /// `write_set_timed`.
 ///
 /// # Safety
@@ -375,41 +415,20 @@ pub(crate) unsafe fn set_timed(
             if (timing.size as usize) < size_of::<abi::GnoblinTiming>() {
                 return Err("write_set_timed: the timing struct is smaller than the core's".to_owned());
             }
-            if !timing.seconds.is_finite() || timing.seconds <= 0.0 {
-                return Err(format!("write_set_timed: {} is not a duration", timing.seconds));
-            }
-            if !timing.delay.is_finite() || !(0.0..=3600.0).contains(&timing.delay) {
-                return Err(format!("write_set_timed: {} is not a delay", timing.delay));
-            }
-            let samples = if timing.samples.is_null() || timing.n_samples < 2 {
-                return Err("write_set_timed: a curve needs at least two samples".to_owned());
+            let samples: &[f64] = if timing.samples.is_null() {
+                &[]
             } else {
                 // The caller guarantees `n_samples` readable doubles at `samples`.
-                std::slice::from_raw_parts(timing.samples, timing.n_samples).to_vec()
+                std::slice::from_raw_parts(timing.samples, timing.n_samples)
             };
-            if samples.iter().any(|sample| !(0.0..=1.0).contains(sample)) {
-                return Err("write_set_timed: a curve sample is outside 0 to 1".to_owned());
-            }
-            let tween = if timing.tween == 0 {
-                None
-            } else {
-                match tree.class_of(timing.tween) {
-                    Some(class) if class == "tween" || class == "Tween" => Some(timing.tween),
-                    Some(class) => {
-                        return Err(format!(
-                            "write_set_timed: node {} is a `{class}`, not a tween",
-                            timing.tween
-                        ));
-                    }
-                    None => return Err(format!("write_set_timed: no tween node {}", timing.tween)),
-                }
-            };
-            Ok(TxAnimation {
-                seconds: Some(timing.seconds),
-                delay: (timing.delay > 0.0).then_some(timing.delay),
-                tween,
-                samples: Some(samples),
-            })
+            timed_animation(
+                tree,
+                "write_set_timed",
+                timing.seconds,
+                timing.delay,
+                timing.tween,
+                samples,
+            )
         })
     }
 }

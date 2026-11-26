@@ -48,6 +48,15 @@ Any other writable property, such as `visible`, is written at once with the rest
 call gives the end value; the compositor draws the way there. A write the tree refuses or a `duration` below 0 throws, and
 nothing is written.
 
+What the callback may write:
+
+- A property of a `Client` (`client.opacity = 0.5`, `client.x = 70`, `client.rotation = [0, 0.5, 0]`) is staged with the other writes, and
+  reading it inside the callback gives the staged value. A timed write of a window (`client.setOpacityTimed(0.5, timing)`) is not
+  staged: it plays by the timing it is given.
+- A property of a workspace, a layout or the styles is staged by the library and tweens through the windows it moves.
+- Staging a window's property needs a core that has the write stage (`set_write_stage`, see [ABI compatibility](/abi-compatibility)).
+  On a core built before it the writes of a callback to a window's properties stay plain: they are immediate, untimed and not rolled back.
+
 To move one window or workspace, call its `set(values, options)`. It is `requestTransition` for that one object:
 
 - Every key of `values` must be a writable property, or the call throws a `TypeError` and writes nothing.

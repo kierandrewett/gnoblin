@@ -189,11 +189,13 @@ impl ClientState {
         }
     }
 
-    /// A property as the window has it: through the tick while it lives, as it was when it went after.
+    /// A property as the window has it: through the tick while it lives, as it was when it went after. While a write stage hook is
+    /// installed (a `requestTransition` callback is running) the value the hook holds for the property comes first, so the callback
+    /// reads back what it wrote.
     pub(super) fn read(&self, key: &str) -> OwnedValue {
         match &self.frozen {
             Some(frozen) => frozen.get(key).cloned().unwrap_or_else(|| live(0, self.class, key)),
-            None => live(self.node, self.class, key),
+            None => crate::stage::peek(self.node, key).unwrap_or_else(|| live(self.node, self.class, key)),
         }
     }
 

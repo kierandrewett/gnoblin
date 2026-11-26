@@ -54,6 +54,7 @@ mod role;
 mod session;
 mod shell_role;
 pub mod slots;
+mod stage;
 pub mod std_host;
 mod table;
 mod tree;

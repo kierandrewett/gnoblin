@@ -163,6 +163,8 @@ callback | GnoblinExitFn | unsafe extern "C" fn(user: *mut c_void, exit: *const 
 callback | GnoblinInvokeFn | unsafe extern "C" fn(user: *mut c_void, member: GnoblinMemberId, args: *const GnoblinValue, n_args: usize, out: *mut GnoblinValue) -> i32 | 1.0
 callback | GnoblinCatalogFn | unsafe extern "C" fn(user: *mut c_void, entry: *const GnoblinCatalogEntry) -> i32 | 1.0
 callback | GnoblinTrackFn | unsafe extern "C" fn(user: *mut c_void, obj: GnoblinObj, class: GnoblinClassId, member: GnoblinMemberId) | 1.0
+callback | GnoblinWriteStageFn | unsafe extern "C" fn(user: *mut c_void, node: GnoblinNode, key: GnoblinStr, value: *const GnoblinValue) -> i32 | 1.0
+callback | GnoblinWriteStagePeekFn | unsafe extern "C" fn(user: *mut c_void, node: GnoblinNode, key: GnoblinStr, out: *mut GnoblinValue) -> i32 | 1.0
 
 struct | GnoblinStr | size 16 align 8 fixed | 1.0
 
@@ -571,7 +573,7 @@ field | GnoblinObjectApi.track | unsafe extern "C" fn(ctx: GnoblinCtx, cb: Optio
 field | GnoblinObjectApi.last_error_code | unsafe extern "C" fn(buf: *mut u8, cap: usize) -> usize @152 +8 | 1.0
 field | GnoblinObjectApi.retain | unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj) -> i32 @160 +8 | 1.0
 
-struct | GnoblinApi | size 472 align 8 extensible | 1.0
+struct | GnoblinApi | size 480 align 8 extensible | 1.0
 
 field | GnoblinApi.size | u32 @0 +4 | 1.0
 field | GnoblinApi.major | u32 @4 +4 | 1.0
@@ -634,3 +636,4 @@ field | GnoblinApi.wake_fd | unsafe extern "C" fn(ctx: GnoblinCtx) -> i32 @440 +
 field | GnoblinApi.call | unsafe extern "C" fn(ctx: GnoblinCtx, object: u64, class: u32, method: u32, args: *const GnoblinValue, n_args: usize, cb: Option<GnoblinAnswerFn>, user: *mut c_void, drop_user: Option<GnoblinDropFn>, out: *mut GnoblinPending) -> i32 @448 +8 | 1.0
 field | GnoblinApi.subscribe | unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, signal: u32, cb: GnoblinEventFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg @456 +8 | 1.0
 field | GnoblinApi.object_api | unsafe extern "C" fn(ctx: GnoblinCtx, namespace: GnoblinStr, out: *mut *const GnoblinObjectApi) -> i32 @464 +8 | 1.0
+field | GnoblinApi.set_write_stage | unsafe extern "C" fn(ctx: GnoblinCtx, stage: Option<GnoblinWriteStageFn>, peek: Option<GnoblinWriteStagePeekFn>, user: *mut c_void) -> i32 @472 +8 | 1.0

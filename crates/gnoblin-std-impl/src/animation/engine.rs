@@ -12,7 +12,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use gnoblin_core::{ErrorKind, Gnoblin, NodeId, Timing};
+use gnoblin_core::{ErrorKind, Gnoblin, LogLevel, NodeId, Timing, WriteStage};
 use gnoblin_std_abi as abi;
 
 use super::easing::Easing;
@@ -112,6 +112,9 @@ pub(crate) struct AnimState {
     undo: Option<staging::Undo>,
     /// The transitions that settled since the turn last told the objects that stand for them: `(transition, cancelled)`.
     settled: Vec<(Id, bool)>,
+    /// The core's write stage while a transition is being staged: the writes of the core's object setters (`client.opacity = 0.5`) are
+    /// held with the others. None on a core built before it, whose setters send every write at once.
+    hook: Option<WriteStage>,
 }
 
 /// How many finished transitions are remembered for `transition_info`.
@@ -187,11 +190,47 @@ impl State {
         }
         self.anim.pending = Some(Options::check(raw, SITE)?);
         staging::begin();
+        self.anim.hook = self.write_stage();
         Ok(())
+    }
+
+    /// Installs the core's write stage: a write an object's setter makes (a window's `opacity`) is staged here when `staging::check`
+    /// accepts it, and a read of it sees the staged value. What the check refuses goes on as a plain write, as it does without a stage.
+    /// A core without the write stage leaves those writes plain.
+    fn write_stage(&self) -> Option<WriteStage> {
+        let g = self.g.clone();
+        let staged = self.g.stage_writes(
+            move |node, key, value| {
+                let Some(prop) = Prop::from_value(value) else {
+                    return false;
+                };
+                staging::check(&g, node.0, key, &prop, false).is_ok() && staging::capture(node.0, key, &prop)
+            },
+            |node, key| staging::peek(node.0, key).map(|prop| prop.to_value()),
+        );
+        match staged {
+            Ok(stage) => Some(stage),
+            Err(error) if error.kind() == ErrorKind::Unsupported => None,
+            Err(error) => {
+                self.g.log_at(
+                    LogLevel::Warn,
+                    &format!("gnoblin-std: a transition could not stage the writes of the core's objects: {error}"),
+                );
+                None
+            }
+        }
+    }
+
+    /// Ends staging for a commit and hands over what was staged, in the order the properties were first written. The core's write
+    /// stage goes first, so nothing offered from here on is kept.
+    pub(crate) fn transition_end_staging(&mut self) -> Vec<Staged> {
+        self.anim.hook = None;
+        staging::end()
     }
 
     /// Ends staging and drops what was staged.
     pub(crate) fn transition_abort(&mut self) {
+        self.anim.hook = None;
         staging::end();
         self.anim.pending = None;
     }

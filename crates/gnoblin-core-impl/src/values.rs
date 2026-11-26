@@ -90,7 +90,7 @@ impl OwnedValue {
 }
 
 /// A `GnoblinValue` with nothing in it.
-const fn blank() -> GnoblinValue {
+pub(crate) const fn blank() -> GnoblinValue {
     GnoblinValue {
         size: size_of::<GnoblinValue>() as u32,
         kind: 0,
