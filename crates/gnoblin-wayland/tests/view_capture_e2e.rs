@@ -2469,18 +2469,39 @@ ignore_gpu_events!(dmabuf_global::ZwpLinuxDmabufV1, params::ZwpLinuxBufferParams
 // once per revision, only for a View something is reading, in the loop turn the request arrives in. The same cases as
 // above run against it, and what they assert is the same.
 
-/// A session on the GLES renderer, or `None` (with the reason printed) on a machine that has no surfaceless EGL context.
-fn start_gles(observer: Option<Arc<dyn Observer>>) -> Option<(Session, Owner)> {
+/// The GPU renderers a View is drawn on: GLES and Vulkan. A case runs on each the machine can create.
+const GPU_RENDERERS: [gnoblin_backend::render::renderer::RendererKind; 2] = [
+    gnoblin_backend::render::renderer::RendererKind::Gles,
+    gnoblin_backend::render::renderer::RendererKind::Vulkan,
+];
+
+/// Runs `case` once on each GPU renderer.
+fn on_each_gpu_renderer(case: fn(gnoblin_backend::render::renderer::RendererKind)) {
+    for kind in GPU_RENDERERS {
+        case(kind);
+    }
+}
+
+/// A session on the GPU renderer `kind`, or `None` (with the reason printed) on a machine that cannot create it: no
+/// surfaceless EGL context for GLES, no Vulkan loader or device for Vulkan.
+fn start_on_gpu(
+    kind: gnoblin_backend::render::renderer::RendererKind,
+    observer: Option<Arc<dyn Observer>>,
+) -> Option<(Session, Owner)> {
     use gnoblin_backend::render::renderer::{AnyRenderer, RendererKind};
-    if let Err(error) = AnyRenderer::new(RendererKind::Gles, gnoblin_types::Size::new(8, 8)) {
-        println!("skipping the GPU View test: {error} (no surfaceless EGL context on this machine)");
+    if let Err(error) = AnyRenderer::new(kind, gnoblin_types::Size::new(8, 8)) {
+        println!(
+            "skipping the {} View test: {error} (the machine cannot create the renderer)",
+            kind.name()
+        );
         return None;
     }
     let (hooks, answers) = hooks();
     let owner = owner_of(&hooks, answers);
     let extras = Extras {
         observer,
-        gles: true,
+        gles: kind == RendererKind::Gles,
+        vulkan: kind == RendererKind::Vulkan,
         ..Extras::default()
     };
     Some((Session::start_with_extras(None, hooks, extras), owner))
@@ -2490,7 +2511,13 @@ fn start_gles(observer: Option<Arc<dyn Observer>>) -> Option<(Session, Owner)> {
 /// kept on the CPU for the display.
 #[test]
 fn a_view_drawn_on_the_gpu_is_read_by_a_view_role_client_and_follows_its_source() {
-    let Some((session, owner)) = start_gles(None) else {
+    on_each_gpu_renderer(a_view_drawn_on_the_gpu_is_read_by_a_view_role_client_and_follows_its_source_on);
+}
+
+fn a_view_drawn_on_the_gpu_is_read_by_a_view_role_client_and_follows_its_source_on(
+    kind: gnoblin_backend::render::renderer::RendererKind,
+) {
+    let Some((session, owner)) = start_on_gpu(kind, None) else {
         return;
     };
     session.run(move |handle| {
@@ -2517,7 +2544,13 @@ fn a_view_drawn_on_the_gpu_is_read_by_a_view_role_client_and_follows_its_source(
 /// A canvas inside a View is captured with its painted pixels, and again when its content is written again.
 #[test]
 fn a_canvas_in_a_view_drawn_on_the_gpu_is_captured_with_its_painted_pixels() {
-    let Some((session, owner)) = start_gles(None) else {
+    on_each_gpu_renderer(a_canvas_in_a_view_drawn_on_the_gpu_is_captured_with_its_painted_pixels_on);
+}
+
+fn a_canvas_in_a_view_drawn_on_the_gpu_is_captured_with_its_painted_pixels_on(
+    kind: gnoblin_backend::render::renderer::RendererKind,
+) {
+    let Some((session, owner)) = start_on_gpu(kind, None) else {
         return;
     };
     session.run(move |handle| {
@@ -2538,8 +2571,14 @@ fn a_canvas_in_a_view_drawn_on_the_gpu_is_captured_with_its_painted_pixels() {
 /// in, is answered with the path, and the capture session is shown open until the file exists.
 #[test]
 fn a_still_of_a_view_drawn_on_the_gpu_is_written_and_answered() {
+    on_each_gpu_renderer(a_still_of_a_view_drawn_on_the_gpu_is_written_and_answered_on);
+}
+
+fn a_still_of_a_view_drawn_on_the_gpu_is_written_and_answered_on(
+    kind: gnoblin_backend::render::renderer::RendererKind,
+) {
     let recorder = Arc::new(Recorder::default());
-    let Some((session, owner)) = start_gles(Some(recorder.clone())) else {
+    let Some((session, owner)) = start_on_gpu(kind, Some(recorder.clone())) else {
         return;
     };
     session.run(move |handle| {
@@ -2569,7 +2608,13 @@ fn a_still_of_a_view_drawn_on_the_gpu_is_written_and_answered() {
 /// while the display keeps showing them: the capture reads the scene's redacted variant, never the display texture.
 #[test]
 fn a_png_of_a_view_drawn_on_the_gpu_holds_none_of_a_secure_windows_pixels() {
-    let Some((session, owner)) = start_gles(None) else {
+    on_each_gpu_renderer(a_png_of_a_view_drawn_on_the_gpu_holds_none_of_a_secure_windows_pixels_on);
+}
+
+fn a_png_of_a_view_drawn_on_the_gpu_holds_none_of_a_secure_windows_pixels_on(
+    kind: gnoblin_backend::render::renderer::RendererKind,
+) {
+    let Some((session, owner)) = start_on_gpu(kind, None) else {
         return;
     };
     session.run(move |handle| {
@@ -2605,7 +2650,13 @@ fn a_png_of_a_view_drawn_on_the_gpu_holds_none_of_a_secure_windows_pixels() {
 /// A `view`-role session's frames never carry a secure window's pixels once the mark is on, however the View is drawn.
 #[test]
 fn a_view_role_session_of_a_view_drawn_on_the_gpu_never_receives_a_secure_windows_pixels() {
-    let Some((session, owner)) = start_gles(None) else {
+    on_each_gpu_renderer(a_view_role_session_of_a_view_drawn_on_the_gpu_never_receives_a_secure_windows_pixels_on);
+}
+
+fn a_view_role_session_of_a_view_drawn_on_the_gpu_never_receives_a_secure_windows_pixels_on(
+    kind: gnoblin_backend::render::renderer::RendererKind,
+) {
+    let Some((session, owner)) = start_on_gpu(kind, None) else {
         return;
     };
     session.run(move |handle| {

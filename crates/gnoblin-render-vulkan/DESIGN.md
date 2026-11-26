@@ -500,11 +500,24 @@ The magnifier and colour matrix (`view.rs`) copy the finished output into a scra
 (`downsample.rs`) averages the target into a `shown`-size image with the shared `downsample.wgsl` and reads it back. Both
 shaders gained a "source is top-down" flag (`view.wgsl` `flags.y`; `downsample.wgsl` already had `taps.z`), which GLES leaves zero.
 
-**What B1 must do** when it wires the backend: `RendererKind::draws_views` is true for `Vulkan`; `AnyRenderer::view_pixels` calls
-`Vulkan::read_view(scene, capture, live)` and `release_views` calls `Vulkan::retire_views(&[])`; a supersampled Vulkan output
-calls `Vulkan::downsampled(shown)` where GLES calls `downsampled`; `Backend::gpu_views` then follows `draws_views`. A device whose
-`VulkanDevice` has no depth-stencil format draws no View, so B1 should answer `draws_views` from the device
-(`VulkanDevice::draws_views`) and not from the kind alone.
+**As wired (B1).** `RendererKind::draws_views` is true for `Vulkan`, and `AnyRenderer::draws_views` answers for the device the renderer is
+on (`VulkanDevice::draws_views`), which is what `Backend::gpu_views` of the headless and nested backends ask of their first output. `view_pixels`
+calls `Vulkan::read_view`, `release_views` calls `retire_views(&[])`, and a nested session with a supersampled output has its
+Vulkan renderer average the target (`Vulkan::downsampled`) before writing the host's shared-memory buffer, falling back to the CPU
+average if the pass fails. A capture does not use `downsampled`: it must go through `capture_redacted` so a secure layer is masked,
+and `downsampled` reads the target as drawn.
+
+The backend's outputs are built with one `GpuShare`, which holds the Vulkan device: the first output makes it, the others draw on it
+(`Vulkan::with_device`), and a device that was lost is replaced for the next output. A nested session asks for the device on the
+host's dmabuf `main_device` (`DeviceChoice::RenderNode`, from `VK_EXT_physical_device_drm`) and takes the best device when the
+machine has none there. `AnyRenderer::dmabuf_support` answers with the formats of `dmabuf_formats()` (linear only) on the device's
+render node, `import_dmabuf` refuses what is not a single linear plane in them, and the copies into a client's buffer
+(`copy_frame_into_dmabuf`, `copy_image_into_dmabuf`) take the buffer's region and the source's origin
+(`Vulkan::copy_frame_region_into_dmabuf`, `copy_image_region_into_dmabuf`), as the GLES renderer's do. A software driver names no
+render node, so a session on lavapipe serves `zwp_linux_dmabuf_v1` version 3 (formats and modifiers, no device): the evidence is
+`gnoblin-wayland/tests/vulkan_dmabuf.rs`. The nested presenter needs no change: `GbmPresenter::can_fill` asks `dmabuf_support`,
+and the formats it allocates in are the intersection of the renderer's linear pairs and the host's, so a host that offers no
+linear pair is presented to through shared memory.
 
 ### 7.4 XR
 

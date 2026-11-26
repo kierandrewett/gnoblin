@@ -158,6 +158,8 @@ pub struct Extras {
     pub dmabuf_provider: Option<Box<dyn gnoblin_backend::DmabufProvider>>,
     /// Draw with the GLES renderer, which draws a View on the GPU; the software renderer when `false`.
     pub gles: bool,
+    /// Draw with the Vulkan renderer, which draws a View on the GPU too; ignored when `gles` is set.
+    pub vulkan: bool,
 }
 
 /// A session that has been created but is not running yet.
@@ -286,6 +288,9 @@ impl Session {
         };
         let mut headless = if extras.gles {
             Headless::with_config(gnoblin_backend::headless::HeadlessConfig::gles()).expect("a GLES headless session")
+        } else if extras.vulkan {
+            Headless::with_config(gnoblin_backend::headless::HeadlessConfig::vulkan())
+                .expect("a Vulkan headless session")
         } else {
             Headless::new()
         };
