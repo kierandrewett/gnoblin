@@ -34,7 +34,7 @@ fn generated(target: &str, path: &str) -> String {
 const MEMBERS: [(&str, &[&str], &[&str]); 6] = [
     (
         "gnoblin_augment",
-        &["workspaces", "displays", "scene", "gestures"],
+        &["workspaces", "displays", "scene", "gestures", "extensions"],
         &["find_workspaces", "request_transition", "show"],
     ),
     ("output_collection_augment", &["profiles"], &[]),
