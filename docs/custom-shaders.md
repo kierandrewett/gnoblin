@@ -41,9 +41,7 @@ use gnoblin_core::objects::ModelRoot;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    if let Some(compositor) = model.compositor()? {
-        compositor.set_user_shaders(false)?;
-    }
+    model.compositor()?.set_user_shaders(false)?;
     Ok(())
 }
 ```

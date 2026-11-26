@@ -81,9 +81,7 @@ use gnoblin_core::objects::ModelRoot;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     let shell = Rc::clone(&model);
     clients
         .on_focus_changed(move |client, focused| {

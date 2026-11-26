@@ -41,7 +41,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(client) = model.clients()?.and_then(|clients| clients.at(0).ok().flatten()) else {
+    let Some(client) = model.clients()?.at(0)? else {
         return Ok(());
     };
     client.move_with_keys()?;
@@ -259,9 +259,7 @@ use gnoblin_core::objects::{BindingOptions, ModelRoot};
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
     for device in input.devices()? {
         if !device.name()?.contains("Macro") {
             continue;

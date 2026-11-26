@@ -323,7 +323,7 @@ use gnoblin_std::prelude::*;
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
     let objects = g.std()?.objects()?;
-    let focused = model.clients()?.and_then(|clients| clients.focused().ok().flatten());
+    let focused = model.clients()?.focused()?;
     if let Some(client) = focused {
         let inset = Decorations::get(&objects)?.inset_of(&client)?; // the same as client.frame_inset()?
         println!("the frame takes {} {} {} {}", inset.top, inset.right, inset.bottom, inset.left);

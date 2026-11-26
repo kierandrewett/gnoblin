@@ -51,9 +51,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     clients.style()?.set_opacity(0.95)?;
     clients.style()?.set_shadows(&[Shadow {
         y: 8.0,
@@ -141,7 +139,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(client) = model.clients()?.and_then(|clients| clients.focused().ok().flatten()) else {
+    let Some(client) = model.clients()?.focused()? else {
         return Ok(());
     };
     println!("{}", client.style()?.is_set(StyleProperty::CornerRadius)?); // false: the client does not override it
@@ -200,7 +198,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(client) = model.clients()?.and_then(|clients| clients.focused().ok().flatten()) else {
+    let Some(client) = model.clients()?.focused()? else {
         return Ok(());
     };
     let style = client.style()?;
@@ -300,9 +298,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     let style = clients.style()?;
     style.set_backdrop_filter(&[BlurFilter { radius: 18.0 }.into(), SaturateFilter { amount: 1.25 }.into()])?;
     let first_is_blur = matches!(style.backdrop_filter()?.first(), Some(Filter::Blur(_)));
@@ -347,9 +343,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     let style = clients.style()?;
     style.set_shadows(&[Shadow {
         blur: 10.0,
@@ -404,9 +398,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     let style = clients.style()?;
     style.set_corner_radius(&CornerRadius {
         all: Some(12.0),
@@ -546,9 +538,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     let style = clients.style()?;
     style.set_corner_radius(&CornerRadius {
         all: Some(12.0),

@@ -509,26 +509,25 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 
     WindowMenus::get(&objects)?.start()?;
     NotRespondingAlerts::get(&objects)?.start()?;
-    if let Some(context) = model.input()?.and_then(|input| input.primary().ok().flatten()) {
-        let library = objects.clone();
-        let shell = Rc::clone(&model);
-        context.bind(
-            "Super+space",
-            Some(move |_| {
-                let shell = Rc::clone(&shell);
-                // Return starts what you typed, as `gnoblin.spawn` does.
-                Launcher::open(
-                    &library,
-                    Some(move |command: String| {
-                        shell.spawn(&[command], None)?;
-                        Ok(())
-                    }),
-                )?;
-                Ok(true)
-            }),
-            None,
-        )?;
-    }
+    let context = model.input()?.primary()?;
+    let library = objects.clone();
+    let shell = Rc::clone(&model);
+    context.bind(
+        "Super+space",
+        Some(move |_| {
+            let shell = Rc::clone(&shell);
+            // Return starts what you typed, as `gnoblin.spawn` does.
+            Launcher::open(
+                &library,
+                Some(move |command: String| {
+                    shell.spawn(&[command], None)?;
+                    Ok(())
+                }),
+            )?;
+            Ok(true)
+        }),
+        None,
+    )?;
     // The toast reads this clock in milliseconds, so the fade follows the shell's own time.
     let started = Instant::now();
     Toast::show(

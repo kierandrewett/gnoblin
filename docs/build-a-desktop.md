@@ -132,12 +132,10 @@ const GAP: f64 = 10.0;
 
 /// Gives every window an equal column of the first output, in the order the windows opened.
 fn retile(model: &ModelRoot) -> gnoblin::Result<()> {
-    let Some(output) = model.outputs()?.and_then(|outputs| outputs.at(0).ok().flatten()) else {
+    let Some(output) = model.outputs()?.at(0)? else {
         return Ok(());
     };
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     let mut windows = Vec::new();
     for client in clients.to_list()? {
         if client.alive()? {
@@ -428,9 +426,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     model.spawn(&["waybar".to_owned()], None)?;
     model.spawn(&["mako".to_owned()], None)?;
 
-    let Some(seat) = model.input()?.and_then(|input| input.primary().ok().flatten()) else {
-        return Ok(());
-    };
+    let seat = model.input()?.primary()?;
     for (trigger, program) in [("Super+d", "fuzzel"), ("Super+Return", "foot")] {
         let shell = Rc::clone(&model);
         seat.bind(

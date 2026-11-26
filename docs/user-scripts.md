@@ -50,9 +50,8 @@ use gnoblin_core::objects::ModelRoot;
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let root = ModelRoot::get(&objects)?;
-    let (Some(clients), Some(process)) = (root.clients()?, root.process()?) else {
-        return Ok(());
-    };
+    let clients = root.clients()?;
+    let process = root.process()?;
     let listener = clients.on_added(move |client, _collection| {
         let (Ok(app_id), Ok(title)) = (client.app_id(), client.title()) else {
             return;

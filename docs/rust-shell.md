@@ -110,43 +110,41 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     )?;
     model.workspaces()?.add(&code)?;
 
-    if let Some(clients) = model.clients()? {
-        clients.style()?.set_corner_radius(&CornerRadius {
-            all: Some(12.0),
-            ..CornerRadius::default()
-        })?;
-        let firefox = ClientQuery {
-            app_id: Some("firefox".to_owned()),
-            ..ClientQuery::default()
-        };
-        clients.where_(&firefox, None)?.style()?.set_corner_radius(&CornerRadius {
-            all: Some(18.0),
-            ..CornerRadius::default()
-        })?;
-    }
+    let clients = model.clients()?;
+    clients.style()?.set_corner_radius(&CornerRadius {
+        all: Some(12.0),
+        ..CornerRadius::default()
+    })?;
+    let firefox = ClientQuery {
+        app_id: Some("firefox".to_owned()),
+        ..ClientQuery::default()
+    };
+    clients.where_(&firefox, None)?.style()?.set_corner_radius(&CornerRadius {
+        all: Some(18.0),
+        ..CornerRadius::default()
+    })?;
 
-    if let Some(seat) = model.input()?.and_then(|input| input.primary().ok().flatten()) {
-        let launcher = Rc::clone(&model);
-        seat.bind(
-            "Super+Return",
-            Some(move |_| {
-                launcher.spawn(&["foot".to_owned()], None)?;
-                Ok(true)
-            }),
-            None,
-        )?;
-        let closer = Rc::clone(&model);
-        seat.bind(
-            "Super+q",
-            Some(move |_| {
-                if let Some(client) = closer.input()?.and_then(|input| input.focused_client().ok().flatten()) {
-                    client.close()?;
-                }
-                Ok(true)
-            }),
-            None,
-        )?;
-    }
+    let seat = model.input()?.primary()?;
+    let launcher = Rc::clone(&model);
+    seat.bind(
+        "Super+Return",
+        Some(move |_| {
+            launcher.spawn(&["foot".to_owned()], None)?;
+            Ok(true)
+        }),
+        None,
+    )?;
+    let closer = Rc::clone(&model);
+    seat.bind(
+        "Super+q",
+        Some(move |_| {
+            if let Some(client) = closer.input()?.primary()?.focused_client()? {
+                client.close()?;
+            }
+            Ok(true)
+        }),
+        None,
+    )?;
     Ok(())
 }
 ```
@@ -709,9 +707,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let policy = Rc::clone(&state);
     let listener = RequestListenerHandlers {
         on_request: Box::new(move |request| {
-            let Some(clients) = model.clients()? else {
-                return Ok(());
-            };
+            let clients = model.clients()?;
             let Some(client) = clients.get_by_id(&request.client()?)? else {
                 return Ok(());
             };

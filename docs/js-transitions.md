@@ -62,10 +62,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
     let objects = g.std()?.objects()?;
     let workspace = model.workspaces()?.by_id("dev")?;
-    let client = model
-        .input()?
-        .and_then(|input| input.primary().ok().flatten())
-        .and_then(|context| context.focused_client().ok().flatten());
+    let client = model.input()?.primary()?.focused_client()?;
 
     if let (Some(workspace), Some(client)) = (workspace, client) {
         let layout = MasterStackLayout::new_with(
@@ -199,10 +196,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let client = model
-        .input()?
-        .and_then(|input| input.primary().ok().flatten())
-        .and_then(|context| context.focused_client().ok().flatten());
+    let client = model.input()?.primary()?.focused_client()?;
 
     if let Some(client) = client {
         let transition = model.request_transition(
@@ -295,10 +289,7 @@ use gnoblin_std::prelude::*;
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
     let objects = g.std()?.objects()?;
-    let client = model
-        .input()?
-        .and_then(|input| input.primary().ok().flatten())
-        .and_then(|context| context.focused_client().ok().flatten());
+    let client = model.input()?.primary()?.focused_client()?;
     let workspace = model.workspaces()?.by_id("dev")?;
     let layout = MasterStackLayout::new_with(
         &objects,

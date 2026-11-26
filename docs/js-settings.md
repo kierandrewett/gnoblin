@@ -165,9 +165,7 @@ use gnoblin_std::prelude::*;
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
     let objects = g.std()?.objects()?;
-    let Some(outputs) = model.outputs()? else {
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     let profiles = outputs.profiles()?;
 
     let main = OutputProfile::new_with(
@@ -245,9 +243,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     clients.style()?.set_corner_radius(&CornerRadius {
         all: Some(12.0),
         ..CornerRadius::default()
@@ -382,9 +378,7 @@ use gnoblin_core::objects::ModelRoot;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let Some(context) = model.input()?.and_then(|input| input.primary().ok().flatten()) else {
-        return Ok(());
-    };
+    let context = model.input()?.primary()?;
     let launcher = Rc::clone(&model);
     context.bind(
         "Super+Return",
@@ -398,7 +392,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     context.bind(
         "Swipe4Up",
         Some(move |_| {
-            if let Some(client) = closer.input()?.and_then(|input| input.focused_client().ok().flatten()) {
+            if let Some(client) = closer.input()?.focused_client()? {
                 client.close()?;
             }
             Ok(true)
@@ -456,9 +450,7 @@ use gnoblin_core::objects::{DialogListenerHandlers, ModelRoot};
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = ModelRoot::get(&objects)?;
-    let Some(dialogs) = model.dialogs()? else {
-        return Ok(());
-    };
+    let dialogs = model.dialogs()?;
     let listener = DialogListenerHandlers {
         on_consent_request: Some(Box::new(|request| {
             if request.subject()? == "Screenshot" {
@@ -508,9 +500,7 @@ use gnoblin_core::objects::ModelRoot;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    if let Some(settings) = model.compositor()? {
-        settings.set_user_shaders(false)?;
-    }
+    model.compositor()?.set_user_shaders(false)?;
     Ok(())
 }
 ```
