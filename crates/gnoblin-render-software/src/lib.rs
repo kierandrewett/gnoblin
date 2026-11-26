@@ -30,16 +30,27 @@
 //! - **Damage** is the only region repainted. Every draw is clipped to the
 //!   intersection of the frame's damage and the layer, so an unchanged pixel is
 //!   never touched and a move cannot leave stale pixels behind.
-//! - **Corner radius is drawn here, by clipping.** A pixel is kept when its centre lies
-//!   inside the rounded rectangle, so the corners show what is behind them. Pixman has
-//!   no anti-aliased mask, so the edge is hard. A layer that is one part of a larger
-//!   frame (a window's content under its titlebar) rounds to the frame's rectangle, its
-//!   `silhouette`, and not to its own.
-//! - **Borders and shadows are drawn here, as spans.** A border is the band between two
-//!   rounded shapes and a shadow is a stack of nested shapes whose alphas step down to
-//!   the shader's falloff (`shape.rs`); both have hard edges, and the shadow's falloff is
-//!   stepped. A backdrop blur and a user shader are the GLES renderer's work; this path leaves a blur undrawn instead of
-//!   faking it, and the node's `skipped` list says so.
+//! - **Corner radius is drawn here**, with an anti-aliased edge: a layer is drawn square and the pixels outside its
+//!   curve are put back as they were, weighted by the shader's own coverage (`raster::fade`). A layer that is one part of
+//!   a larger frame (a window's content under its titlebar) rounds to the frame's rectangle, its `silhouette`, and not
+//!   to its own.
+//! - **Shadows, borders and the backdrop blur are computed on the CPU** (`layers.rs`, `raster.rs`, `blur.rs`). Pixman
+//!   has no soft mask and no blur, so the pixels a layer's effects change are read back, computed in memory with the
+//!   arithmetic of the GLES shaders and written over the damaged pixels. A shadow falls off by the shader's smoothstep
+//!   (an inset one by its reflection), a border's band is anti-aliased at both its edges and at a rounded corner, and
+//!   the blur is the shader's nine-tap Gaussian, swept `passes` times, then graded by `gnoblin_render_frame::grade`, the
+//!   function the GPU shaders are checked against, so the colours agree. The shared goldens
+//!   (`tests/golden.rs`) hold all of it to the GPU pictures.
+//!
+//! What it does not draw, and why:
+//!
+//! - **A user shader.** It is WGSL, and running it needs the compiler and the GPU of the other renderers; there is no
+//!   CPU WGSL interpreter. A layer with a shader is drawn without it, the node's `skipped` list says
+//!   `shader: unsupported-by-renderer`, and the log says why once.
+//! - **Effects on a layer placed in depth** (a `model` matrix). The layer is drawn flat, as before, without its effects.
+//! - **A blur's `downscale`.** The blur runs at full resolution, as the GLES blur does; the parameter is not honoured
+//!   there either. The cost is in `tests/effect_cost.rs`.
+//! - **Four different corner radii**, which the node cannot state yet.
 //!
 //! # Failure modes
 //!
@@ -67,7 +78,6 @@ use smithay::backend::renderer::{
 use smithay::reexports::pixman::Image as PixmanImage;
 use smithay::utils::{Buffer as BufferCoords, Physical, Rectangle, Size as PhysicalSize, Transform};
 
-use gnoblin_render::Pass;
 use gnoblin_types::{Color, Scale, Size};
 
 use gnoblin_render_frame::error::RenderError;
@@ -77,7 +87,9 @@ use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::image::READBACK_FORMAT;
 
-mod shape;
+mod blur;
+mod layers;
+mod raster;
 mod stereo;
 mod view;
 pub use stereo::{Frustum, StereoRig, ViewRig, eye_sizes, render_rig};
@@ -446,112 +458,33 @@ impl Software {
         } = self;
         let output = PhysicalSize::from((physical.width as i32, physical.height as i32));
         let mut target = renderer.bind(buffer).map_err(failed)?;
-        let mut pixman_frame = renderer
-            .render(&mut target, output, Transform::Normal)
-            .map_err(failed)?;
-        pixman_frame.clear(colour(frame.background()), damage).map_err(failed)?;
-        for (index, layer) in frame.layers().iter().enumerate() {
-            let dst = match layer {
-                Layer::Surface(surface) => physical_rect(surface.dst, scale),
-                Layer::Solid(solid) => physical_rect(solid.dst, scale),
-                Layer::Overlay(overlay) => {
-                    // The overlay is a bitmap, drawn in a pass of its own with nearest-neighbour
-                    // scaling. Pixman cannot change the filter while a frame is open, so the frame
-                    // closes here and reopens once the overlay is down.
-                    let _sync = pixman_frame.finish().map_err(failed)?;
-                    let texture = textures.get(index).and_then(Option::as_ref);
-                    draw_overlay_layer(renderer, &mut target, output, overlay, texture, scale, damage, clipped)?;
-                    pixman_frame = renderer
-                        .render(&mut target, output, Transform::Normal)
-                        .map_err(failed)?;
-                    continue;
-                }
-            };
-            let radius = corner_radius(layer, scale);
-            let (silhouette, effects, tint, opacity, flat) = match layer {
-                Layer::Surface(surface) => (
-                    surface.silhouette,
-                    &surface.effects,
-                    surface.tint,
-                    surface.opacity,
-                    surface.model.is_none(),
-                ),
-                Layer::Solid(solid) => (solid.silhouette, &solid.effects, solid.tint, 1.0, solid.model.is_none()),
-                Layer::Overlay(_) => continue,
-            };
-            // The rectangle the corner radius rounds, a shadow that asks for the frame follows and a border runs
-            // along: the layer's silhouette when it is one part of a larger frame, else its own rectangle.
-            let outline = silhouette.map_or(dst, |area| physical_rect(area, scale));
-            // A layer placed in depth is drawn flat here, without the effects: they are not drawn on a node in 3D.
-            if flat {
-                for pass in effects.passes() {
-                    if let Pass::Shadow(held) = pass
-                        && !held.inset
-                        && held.opacity > 0.0
-                        && held.color.a > 0.0
-                    {
-                        let follows = if held.frame { outline } else { dst };
-                        shape::shadow(&mut pixman_frame, held, follows, radius, scale, damage, clipped)?;
-                    }
-                }
-            }
-            layer_damage(damage, dst, clipped);
-            if !clipped.is_empty() && radius > 0.0 {
-                // The shape's spans are in its own coordinates; the damage is relative to the layer.
-                let origin = outline.loc - dst.loc;
-                let rounded: Vec<_> = corner_spans(outline.size, radius)
-                    .into_iter()
-                    .map(|span| Rectangle::new(span.loc + origin, span.size))
-                    .collect();
-                clip_to_shape(clipped, &rounded);
-            }
-            if !clipped.is_empty() {
-                match layer {
-                    Layer::Solid(solid) => {
-                        let fill = tinted(solid.colour, solid.tint);
-                        // A layer that is only its effects (a border's ring) has nothing of its own to fill.
-                        if fill.a > 0.0 {
-                            pixman_frame.draw_solid(dst, clipped, colour(fill)).map_err(failed)?;
-                        }
-                    }
-                    Layer::Surface(surface) => {
-                        if let Some(Some(texture)) = textures.get(index) {
-                            let alpha = surface.opacity.clamp(0.0, 1.0) * surface.tint.a.clamp(0.0, 1.0);
-                            pixman_frame
-                                .render_texture_from_to(
-                                    texture,
-                                    source(surface),
-                                    dst,
-                                    clipped,
-                                    &[],
-                                    surface.transform,
-                                    alpha,
-                                )
-                                .map_err(failed)?;
-                        }
-                    }
-                    Layer::Overlay(_) => {}
-                }
-            }
-            if flat {
-                for pass in effects.passes() {
-                    if let Pass::Border(held) = pass
-                        && held.width > 0.0
-                        && held.color.a > 0.0
-                    {
-                        let (near, far) = shape::border_band(held, scale);
-                        let spans = shape::band(outline, radius, near, far);
-                        let mut stroke = tinted(held.color, tint);
-                        stroke.a *= opacity.clamp(0.0, 1.0);
-                        shape::fill(&mut pixman_frame, &spans, damage, colour(stroke), clipped)?;
-                    }
-                }
-            }
+        {
+            let mut pixman_frame = renderer
+                .render(&mut target, output, Transform::Normal)
+                .map_err(failed)?;
+            pixman_frame.clear(colour(frame.background()), damage).map_err(failed)?;
+            // Pixman signals nothing: its sync point is already signalled, and the offscreen buffer is read on the
+            // same thread. The value is dropped on purpose rather than waited on.
+            let _sync = pixman_frame.finish().map_err(failed)?;
         }
-        // Pixman signals nothing: its sync point is already signalled, and the
-        // offscreen buffer is read on the same thread. The value is dropped on
-        // purpose rather than waited on.
-        let _sync = pixman_frame.finish().map_err(failed)?;
+        // Each layer opens and closes the frames it needs: a layer with a shadow, a blur, a border or a rounded corner
+        // reads pixels back and writes them over, which a Pixman frame in progress would not allow.
+        for (index, layer) in frame.layers().iter().enumerate() {
+            let texture = textures.get(index).and_then(Option::as_ref);
+            if let Layer::Overlay(overlay) = layer {
+                // The overlay is a bitmap, drawn in a pass of its own with nearest-neighbour scaling.
+                draw_overlay_layer(renderer, &mut target, output, overlay, texture, scale, damage, clipped)?;
+                continue;
+            }
+            let mut canvas = layers::Canvas {
+                renderer,
+                target: &mut target,
+                output,
+                damage,
+                scale,
+            };
+            layers::paint(&mut canvas, layer, texture, clipped)?;
+        }
         *cursor_under_rect = None;
         if let (Some(cursor), Some(texture)) = (frame.cursor(), cursor.as_ref()) {
             // The cursor is drawn above the overlay, with the same nearest-neighbour scaling.
@@ -608,63 +541,6 @@ fn layer_damage(
             clipped.push(Rectangle::new(part.loc - dst.loc, part.size));
         }
     }
-}
-
-/// The corner radius of a layer in physical pixels, 0 for square corners.
-///
-/// The radius is logical, so it is scaled the way GLES scales it: `corner * scale`.
-fn corner_radius(layer: &Layer, scale: Scale) -> f64 {
-    let logical = match layer {
-        Layer::Surface(surface) => surface.corner_radius,
-        Layer::Solid(solid) => solid.corner_radius,
-        Layer::Overlay(_) => 0.0,
-    };
-    f64::from(logical.max(0.0)) * scale.as_f64()
-}
-
-/// The rows of a rounded rectangle of `size` with corner `radius`, as one-pixel-high spans in
-/// the layer's own coordinates.
-///
-/// A pixel is inside when its centre is inside the rounded rectangle. That is the GLES shader's
-/// distance test without its anti-aliasing: the edge is hard, so a corner is the layer or the
-/// background and never a blend. Pixman has no mask to draw with, so the shape is written as the
-/// spans it covers and intersected with the damage.
-fn corner_spans(size: PhysicalSize<i32, Physical>, radius: f64) -> Vec<Rectangle<i32, Physical>> {
-    let (width, height) = (f64::from(size.w.max(0)), f64::from(size.h.max(0)));
-    // A radius past half a side is clamped, so the shape is at most a circle.
-    let radius = radius.min(width / 2.0).min(height / 2.0).max(0.0);
-    let mut spans = Vec::new();
-    for y in 0..size.h.max(0) {
-        let centre = f64::from(y) + 0.5;
-        // How far this row's centre lies inside a corner band, measured from the circle's centre row.
-        let depth = if centre < radius {
-            radius - centre
-        } else if centre > height - radius {
-            centre - (height - radius)
-        } else {
-            0.0
-        };
-        let inset = if depth > 0.0 {
-            radius - (radius * radius - depth * depth).max(0.0).sqrt()
-        } else {
-            0.0
-        };
-        let left = (inset - 0.5).ceil().clamp(0.0, width) as i32;
-        let right = (width - inset + 0.5).floor().clamp(0.0, width) as i32;
-        if right > left {
-            spans.push(Rectangle::new((left, y).into(), (right - left, 1).into()));
-        }
-    }
-    spans
-}
-
-/// Narrows the damage in `clipped` to the parts inside `shape`.
-fn clip_to_shape(clipped: &mut Vec<Rectangle<i32, Physical>>, shape: &[Rectangle<i32, Physical>]) {
-    let narrowed = clipped
-        .iter()
-        .flat_map(|rect| shape.iter().filter_map(move |span| rect.intersection(*span)))
-        .collect();
-    *clipped = narrowed;
 }
 
 /// Draws the overlay layer at its place in the list with nearest-neighbour scaling. A capture
