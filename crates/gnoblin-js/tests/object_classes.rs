@@ -126,6 +126,65 @@ fn a_library_object_handed_to_the_script_twice_is_one_script_object() {
     );
 }
 
+/// Whether a promise job is waiting in the engine: one that is left at the end of a frame is a frame due at once.
+fn job_waiting(rig: &mut Rig) -> bool {
+    rig.shell
+        .call_script(|ctx| Ok(ctx.execute_pending_job()))
+        .expect("the script runs")
+}
+
+#[test]
+fn a_wrapper_the_script_drops_gives_its_slot_back_at_the_next_frame_and_queues_no_job() {
+    let mut rig = rig_with(IMPORTS, "");
+    rig.settle();
+    assert!(rig.load_diagnostics.is_empty(), "{:?}", rig.load_diagnostics);
+    // The script reads an object and lets it go: the wrapper is freed as the call returns, and only its slot number is kept here.
+    let slot = rig.eval(
+        "(() => { const outputs = model.gnoblin.outputs; return String(outputs[Object.getOwnPropertySymbols(outputs)[0]]); })()",
+    );
+    assert!(
+        !job_waiting(&mut rig),
+        "freeing a wrapper queues no promise job: a job left at the end of a frame is a frame due at once"
+    );
+    // The engine's finaliser only files the slot; the library has the reference back at the frame's safe point.
+    assert_eq!(thrown(&mut rig, &format!("__gnoblinObjects.classOf({slot})")), "none");
+    rig.frame();
+    let after = thrown(&mut rig, &format!("__gnoblinObjects.classOf({slot})"));
+    assert!(after.contains("released or ended"), "{after}");
+    assert!(!job_waiting(&mut rig), "and the release queued none either");
+}
+
+#[test]
+fn an_object_handed_over_twice_is_one_script_object_while_held_and_a_new_one_after_it_was_dropped() {
+    let mut rig = rig_with(IMPORTS, "");
+    rig.settle();
+    // Held: every delivery is the same script object, and the second's slot is let go at once, so the slot table does not grow.
+    run(&mut rig, "globalThis.first = model.gnoblin.clients");
+    assert_eq!(rig.eval("String(first === model.gnoblin.clients)"), "true");
+    assert_eq!(
+        rig.eval("String(model.gnoblin.clients === model.gnoblin.clients)"),
+        "true"
+    );
+    // Dropped, over more objects than the identity map keeps before it sweeps: the object comes back as a working script object.
+    run(
+        &mut rig,
+        "for (let i = 0; i < 1500; i++) { void model.gnoblin.outputs; void model.gnoblin.clients.length; }",
+    );
+    rig.frame();
+    assert_eq!(
+        rig.eval("String(first === model.gnoblin.clients)"),
+        "true",
+        "the one that is held stays"
+    );
+    assert_eq!(
+        rig.eval("String(model.gnoblin.outputs === model.gnoblin.outputs)"),
+        "true",
+        "one that was dropped many times is handed over as one script object again"
+    );
+    assert_eq!(rig.eval("String(model.gnoblin.outputs.length >= 0)"), "true");
+    assert!(!job_waiting(&mut rig));
+}
+
 #[test]
 fn the_focus_policy_takes_records_and_enums_by_name_and_answers_a_record() {
     let mut rig = rig_with(IMPORTS, "");
