@@ -424,6 +424,8 @@ writes:
 - the volume, microphone and media keys run `wpctl` and `playerctl`;
 - a titlebar on every window, with a window menu on a right click;
 - an alert with Wait and Force quit for a window that stops answering;
+- a window that asks to be maximised, minimised or made fullscreen gets it;
+- the keyboard focus follows a click, the pointer or a new window, as the seat's focus settings say;
 - `Super+space` opens a launcher entry that starts what you type.
 
 A `shell.ts` that fails to load when the shell starts is a failed start: the loader's text names the file, line and column in
