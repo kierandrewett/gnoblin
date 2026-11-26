@@ -689,3 +689,44 @@ fn an_identity_filter_changes_nothing() {
         "an identity filter draws like none"
     );
 }
+
+/// The `shadow_opacity` scene has a window with glass, which blurs and which this renderer does not draw yet. Its other
+/// window is a plain one, and the left of the picture is that window and its shadow alone: the glass window's shadow
+/// starts 14 pixels in. The plain window drawn by itself must match that part of the picture.
+#[test]
+fn an_outer_shadow_fades_with_its_layers_opacity() {
+    let Some(mut vulkan) = renderer(golden::SIZE) else {
+        return;
+    };
+    let plain = golden::Case {
+        name: "shadow_opacity",
+        layers: || {
+            let case = golden::CASES
+                .iter()
+                .find(|case| case.name == "shadow_opacity")
+                .expect("the shadow_opacity scene");
+            (case.layers)().into_iter().take(1).collect()
+        },
+        software: false,
+        tolerance: golden::SHAPE_TOLERANCE,
+        probes: |_| {},
+    };
+    vulkan
+        .draw(&golden::frame_of(&plain), Scale::IDENTITY)
+        .expect("the frame");
+    let image = vulkan.screenshot().expect("a readback");
+    let want = golden::golden(&plain);
+    for y in 0..golden::SIZE.height as i32 {
+        for x in 0..14 {
+            let got = probe(&image, x, y);
+            let golden = want[(y as u32 * golden::SIZE.width + x as u32) as usize];
+            assert!(
+                got.iter()
+                    .zip(golden)
+                    .all(|(got, want)| got.abs_diff(want) <= golden::SHAPE_TOLERANCE),
+                "({x}, {y}) is {got:?}, the golden of a window with the same shadow says {golden:?}"
+            );
+        }
+    }
+    clean(&vulkan);
+}
