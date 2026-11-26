@@ -90,6 +90,11 @@ fn register_collection(builder: &mut Builder, class: &'static str, kind: CollKin
         .get("alive", |_, _| Ok(Val::Bool(true)))
         .get("mutable", |state, _| Ok(Val::Bool(state.mutable)))
         .get("priority", |state, _| Ok(Val::Double(state.priority)))
+        .get("parent", |state, cx| match state.parent {
+            Some(parent) => handout(cx, parent),
+            None => Ok(Val::None),
+        })
+        .get("query", |state, _| Ok(state.query_record.clone()))
         .method("at", move |state, cx, args| {
             let items = items_in(cx, &state.spec());
             let index = args[0].int()?;
@@ -144,7 +149,7 @@ fn register_collection(builder: &mut Builder, class: &'static str, kind: CollKin
                 .into_iter()
                 .filter(|member| matches(cx, kind, &query, *member))
                 .collect();
-            let mut view = CollState::view(kind, parent, query, priority);
+            let mut view = CollState::view(kind, parent, query, args[0].clone(), priority);
             view.members = members;
             let class = cx.class_of(parent)?;
             let name = cx

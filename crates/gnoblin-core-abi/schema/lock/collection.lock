@@ -26,12 +26,14 @@ member | client_collection.get | method (id:string) -> object:client? | 0.2.0
 member | client_collection.kind | property string ro | 0.2.0
 member | client_collection.length | property uint ro | 0.2.0
 member | client_collection.mutable | property bool ro | 0.2.0
+member | client_collection.parent | property object:client_collection ro | 0.2.0
 member | client_collection.pointer_enter | signal (client:object:client, event:object:pointer_event) | 0.2.0
 member | client_collection.pointer_leave | signal (client:object:client, event:object:pointer_event) | 0.2.0
 member | client_collection.pointer_motion | signal (client:object:client, event:object:pointer_event) | 0.2.0
 member | client_collection.pointer_press | signal (client:object:client, event:object:pointer_event) | 0.2.0
 member | client_collection.pointer_release | signal (client:object:client, event:object:pointer_event) | 0.2.0
 member | client_collection.priority | property double ro | 0.2.0
+member | client_collection.query | property object:client_query ro | 0.2.0
 member | client_collection.ready | signal (client:object:client) | 0.2.0
 member | client_collection.remove | method (member:object:client) -> bool | 0.2.0
 member | client_collection.remove_listener | method (listener:object:client_collection_listener) | 0.2.0
@@ -93,7 +95,9 @@ member | output_collection.kind | property string ro | 0.2.0
 member | output_collection.length | property uint ro | 0.2.0
 member | output_collection.mode_changed | signal (output:object:output, mode:string) | 0.2.0
 member | output_collection.mutable | property bool ro | 0.2.0
+member | output_collection.parent | property object:output_collection ro | 0.2.0
 member | output_collection.priority | property double ro | 0.2.0
+member | output_collection.query | property object:output_query ro | 0.2.0
 member | output_collection.remove_listener | method (listener:object:output_collection_listener) | 0.2.0
 member | output_collection.removed | signal (output:object:output, collection:object:output_collection) | 0.2.0
 member | output_collection.scale_changed | signal (output:object:output, scale:double) | 0.2.0

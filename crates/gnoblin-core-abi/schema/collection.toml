@@ -855,6 +855,21 @@ type = "double"
 since = "0.2.0"
 readonly = true
 
+# For a selection made by `where`: the collection it was made from. None for a root collection and a list.
+[[object.property]]
+name = "parent"
+type = "object:client_collection"
+since = "0.2.0"
+readonly = true
+
+# For a selection made by `where`: the query it was made with, without the terms of the collection it was made from. None for a
+# root collection and a list.
+[[object.property]]
+name = "query"
+type = "object:client_query"
+since = "0.2.0"
+readonly = true
+
 # The member at `index`, counted from the end when negative.
 [[object.method]]
 name = "at"
@@ -1181,6 +1196,21 @@ readonly = true
 [[object.property]]
 name = "priority"
 type = "double"
+since = "0.2.0"
+readonly = true
+
+# For a selection made by `where`: the collection it was made from. None for a root collection.
+[[object.property]]
+name = "parent"
+type = "object:output_collection"
+since = "0.2.0"
+readonly = true
+
+# For a selection made by `where`: the query it was made with, without the terms of the collection it was made from. None for a
+# root collection.
+[[object.property]]
+name = "query"
+type = "object:output_query"
 since = "0.2.0"
 readonly = true
 

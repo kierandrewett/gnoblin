@@ -291,6 +291,9 @@ pub(super) struct CollState {
     /// The collection a selection narrows.
     pub(super) parent: Option<Obj>,
     pub(super) query: Option<ModelQuery>,
+    /// The query record a selection was made with, as the shell gave it: what `query` reads back, so a library that styles the
+    /// selection matches the same windows.
+    pub(super) query_record: Val,
     /// The members of a root or a list, in order.
     pub(super) list: Vec<Obj>,
     /// The members a selection last told its listeners of.
@@ -309,8 +312,9 @@ impl CollState {
         CollState::bare(kind, None, None, true)
     }
 
-    pub(super) fn view(kind: CollKind, parent: Obj, query: ModelQuery, priority: f64) -> CollState {
+    pub(super) fn view(kind: CollKind, parent: Obj, query: ModelQuery, record: Val, priority: f64) -> CollState {
         let mut state = CollState::bare(kind, Some(parent), Some(query), false);
+        state.query_record = record;
         state.priority = priority;
         state
     }
@@ -320,6 +324,7 @@ impl CollState {
             kind,
             parent,
             query,
+            query_record: Val::None,
             list: Vec::new(),
             members: HashSet::new(),
             priority: 0.0,
