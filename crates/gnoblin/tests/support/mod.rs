@@ -54,6 +54,26 @@ pub fn stock_dir() -> std::path::PathBuf {
 /// The starter, `shells/default/shell.ts`: the file `cargo xtask dist` installs as the packaged default shell.
 pub const STARTER_CONFIG: &str = include_str!("../../../../shells/default/shell.ts");
 
+/// Ends a thread a harness started (the compositor's, the shell's) and returns what it returned.
+///
+/// A panic of the thread (an `expect` of the shell that could not attach, of the compositor that stopped with an error) is the test's
+/// failure, so it is raised again here with the thread's own message, which `let _ = thread.join()` throws away: a green test would then
+/// have run with no shell, or over a compositor that had died. The one case that returns `None` is a test already unwinding: a panic
+/// out of a destructor then aborts the whole test process, every other test of the binary with it, so the thread's panic, which its
+/// own hook has printed, stays what is reported. A harness calls this from its explicit `finish` on the way out of a test and from
+/// its `Drop`, which is the same call.
+pub fn join_worker<T>(thread: std::thread::JoinHandle<T>) -> Option<T> {
+    match thread.join() {
+        Ok(value) => Some(value),
+        Err(payload) => {
+            if !std::thread::panicking() {
+                std::panic::resume_unwind(payload);
+            }
+            None
+        }
+    }
+}
+
 // ---- the scene, read as an observer ------------------------------------------------------------------------------
 
 fn version() -> Version {

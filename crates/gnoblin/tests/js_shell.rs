@@ -146,12 +146,11 @@ impl Session {
 }
 
 impl Session {
-    /// Stops the compositor and returns every message it logged, oldest first. A second call returns nothing.
+    /// Stops the compositor and returns every message it logged, oldest first. A second call returns nothing. A panic of the
+    /// compositor's thread (`Compositor::run` ended in an error) fails the test with the thread's own message.
     fn finish(&mut self) -> Vec<String> {
         self.stop.request();
-        self.thread
-            .take()
-            .map_or_else(Vec::new, |thread| thread.join().unwrap_or_default())
+        self.thread.take().and_then(support::join_worker).unwrap_or_default()
     }
 }
 
@@ -435,11 +434,11 @@ impl Shell {
         self.status.lock().expect("the status lock").ended.clone()
     }
 
-    /// Stops the shell and returns every message it logged.
+    /// Stops the shell and returns every message it logged. A panic of the shell's thread fails the test with the thread's own message.
     fn finish(&self) -> Vec<String> {
         self.stop.store(true, Ordering::Relaxed);
         let thread = self.thread.lock().expect("the thread lock").take();
-        let logged = thread.map_or_else(Vec::new, |thread| thread.join().expect("the shell thread ends"));
+        let logged = thread.and_then(support::join_worker).unwrap_or_default();
         // The thread's core is gone with it: the next shell of the process may have its turn.
         self.turn.lock().expect("the turn lock").take();
         logged

@@ -185,7 +185,12 @@ impl Drop for ShmClient {
                 let _ = self.display.flush_clients();
                 thread::sleep(Duration::from_millis(1));
             }
-            let _ = worker.join();
+            // A failed `expect` of the client's thread is the test's failure, unless the test is already unwinding.
+            if let Err(payload) = worker.join()
+                && !thread::panicking()
+            {
+                std::panic::resume_unwind(payload);
+            }
         }
     }
 }

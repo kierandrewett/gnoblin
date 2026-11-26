@@ -308,7 +308,15 @@ impl Drop for Session {
     fn drop(&mut self) {
         if self.thread.is_some() {
             self.stop.request();
-            let _ = self.join();
+            // A test that did not `stop` the session still learns how the compositor ended: a panic of its thread or an error it
+            // returned fails the test. A test already unwinding keeps the failure it has: a panic out of a destructor then
+            // aborts the process, so the thread's own is dropped (its hook has printed it).
+            if std::thread::panicking() {
+                drop(self.guardian.take());
+                drop(self.thread.take().map(std::thread::JoinHandle::join));
+            } else if let Err(error) = self.join() {
+                panic!("the compositor ended with an error: {error:?}");
+            }
         }
     }
 }

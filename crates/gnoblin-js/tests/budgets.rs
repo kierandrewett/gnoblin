@@ -98,8 +98,13 @@ impl Load {
 impl Drop for Load {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        for thread in self.threads.drain(..) {
-            let _ = thread.join();
+        // Every thread is joined before a panic of one is raised again, so none outlives the test. The panic is the test's failure,
+        // unless the test is already unwinding: a panic out of a destructor then aborts the process.
+        let outcomes: Vec<_> = self.threads.drain(..).map(std::thread::JoinHandle::join).collect();
+        if let Some(payload) = outcomes.into_iter().find_map(Result::err)
+            && !std::thread::panicking()
+        {
+            std::panic::resume_unwind(payload);
         }
     }
 }

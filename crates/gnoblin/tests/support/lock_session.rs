@@ -130,14 +130,20 @@ impl Session {
     pub fn wayland(&self) -> PathBuf {
         self.directory.path().join("wayland.sock")
     }
+
+    /// Stops the compositor and waits for its thread, which fails the test with the thread's own message if it panicked
+    /// (`Compositor::run` ended in an error). A second call does nothing.
+    pub fn finish(&mut self) {
+        self.stop.request();
+        if let Some(thread) = self.thread.take() {
+            super::join_worker(thread);
+        }
+    }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        self.stop.request();
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
+        self.finish();
     }
 }
 
@@ -230,13 +236,11 @@ impl Shell {
         self.thread.as_ref().is_none_or(JoinHandle::is_finished)
     }
 
-    /// Stops the shell and returns the problems it reported.
+    /// Stops the shell and returns the problems it reported. A panic of the shell's thread (it could not attach) fails the test
+    /// with the thread's own message.
     pub fn finish(&mut self) -> Vec<String> {
         self.stop.store(true, Ordering::Relaxed);
-        let problems = self
-            .thread
-            .take()
-            .map_or_else(Vec::new, |thread| thread.join().expect("the shell thread ends"));
+        let problems = self.thread.take().and_then(super::join_worker).unwrap_or_default();
         // The thread's core is gone with it: the next shell of the process may have its turn.
         self.turn.take();
         problems
