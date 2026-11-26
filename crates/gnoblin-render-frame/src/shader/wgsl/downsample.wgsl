@@ -13,11 +13,14 @@
 // A half is rounded up as the CPU path rounds it: the mean is raised by a thousandth of a level, far below the gap
 // between two means that are not a tie, so only an exact half moves, and it moves up. The draw replaces the target.
 //
-// Textures are bottom-up in GL, so a top-down pixel row `y` of an `h` row surface is texel row `h - 1 - y`.
+// Textures are bottom-up in GL, so a top-down pixel row `y` of an `h` row surface is texel row `h - 1 - y`. A Vulkan
+// image is top-down already: `taps.z` is 1 for such a source and the rows are read as they are. It is 0 for GL's
+// bottom-up one.
 //
 // Layout (two `vec4`, 32 bytes in WGSL and std140 alike):
 //   sizes: target width, target height, source width, source height
-//   taps:  source pixels per target pixel across and down, both zero when the pass samples bilinearly; two unused
+//   taps:  source pixels per target pixel across and down, both zero when the pass samples bilinearly; 1 when the
+//          source is top-down (Vulkan), 0 when it is bottom-up (GL); one unused
 // `DownsampleUniforms` in `gnoblin-render-gles` packs exactly this layout.
 
 struct GnoblinDownsample {
@@ -39,6 +42,7 @@ fn gnoblin_entry(@location(0) local: vec2<f32>) -> GnoblinDownsampleOut {
     let target_size = gnoblin_downsample.sizes.xy;
     let source_size = gnoblin_downsample.sizes.zw;
     let at = floor(local * target_size);
+    let top_down = gnoblin_downsample.taps.z > 0.5;
     if gnoblin_downsample.taps.x > 0.5 {
         let across = i32(gnoblin_downsample.taps.x);
         let down = i32(gnoblin_downsample.taps.y);
@@ -47,13 +51,15 @@ fn gnoblin_entry(@location(0) local: vec2<f32>) -> GnoblinDownsampleOut {
         var sum = vec4<f32>(0.0);
         for (var row = 0; row < down; row = row + 1) {
             for (var column = 0; column < across; column = column + 1) {
-                sum = sum + textureLoad(gnoblin_tex, vec2<i32>(origin.x + column, last_row - (origin.y + row)), 0);
+                let y = origin.y + row;
+                sum = sum + textureLoad(gnoblin_tex, vec2<i32>(origin.x + column, select(last_row - y, y, top_down)), 0);
             }
         }
         let mean = sum / f32(across * down) + vec4<f32>(0.001 / 255.0);
         return GnoblinDownsampleOut(min(mean, vec4<f32>(1.0)));
     }
-    let uv = vec2<f32>((at.x + 0.5) / target_size.x, 1.0 - (at.y + 0.5) / target_size.y);
+    let row = (at.y + 0.5) / target_size.y;
+    let uv = vec2<f32>((at.x + 0.5) / target_size.x, select(1.0 - row, row, top_down));
     // An explicit level needs no uniform control flow, which the branch above is not guaranteed to give the driver.
     return GnoblinDownsampleOut(textureSampleLevel(gnoblin_tex, gnoblin_sampler, uv, 0.0));
 }

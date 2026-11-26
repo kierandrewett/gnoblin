@@ -254,7 +254,7 @@ pub(super) fn growth_kib(frames: usize, draw: Draw) -> Option<u64> {
                     .set_layouts(&block_layouts),
             )
             .expect("a set")[0];
-        let block_info = [vk::DescriptorBufferInfo::default().buffer(block).offset(0).range(96)];
+        let block_info = [vk::DescriptorBufferInfo::default().buffer(block).offset(0).range(112)];
         device.update_descriptor_sets(
             &[vk::WriteDescriptorSet::default()
                 .dst_set(set)

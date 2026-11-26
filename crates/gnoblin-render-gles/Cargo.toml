@@ -35,5 +35,7 @@ gnoblin-render = { path = "../gnoblin-render" }
 gnoblin-log = { path = "../gnoblin-log" }
 
 [dev-dependencies]
+# The golden scenes both GPU renderers are checked against.
+gnoblin-render-frame = { path = "../gnoblin-render-frame", features = ["test-support"] }
 # The software renderer whose readbacks the parity tests compare with.
 gnoblin-render-software = { path = "../gnoblin-render-software" }

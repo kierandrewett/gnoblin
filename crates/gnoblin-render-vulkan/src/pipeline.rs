@@ -99,7 +99,7 @@ impl Compiled {
 }
 
 /// The size of one uniform block, in bytes: the preamble's `Gnoblin` struct.
-pub(super) const UNIFORM_BYTES: usize = 96;
+pub(super) const UNIFORM_BYTES: usize = 112;
 
 /// The floats one quad's vertex data holds: see the vertex input above.
 pub(super) const INSTANCE_FLOATS: usize = 22;

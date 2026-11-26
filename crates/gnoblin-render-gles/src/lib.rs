@@ -42,7 +42,7 @@
 //! destination rectangle and the target's size as attributes, so the fragment stage is the
 //! only stage with a uniform block: one block per shipped program, bound once, overwritten per
 //! draw. That is what makes "uniforms typed-checked and uploaded" a single small write of a
-//! 96-byte buffer. A shell's shader program has a second block, its own, beside it.
+//! 112-byte buffer. A shell's shader program has a second block, its own, beside it.
 //!
 //! | Pass    | Shader                 | Draws                                        |
 //! | ------- | ---------------------- | -------------------------------------------- |
@@ -1669,7 +1669,7 @@ impl Painter<'_> {
             // The horizontal sweep always carries the identity grade.
             let mut uniforms =
                 Uniforms::surface(region, flipped_mapping(region, *physical), Color::TRANSPARENT, 1.0, 0.0);
-            uniforms.params = [step / physical.width as f32, 0.0, 1.0, 1.0];
+            uniforms.params = [step / physical.width as f32, 0.0, 0.0, 0.0];
             device.begin(second)?;
             device.scissor(Some(region));
             passes.blur.pack(&uniforms, bytes);
@@ -1684,7 +1684,8 @@ impl Painter<'_> {
                 (Color::TRANSPARENT, 1.0, 1.0)
             };
             let mut uniforms = Uniforms::surface(region, flipped_mapping(region, *physical), tint, 1.0, 0.0);
-            uniforms.params = [0.0, step / physical.height as f32, brightness, contrast];
+            uniforms.params = [0.0, step / physical.height as f32, 0.0, 0.0];
+            uniforms.grade = [1.0, brightness, contrast, 0.0];
             let write = if last {
                 region.intersection(*clip).unwrap_or(region)
             } else {
@@ -2055,7 +2056,7 @@ mod view;
 #[cfg(test)]
 mod downsample_tests;
 #[cfg(test)]
-mod golden;
+mod grade_tests;
 #[cfg(test)]
 mod shader_tests;
 #[cfg(test)]

@@ -20,7 +20,7 @@
 //!
 //! # The uniform block and the quad
 //!
-//! Each draw's 96-byte block is packed by the same code the GLES renderer uses
+//! Each draw's 112-byte block is packed by the same code the GLES renderer uses
 //! ([`Uniforms::pack`]), so the two cannot disagree about an offset. The block sits at a
 //! 256-byte stride, which is the largest alignment Vulkan allows a dynamic uniform offset
 //! to demand. The shared vertex stage takes one instance of 22 floats per quad: the

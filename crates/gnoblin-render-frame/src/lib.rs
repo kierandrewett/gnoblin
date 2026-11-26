@@ -36,6 +36,11 @@ pub mod footprint;
 pub mod frame;
 /// The one rule every renderer converts logical rectangles to pixels with.
 pub mod geometry;
+/// The golden scenes both GPU renderers draw and are compared with.
+#[cfg(feature = "test-support")]
+pub mod golden;
+/// The colour grade and the grain, on the CPU, twins of the shaders'.
+pub mod grade;
 /// A frame's pixels, copied out of a renderer.
 pub mod image;
 /// A renderer's request for another frame, for work that finishes after `draw` returned.

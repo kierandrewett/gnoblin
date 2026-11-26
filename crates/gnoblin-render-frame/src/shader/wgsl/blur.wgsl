@@ -6,7 +6,7 @@
 // taps is what makes those two numbers agree: `gnoblin_weight` is that kernel,
 // normalised.
 //
-// The result is opaque, because it *is* the backdrop: it replaces the pixels of the
+// `params.xy` is the tap step. The result is opaque, because it *is* the backdrop: it replaces the pixels of the
 // quad rather than blending with them.
 //
 // Sampling clamps at the target's edge (`CLAMP_TO_EDGE`), so a blur that reaches the
@@ -24,14 +24,12 @@ fn shade(local: vec2<f32>) -> vec4<f32> {
         let weight = gnoblin_weight(f32(index));
         total = total + textureSample(gnoblin_tex, gnoblin_sampler, uv + step * f32(index)) * weight;
     }
-    // The grade is identity on every pass but the last: params.z is the brightness gain,
-    // params.w the contrast gain about mid grey, and the tint is mixed over the graded
-    // colour by its own alpha. Brightness 1, contrast 1 and tint alpha 0 change nothing,
-    // which is what every sweep but the last carries.
-    let gain = gnoblin.params.z;
-    let contrast = gnoblin.params.w;
-    let lit = total.rgb * gain;
-    let graded = clamp((lit - vec3<f32>(0.5)) * contrast + vec3<f32>(0.5), vec3<f32>(0.0), vec3<f32>(1.0));
+    // The grade, the tint and the grain are identity on every sweep but the last: `grade` is
+    // (saturate, brightness, contrast, grain), `tint` is mixed over the graded colour by its
+    // own alpha, and the grain is added last. Saturate 1, brightness 1, contrast 1, grain 0 and
+    // tint alpha 0 change nothing, which is what every sweep but the last carries.
+    let graded = gnoblin_grade(total.rgb);
     let tinted = mix(graded, gnoblin.tint.rgb, gnoblin.tint.a);
-    return vec4<f32>(tinted, total.a);
+    let grained = clamp(tinted + vec3<f32>(gnoblin_grain(local)), vec3<f32>(0.0), vec3<f32>(1.0));
+    return vec4<f32>(grained, total.a);
 }

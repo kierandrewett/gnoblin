@@ -1,24 +1,24 @@
 //! The uniform block every pass shares: its values and the bytes they pack to.
 //!
-//! One block is shared by every pass: the fixed 96 bytes of the preamble
+//! One block is shared by every pass: the fixed 112 bytes of the preamble
 //! (`wgsl/preamble.wgsl`). The offsets are written here, once, and the same bytes are written
 //! for every draw, whichever renderer uploads them.
 //!
 //! The rules are the ones WGSL's uniform layout and GLSL's `std140` agree on, which is why
 //! one layout can serve both, and Vulkan's `std140`-compatible blocks too: every member is a
 //! `vec4` except the trailing `corner` and `opacity` scalars and the `vec2` of padding, which
-//! is 96 bytes, a multiple of 16.
+//! is 112 bytes, a multiple of 16.
 
 use gnoblin_types::{Color, Rect};
 
 /// The size of the uniform block in bytes.
 ///
-/// It is the size of `Gnoblin` in `wgsl/preamble.wgsl`: five `vec4`s, two `f32`s and a
+/// It is the size of `Gnoblin` in `wgsl/preamble.wgsl`: six `vec4`s, two `f32`s and a
 /// `vec2` of padding.
-pub const BLOCK_BYTES: usize = 96;
+pub const BLOCK_BYTES: usize = 112;
 
 /// The uniform values one pass uploads.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct Uniforms {
     /// The destination rectangle in physical pixels.
     pub rect: [f32; 4],
@@ -30,10 +30,31 @@ pub struct Uniforms {
     pub tint: [f32; 4],
     /// Values whose meaning belongs to the pass.
     pub params: [f32; 4],
+    /// The colour grade: saturate, brightness, contrast and grain amount, in the order
+    /// [`crate::grade`] applies them. [`IDENTITY_GRADE`] changes nothing.
+    pub grade: [f32; 4],
     /// Corner radius in physical pixels.
     pub corner: f32,
     /// Group opacity.
     pub opacity: f32,
+}
+
+/// The grade that leaves a colour as it is: saturate 1, brightness 1, contrast 1 and no grain.
+pub const IDENTITY_GRADE: [f32; 4] = [1.0, 1.0, 1.0, 0.0];
+
+impl Default for Uniforms {
+    fn default() -> Self {
+        Self {
+            rect: [0.0; 4],
+            src: [0.0; 4],
+            colour: [0.0; 4],
+            tint: [0.0; 4],
+            params: [0.0; 4],
+            grade: IDENTITY_GRADE,
+            corner: 0.0,
+            opacity: 0.0,
+        }
+    }
 }
 
 impl Uniforms {
@@ -48,6 +69,7 @@ impl Uniforms {
             colour: components(colour),
             tint: components(tint),
             params: [0.0; 4],
+            grade: IDENTITY_GRADE,
             corner: 0.0,
             opacity: opacity.clamp(0.0, 1.0),
         }
@@ -61,6 +83,7 @@ impl Uniforms {
             colour: [0.0; 4],
             tint: components(tint),
             params: [0.0; 4],
+            grade: IDENTITY_GRADE,
             corner,
             opacity: opacity.clamp(0.0, 1.0),
         }
@@ -104,6 +127,33 @@ impl Uniforms {
             colour: components(colour),
             tint: components(tint),
             params: [grow, grow, band.0, band.1],
+            grade: IDENTITY_GRADE,
+            corner,
+            opacity: opacity.clamp(0.0, 1.0),
+        }
+    }
+
+    /// The values of an inset shadow pass.
+    ///
+    /// `quad` is the shape the shadow is inside: the layer's rectangle, or its silhouette. The hole is that shape moved by
+    /// `offset` and shrunk by `spread`, and the shadow fades inwards from the hole's edge over `blur`; all are physical
+    /// pixels. `corner` is the shape's radius.
+    pub fn inset_shadow(
+        quad: Rect,
+        offset: [f32; 2],
+        blur: f32,
+        spread: f32,
+        colour: Color,
+        opacity: f32,
+        corner: f32,
+    ) -> Self {
+        Self {
+            rect: [quad.x as f32, quad.y as f32, quad.width as f32, quad.height as f32],
+            src: [0.0, 0.0, 1.0, 1.0],
+            colour: components(colour),
+            tint: [1.0; 4],
+            params: [offset[0], offset[1], blur, spread],
+            grade: IDENTITY_GRADE,
             corner,
             opacity: opacity.clamp(0.0, 1.0),
         }
@@ -113,13 +163,13 @@ impl Uniforms {
     pub fn pack(&self, out: &mut Vec<u8>) {
         out.clear();
         out.resize(BLOCK_BYTES, 0);
-        for (index, part) in [self.rect, self.src, self.colour, self.tint, self.params]
+        for (index, part) in [self.rect, self.src, self.colour, self.tint, self.params, self.grade]
             .iter()
             .enumerate()
         {
             write_floats(out, index * 16, part);
         }
-        write_floats(out, 80, &[self.corner, self.opacity, 0.0, 0.0]);
+        write_floats(out, 96, &[self.corner, self.opacity, 0.0, 0.0]);
     }
 }
 
@@ -190,6 +240,46 @@ mod tests {
         assert_eq!(bytes.len(), BLOCK_BYTES);
         // `params` is the fifth vec4 of the block.
         assert_eq!(f32::from_ne_bytes(bytes[72..76].try_into().expect("four bytes")), 100.0);
+    }
+
+    #[test]
+    fn the_grade_sits_after_params_and_before_the_scalars() {
+        let mut uniforms = Uniforms::solid(Rect::new(0, 0, 4, 4), Color::WHITE, Color::WHITE, 0.25);
+        uniforms.corner = 3.0;
+        uniforms.grade = [0.5, 1.5, 2.0, 0.75];
+        let mut bytes = Vec::new();
+        uniforms.pack(&mut bytes);
+        let floats: Vec<f32> = bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|chunk| f32::from_ne_bytes(*chunk))
+            .collect();
+        assert_eq!(floats[20..24], [0.5, 1.5, 2.0, 0.75], "the grade is the sixth vec4");
+        assert_eq!(floats[24..26], [3.0, 0.25], "then corner and opacity");
+        assert_eq!(floats.len(), 28);
+    }
+
+    #[test]
+    fn every_constructor_starts_with_the_identity_grade() {
+        let rect = Rect::new(0, 0, 4, 4);
+        assert_eq!(
+            Uniforms::solid(rect, Color::WHITE, Color::WHITE, 1.0).grade,
+            IDENTITY_GRADE
+        );
+        assert_eq!(
+            Uniforms::surface(rect, [0.0; 4], Color::WHITE, 1.0, 0.0).grade,
+            IDENTITY_GRADE
+        );
+        assert_eq!(
+            Uniforms::border(rect, 1.0, (0.0, 1.0), Color::WHITE, Color::WHITE, 1.0, 0.0).grade,
+            IDENTITY_GRADE
+        );
+        assert_eq!(
+            Uniforms::inset_shadow(rect, [0.0; 2], 2.0, 0.0, Color::BLACK, 1.0, 0.0).grade,
+            IDENTITY_GRADE
+        );
+        assert_eq!(Uniforms::default().grade, IDENTITY_GRADE);
     }
 
     #[test]

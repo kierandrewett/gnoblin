@@ -1,7 +1,7 @@
 //! The downsample pass of a supersampled output: the virtual surface, averaged down to the mode the display shows.
 //!
 //! The pass has its own uniform block of 32 bytes, laid out as `GnoblinDownsample` in `wgsl/downsample.wgsl`: two
-//! `vec4`s, so std140 and WGSL agree on the offsets without padding. It is never the 96-byte layer block, so a layer
+//! `vec4`s, so std140 and WGSL agree on the offsets without padding. It is never the 112-byte layer block, so a layer
 //! pass cannot reach it and this pass cannot change what a layer pass reads.
 //!
 //! Whether the pass is an exact box average or a bilinear sample is decided by [`Image::box_ratio`], the same rule the

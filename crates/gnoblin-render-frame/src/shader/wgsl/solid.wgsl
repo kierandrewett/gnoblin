@@ -7,7 +7,9 @@
 fn shade(local: vec2<f32>) -> vec4<f32> {
     // The tint scales the straight colour's every channel, alpha included, which is the same
     // multiplication the software path applies to a solid before premultiplying it.
-    let colour = gnoblin.colour * gnoblin.tint;
+    var colour = gnoblin.colour * gnoblin.tint;
+    // The grade is of the straight colour, before it is premultiplied.
+    colour = vec4<f32>(gnoblin_grade(colour.rgb), colour.a);
     let coverage = gnoblin_corner(local);
     let alpha = colour.a * gnoblin.opacity * coverage;
     return vec4<f32>(colour.rgb * alpha, alpha);

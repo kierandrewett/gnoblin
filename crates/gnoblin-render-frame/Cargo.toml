@@ -28,3 +28,7 @@ gnoblin-types.workspace = true
 gnoblin-render = { path = "../gnoblin-render" }
 # The front end and the validator of the user shader pass (`shader::user`), the same `naga` the renderers compile with.
 naga.workspace = true
+
+[features]
+# The golden scenes and their checker (`golden`), for the renderers' own tests.
+test-support = []

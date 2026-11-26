@@ -27,6 +27,13 @@ pub const SHADOW: &str = concat!(
     include_str!("wgsl/effect.wgsl"),
 );
 
+/// An inset shadow: the layer's own shape, shaded inwards from the edge of a hole cut from it.
+pub const INSET_SHADOW: &str = concat!(
+    include_str!("wgsl/preamble.wgsl"),
+    include_str!("wgsl/inset_shadow.wgsl"),
+    include_str!("wgsl/effect.wgsl"),
+);
+
 /// A border: a ring along the edge of a layer's rounded silhouette, drawn over the layer.
 pub const BORDER: &str = concat!(
     include_str!("wgsl/preamble.wgsl"),
@@ -63,7 +70,7 @@ mod tests {
 
     #[test]
     fn every_pass_declares_the_entry_point() {
-        for pass in [SOLID, SURFACE, SHADOW, BORDER, BLUR] {
+        for pass in [SOLID, SURFACE, SHADOW, INSET_SHADOW, BORDER, BLUR] {
             assert!(pass.contains("fn shade("), "a pass defines its body");
             assert!(pass.contains("fn gnoblin_entry("), "and the shared entry point");
         }
@@ -77,6 +84,10 @@ mod tests {
             preamble.contains("padding: vec2<f32>,"),
             "the fixed members are declared"
         );
-        assert_eq!(super::super::uniforms::BLOCK_BYTES, 96);
+        assert!(
+            preamble.contains("grade: vec4<f32>,"),
+            "the grade is declared before the scalars"
+        );
+        assert_eq!(super::super::uniforms::BLOCK_BYTES, 112);
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! Each case renders one small scene and reads named pixels back. The scenes are chosen so a probe sits well inside
 //! or well outside the shape being tested (a pixel's centre is at `x + 0.5`), which is what keeps the expected value
-//! a statement about the effect and not about one driver's antialiasing. The goldens in [`super::golden`] pin the
+//! a statement about the effect and not about one driver's antialiasing. The goldens in [`gnoblin_render_frame::golden`] pin the
 //! full pictures; these say what each picture means.
 
 use super::tests::{gles, layered_frame, luma, probe, spatial_solid};

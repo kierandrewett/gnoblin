@@ -3,7 +3,7 @@
 // One uniform block serves every pass, so a pass uploads one small buffer.
 //
 // Layout rule: every member is a `vec4` except the trailing `corner` and `opacity`
-// scalars and the `vec2` padding. The struct is therefore 96 bytes, a multiple of 16,
+// scalars and the `vec2` padding. The struct is therefore 112 bytes, a multiple of 16,
 // which is the alignment that WGSL's uniform layout and GLSL's `std140` both give it.
 // `Uniforms::pack` in `uniforms.rs` is the CPU side of that agreement.
 //
@@ -27,6 +27,10 @@ struct Gnoblin {
     // holds that silhouette here: its origin relative to the quad's, then its size, so
     // `params.z > 0` says there is one.
     params: vec4<f32>,
+    // The colour grade: saturate, brightness, contrast, then the grain amount. The first
+    // three are 1 and the last 0 when a pass is not graded. `gnoblin_grade` and
+    // `gnoblin_grain` read it; `grade.rs` is the CPU twin of both.
+    grade: vec4<f32>,
     // Corner radius in physical pixels.
     corner: f32,
     // Group opacity, 0 to 1.
@@ -78,4 +82,33 @@ fn gnoblin_sdf(point: vec2<f32>, size: vec2<f32>, radius: f32) -> f32 {
     let corner = clamp(radius, 0.0, min(half.x, half.y));
     let offset = abs(point - half) - (half - vec2<f32>(corner));
     return length(max(offset, vec2<f32>(0.0))) + min(max(offset.x, offset.y), 0.0) - corner;
+}
+
+// The grade of a straight sRGB colour: saturate, then brightness, then contrast, each step
+// clamped to 0..1. Saturate is CSS's `feColorMatrix type="saturate"`, which is a mix from the
+// colour's luma (weights 0.213, 0.715, 0.072) towards the colour. No transfer function is
+// applied, as for every other pass. `grade::apply` in `gnoblin-render-frame` is the same
+// arithmetic on the CPU.
+fn gnoblin_grade(colour: vec3<f32>) -> vec3<f32> {
+    let luma = dot(colour, vec3<f32>(0.213, 0.715, 0.072));
+    let saturated = clamp(vec3<f32>(luma) + (colour - vec3<f32>(luma)) * gnoblin.grade.x, vec3<f32>(0.0), vec3<f32>(1.0));
+    let lit = clamp(saturated * gnoblin.grade.y, vec3<f32>(0.0), vec3<f32>(1.0));
+    return clamp((lit - vec3<f32>(0.5)) * gnoblin.grade.z + vec3<f32>(0.5), vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+// One round of the PCG hash on an integer.
+fn gnoblin_pcg(value: u32) -> u32 {
+    let state = value * 747796405u + 2891336453u;
+    let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+// The grain to add to each colour channel at a point of the quad: `(h - 0.5) * noise * 0.0625`,
+// where `h` in 0..1 is the PCG hash of the pixel's position from the quad's top-left. The
+// position is the pixel's, not the screen's, so grain moves with the layer and every renderer
+// and every frame draws the same grain. `grade::grain` is the CPU twin.
+fn gnoblin_grain(local: vec2<f32>) -> f32 {
+    let pixel = vec2<u32>(floor(local * gnoblin.rect.zw));
+    let hash = gnoblin_pcg(pixel.x ^ gnoblin_pcg(pixel.y));
+    return (f32(hash) / 4294967295.0 - 0.5) * gnoblin.grade.w * 0.0625;
 }

@@ -35,6 +35,8 @@ gnoblin-log = { path = "../gnoblin-log" }
 naga = { workspace = true, features = ["spv-out"] }
 
 [dev-dependencies]
+# The golden scenes both GPU renderers are checked against.
+gnoblin-render-frame = { path = "../gnoblin-render-frame", features = ["test-support"] }
 # The shared-memory files of the in-process Wayland client (`harness.rs`).
 tempfile.workspace = true
 # The client side of `wl_shm` for the in-process client, and the software renderer whose
