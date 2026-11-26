@@ -8,20 +8,20 @@ truth is the code, not this page.
 GLES is the renderer with the most effects. Vulkan is getting full parity with GLES. The software renderer draws the
 simpler effects and cannot run user shaders.
 
-| Effect                                           | GLES                          | Vulkan    | Software                      |
-| ------------------------------------------------ | ----------------------------- | --------- | ----------------------------- |
-| Opacity                                          | Drawn                         | Drawn     | Drawn                         |
-| Rounded corners (window clip)                    | Drawn                         | Drawn     | Drawn, anti-aliased           |
-| Rounded corners (shadow shape)                   | Drawn                         | Not drawn | Drawn                         |
-| Outer shadow                                     | Drawn, with spread and colour | Not drawn | Drawn, with spread and colour |
-| Inset shadow                                     | Drawn                         | Not drawn | Drawn                         |
-| Borders (several, offset)                        | Drawn                         | Not drawn | Drawn, anti-aliased           |
-| Backdrop blur                                    | Drawn                         | Not drawn | Drawn                         |
-| Backdrop grades (saturate, brightness, contrast) | Drawn                         | Not drawn | Drawn                         |
-| Filter grades on the window                      | Drawn                         | Not drawn | Not drawn                     |
-| Filter blur on the window                        | Drawn, one layer              | Not drawn | Not drawn                     |
-| Background                                       | Drawn                         | Not drawn | Drawn                         |
-| Your own shader                                  | Drawn                         | Drawn     | Not drawn: no shader compiler |
+| Effect                                           | GLES                          | Vulkan                        | Software                      |
+| ------------------------------------------------ | ----------------------------- | ----------------------------- | ----------------------------- |
+| Opacity                                          | Drawn                         | Drawn                         | Drawn                         |
+| Rounded corners (window clip)                    | Drawn                         | Drawn                         | Drawn, anti-aliased           |
+| Rounded corners (shadow shape)                   | Drawn                         | Drawn                         | Drawn                         |
+| Outer shadow                                     | Drawn, with spread and colour | Drawn, with spread and colour | Drawn, with spread and colour |
+| Inset shadow                                     | Drawn                         | Drawn                         | Drawn                         |
+| Borders (several, offset)                        | Drawn                         | Drawn                         | Drawn, anti-aliased           |
+| Backdrop blur                                    | Drawn                         | Not drawn                     | Drawn                         |
+| Backdrop grades (saturate, brightness, contrast) | Drawn                         | Not drawn                     | Drawn                         |
+| Filter grades on the window                      | Drawn                         | Drawn                         | Not drawn                     |
+| Filter blur on the window                        | Drawn, one layer              | Not drawn                     | Not drawn                     |
+| Background                                       | Drawn                         | Drawn                         | Drawn                         |
+| Your own shader                                  | Drawn                         | Drawn                         | Not drawn: no shader compiler |
 
 A few notes on the table:
 
@@ -31,8 +31,11 @@ A few notes on the table:
   draw that blur. The blur honours `downscale`, and `saturation` and `noise` as well as brightness, contrast and tint.
 - Filter grades and the filter's blur on GLES apply to everything one layer paints: its shadows, background, content and
   borders. A window drawn as several layers (a titlebar child over the content) grades the layer that carries the effect.
-  The filter's blur is drawn from a picture of that layer and spills past its edge. The software renderer does not draw
-  a `filter`; use a shader if you need it there.
+  The filter's blur is drawn from a picture of that layer and spills past its edge.
+- Vulkan grades the same things, and does not draw the filter's `blur` yet, so a filter that blurs is drawn graded and not
+  blurred there. The software renderer stores the filter and draws nothing; use a shader if you need it there.
+- On Vulkan an outer shadow fades with the window's opacity, as in CSS. A background, an inset shadow and a border take
+  the window's tint as well.
 
 A property that no renderer draws is still stored and reported in the window's `computedStyle`, so a config that sets
 it keeps working when the renderer learns to draw it.
