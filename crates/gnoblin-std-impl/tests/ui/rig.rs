@@ -373,46 +373,62 @@ pub enum Shape {
     Plain,
     /// The session of `tests/common/policy.rs`: a screen, a seat, a lock and windows of 300 by 200 at (10 n, 20 n).
     Policy,
+    /// Nothing: the caller's setup makes the world.
+    Empty,
 }
 
 impl Rig {
     /// A generation of the core with the std library and a desktop of `width` by `height` and no window.
     pub fn new(name: &'static str, width: f64, height: f64) -> Rig {
-        Rig::open(name, width, height, false, 0, Shape::Sized)
+        Rig::open(name, width, height, false, 0, Shape::Sized, |_| {})
     }
 
     /// As [`Rig::new`] with `count` server-decorated windows of 800 by 600 (ids 3 on, titled `win1`, app id `foot`), as the oracle's
     /// scene scenarios have them.
     pub fn with_windows(name: &'static str, width: f64, height: f64, count: u64) -> Rig {
-        Rig::open(name, width, height, false, count, Shape::Sized)
+        Rig::open(name, width, height, false, count, Shape::Sized, |_| {})
     }
 
     /// As [`Rig::with_windows`], the windows as the fake compositor makes them (400 by 300), as the oracle's style scenarios have them.
     pub fn with_plain_windows(name: &'static str, width: f64, height: f64, count: u64) -> Rig {
-        Rig::open(name, width, height, false, count, Shape::Plain)
+        Rig::open(name, width, height, false, count, Shape::Plain, |_| {})
     }
 
     /// The oracle's policy session with `count` windows (ids 3 on): the world of the transition scenarios.
     pub fn with_policy_windows(name: &'static str, count: u64) -> Rig {
-        Rig::open(name, 1000.0, 800.0, false, count, Shape::Policy)
+        Rig::open(name, 1000.0, 800.0, false, count, Shape::Policy, |_| {})
     }
 
     /// A generation with no fixture behind it: a test of what the toolkit does on its own terms.
     pub fn scratch(width: f64, height: f64) -> Rig {
-        Rig::open("scratch", width, height, true, 0, Shape::Sized)
+        Rig::open("scratch", width, height, true, 0, Shape::Sized, |_| {})
     }
 
     /// A generation over the policy session (a screen and a seat) that records nothing: for a test that is not held to a fixture.
     pub fn scratch_policy(count: u64) -> Rig {
-        Rig::open("scratch", 1000.0, 800.0, true, count, Shape::Policy)
+        Rig::open("scratch", 1000.0, 800.0, true, count, Shape::Policy, |_| {})
     }
 
     /// As [`Rig::scratch`] with `count` windows, as [`Rig::with_windows`] makes them.
     pub fn scratch_with_windows(width: f64, height: f64, count: u64) -> Rig {
-        Rig::open("scratch", width, height, true, count, Shape::Sized)
+        Rig::open("scratch", width, height, true, count, Shape::Sized, |_| {})
     }
 
-    fn open(name: &'static str, width: f64, height: f64, scratch: bool, windows: u64, shape: Shape) -> Rig {
+    /// A generation with no fixture behind it over a compositor that `setup` fills before the shell attaches: the nodes it adds are
+    /// in the boot snapshot.
+    pub fn scratch_boot(setup: impl FnOnce(&FakeCompositor)) -> Rig {
+        Rig::open("scratch", 0.0, 0.0, true, 0, Shape::Empty, setup)
+    }
+
+    fn open(
+        name: &'static str,
+        width: f64,
+        height: f64,
+        scratch: bool,
+        windows: u64,
+        shape: Shape,
+        setup: impl FnOnce(&FakeCompositor),
+    ) -> Rig {
         let lock = process_lock();
         // SAFETY: the tests of this file run one at a time under `process_lock`, and nothing else reads the environment meanwhile.
         unsafe { std::env::set_var("TZ", "UTC") };
@@ -447,7 +463,7 @@ impl Rig {
                     ],
                 );
             }
-        } else {
+        } else if shape != Shape::Empty {
             comp.add_desktop(width, height);
             for n in 0..windows {
                 comp.add_window_decorated(3 + n, &format!("win{}", n + 1), "foot", "server");
@@ -459,6 +475,7 @@ impl Rig {
                 }
             }
         }
+        setup(&comp);
         comp.borrow_mut().refuse_every = 0;
         host::set_tree_link_provider(Box::new(Provider(comp.clone())));
         let clock = ManualClock::default();
