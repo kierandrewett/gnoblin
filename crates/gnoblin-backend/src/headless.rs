@@ -1978,18 +1978,23 @@ mod tests {
             println!("skipping: no surfaceless EGL context on this machine");
             return;
         };
-        let formats = backend
+        // A GLES display offers the protocol only when it names a render node a client can allocate on: Mesa's llvmpipe
+        // on a surfaceless display imports formats but has no device, so its offer is withheld (`client_dmabuf_support`).
+        let (formats, node) = backend
             .targets
             .first_mut()
             .and_then(HeadlessTarget::gles)
-            .map(Gles::dmabuf_formats)
+            .map(|gles| (gles.dmabuf_formats(), gles.render_node()))
             .expect("a GLES target");
         let offered = backend.query_dmabuf();
-        println!("the GLES session offers {} dmabuf pair(s)", formats.len());
+        println!(
+            "the GLES display imports {} dmabuf pair(s) on render node {node:?}",
+            formats.len()
+        );
         assert_eq!(
             offered.is_some(),
-            !formats.is_empty(),
-            "the session serves dmabuf exactly when its display can import a format"
+            !formats.is_empty() && node.is_some(),
+            "the session serves dmabuf exactly when its display imports a format and names a render node"
         );
     }
 }
