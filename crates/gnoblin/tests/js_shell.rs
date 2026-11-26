@@ -3377,7 +3377,6 @@ fn bar_and_content(ipc: &Path, app_id: &str) -> Option<(f64, f64)> {
 /// mounts a titlebar on the window that asked for one and none on the window that draws its own, and a reload that
 /// turns decorations off hands the first its own frame back and a reload that turns them on gives the bar again.
 #[test]
-#[ignore = "vrnw: needs a reload that omits Decorations.get().start() to stop the old generation's decorations: after the reload the asking window is still told ServerSide (expected ClientSide)"]
 fn a_window_that_draws_its_own_title_bar_gets_no_second_one_and_a_server_side_window_follows_the_shells_decorations() {
     use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1::Mode;
     let session = Session::start();
@@ -4017,7 +4016,6 @@ fn style_of(ipc: &Path, app: &str) -> Option<(Vec<EffectRow>, f64)> {
 }
 
 #[test]
-#[ignore = "vrnw: needs a reload to clear a global style: after the reload the windows' nodes still hold opacity=0.8"]
 fn a_global_style_becomes_the_effect_list_and_opacity_of_a_mapped_windows_node_and_a_reload_clears_them() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
@@ -4114,7 +4112,6 @@ fn frame_style_of(ipc: &Path, app: &str) -> Option<(f64, Vec<FrameEffectRow>)> {
 /// A style of `cornerRadius`, a border and a shadow ends as the node's `corner_radius`, a frame shadow and a border,
 /// on a mapped window and on the same window once the shell decorates it; and a reload without the lines clears them.
 #[test]
-#[ignore = "vrnw: needs a reload to clear the style of a decorated window: after the reload the node still holds corner_radius=12 (effects are cleared) and the content sits at y=56, two bars down"]
 fn a_corner_radius_a_border_and_a_shadow_reach_a_mapped_and_a_decorated_windows_node_and_a_reload_clears_them() {
     let session = Session::start();
     let mut mapper = Mapper::connect(&session.wayland()).requesting_server_side();

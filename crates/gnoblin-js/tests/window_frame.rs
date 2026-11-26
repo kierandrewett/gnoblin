@@ -954,3 +954,219 @@ fn a_reload_swaps_the_generation_and_leaves_no_node_of_the_old_one() {
     );
     assert_eq!((comp.number(3, "x"), comp.number(3, "y")), (0.0, 0.0));
 }
+
+/// A role over the std library on a fake desktop of 1000 by 800 with the window 3, whose `shell.ts` is `body` and is written again
+/// by [`Reloading::reload`], which commits each generation as the loader does: the new one first, then the old one's end.
+struct Reloading {
+    // The role goes before the core it runs over, and both before the compositor and the directory.
+    role: JsRole,
+    core: common::native::NativeCore,
+    comp: FakeCompositor,
+    entry: std::path::PathBuf,
+    _dir: tempfile::TempDir,
+}
+
+impl Reloading {
+    fn boot(body: &str) -> Reloading {
+        let comp = FakeCompositor::new();
+        comp.add_desktop(1000.0, 800.0);
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
+        let entry = root.join("shell.ts");
+        std::fs::write(&entry, body).expect("shell.ts");
+        let mut config = honest_role_config(&root);
+        config.watch = false;
+        let core = common::native::NativeCore::new(&comp, std::sync::Arc::clone(&config.shell.clock));
+        config.shell.js.natives.push(core.embedded().std_native());
+        config.shell.js.natives.push(core.embedded().object_native());
+        let role = JsRole::over_link(core.link(), JsRoleLinks::default(), config).expect("the role boots");
+        let mut booted = Reloading {
+            role,
+            core,
+            comp,
+            entry,
+            _dir: dir,
+        };
+        booted.settle();
+        booted
+    }
+
+    fn settle(&mut self) {
+        for _ in 0..6 {
+            self.role.tick().expect("a frame");
+            self.core.dispatch(self.role.shell_mut());
+        }
+    }
+
+    fn reload(&mut self, body: &str) {
+        std::fs::write(&self.entry, body).expect("shell.ts");
+        let report = self.core.reload(&mut self.role);
+        assert!(report.ok, "{:?}", report.errors);
+        self.settle();
+    }
+
+    /// A reload whose new generation starts what `body` says and then fails: the staged generation is dropped and the running one
+    /// serves on.
+    fn reload_failing(&mut self, body: &str) {
+        std::fs::write(&self.entry, body).expect("shell.ts");
+        let report = self.core.reload(&mut self.role);
+        assert!(!report.ok, "the reload was meant to fail");
+        self.settle();
+    }
+
+    /// The seat's `decorations_available` as the compositor holds it.
+    fn declared(&self) -> Option<bool> {
+        self.comp.flag(21, "decorations_available")
+    }
+
+    /// What the compositor holds on window 3 for its style: its opacity, its corner radius and how many effects it carries.
+    fn styled(&self) -> (Option<f64>, f64, usize) {
+        let opacity = match self.comp.value(3, "opacity") {
+            Some(MirrorValue::Double(opacity)) => Some(opacity),
+            _ => None,
+        };
+        let effects = match self.comp.value(3, "effects") {
+            Some(MirrorValue::Effects(effects)) => effects.len(),
+            _ => 0,
+        };
+        (opacity, self.comp.number(3, "corner_radius"), effects)
+    }
+}
+
+/// The seat says the shell draws decorations while a generation that started them runs. A reload commits the new generation before the old
+/// one ends, so the end of the old one takes the declaration back only when the new one has not declared it.
+#[test]
+fn a_reload_takes_the_decorations_declaration_back_unless_the_new_generation_declares_it() {
+    let framed = format!("{LIBRARY_GLOBALS}{START_FRAMES}startFrames({{ resizeHandles: 6 }});\n");
+    let mut shell = Reloading::boot(&framed);
+    assert_eq!(
+        shell.declared(),
+        Some(true),
+        "the first generation declared decorations"
+    );
+
+    shell.reload(&format!("{LIBRARY_GLOBALS}\n"));
+    assert_eq!(
+        shell.declared(),
+        Some(false),
+        "a generation that starts no decorations leaves the seat saying so, and a client that asks is told to draw its own"
+    );
+
+    shell.reload(&framed);
+    assert_eq!(
+        shell.declared(),
+        Some(true),
+        "a generation that starts them declares them again"
+    );
+
+    shell.reload(&format!(
+        "{LIBRARY_GLOBALS}{START_FRAMES}startFrames({{ resizeHandles: 4 }});\n"
+    ));
+    assert_eq!(
+        shell.declared(),
+        Some(true),
+        "the new generation declared before the old one ended, and the end of the old one leaves it"
+    );
+}
+
+/// What a generation styled is its own: a reload that does not set the style again takes it off the windows, whether or not the new
+/// generation uses the library, and one that sets it again leaves the windows styled.
+#[test]
+fn a_reload_takes_the_style_a_generation_set_off_the_windows_unless_the_new_one_sets_it_again() {
+    let styled = format!(
+        "{LIBRARY_GLOBALS}const style = gCore.gnoblin.clients.style;\n\
+         style.opacity = 0.8;\nstyle.cornerRadius = 12;\nstyle.shadows = [{{ y: 8, blur: 24, color: '#00000066' }}];\n"
+    );
+    let mut shell = Reloading::boot(&styled);
+    shell.comp.create_window(3, "win1", "foot");
+    shell.settle();
+    assert_eq!(shell.styled(), (Some(0.8), 12.0, 1), "the style reaches the window");
+
+    // A new generation that keeps the library open and says nothing of styles: the old one's style is not the new one's to keep.
+    shell.reload(&format!("{LIBRARY_GLOBALS}WindowState.get().start();\n"));
+    assert_eq!(
+        shell.styled(),
+        (Some(1.0), 0.0, 0),
+        "a style the new generation does not set comes off the window"
+    );
+
+    shell.reload(&styled);
+    assert_eq!(
+        shell.styled(),
+        (Some(0.8), 12.0, 1),
+        "a generation that sets it styles the window again"
+    );
+
+    shell.reload(&styled.replace("opacity = 0.8", "opacity = 0.5"));
+    assert_eq!(
+        shell.styled(),
+        (Some(0.5), 12.0, 1),
+        "a style the new generation sets again is the new one's value"
+    );
+
+    // A new generation that never touches the library: nobody is left to restyle the window, so the old one's end does.
+    shell.reload(&format!("{LIBRARY_GLOBALS}\n"));
+    assert_eq!(
+        shell.styled(),
+        (Some(1.0), 0.0, 0),
+        "with no generation to take over, the end of the old one takes the style off"
+    );
+}
+
+/// A new generation that keeps no style of its own still owns what it writes to a window itself: the reload takes off what the old
+/// generation wrote and the node still holds, and leaves the opacity the new generation set before its first turn.
+#[test]
+fn a_reload_leaves_the_opacity_the_new_generation_set_itself_and_takes_off_the_rest() {
+    let styled = format!(
+        "{LIBRARY_GLOBALS}const style = gCore.gnoblin.clients.style;\n\
+         style.opacity = 0.8;\nstyle.cornerRadius = 12;\nstyle.shadows = [{{ y: 8, blur: 24, color: '#00000066' }}];\n"
+    );
+    let mut shell = Reloading::boot(&styled);
+    shell.comp.create_window(3, "win1", "foot");
+    shell.settle();
+    assert_eq!(shell.styled(), (Some(0.8), 12.0, 1), "the style reaches the window");
+
+    shell.reload(&format!(
+        "{LIBRARY_GLOBALS}WindowState.get().start();\ngCore.gnoblin.clients.at(0).opacity = 0.3;\n"
+    ));
+    assert_eq!(
+        shell.styled(),
+        (Some(0.3), 0.0, 0),
+        "the opacity the new generation wrote stays; the radius and the effects the old one wrote come off"
+    );
+}
+
+/// A generation that is staged and fails ends with the running one still serving: what it started is not taken from the running
+/// generation, whose style and declaration stay.
+#[test]
+fn a_failed_reload_leaves_the_running_generations_style_and_declaration() {
+    let running = format!(
+        "{LIBRARY_GLOBALS}{START_FRAMES}startFrames({{ resizeHandles: 6 }});\n\
+         const style = gCore.gnoblin.clients.style;\nstyle.opacity = 0.8;\nstyle.cornerRadius = 12;\n"
+    );
+    let mut shell = Reloading::boot(&running);
+    shell.comp.create_window(3, "win1", "foot");
+    shell.settle();
+    assert_eq!(shell.styled(), (Some(0.8), 12.0, 0), "the style reaches the window");
+    assert_eq!(shell.declared(), Some(true));
+
+    // The new generation starts decorations and says nothing of styles, then fails: it ends with nothing to take over.
+    shell.reload_failing(&format!(
+        "{LIBRARY_GLOBALS}{START_FRAMES}startFrames();\nWindowState.get().start();\nthrow new Error('the new generation fails');\n"
+    ));
+    assert_eq!(
+        shell.styled(),
+        (Some(0.8), 12.0, 0),
+        "the running generation keeps its style: the failed one neither restyles nor clears it"
+    );
+    assert_eq!(
+        shell.declared(),
+        Some(true),
+        "the failed generation's end does not withdraw the running generation's declaration"
+    );
+
+    // The next reload that works still takes over from the running generation.
+    shell.reload(&format!("{LIBRARY_GLOBALS}WindowState.get().start();\n"));
+    assert_eq!(shell.styled(), (Some(1.0), 0.0, 0));
+    assert_eq!(shell.declared(), Some(false));
+}

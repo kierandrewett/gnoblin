@@ -177,6 +177,8 @@ whose answer changes. A `client` window never shows a second bar over its own: i
 The shell declares that it draws decorations by writing the seat's `decorations_available`:
 
 - It is true while `Decorations.get().start()` has run, and cleared when the shell retires.
+- A reload commits the new generation before the old one ends: a new generation that starts decorations keeps it true, and
+  one that does not clears it, so the old generation's end never undoes the new one's declaration.
 - The compositor also clears it when the shell's connection drops.
 - A client that asks for server-side is told so only while it is true and a shell holds the tree.
 - With no shell, or without `Decorations.get().start()`, every client is told client-side, so a window is never left with no title bar
