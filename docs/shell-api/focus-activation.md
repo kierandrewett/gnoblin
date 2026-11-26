@@ -49,9 +49,7 @@ use gnoblin_core::objects::ModelRoot;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     for client in clients.to_list()? {
         if client.app_id()? == "foot" {
             client.focus()?;
@@ -96,9 +94,7 @@ use gnoblin_core::objects::{FocusFilter, ModelRoot};
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(focus) = model.focus()? else {
-        return Ok(());
-    };
+    let focus = model.focus()?;
     let filter = FocusFilter {
         limit: Some(2),
         ..FocusFilter::default()

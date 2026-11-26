@@ -70,9 +70,7 @@ use gnoblin_core::objects::{BindingEvent, ModelRoot, Process, ProcessListenerHan
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = Rc::new(ModelRoot::get(&objects)?);
-    let Some(processes) = model.process()? else {
-        return Ok(());
-    };
+    let processes = model.process()?;
     let notifier = Rc::clone(&model);
     let listener = ProcessListenerHandlers {
         on_exited: Some(Box::new(move |process: Process| {
@@ -86,12 +84,8 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     .implement(&objects)?;
     processes.add_listener(&listener)?;
 
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(primary) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let primary = input.primary()?;
     let spawner = Rc::clone(&model);
     primary.bind(
         "Super+d",
@@ -174,12 +168,8 @@ use gnoblin_core::objects::{BindingEvent, ModelRoot, SpawnOptions, StreamMode};
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = Rc::new(ModelRoot::get(&objects)?);
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(primary) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let primary = input.primary()?;
     let spawner = Rc::clone(&model);
     primary.bind(
         "Super+c",

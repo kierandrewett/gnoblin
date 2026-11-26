@@ -43,9 +43,7 @@ use gnoblin_core::objects::{BindingOptions, ModelRoot};
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = Rc::new(ModelRoot::get(&objects)?);
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
     let options = BindingOptions {
         id: None,
         priority: None,
@@ -322,9 +320,7 @@ use gnoblin_core::objects::{InputContext, ModelRoot};
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = Rc::new(ModelRoot::get(&objects)?);
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
     let other = InputContext::new(&objects, "secondary")?;
     input.add_context(&other)?;
     let launcher = Rc::clone(&model);

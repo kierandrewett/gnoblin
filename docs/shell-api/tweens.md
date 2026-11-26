@@ -57,14 +57,13 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let Some(context) = model.input()?.and_then(|input| input.primary().ok().flatten()) else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let context = input.primary()?;
     let fader = Rc::clone(&model);
     context.bind(
         "Super+o",
         Some(move |_event| {
-            let Some(client) = fader.input()?.and_then(|input| input.focused_client().ok().flatten()) else {
+            let Some(client) = fader.input()?.focused_client()? else {
                 return Ok(false);
             };
             let options = TransitionOptions {
@@ -164,7 +163,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(client) = model.input()?.and_then(|input| input.focused_client().ok().flatten()) else {
+    let Some(client) = model.input()?.focused_client()? else {
         return Ok(());
     };
     let options = TransitionOptions {
@@ -238,7 +237,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(client) = model.input()?.and_then(|input| input.focused_client().ok().flatten()) else {
+    let Some(client) = model.input()?.focused_client()? else {
         return Ok(());
     };
     let options = TransitionOptions {
@@ -362,7 +361,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(client) = model.input()?.and_then(|input| input.focused_client().ok().flatten()) else {
+    let Some(client) = model.input()?.focused_client()? else {
         return Ok(());
     };
     let client = Rc::new(client);

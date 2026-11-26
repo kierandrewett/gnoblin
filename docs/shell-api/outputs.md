@@ -54,9 +54,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         };
         workspaces.add(&Workspace::new_with(&std, id, options)?)?;
     }
-    let Some(outputs) = model.outputs()? else {
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     for output in outputs.to_list()? {
         let shown = match output.workspace()? {
             Some(workspace) => workspace.id()?,
@@ -215,9 +213,7 @@ use gnoblin_core::{self as gnoblin, Gnoblin};
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let Some(outputs) = model.outputs()? else {
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     let query = OutputQuery {
         name: Some("output-1".to_owned()),
         ..OutputQuery::default()
@@ -269,9 +265,7 @@ use gnoblin_core::{self as gnoblin, Gnoblin};
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(outputs) = model.outputs()? else {
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     if let Some(output) = outputs.at(1)? {
         let config = OutputConfig {
             position_x: Some(0),
@@ -316,9 +310,7 @@ use gnoblin_core::{self as gnoblin, Gnoblin};
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(outputs) = model.outputs()? else {
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     if let (Some(first), Some(second)) = (outputs.at(0)?, outputs.at(1)?) {
         second.mirror(Some(&first))?;
         second.mirror(None)?; // stop
@@ -356,9 +348,7 @@ use gnoblin_core::{self as gnoblin, Gnoblin};
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(outputs) = model.outputs()? else {
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     if let Some(output) = outputs.at(1)? {
         let config = OutputConfig {
             enabled: Some(false),
@@ -433,9 +423,7 @@ use gnoblin_core::{self as gnoblin, Gnoblin};
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(outputs) = model.outputs()? else {
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     let query = OutputQuery {
         name: Some("output-1".to_owned()),
         ..OutputQuery::default()
@@ -749,21 +737,13 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     workspaces.add(&desktop)?;
     workspaces.add(&web)?;
 
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(seat) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let seat = input.primary()?;
     seat.bind(
         "Super+2",
         Some(move |_| {
-            let Some(input) = model.input()? else {
-                return Ok(false);
-            };
-            let Some(seat) = input.primary()? else {
-                return Ok(false);
-            };
+            let input = model.input()?;
+            let seat = input.primary()?;
             if let Some(display) = seat.active_display()? {
                 if let Some(viewport) = display.viewport()? {
                     viewport.set_content(&web)?;
@@ -1032,12 +1012,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     )?;
     let deep = Rc::new(deep.as_scene_node()?);
 
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(seat) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let seat = input.primary()?;
     let seat = Rc::new(seat);
     let context = Rc::clone(&seat);
     let mut three_d = false;
@@ -1136,9 +1112,7 @@ use gnoblin_core::{self as gnoblin, Gnoblin};
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = Rc::new(ModelRoot::get(&objects)?);
-    let Some(outputs) = model.outputs()? else {
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     let (plugged, unplugged) = (Rc::clone(&model), Rc::clone(&model));
     let listener = OutputCollectionListenerHandlers {
         on_added: None,
@@ -1237,9 +1211,7 @@ use gnoblin_std::objects::{Bar, BarEdge, BarOptions};
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let std = g.std()?.objects()?;
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(outputs) = model.outputs()? else {
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     if let Some(second) = outputs.at(1)? {
         let options = BarOptions {
             edge: Some(BarEdge::Bottom),
@@ -1319,9 +1291,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         ..ClientQuery::default()
     };
     let client = model.find_clients(Some(&focused))?.into_iter().next();
-    let Some(outputs) = model.outputs()? else {
-        return Ok(());
-    };
+    let outputs = model.outputs()?;
     let target = match outputs.at(1)? {
         Some(second) => second.workspace()?,
         None => None,

@@ -65,9 +65,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         WorkspaceOptions { layout: Some(GridLayout::new(&std)?.as_layout()?), ..WorkspaceOptions::default() },
     )?)?;
 
-    let Some(seat) = model.input()?.and_then(|input| input.primary().ok().flatten()) else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let seat = input.primary()?;
     seat.bind(
         "Super+Tab",
         Some(move |_| {

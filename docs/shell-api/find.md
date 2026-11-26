@@ -36,9 +36,7 @@ use gnoblin_core::objects::{ClientQuery, ModelRoot, OutputQuery};
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = ModelRoot::get(&objects)?;
-    let Some(input) = model.input()?.and_then(|input| input.primary().ok().flatten()) else {
-        return Ok(());
-    };
+    let input = model.input()?.primary()?;
     input.bind(
         "Super+f",
         Some(move |_event| {
@@ -196,9 +194,7 @@ use gnoblin_std::prelude::*;
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = ModelRoot::get(&objects)?;
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     let terminals = clients.where_(
         &ClientQuery {
             app_id: Some("foot".to_owned()),

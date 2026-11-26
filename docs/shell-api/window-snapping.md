@@ -63,12 +63,8 @@ use gnoblin_std::objects::{ClientState, ModelRootStdExt, SnapZone};
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let std = g.std()?.objects()?;
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(seat) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let seat = input.primary()?;
     let seat = Rc::new(seat);
     let workspaces = Rc::new(model.workspaces()?);
 

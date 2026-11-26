@@ -44,9 +44,8 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let (locker, notifier) = (Rc::clone(&model), Rc::clone(&model));
     let listener = IdleListenerHandlers {
         on_idle: Some(Box::new(move |_watch| {
-            if let Some(session) = locker.session()? {
-                session.lock()?;
-            }
+            let session = locker.session()?;
+            session.lock()?;
             Ok(())
         })),
         on_resume: Some(Box::new(move |_watch| {

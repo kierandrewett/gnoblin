@@ -47,12 +47,9 @@ use gnoblin_core::{self as gnoblin, Gnoblin};
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let (Some(input), Some(session)) = (model.input()?, model.session()?) else {
-        return Ok(());
-    };
-    let Some(context) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let session = model.session()?;
+    let context = input.primary()?;
     context.bind(
         "Super+Shift+q",
         Some(move |_event| {
@@ -144,9 +141,8 @@ fn notify(model: &ModelRoot, text: &str) -> gnoblin::Result<()> {
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let (Some(processes), Some(timers)) = (model.process()?, model.timers()?) else {
-        return Ok(());
-    };
+    let processes = model.process()?;
+    let timers = model.timers()?;
     let sleep = Rc::new(processes.spawn(&["sleep".to_owned(), "30".to_owned()], None)?);
     let ended = Rc::clone(&model);
     sleep.wait()?.then(move || {
@@ -375,9 +371,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(timers) = model.timers()? else {
-        return Ok(());
-    };
+    let timers = model.timers()?;
     let workspaces = Rc::new(model.workspaces()?);
     let timer = timers.after(2000.0, move || {
         workspaces.show_by_id("2", None)?;

@@ -43,9 +43,7 @@ use gnoblin_core::objects::{DialogListenerHandlers, DialogRequest, ModelRoot};
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = ModelRoot::get(&objects)?;
-    let Some(dialogs) = model.dialogs()? else {
-        return Ok(());
-    };
+    let dialogs = model.dialogs()?;
     let listener = DialogListenerHandlers {
         on_consent_request: Some(Box::new(|request: DialogRequest| {
             if request.subject()? == "ScreenCast" {

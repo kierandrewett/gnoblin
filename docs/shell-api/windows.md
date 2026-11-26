@@ -43,9 +43,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = Rc::new(ModelRoot::get(&g.objects()?)?);
     let shell = Rc::clone(&model);
     g.bind("Super+t", move || -> gnoblin::Result<()> {
-        let Some(clients) = shell.clients()? else {
-            return Ok(());
-        };
+        let clients = shell.clients()?;
         for client in clients.to_list()? {
             if client.app_id()? == "foot" {
                 client.focus()?;
@@ -116,9 +114,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
     let mut terminals = Vec::new();
     let mut titles = Vec::new();
-    let Some(clients) = model.clients()? else {
-        return Ok(());
-    };
+    let clients = model.clients()?;
     for client in clients.to_list()? {
         titles.push(client.title()?);
         if client.app_id()? == "org.gnome.Console" {

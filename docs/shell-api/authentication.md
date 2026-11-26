@@ -46,9 +46,7 @@ use gnoblin_core::objects::{AuthenticationListenerHandlers, AuthenticationReques
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = ModelRoot::get(&objects)?;
-    let Some(authentication) = model.authentication()? else {
-        return Ok(());
-    };
+    let authentication = model.authentication()?;
     let listener = AuthenticationListenerHandlers {
         on_authentication_request: Some(Box::new(|request: AuthenticationRequest| {
             let wants_root = request.identities()?.iter().any(|identity| identity == "unix-user:root");

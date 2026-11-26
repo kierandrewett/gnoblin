@@ -33,10 +33,9 @@ use gnoblin_core::{self as gnoblin, Gnoblin};
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    if let Some(clients) = model.clients()? {
-        for client in clients.to_list()? {
-            model.spawn(&["notify-send".to_owned(), format!("{} is open", client.app_id()?)], None)?;
-        }
+    let clients = model.clients()?;
+    for client in clients.to_list()? {
+        model.spawn(&["notify-send".to_owned(), format!("{} is open", client.app_id()?)], None)?;
     }
     Ok(())
 }

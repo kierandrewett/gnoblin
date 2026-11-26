@@ -90,9 +90,7 @@ use gnoblin_core::objects::{BindingEvent, BindingOptions, Client, InputManager, 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
-    let Some(primary) = InputManager::get(&objects)?.primary()? else {
-        return Ok(());
-    };
+    let primary = InputManager::get(&objects)?.primary()?;
     let grab: Rc<RefCell<Option<(Client, f64, f64)>>> = Rc::new(RefCell::new(None));
     let (start, update, end, cancel) = (Rc::clone(&grab), Rc::clone(&grab), Rc::clone(&grab), Rc::clone(&grab));
     let handler = PointerDragBindingHandlers {
@@ -628,9 +626,7 @@ use gnoblin_core::objects::{BindingEvent, InputManager, PointerDragBindingHandle
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
-    let Some(primary) = InputManager::get(&objects)?.primary()? else {
-        return Ok(());
-    };
+    let primary = InputManager::get(&objects)?.primary()?;
     let handler = PointerDragBindingHandlers {
         on_start: Box::new(|_event: BindingEvent| Ok(false)),
         on_update: None,

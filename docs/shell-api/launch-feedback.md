@@ -54,12 +54,9 @@ fn notify_argv(text: &str) -> [String; 2] {
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = Rc::new(ModelRoot::get(&objects)?);
-    let (Some(input), Some(launches)) = (model.input()?, model.launches()?) else {
-        return Ok(());
-    };
-    let Some(context) = input.primary()? else {
-        return Ok(());
-    };
+    let launches = model.launches()?;
+    let input = model.input()?;
+    let context = input.primary()?;
     let (started, timed_out, opener) = (Rc::clone(&model), Rc::clone(&model), Rc::clone(&model));
     let listener = LaunchListenerHandlers {
         on_changed: None,

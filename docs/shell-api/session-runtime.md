@@ -44,19 +44,13 @@ use gnoblin_core::objects::ModelRoot;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(context) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let context = input.primary()?;
     let locker = Rc::clone(&model);
     context.bind(
         "Super+l",
         Some(move |_event| {
-            if let Some(session) = locker.session()? {
-                session.lock()?;
-            }
+            locker.session()?.lock()?;
             Ok(true)
         }),
         None,
@@ -65,9 +59,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     context.bind(
         "Super+Shift+r",
         Some(move |_event| {
-            if let Some(runtime) = reloader.runtime()? {
-                runtime.reload_config()?;
-            }
+            reloader.runtime()?.reload_config()?;
             Ok(true)
         }),
         None,
@@ -163,9 +155,7 @@ use gnoblin_core::objects::ModelRoot;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let Some(session) = model.session()? else {
-        return Ok(());
-    };
+    let session = model.session()?;
     let notifier = Rc::clone(&model);
     session.suspend()?.catch(move |error, code| {
         notifier.spawn(&["notify-send".to_owned(), format!("Suspend failed: {code}: {error}")], None)?;

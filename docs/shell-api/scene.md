@@ -97,13 +97,11 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         root.add(&overview, None)?;
     }
 
-    if let Some(input) = model.input()? {
-        if let Some(primary) = input.primary()? {
-            if let Some(client) = primary.focused_client()? {
-                if let Some(properties) = client.properties()? {
-                    properties.bind_double("opacity", move || Ok(if client.focused()? { 1.0 } else { 0.7 }))?;
-                }
-            }
+    let input = model.input()?;
+    let primary = input.primary()?;
+    if let Some(client) = primary.focused_client()? {
+        if let Some(properties) = client.properties()? {
+            properties.bind_double("opacity", move || Ok(if client.focused()? { 1.0 } else { 0.7 }))?;
         }
     }
     Ok(())
@@ -281,12 +279,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let core = g.objects()?;
     let objects = g.std()?.objects()?;
     let model = ModelRoot::get(&core)?;
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(primary) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let primary = input.primary()?;
     let Some(client) = primary.focused_client()? else {
         return Ok(());
     };
@@ -377,12 +371,10 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             ..ViewOptions::default()
         },
     )?;
-    if let Some(input) = model.input()? {
-        if let Some(primary) = input.primary()? {
-            if let Some(focused) = primary.focused_client()? {
-                panel.show_client(&focused)?;
-            }
-        }
+    let input = model.input()?;
+    let primary = input.primary()?;
+    if let Some(focused) = primary.focused_client()? {
+        panel.show_client(&focused)?;
     }
     Scene::get(&objects)?.add(&panel.as_scene_node()?)?;
     Ok(())
@@ -456,12 +448,8 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(primary) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let primary = input.primary()?;
     let Some(client) = primary.focused_client()? else {
         return Ok(());
     };
@@ -579,19 +567,15 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(primary) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let primary = input.primary()?;
     let Some(client) = primary.focused_client()? else {
         return Ok(());
     };
     let Some(properties) = client.properties()? else {
         return Ok(());
     };
-    properties.bind_double("opacity", move || Ok((1.0 - client.x()? / 2500.0).max(0.25)))?;
+    properties.bind_double("opacity", move || Ok((1.0_f64 - client.x()? / 2500.0).max(0.25)))?;
     Ok(())
 }
 ```

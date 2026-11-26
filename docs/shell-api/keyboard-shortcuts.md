@@ -55,12 +55,8 @@ use gnoblin_core::objects::ModelRoot;
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = Rc::new(ModelRoot::get(&objects)?);
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(context) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let context = input.primary()?;
     let input = Rc::new(input);
     let (launcher, closer, notifier) = (Rc::clone(&model), Rc::clone(&input), Rc::clone(&model));
     context.bind(
@@ -172,12 +168,8 @@ use gnoblin_core::objects::ModelRoot;
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = Rc::new(ModelRoot::get(&objects)?);
-    let Some(input) = model.input()? else {
-        return Ok(());
-    };
-    let Some(context) = input.primary()? else {
-        return Ok(());
-    };
+    let input = model.input()?;
+    let context = input.primary()?;
     let launcher = Rc::clone(&model);
     let binding = context.bind(
         "Super+x",
