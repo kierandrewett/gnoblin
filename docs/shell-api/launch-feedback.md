@@ -3,7 +3,9 @@
 `gnoblin.launches` tracks the busy state between asking for an application and its window, so a panel or launcher can show
 a spinner while the program starts.
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.input.primary.bind("Super+e", () => {
     gnoblin.launches.begin("terminal-1", "foot", {
         timeoutMs: 5000,
@@ -16,8 +18,85 @@ gnoblin.input.primary.bind("Super+e", () => {
 });
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. `Super+e` starts the `foot` terminal and tracks the launch: a notification
-says whether its window appeared within 5000 ms.
+```python
+from gnoblin.objects.model import BindingEvent, Gnoblin, Launch, LaunchListener, LaunchOptions
+
+gnoblin = Gnoblin.get()
+
+
+class Terminal(LaunchListener):
+    def on_started(self, launch: Launch) -> None:
+        gnoblin.spawn(["notify-send", "The terminal is open"])
+
+    def on_timed_out(self, launch: Launch) -> None:
+        gnoblin.spawn(["notify-send", "The terminal did not open"])
+
+
+def open_terminal(event: BindingEvent) -> None:
+    gnoblin.launches.begin("terminal-1", "foot", LaunchOptions(timeout_ms=5000, listener=Terminal()))
+    gnoblin.spawn(["foot"])
+
+
+gnoblin.input.primary.bind("Super+e", open_terminal)
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core::objects::{LaunchListenerHandlers, LaunchOptions, ModelRoot};
+use gnoblin_core::{self as gnoblin, Gnoblin};
+
+fn notify(model: &ModelRoot, text: &str) -> gnoblin::Result<()> {
+    model.spawn(&["notify-send".to_owned(), text.to_owned()], None)?;
+    Ok(())
+}
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = Rc::new(ModelRoot::get(&objects)?);
+    let (Some(input), Some(launches)) = (model.input()?, model.launches()?) else {
+        return Ok(());
+    };
+    let Some(context) = input.primary()? else {
+        return Ok(());
+    };
+    let (started, timed_out, opener) = (Rc::clone(&model), Rc::clone(&model), Rc::clone(&model));
+    let listener = LaunchListenerHandlers {
+        on_changed: None,
+        on_started: Some(Box::new(move |_launch| {
+            notify(&started, "The terminal is open")?;
+            Ok(())
+        })),
+        on_timed_out: Some(Box::new(move |_launch| {
+            notify(&timed_out, "The terminal did not open")?;
+            Ok(())
+        })),
+        on_closed: None,
+    }
+    .implement(&objects)?;
+    let options = LaunchOptions {
+        timeout_ms: Some(5000),
+        listener: Some(listener),
+    };
+    context.bind(
+        "Super+e",
+        Some(move |_event| {
+            launches.begin("terminal-1", "foot", Some(&options))?;
+            opener.spawn(&["foot".to_owned()], None)?;
+            Ok(true)
+        }),
+        None,
+    )?;
+    Ok(())
+}
+```
+
+:::
+
+Put the TypeScript in `~/.config/gnoblin/shell.ts` and the Python in `~/.config/gnoblin/shell.py`. The Rust is a shell
+library, which [Write a shell in Rust](/rust-shell) builds and runs. `Super+e` starts the `foot` terminal and tracks the
+launch: a notification says whether its window appeared within 5000 ms.
 
 ## Begin a launch
 

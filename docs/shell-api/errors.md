@@ -3,7 +3,9 @@
 A call that finishes later returns an `Operation`. A call that cannot be made at all throws. A function you hand to the
 shell, whether a listener, a handler or a timer, runs under a time budget and may fail without stopping the others.
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.input.primary.bind("Super+Shift+q", () => {
     gnoblin.session.logout().catch((error, code) => {
         gnoblin.spawn(["notify-send", `Logout refused: ${code}: ${error}`]);
@@ -11,27 +13,81 @@ gnoblin.input.primary.bind("Super+Shift+q", () => {
 });
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. `Super+Shift+q` logs out, and shows a notification when the compositor
-refuses.
+```python
+from gnoblin.objects.model import BindingEvent, Gnoblin
+
+gnoblin = Gnoblin.get()
+
+
+def refused(error: str, code: str) -> None:
+    gnoblin.spawn(["notify-send", f"Logout refused: {code}: {error}"])
+
+
+def log_out(event: BindingEvent) -> None:
+    gnoblin.session.logout().catch(refused)
+
+
+gnoblin.input.primary.bind("Super+Shift+q", log_out)
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let (Some(input), Some(session)) = (model.input()?, model.session()?) else {
+        return Ok(());
+    };
+    let Some(context) = input.primary()? else {
+        return Ok(());
+    };
+    context.bind(
+        "Super+Shift+q",
+        Some(move |_event| {
+            let reporter = Rc::clone(&model);
+            session.logout()?.catch(move |error, code| {
+                let text = format!("Logout refused: {code}: {error}");
+                reporter.spawn(&["notify-send".to_owned(), text], None)?;
+                Ok(())
+            })?;
+            Ok(true)
+        }),
+        None,
+    )?;
+    Ok(())
+}
+```
+
+:::
+
+The shell file is `~/.config/gnoblin/shell.ts` in TypeScript, `~/.config/gnoblin/shell.py` in Python, or a Rust shell library in
+Rust, which [Write a shell in Rust](/rust-shell) builds and runs. `Super+Shift+q` logs out, and if the logout is refused it shows a
+notification.
 
 ## Operations
 
 An `Operation` settles once, with success or with a typed error. Its callbacks run as queued calls under the same time
 budget as every listener: one that throws is reported, and the next callback still runs.
 
-| Member              | Meaning                                                                       |
-| ------------------- | ----------------------------------------------------------------------------- |
-| `status`            | `pending`, `succeeded` or `failed`.                                           |
-| `error`             | The words of a failure. Empty otherwise.                                      |
-| `errorCode`         | The code of a failure, from the table below. Empty otherwise.                 |
-| `then(fn)`          | Calls `fn()` once, when the operation succeeds.                               |
-| `catch(fn)`         | Calls `fn(error, code)` once, when the operation fails.                       |
-| `on("settled", fn)` | Calls `fn(operation)` once, when it settles either way. Returns a `Listener`. |
+| Member                                    | Meaning                                                                                                                                  |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`                                  | `pending`, `succeeded` or `failed`.                                                                                                      |
+| `error`                                   | The words of a failure. Empty otherwise.                                                                                                 |
+| `errorCode`, `error_code`, `error_code()` | The code of a failure, from the table below: `errorCode` in TypeScript, `error_code` in Python, `error_code()` in Rust. Empty otherwise. |
+| `then(fn)`                                | Calls `fn()` once, when the operation succeeds.                                                                                          |
+| `catch(fn)`                               | Calls `fn(error, code)` once, when the operation fails.                                                                                  |
+| `on("settled", fn)`                       | Calls `fn(operation)` once, when it settles either way. Returns a `Listener`.                                                            |
 
 A call that has a result, such as `Process.wait()`, leaves it on the object that made the operation: read `process.exit`
 inside `then`. To stop waiting for an operation after a time, start a timer:
 
-```ts
+::: tabs
+
+```typescript
 const sleep = gnoblin.process.spawn(["sleep", "30"]);
 sleep.wait().then(() => gnoblin.spawn(["notify-send", "sleep ended"]));
 gnoblin.timers.after(5000, () => {
@@ -42,13 +98,71 @@ gnoblin.timers.after(5000, () => {
 });
 ```
 
+```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
+sleep = gnoblin.process.spawn(["sleep", "30"])
+
+
+def ended() -> None:
+    gnoblin.spawn(["notify-send", "sleep ended"])
+
+
+def too_slow() -> None:
+    if sleep.alive:
+        gnoblin.spawn(["notify-send", "sleep took too long"])
+        sleep.kill()
+
+
+sleep.wait().then(ended)
+gnoblin.timers.after(5000.0, too_slow)
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+
+fn notify(model: &ModelRoot, text: &str) -> gnoblin::Result<()> {
+    model.spawn(&["notify-send".to_owned(), text.to_owned()], None)?;
+    Ok(())
+}
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let (Some(processes), Some(timers)) = (model.process()?, model.timers()?) else {
+        return Ok(());
+    };
+    let sleep = Rc::new(processes.spawn(&["sleep".to_owned(), "30".to_owned()], None)?);
+    let ended = Rc::clone(&model);
+    sleep.wait()?.then(move || {
+        notify(&ended, "sleep ended")?;
+        Ok(())
+    })?;
+    let (late, watched) = (Rc::clone(&model), Rc::clone(&sleep));
+    timers.after(5000.0, move || {
+        if watched.alive()? {
+            notify(&late, "sleep took too long")?;
+            watched.kill(None)?;
+        }
+        Ok(())
+    })?;
+    Ok(())
+}
+```
+
+:::
+
 A bad argument is not an operation failure: the call throws a `TypeError` or a `RangeError` at once.
 
 ## Error codes
 
 One set of codes covers every failure of the API, and the codes are snake_case.
 
-- An `Operation` that fails carries an `error` and an `errorCode`.
+- An `Operation` that fails carries an `error` and an error code: `errorCode` in TypeScript, `error_code` in Python and `error_code()` in Rust.
 - A call that cannot be made throws a `GnoblinError` with a code from the same set.
 - Its `target` names the object and member, such as `Client#7.x`, and its message begins with the target.
 
@@ -68,10 +182,18 @@ One set of codes covers every failure of the API, and the codes are snake_case.
 | `internal`         | An unexpected error occurred, such as a throw inside `map`.                |
 | `config_rejected`  | The configuration document refused a value, or a reload was refused.       |
 
-A `TypeError` or a `RangeError` is the script's own mistake in a value, and it has no code. A call the library refuses is a
-`GnoblinError`, which `gnoblin-core` exports, so a script can branch on `error.code`:
+A `TypeError` or a `RangeError` is the script's own mistake in a value, and it has no code.
 
-```ts
+A call the library refuses is a `GnoblinError`, so a script can branch on its code. The import differs by language:
+
+- TypeScript imports `GnoblinError` from `gnoblin-core`.
+- Python imports it from `gnoblin`.
+
+Rust has no string code: a failed call returns an error that says what failed, and the example reports it as text:
+
+::: tabs
+
+```typescript
 import { GnoblinError } from "gnoblin-core";
 import { Workspace } from "gnoblin-std";
 
@@ -84,8 +206,44 @@ try {
 }
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. A second workspace with the id `main` shows a notification instead of
-stopping the file.
+```python
+from gnoblin import GnoblinError
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import Workspace
+
+gnoblin = Gnoblin.get()
+
+try:
+    gnoblin.workspaces.add(Workspace("main"))
+except GnoblinError as error:
+    if error.code == "already_exists":
+        gnoblin.spawn(["notify-send", "There is a workspace with that id already"])
+```
+
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{Workspace, WorkspaceOptions};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let objects = g.std()?.objects()?;
+    let workspace = Workspace::new_with(&objects, "main", WorkspaceOptions::default())?;
+    if let Err(fail) = model.workspaces()?.add(&workspace) {
+        model.spawn(
+            &["notify-send".to_owned(), format!("Cannot add the workspace: {fail}")],
+            None,
+        )?;
+    }
+    Ok(())
+}
+```
+
+:::
+
+The shell file is `~/.config/gnoblin/shell.ts` in TypeScript, `~/.config/gnoblin/shell.py` in Python, or a Rust shell library in
+Rust. A second workspace with the id `main` shows a notification instead of stopping the file.
 
 ### Which failure carries which code
 
@@ -145,7 +303,7 @@ follow the same spelling. A name the generated class does not know is left as th
 
 Five things about a failed call of an object of the library read differently from before the codes. A shell written for the old reading changes as follows.
 
-- `error.code` is the word, such as `"not_found"`. It was the ABI's integer, such as `-6`, on a plain `Error`. Compare `error.code` with a word, and with `instanceof GnoblinError` for a failure that has one.
+- `error.code` is the word, such as `"not_found"`. It was the ABI's integer, such as `-6`, on a plain `Error`. In TypeScript and Python, compare the code with a word after checking the failure is a `GnoblinError`. Rust has no string code.
 - The message does not start with `E_TYPE: ` or another ABI symbol, as it did. A `TypeError` says what was wrong in the words of the library. A `GnoblinError` begins with its `target`.
 - A write to a property or a collection that cannot be written is a `GnoblinError` with the code `read_only`, in TypeScript and in Python. It was a `TypeError`. A bad argument is still a `TypeError`.
 - A timed write to a property that cannot animate is a `GnoblinError` with the code `unsupported`. It was a `TypeError`. A generated class has a timed setter only for a property that can animate, so only a direct call of the native module meets this.
@@ -167,10 +325,50 @@ The ABI integer is not part of the script API. A shell that needs it reads `abi`
 - A timer that throws is reported, and the next one still runs.
 - A reload cancels the timers of the old configuration, and they do not delay it.
 
-```ts
+::: tabs
+
+```typescript
 const timer = gnoblin.timers.after(2000, () => gnoblin.workspaces.showById("2"));
 timer.cancel();
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
+
+
+def show_second() -> None:
+    gnoblin.workspaces.show_by_id("2")
+
+
+timer = gnoblin.timers.after(2000.0, show_second)
+timer.cancel()
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let Some(timers) = model.timers()? else {
+        return Ok(());
+    };
+    let workspaces = Rc::new(model.workspaces()?);
+    let timer = timers.after(2000.0, move || {
+        workspaces.show_by_id("2", None)?;
+        Ok(())
+    })?;
+    timer.cancel()?;
+    Ok(())
+}
+```
+
+:::
 
 ## Handler errors
 

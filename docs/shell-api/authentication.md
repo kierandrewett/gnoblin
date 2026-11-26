@@ -1,11 +1,15 @@
 # Authentication prompts
 
 When a program needs administrator rights, polkit asks an authentication agent for a password. Examples are `pkexec` and
-system settings changes. The compositor draws the password dialog itself and checks the password with polkit's own helper,
-`polkit-agent-helper-1`. A script never draws the dialog, reads the password or says that a password was right.
+system settings changes.
+
+The compositor draws the password dialog itself and checks the password with polkit's own helper, `polkit-agent-helper-1`. A script never draws the dialog, reads the password or says that a password was right.
+
 `gnoblin.authentication` lets your config watch the requests and refuse one.
 
-```ts
+::: tabs
+
+```typescript
 import { AuthenticationListener } from "gnoblin-core";
 import type { AuthenticationRequest } from "gnoblin-core";
 
@@ -20,8 +24,51 @@ class NoRoot extends AuthenticationListener {
 gnoblin.authentication.addListener(new NoRoot());
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. Run `pkexec true` to see the dialog open. A request for root from any other
-program is refused and its dialog never opens.
+```python
+from gnoblin.objects.model import AuthenticationListener, AuthenticationRequest, Gnoblin
+
+
+class NoRoot(AuthenticationListener):
+    def on_authentication_request(self, request: AuthenticationRequest) -> None:
+        if "unix-user:root" in request.identities and request.subject != "pkexec":
+            request.decline("only pkexec may ask for root")
+
+
+Gnoblin.get().authentication.add_listener(NoRoot())
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::{AuthenticationListenerHandlers, AuthenticationRequest, ModelRoot};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = ModelRoot::get(&objects)?;
+    let Some(authentication) = model.authentication()? else {
+        return Ok(());
+    };
+    let listener = AuthenticationListenerHandlers {
+        on_authentication_request: Some(Box::new(|request: AuthenticationRequest| {
+            let wants_root = request.identities()?.iter().any(|identity| identity == "unix-user:root");
+            if wants_root && request.subject()? != "pkexec" {
+                request.decline(Some("only pkexec may ask for root"))?;
+            }
+            Ok(())
+        })),
+    }
+    .implement(&objects)?;
+    authentication.add_listener(&listener)?;
+    Ok(())
+}
+```
+
+:::
+
+Put the TypeScript in `~/.config/gnoblin/shell.ts`, the Python in `~/.config/gnoblin/shell.py`, and the Rust in a shell crate. The Rust is a shell
+library, which [Write a shell in Rust](/rust-shell) builds and runs. Run `pkexec true` to see the dialog open. A request
+for root from any other program is refused and its dialog never opens.
 
 ## How a request is handled
 
@@ -57,6 +104,13 @@ An `AuthenticationListener` can define `onAuthenticationRequest(request)`. The r
 | `identities` | Who may authenticate, written `unix-user:alice`.                                        |
 | `deadline`   | When the compositor takes the request back, in milliseconds on its own clock.           |
 | `kind`       | Always `auth`.                                                                          |
+
+The tables give the TypeScript spellings. The other languages spell the same members their own way:
+
+- Python uses `snake_case`: `add_listener`, `on_authentication_request` and `request.action_id`.
+- Rust has a getter for each property, and every call returns a `Result`: `authentication.add_listener(&listener)?`,
+  `request.action_id()?` and `request.decline(Some("reason"))?`. The listener is the handler struct
+  `AuthenticationListenerHandlers`, which `implement` turns into an `AuthenticationListener`.
 
 There is no `allow` and no way to read or give a password. `request.decline(reason)` is the only call: polkit is told the
 request is not authorized, and the dialog never opens. The reason is for the log. A listener that does nothing, throws or

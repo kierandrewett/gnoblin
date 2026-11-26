@@ -1,18 +1,56 @@
 # Shell runtime API
 
-The runtime API is what a TypeScript shell sees: the `gnoblin` global and the classes you import from `"gnoblin-core"` and `"gnoblin-std"`. Use it
-to read compositor state, place and style windows, handle input and events, and ask the session for things.
+The runtime API is what a shell sees. Use it to read compositor state, place and style windows, handle input and events,
+and ask the session for things. Each language imports it its own way:
 
-```ts
+- TypeScript: the `gnoblin` global and classes from `"gnoblin-core"` and `"gnoblin-std"`.
+- Python: `gnoblin.objects.model` and `gnoblin.objects.std`.
+- Rust: the `gnoblin_core` and `gnoblin_std` crates.
+
+::: tabs
+
+```typescript
 for (const client of gnoblin.clients.toList()) {
     gnoblin.spawn(["notify-send", `${client.appId} is open`]);
 }
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. It runs when the shell loads it, top to bottom, and the `gnoblin` object is a
-global, so a listener or a key handler may use it too. To write your first config, start with the
-[TypeScript shell](/typescript-shell). Settings the API has no object for are listed in
-[Settings with no object](/js-settings).
+```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
+
+for client in gnoblin.clients.to_list():
+    gnoblin.spawn(["notify-send", f"{client.app_id} is open"])
+```
+
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    if let Some(clients) = model.clients()? {
+        for client in clients.to_list()? {
+            model.spawn(&["notify-send".to_owned(), format!("{} is open", client.app_id()?)], None)?;
+        }
+    }
+    Ok(())
+}
+```
+
+:::
+
+Where each example goes:
+
+- TypeScript: `~/.config/gnoblin/shell.ts`. The `gnoblin` object is a global, so a listener or a key handler may use it.
+- Python: `~/.config/gnoblin/shell.py`.
+- Rust: a shell library, which [Write a shell in Rust](/rust-shell) builds and runs.
+
+A shell file runs top to bottom when the shell loads it. To write your first shell, start with the
+[TypeScript](/typescript-shell), [Python](/python-shell) or [Rust](/rust-shell) guide. Settings the API has no object
+for are listed in [Settings with no object](/js-settings).
 
 ## The `gnoblin` object
 
@@ -46,7 +84,8 @@ global, so a listener or a key handler may use it too. To write your first confi
 
 ## Conventions
 
-- Names are camelCase: `appId`, `exitCode`, `reloadConfig`.
+- Names are camelCase in TypeScript: `appId`, `exitCode`, `reloadConfig`. Python and Rust spell the same members in `snake_case`:
+  `app_id`, `exit_code`, `reload_config`. The tables on these pages use the TypeScript spellings.
 - A read returns a live object or a plain value. A write to a live object asks the compositor, and the next read shows the
   result.
 - A call that finishes later returns an `Operation`. A call with a bad argument throws at once. See

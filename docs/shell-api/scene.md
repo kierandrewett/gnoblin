@@ -7,7 +7,9 @@ The scene is the tree of nodes a script makes.
 - A node is placed with `position`, `rotation`, `scale` or one `transform`.
 - A property of a node or a window can follow the properties it was computed from.
 
-```ts
+::: tabs
+
+```typescript
 import { ArcLayout, SceneNode, View, Workspace } from "gnoblin-std";
 
 const desktop = new Workspace("desktop", { layout: new ArcLayout({ radius: 1200, spacing: 0.35 }) });
@@ -23,7 +25,90 @@ const client = gnoblin.input.primary.focusedClient;
 client?.properties.bindDouble("opacity", () => (client.focused ? 1 : 0.7));
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. The windows of `desktop` sit on an arc, the scene holds a small picture of the
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import ArcLayout, SceneNode, SceneSize, View, Workspace
+
+gnoblin = Gnoblin.get()
+desktop = Workspace("desktop", layout=ArcLayout(radius=1200, spacing=0.35))
+gnoblin.workspaces.add(desktop)
+
+overview = SceneNode(id="overview")
+picture = View(size=SceneSize(width=700, height=400))
+picture.show_workspace(desktop)
+overview.add(picture)
+gnoblin.scene.root.add(overview)
+
+client = gnoblin.input.primary.focused_client
+if client is not None:
+    client.properties.bind_double("opacity", lambda: 1.0 if client.focused else 0.7)
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{
+    ArcLayout, ArcLayoutOptions, SceneNode, SceneNodeOptions, SceneSize, View, ViewOptions, Workspace,
+    WorkspaceOptions, Workspaces,
+};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.std()?.objects()?;
+    let model = ModelRoot::get(&objects)?;
+    let arc = ArcLayout::new_with(
+        &objects,
+        ArcLayoutOptions {
+            radius: Some(1200.0),
+            spacing: Some(0.35),
+        },
+    )?;
+    let desktop = Workspace::new_with(
+        &objects,
+        "desktop",
+        WorkspaceOptions {
+            layout: Some(arc.as_layout()?),
+            ..WorkspaceOptions::default()
+        },
+    )?;
+    Workspaces::get(&objects)?.add(&desktop)?;
+
+    let overview = SceneNode::new_with(
+        &objects,
+        SceneNodeOptions {
+            id: Some("overview".into()),
+            ..SceneNodeOptions::default()
+        },
+    )?;
+    let picture = View::new_with(
+        &objects,
+        ViewOptions {
+            size: Some(SceneSize::new(700.0, 400.0)),
+            ..ViewOptions::default()
+        },
+    )?;
+    picture.show_workspace(&desktop)?;
+    overview.add(&picture, None)?;
+    model.scene()?.root()?.add(&overview, None)?;
+
+    if let Some(input) = model.input()? {
+        if let Some(primary) = input.primary()? {
+            if let Some(client) = primary.focused_client()? {
+                client.properties()?.bind_double("opacity", move || {
+                    Ok(if client.focused()? { 1.0 } else { 0.7 })
+                })?;
+            }
+        }
+    }
+    Ok(())
+}
+```
+
+:::
+
+Put the file in `~/.config/gnoblin/shell.ts`, `~/.config/gnoblin/shell.py`, or a Rust shell library. The windows of `desktop` sit on an arc, the scene holds a small picture of the
 workspace, and the focused window is drawn at full opacity while the others are dimmed.
 
 ## The scene
@@ -67,12 +152,49 @@ and leaves everything else alone.
   that is stored as its Euler angles.
 - All the parts are checked first, so one bad part writes nothing, and the writes of a frame go out in one transaction.
 
-```ts
+::: tabs
+
+```typescript
 import { SceneNode } from "gnoblin-std";
 
 const room = new SceneNode({ id: "xr-room", position: { x: 0, y: 1.2, z: -2 } });
 room.place({ rotation: { x: 0, y: Math.PI / 4, z: 0 }, uniformScale: 1 });
 ```
+
+```python
+from gnoblin.objects.std import SceneNode, TransformParts, Vec3
+
+room = SceneNode(id="xr-room", position=Vec3(x=0.0, y=1.2, z=-2.0))
+room.place(TransformParts(rotation=Vec3(x=0.0, y=3.14159 / 4, z=0.0), uniform_scale=1.0))
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::objects::{SceneNode, SceneNodeOptions, TransformParts, Vec3};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.std()?.objects()?;
+    let room = SceneNode::new_with(
+        &objects,
+        SceneNodeOptions {
+            id: Some("xr-room".into()),
+            position: Some(Vec3 { x: 0.0, y: 1.2, z: -2.0 }),
+            ..SceneNodeOptions::default()
+        },
+    )?;
+    room.place(&TransformParts {
+        rotation: Some(Vec3 { x: 0.0, y: std::f64::consts::FRAC_PI_4, z: 0.0 }),
+        uniform_scale: Some(1.0),
+        ..TransformParts::default()
+    })?;
+    Ok(())
+}
+```
+
+:::
 
 ### Input
 
@@ -99,7 +221,9 @@ room.place({ rotation: { x: 0, y: Math.PI / 4, z: 0 }, uniformScale: 1 });
   its pointer events. A View with no `content` is the same.
 - The handler is set with `panel.on("pointer", (event) => { ... })`. A throw in one is reported like a throw in a listener.
 
-```ts
+::: tabs
+
+```typescript
 import { View } from "gnoblin-std";
 
 const client = gnoblin.input.primary.focusedClient;
@@ -118,6 +242,77 @@ if (client) {
 }
 ```
 
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import InputMode, PointerEdge, SceneSize, View
+
+gnoblin = Gnoblin.get()
+client = gnoblin.input.primary.focused_client
+if client is not None:
+    panel = View(size=SceneSize(width=400, height=300), input=InputMode.CAPTURE)
+    panel.show_client(client)
+
+    def on_pointer(event) -> None:
+        if event.edge != PointerEdge.PRESS:
+            return
+        if event.x < 40 and event.y < 40:
+            client.close()
+        else:
+            panel.input = InputMode.FORWARD  # from the next move, the client gets the pointer
+
+    panel.on("pointer", on_pointer)
+    gnoblin.scene.root.add(panel)
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{InputMode, PointerEdge, Scene, SceneSize, View, ViewOptions};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = ModelRoot::get(&objects)?;
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    let Some(primary) = input.primary()? else {
+        return Ok(());
+    };
+    let Some(client) = primary.focused_client()? else {
+        return Ok(());
+    };
+    let panel = View::new_with(
+        &objects,
+        ViewOptions {
+            size: Some(SceneSize::new(400.0, 300.0)),
+            input: Some(InputMode::Capture),
+            ..ViewOptions::default()
+        },
+    )?;
+    panel.show_client(&client)?;
+    let handle = panel.clone();
+    let target = client.clone();
+    panel.on_pointer(move |event| {
+        if !matches!(event.edge, PointerEdge::Press) {
+            return;
+        }
+        if event.x < 40.0 && event.y < 40.0 {
+            let _ = target.close();
+        } else {
+            // From the next move, the client gets the pointer.
+            let _ = handle.set_input(InputMode::Forward);
+        }
+    })?;
+    Scene::get(&objects)?.add(&panel)?;
+    Ok(())
+}
+```
+
+:::
+
 ## Views
 
 A `View` draws another node as a picture. `showClient(client)` or `showWorkspace(workspace)` says what it shows, and
@@ -132,7 +327,9 @@ neither is moved or reparented.
 | `camera`           | `Camera3D`                          | The camera the content is drawn through. `clearCamera()` makes it flat. |
 | `orphaned`         | boolean                             | `true` once what the View showed is gone.                               |
 
-```ts
+::: tabs
+
+```typescript
 import { View } from "gnoblin-std";
 
 const panel = new View({ size: { width: 0.9, height: 0.55 }, fit: "contain", input: "forward" });
@@ -142,6 +339,52 @@ if (focused) {
 }
 gnoblin.scene.root.add(panel);
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import ContentFit, InputMode, SceneSize, View
+
+gnoblin = Gnoblin.get()
+panel = View(size=SceneSize(width=0.9, height=0.55), fit=ContentFit.CONTAIN, input=InputMode.FORWARD)
+focused = gnoblin.input.primary.focused_client
+if focused is not None:
+    panel.show_client(focused)
+gnoblin.scene.root.add(panel)
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{ContentFit, InputMode, Scene, SceneSize, View, ViewOptions};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = ModelRoot::get(&objects)?;
+    let panel = View::new_with(
+        &objects,
+        ViewOptions {
+            size: Some(SceneSize::new(0.9, 0.55)),
+            fit: Some(ContentFit::Contain),
+            input: Some(InputMode::Forward),
+            ..ViewOptions::default()
+        },
+    )?;
+    if let Some(input) = model.input()? {
+        if let Some(primary) = input.primary()? {
+            if let Some(focused) = primary.focused_client()? {
+                panel.show_client(&focused)?;
+            }
+        }
+    }
+    Scene::get(&objects)?.add(&panel)?;
+    Ok(())
+}
+```
+
+:::
 
 A View of a client is that client's picture, drawn by the compositor at `size`. The compositor stretches it, so `fit` is
 kept and read back for a client but only changes how a workspace is drawn.
@@ -167,7 +410,9 @@ as against `width` and `height`, which are what the shell asked for.
 - A position that is written moves the window's rectangle, and a layout that places the window will place it again.
 - The rotation and the scale are the window's own.
 
-```ts
+::: tabs
+
+```typescript
 const client = gnoblin.input.primary.focusedClient;
 if (client) {
     gnoblin.requestTransition(
@@ -180,6 +425,63 @@ if (client) {
 }
 ```
 
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import Easing, TransitionOptions
+
+gnoblin = Gnoblin.get()
+client = gnoblin.input.primary.focused_client
+if client is not None:
+
+    def change() -> None:
+        client.opacity = 0.92
+        client.rotation = [0.0, 0.12, 0.0]
+
+    gnoblin.request_transition(change, TransitionOptions(duration=250, easing=Easing.EASE_OUT))
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{Easing, TransitionOptions};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = ModelRoot::get(&objects)?;
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    let Some(primary) = input.primary()? else {
+        return Ok(());
+    };
+    let Some(client) = primary.focused_client()? else {
+        return Ok(());
+    };
+    let options = TransitionOptions {
+        duration: 250.0,
+        easing: Easing::EaseOut,
+        delay: 0.0,
+        autoplay: true,
+    };
+    let turn = client.clone();
+    model.request_transition(
+        move || {
+            turn.set_opacity(0.92)?;
+            turn.set_rotation(&[0.0, 0.12, 0.0])?;
+            Ok(())
+        },
+        Some(&options),
+        None::<fn() -> gnoblin::Result<()>>,
+    )?;
+    Ok(())
+}
+```
+
+:::
+
 `requestTransition` animates the change. Plain writes are atomic and immediate. See [Animation](/js-transitions).
 
 ## Spatial layouts
@@ -187,11 +489,41 @@ if (client) {
 A layout's `compute` may return more than `bounds` for a node: a depth, a turn, a scale and an offset. `ArcLayout` does:
 it puts the nodes on an arc around the viewer, the focused one at the front.
 
-```ts
+::: tabs
+
+```typescript
 import { ArcLayout } from "gnoblin-std";
 
 const arc = new ArcLayout({ radius: 1200, spacing: 0.35 });
 ```
+
+```python
+from gnoblin.objects.std import ArcLayout
+
+arc = ArcLayout(radius=1200, spacing=0.35)
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::objects::{ArcLayout, ArcLayoutOptions};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.std()?.objects()?;
+    let _arc = ArcLayout::new_with(
+        &objects,
+        ArcLayoutOptions {
+            radius: Some(1200.0),
+            spacing: Some(0.35),
+        },
+    )?;
+    Ok(())
+}
+```
+
+:::
 
 - Node `i` is at the angle `(i - selected) * spacing`. `selected` is the focused node's index, or 0 when none is.
 - Its position is `(sin(angle) * radius, 0, -cos(angle) * radius)`, and it is turned `-angle` about Y.
@@ -219,10 +551,49 @@ sets it again when anything the function read has changed.
 - A window's `properties` also has `bindBool`, `bindString` and `bindList`.
 - A scene node's `properties` has `bindNumber`, `bindFlag`, `bindText` and `bindNumbers`.
 
-```ts
+::: tabs
+
+```typescript
 const client = gnoblin.input.primary.focusedClient;
 client?.properties.bindDouble("opacity", () => Math.max(0.25, 1 - client.x / 2500));
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
+client = gnoblin.input.primary.focused_client
+if client is not None:
+    client.properties.bind_double("opacity", lambda: max(0.25, 1 - client.x / 2500))
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = ModelRoot::get(&objects)?;
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    let Some(primary) = input.primary()? else {
+        return Ok(());
+    };
+    let Some(client) = primary.focused_client()? else {
+        return Ok(());
+    };
+    let Some(properties) = client.properties()? else {
+        return Ok(());
+    };
+    properties.bind_double("opacity", move || Ok((1.0 - client.x()? / 2500.0).max(0.25)))?;
+    Ok(())
+}
+```
+
+:::
 
 What it follows:
 
@@ -251,7 +622,7 @@ Each bind call returns a `PropertyBinding` (a `NodeBinding` for a scene node) wi
 ## Compositor motion and frame callbacks
 
 A shell that holds the tree controls two things the compositor does for each window. They are tree properties, written
-over the owner socket by a shell of any language; the TypeScript library does not wrap them yet. A shell that writes
+over the owner socket by a shell of any language; no shell library wraps them yet. A shell that writes
 none of them sees the compositor as before.
 
 **The compositor's own animations.** In a session that has the std library (a shell that imports `gnoblin-std`, or the stock
@@ -297,8 +668,8 @@ every frame is a change in every batch.
 A shell that holds the tree decides where a client's extra surfaces are, instead of the protocol. These are the popups
 (menus, tooltips) and subsurfaces of a window, and the layer-shell surfaces (bars, docks, overlays).
 
-The members are tree properties, written over the owner socket by a shell of any language. The TypeScript library does not
-wrap them yet. A shell that writes none of them sees the compositor as before.
+The members are tree properties, written over the owner socket by a shell of any language. No shell library wraps them
+yet. A shell that writes none of them sees the compositor as before.
 
 The compositor makes a `surface` node for each:
 

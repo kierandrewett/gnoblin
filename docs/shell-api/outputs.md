@@ -4,7 +4,9 @@ An output is a connected display, real or virtual. Each output shows one workspa
 a window that loses its output moves to another or waits hidden for the next. `gnoblin.outputs` is the live collection of
 `Output` objects.
 
-```ts
+::: tabs
+
+```typescript
 import { FloatingLayout, Toast, Workspace } from "gnoblin-std";
 
 for (const id of ["1", "2", "3"]) {
@@ -15,7 +17,61 @@ for (const output of gnoblin.outputs.toList()) {
 }
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. A message names each output, its mode and the workspace it shows.
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import FloatingLayout, OutputAugment, Toast, Workspace, Workspaces
+
+gnoblin = Gnoblin.get()
+workspaces = Workspaces.get()
+for workspace_id in ["1", "2", "3"]:
+    workspaces.add(Workspace(workspace_id, layout=FloatingLayout()))
+for output in gnoblin.outputs.to_list():
+    shown = OutputAugment.get().workspace(output)
+    Toast.show(f"{output.name}: {output.mode} showing {shown.id if shown else 'nothing'}")
+```
+
+```rust
+use std::time::Instant;
+
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::GnoblinStdExt;
+use gnoblin_std::objects::{FloatingLayout, ModelRootStdExt, OutputStdExt, Toast, Workspace, WorkspaceOptions};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let std = g.std()?.objects()?;
+    let model = ModelRoot::get(&g.objects()?)?;
+    let workspaces = model.workspaces()?;
+    for id in ["1", "2", "3"] {
+        let options = WorkspaceOptions {
+            layout: Some(FloatingLayout::new(&std)?.as_layout()?),
+            ..WorkspaceOptions::default()
+        };
+        workspaces.add(&Workspace::new_with(&std, id, options)?)?;
+    }
+    let Some(outputs) = model.outputs()? else {
+        return Ok(());
+    };
+    for output in outputs.to_list()? {
+        let shown = match output.workspace()? {
+            Some(workspace) => workspace.id()?,
+            None => "nothing".to_owned(),
+        };
+        let text = format!("{}: {} showing {shown}", output.name()?, output.mode()?);
+        let started = Instant::now();
+        let clock = move || Ok(started.elapsed().as_secs_f64() * 1000.0);
+        Toast::show(&std, &text, None, None, None, Some(clock))?;
+    }
+    Ok(())
+}
+```
+
+:::
+
+Put the TypeScript in `~/.config/gnoblin/shell.ts`, the Python in `~/.config/gnoblin/shell.py`, and the Rust in a shell
+library, which [Write a shell in Rust](/rust-shell) builds and runs. A message names each output, its mode and the
+workspace it shows.
 
 ## Read outputs
 
@@ -63,6 +119,17 @@ passing a bound, a count) and `evicted` (the bytes given back from caches to mak
 A script reads these properties and writes none. It changes a display with `apply` and `mirror`, below, or keeps a
 setting for a monitor with an [`OutputProfile`](#hardware-profiles) in `gnoblin.outputs.profiles`.
 
+Each language spells the same members its own way:
+
+- Python uses `snake_case` and attributes: `output.mirror_of`, `output.virtual_size`, `gnoblin.outputs.to_list()`,
+  `gnoblin.outputs.get(id)` and `gnoblin.outputs.where(OutputQuery(primary=True))`. `apply` takes an `OutputConfig`, whose
+  keys are `position_x` and `position_y`.
+- Rust has a getter for each property, and every call returns a `Result`: `output.mirror_of()?`, `outputs.to_list()?` and
+  `outputs.where_(&query, None)?`. `apply` takes an `OutputConfig` struct, whose keys are `Option` fields such as
+  `position_x: Some(0)`.
+
+The [API reference](/reference) lists every member in each language.
+
 ## Configure an output
 
 `output.apply({ ... })` asks the compositor to change one display. Every key is optional, and a key left out keeps its
@@ -105,7 +172,9 @@ took effect.
 
 **Mode and scale.** Drive an output at another mode, composed at a fractional scale, and read what happened:
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.outputs
     .where({ name: "output-1" })
     .at(0)
@@ -115,25 +184,175 @@ gnoblin.outputs
     });
 ```
 
+```python
+from gnoblin.objects.model import Gnoblin, OutputConfig, OutputQuery
+
+gnoblin = Gnoblin.get()
+
+
+def refused(error, code):
+    gnoblin.spawn(["notify-send", f"Display change refused ({code}): {error}"])
+
+
+output = gnoblin.outputs.where(OutputQuery(name="output-1")).at(0)
+if output:
+    output.apply(OutputConfig(mode="2560x1440@60", scale=1.25)).catch(refused)
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core::objects::{ModelRoot, OutputConfig, OutputQuery};
+use gnoblin_core::{self as gnoblin, Gnoblin};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let Some(outputs) = model.outputs()? else {
+        return Ok(());
+    };
+    let query = OutputQuery {
+        name: Some("output-1".to_owned()),
+        ..OutputQuery::default()
+    };
+    let Some(output) = outputs.where_(&query, None)?.at(0)? else {
+        return Ok(());
+    };
+    let config = OutputConfig {
+        mode: Some("2560x1440@60".to_owned()),
+        scale: Some(1.25),
+        ..OutputConfig::default()
+    };
+    let notifier = Rc::clone(&model);
+    output.apply(&config)?.catch(move |error, code| {
+        let text = format!("Display change refused ({code}): {error}");
+        notifier.spawn(&["notify-send".to_owned(), text], None)?;
+        Ok(())
+    })?;
+    Ok(())
+}
+```
+
+:::
+
 **Position.** Put an output below another. Outputs share one coordinate space, so a window can straddle the seam:
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.outputs.at(1)?.apply({ positionX: 0, positionY: 1080 });
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin, OutputConfig
+
+output = Gnoblin.get().outputs.at(1)
+if output:
+    output.apply(OutputConfig(position_x=0, position_y=1080))
+```
+
+```rust
+use gnoblin_core::objects::{ModelRoot, OutputConfig};
+use gnoblin_core::{self as gnoblin, Gnoblin};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let Some(outputs) = model.outputs()? else {
+        return Ok(());
+    };
+    if let Some(output) = outputs.at(1)? {
+        let config = OutputConfig {
+            position_x: Some(0),
+            position_y: Some(1080),
+            ..OutputConfig::default()
+        };
+        output.apply(&config)?;
+    }
+    Ok(())
+}
+```
+
+:::
 
 **Mirror.** Show the first output on the second, scaled to fit and letterboxed when the shape differs. The pair is one
 monitor: the mirrored output has no place of its own, no workspace, and the pointer has one monitor for both.
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.outputs.at(1)?.mirror(gnoblin.outputs.at(0));
 gnoblin.outputs.at(1)?.mirror(); // stop
 ```
 
+```python
+from gnoblin.objects.model import Gnoblin
+
+outputs = Gnoblin.get().outputs
+first, second = outputs.at(0), outputs.at(1)
+if first and second:
+    second.mirror(first)
+    second.mirror()  # stop
+```
+
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let Some(outputs) = model.outputs()? else {
+        return Ok(());
+    };
+    if let (Some(first), Some(second)) = (outputs.at(0)?, outputs.at(1)?) {
+        second.mirror(Some(&first))?;
+        second.mirror(None)?; // stop
+    }
+    Ok(())
+}
+```
+
+:::
+
 **Off.** Switch an output off. It keeps its node, so you can switch it back on:
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.outputs.at(1)?.apply({ enabled: false });
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin, OutputConfig
+
+output = Gnoblin.get().outputs.at(1)
+if output:
+    output.apply(OutputConfig(enabled=False))
+```
+
+```rust
+use gnoblin_core::objects::{ModelRoot, OutputConfig};
+use gnoblin_core::{self as gnoblin, Gnoblin};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let Some(outputs) = model.outputs()? else {
+        return Ok(());
+    };
+    if let Some(output) = outputs.at(1)? {
+        let config = OutputConfig {
+            enabled: Some(false),
+            ..OutputConfig::default()
+        };
+        output.apply(&config)?;
+    }
+    Ok(())
+}
+```
+
+:::
 
 **Span.** The desktop already is the span: every output is a rectangle in one space and a window across the seam is drawn
 continuously, at any mix of scales. By default each output shows a workspace of its own. A [`span` display](#displays-and-viewports)
@@ -164,12 +383,54 @@ plugged in: see [Hardware profiles](#hardware-profiles). One the compositor refu
 - **What `wl_output` and `xdg_output` say.** The mode stays the real one, `scale` is the next whole number above
   `scale * supersample`, the preferred fractional scale is exact, and the logical size does not change.
 
-```ts
+::: tabs
+
+```typescript
 const output = gnoblin.outputs.where({ name: "output-1" }).at(0)!;
 output.apply({ supersample: 1 }); // the default: composed at the mode, nothing averaged
 output.apply({ supersample: 2 }); // 1920x1080 composed at 3840x2160; output.virtualSize is { width: 3840, height: 2160 }
 output.apply({ supersample: 4 }); // 1920x1080 composed at 7680x4320: a GPU with 8192 texels per edge is needed
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin, OutputConfig, OutputQuery
+
+output = Gnoblin.get().outputs.where(OutputQuery(name="output-1")).at(0)
+if output:
+    output.apply(OutputConfig(supersample=1))  # the default: composed at the mode, nothing averaged
+    output.apply(OutputConfig(supersample=2))  # 1920x1080 composed at 3840x2160; output.virtual_size is 3840x2160
+    output.apply(OutputConfig(supersample=4))  # 1920x1080 composed at 7680x4320: a GPU with 8192 texels per edge is needed
+```
+
+```rust
+use gnoblin_core::objects::{ModelRoot, OutputConfig, OutputQuery};
+use gnoblin_core::{self as gnoblin, Gnoblin};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let Some(outputs) = model.outputs()? else {
+        return Ok(());
+    };
+    let query = OutputQuery {
+        name: Some("output-1".to_owned()),
+        ..OutputQuery::default()
+    };
+    let Some(output) = outputs.where_(&query, None)?.at(0)? else {
+        return Ok(());
+    };
+    let with = |supersample: f64| OutputConfig {
+        supersample: Some(supersample),
+        ..OutputConfig::default()
+    };
+    output.apply(&with(1.0))?; // the default: composed at the mode, nothing averaged
+    output.apply(&with(2.0))?; // 1920x1080 composed at 3840x2160; output.virtual_size() is 3840x2160
+    output.apply(&with(4.0))?; // 1920x1080 composed at 7680x4320: a GPU with 8192 texels per edge is needed
+    Ok(())
+}
+```
+
+:::
 
 From a terminal every key is optional and a key left out keeps its value, so a call names only what it changes:
 
@@ -255,7 +516,9 @@ scale, transform and place it should have (its `settings`). Put it in `gnoblin.o
 A profile is inert while no matching output is connected. When one is, the profile applies as one request, and it applies
 again when the monitor comes back after an unplug.
 
-```ts
+::: tabs
+
+```typescript
 import { OutputProfile } from "gnoblin-std";
 
 const main = new OutputProfile(
@@ -269,6 +532,94 @@ const side = new OutputProfile(
 gnoblin.outputs.profiles.add(main);
 gnoblin.outputs.profiles.add(side);
 ```
+
+```python
+from gnoblin.objects.std import (
+    DisplayManager,
+    OutputMatch,
+    OutputPosition,
+    OutputProfile,
+    PositionKind,
+    ProfileSettings,
+)
+
+manager = DisplayManager.get()
+main = OutputProfile(
+    OutputMatch(connector="DP-1"),
+    settings=ProfileSettings(
+        mode="3440x1440@144",
+        scale=1.25,
+        position=OutputPosition(PositionKind.ABSOLUTE, x=0, y=0),
+    ),
+)
+side = OutputProfile(
+    OutputMatch(connector="HDMI-A-1"),
+    settings=ProfileSettings(
+        mode="preferred",
+        position=OutputPosition(PositionKind.RIGHT_OF, profile=main, align="top"),
+    ),
+)
+manager.add_profile(main)
+manager.add_profile(side)
+```
+
+```rust
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::GnoblinStdExt;
+use gnoblin_std::objects::{
+    DisplayManager, OutputMatch, OutputPosition, OutputProfile, OutputProfileOptions, PositionKind, ProfileSettings,
+};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let std = g.std()?.objects()?;
+    let manager = DisplayManager::get(&std)?;
+
+    let mut origin = OutputPosition::new(PositionKind::Absolute);
+    origin.x = Some(0);
+    origin.y = Some(0);
+    let main_profile = OutputProfile::new_with(
+        &std,
+        &OutputMatch {
+            connector: Some("DP-1".to_owned()),
+            ..OutputMatch::default()
+        },
+        OutputProfileOptions {
+            id: None,
+            settings: Some(ProfileSettings {
+                mode: Some("3440x1440@144".to_owned()),
+                scale: Some(1.25),
+                position: Some(origin),
+                ..ProfileSettings::default()
+            }),
+        },
+    )?;
+    manager.add_profile(&main_profile)?;
+
+    let mut beside = OutputPosition::new(PositionKind::RightOf);
+    beside.profile = Some(main_profile);
+    beside.align = Some("top".to_owned());
+    let side = OutputProfile::new_with(
+        &std,
+        &OutputMatch {
+            connector: Some("HDMI-A-1".to_owned()),
+            ..OutputMatch::default()
+        },
+        OutputProfileOptions {
+            id: None,
+            settings: Some(ProfileSettings {
+                mode: Some("preferred".to_owned()),
+                position: Some(beside),
+                ..ProfileSettings::default()
+            }),
+        },
+    )?;
+    manager.add_profile(&side)?;
+    Ok(())
+}
+```
+
+:::
 
 | Argument or key | Values                                                                                                              |
 | --------------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -303,7 +654,9 @@ whose `content` is the workspace shown. `gnoblin.displays` is the live collectio
   in the collection.
 - `gnoblin.input.primary.activeDisplay` is the display under the pointer.
 
-```ts
+::: tabs
+
+```typescript
 import { Workspace } from "gnoblin-std";
 
 const desktop = new Workspace("desktop");
@@ -316,6 +669,75 @@ gnoblin.input.primary.bind("Super+2", () => {
     if (display) display.viewport.content = web;
 });
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import InputContextAugment, Workspace, Workspaces
+
+gnoblin = Gnoblin.get()
+workspaces = Workspaces.get()
+desktop = Workspace("desktop")
+web = Workspace("web")
+workspaces.add(desktop)
+workspaces.add(web)
+
+seat = gnoblin.input.primary
+
+
+def show_web(event):
+    display = InputContextAugment.get().active_display(seat)
+    if display:
+        display.viewport.content = web
+
+
+seat.bind("Super+2", show_web)
+```
+
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::GnoblinStdExt;
+use gnoblin_std::objects::{InputContextStdExt, ModelRootStdExt, Workspace};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let std = g.std()?.objects()?;
+    let model = ModelRoot::get(&g.objects()?)?;
+    let workspaces = model.workspaces()?;
+    let desktop = Workspace::new(&std, "desktop")?;
+    let web = Workspace::new(&std, "web")?;
+    workspaces.add(&desktop)?;
+    workspaces.add(&web)?;
+
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    let Some(seat) = input.primary()? else {
+        return Ok(());
+    };
+    seat.bind(
+        "Super+2",
+        Some(move |_| {
+            let Some(input) = model.input()? else {
+                return Ok(false);
+            };
+            let Some(seat) = input.primary()? else {
+                return Ok(false);
+            };
+            if let Some(display) = seat.active_display()? {
+                if let Some(viewport) = display.viewport()? {
+                    viewport.set_content(&web)?;
+                }
+            }
+            Ok(true)
+        }),
+        None,
+    )?;
+    Ok(())
+}
+```
+
+:::
 
 Assigning `viewport.content` shows the workspace on that display, as `gnoblin.workspaces.show` does. A workspace is on one
 display at a time: assigning one that another display shows moves it, and that display takes the workspace this one
@@ -332,7 +754,9 @@ number:
 | `"mirror"` | The first output's picture on the others, through the compositor's mirror (scaled to fit, letterboxed).  |
 | `"span"`   | One workspace laid out over the bounding box of the outputs' work areas. A window may straddle the seam. |
 
-```ts
+::: tabs
+
+```typescript
 import { Camera2D, Display, OutputProfile, Viewport, Workspace } from "gnoblin-std";
 
 const main = new OutputProfile({ connector: "DP-1" });
@@ -349,6 +773,92 @@ const spanned = new Display([{ profile: main }, { profile: side }], {
 });
 gnoblin.displays.add(spanned);
 ```
+
+```python
+from gnoblin.objects.std import (
+    Camera2D,
+    Display,
+    DisplayManager,
+    DisplaySelector,
+    OutputMatch,
+    OutputProfile,
+    PresentMode,
+    Viewport,
+    Workspace,
+    Workspaces,
+)
+
+manager = DisplayManager.get()
+main = OutputProfile(OutputMatch(connector="DP-1"))
+side = OutputProfile(OutputMatch(connector="HDMI-A-1"))
+manager.add_profile(main)
+manager.add_profile(side)
+
+desktop = Workspace("desktop")
+Workspaces.get().add(desktop)
+
+spanned = Display(
+    [DisplaySelector(profile=main), DisplaySelector(profile=side)],
+    mode=PresentMode.SPAN,
+    viewport=Viewport(content=desktop, camera=Camera2D()),
+)
+manager.add_display(spanned)
+```
+
+```rust
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::GnoblinStdExt;
+use gnoblin_std::objects::{
+    Camera2D, Display, DisplayManager, DisplayOptions, DisplaySelector, OutputMatch, OutputProfile, PresentMode,
+    Viewport, ViewportOptions, Workspace, Workspaces,
+};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let std = g.std()?.objects()?;
+    let manager = DisplayManager::get(&std)?;
+    let mut selectors = Vec::new();
+    for connector in ["DP-1", "HDMI-A-1"] {
+        let profile = OutputProfile::new(
+            &std,
+            &OutputMatch {
+                connector: Some(connector.to_owned()),
+                ..OutputMatch::default()
+            },
+        )?;
+        manager.add_profile(&profile)?;
+        selectors.push(DisplaySelector {
+            profile: Some(profile),
+            output: None,
+        });
+    }
+
+    let desktop = Workspace::new(&std, "desktop")?;
+    Workspaces::get(&std)?.add(&desktop)?;
+
+    let viewport = Viewport::new_with(
+        &std,
+        ViewportOptions {
+            content: Some(desktop),
+            camera: Some(Camera2D::new(&std)?.as_scene_node()?),
+            clear_color: None,
+        },
+    )?;
+    let spanned = Display::new_with(
+        &std,
+        &selectors,
+        DisplayOptions {
+            id: None,
+            mode: Some(PresentMode::Span),
+            viewport: Some(viewport),
+        },
+    )?;
+    manager.add_display(&spanned)?;
+    Ok(())
+}
+```
+
+:::
 
 - **One display per output.** `gnoblin.displays.add` throws a `GnoblinError`, naming both displays, when one of the
   outputs belongs to a display of yours already. `gnoblin.displays.replace(old, new)` swaps them as one change: it
@@ -388,7 +898,9 @@ Example 33 lists the displays, applies a profile, adds a display of its own and 
 A viewport looks at its content through a camera, `Camera2D` or `Camera3D`. Both are scene nodes, so a
 `gnoblin.requestTransition` can animate their properties.
 
-```ts
+::: tabs
+
+```typescript
 import { Camera2D, Camera3D } from "gnoblin-std";
 
 const flat = new Camera2D();
@@ -405,6 +917,106 @@ gnoblin.input.primary.bind("Super+Tab", () => {
     );
 });
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import (
+    Camera2D,
+    Camera3D,
+    GnoblinAugment,
+    InputContextAugment,
+    Projection,
+    TransitionOptions,
+    Vec3,
+)
+
+gnoblin = Gnoblin.get()
+seat = gnoblin.input.primary
+flat = Camera2D()
+deep = Camera3D(projection=Projection.PERSPECTIVE, fov=65, position=Vec3(x=0, y=0, z=1600))
+three_d = False
+
+
+def switch_camera():
+    display = InputContextAugment.get().active_display(seat)
+    if display:
+        display.viewport.camera = deep if three_d else flat
+
+
+def toggle(event):
+    global three_d
+    three_d = not three_d
+    GnoblinAugment.get().request_transition(switch_camera, TransitionOptions(duration=750))
+
+
+seat.bind("Super+Tab", toggle)
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::GnoblinStdExt;
+use gnoblin_std::objects::{
+    Camera2D, Camera3D, Camera3DOptions, InputContextStdExt, ModelRootStdExt, Projection, TransitionOptions, Vec3,
+};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let std = g.std()?.objects()?;
+    let model = ModelRoot::get(&g.objects()?)?;
+    let flat = Rc::new(Camera2D::new(&std)?.as_scene_node()?);
+    let deep = Camera3D::new_with(
+        &std,
+        Camera3DOptions {
+            projection: Some(Projection::Perspective),
+            fov: Some(65.0),
+            position: Some(Vec3 { x: 0.0, y: 0.0, z: 1600.0 }),
+            ..Camera3DOptions::default()
+        },
+    )?;
+    let deep = Rc::new(deep.as_scene_node()?);
+
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    let Some(seat) = input.primary()? else {
+        return Ok(());
+    };
+    let seat = Rc::new(seat);
+    let context = Rc::clone(&seat);
+    let mut three_d = false;
+    seat.bind(
+        "Super+Tab",
+        Some(move |_| {
+            three_d = !three_d;
+            let camera = Rc::clone(if three_d { &deep } else { &flat });
+            let context = Rc::clone(&context);
+            model.request_transition(
+                move || {
+                    if let Some(display) = context.active_display()? {
+                        if let Some(viewport) = display.viewport()? {
+                            viewport.set_camera(&camera)?;
+                        }
+                    }
+                    Ok(())
+                },
+                Some(&TransitionOptions {
+                    duration: 750.0,
+                    ..TransitionOptions::default()
+                }),
+                Some(|| Ok(())),
+            )?;
+            Ok(true)
+        }),
+        None,
+    )?;
+    Ok(())
+}
+```
+
+:::
 
 `Camera2D` has `position` (`{ x, y, z }`), `zoom` and `roll`; `Camera3D` has `position`, `projection` (`orthographic`,
 `perspective` or `stereo`), `fov`, `size` (orthographic), `near` and `far`.
@@ -423,7 +1035,9 @@ A layout can place windows in depth with `z`, `rotation` and `scale`; the camera
 
 ## Listen for plugging and unplugging
 
-```ts
+::: tabs
+
+```typescript
 import { OutputCollectionListener } from "gnoblin-core";
 import type { Output } from "gnoblin-core";
 
@@ -439,10 +1053,70 @@ class Hotplug extends OutputCollectionListener {
 gnoblin.outputs.addListener(new Hotplug());
 ```
 
+```python
+from gnoblin.objects.model import Gnoblin, Output, OutputCollectionListener
+
+gnoblin = Gnoblin.get()
+
+
+class Hotplug(OutputCollectionListener):
+    def on_connected(self, output: Output) -> None:
+        gnoblin.spawn(["notify-send", f"{output.name} plugged in"])
+
+    def on_disconnected(self, output: Output) -> None:
+        gnoblin.spawn(["notify-send", f"{output.name} unplugged"])
+
+
+gnoblin.outputs.add_listener(Hotplug())
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core::objects::{ModelRoot, Output, OutputCollectionListenerHandlers};
+use gnoblin_core::{self as gnoblin, Gnoblin};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = Rc::new(ModelRoot::get(&objects)?);
+    let Some(outputs) = model.outputs()? else {
+        return Ok(());
+    };
+    let (plugged, unplugged) = (Rc::clone(&model), Rc::clone(&model));
+    let listener = OutputCollectionListenerHandlers {
+        on_added: None,
+        on_removed: None,
+        on_applied: None,
+        on_connected: Some(Box::new(move |output: Output| {
+            let text = format!("{} plugged in", output.name()?);
+            plugged.spawn(&["notify-send".to_owned(), text], None)?;
+            Ok(())
+        })),
+        on_disconnected: Some(Box::new(move |output: Output| {
+            let text = format!("{} unplugged", output.name()?);
+            unplugged.spawn(&["notify-send".to_owned(), text], None)?;
+            Ok(())
+        })),
+        on_mode_changed: None,
+        on_scale_changed: None,
+        on_geometry_changed: None,
+    }
+    .implement(&objects)?;
+    outputs.add_listener(&listener)?;
+    Ok(())
+}
+```
+
+:::
+
 [Events](/events/desktop-state#listen-to-outputs) lists the methods an `OutputCollectionListener` can define.
 
-Without a class, `gnoblin.outputs.on("connected", handler)` listens for one event and returns a `Listener` whose `stop()`
-stops listening. `gnoblin.outputs.on("disconnected", handler)` does the same for an unplugged output.
+Each language can listen for one event without a class:
+
+- TypeScript: `gnoblin.outputs.on("connected", handler)` and `gnoblin.outputs.on("disconnected", handler)` return a `Listener` whose `stop()` stops listening.
+- Python: `gnoblin.outputs.on("connected", handler)`.
+- Rust: `outputs.on_connected(run)?` and `outputs.on_disconnected(run)?` listen until the `Listener` they return is dropped.
 
 A listener on the collection hears a connection only for
 an output plugged in while the shell runs. A disconnection is reported after the output is gone, and its last values stay
@@ -476,7 +1150,9 @@ output at `x = 1920` lays windows out at `x >= 1920`. `gnoblin.workspaces.area` 
 
 A `Bar` sits on the primary output unless you give it one:
 
-```ts
+::: tabs
+
+```typescript
 import { Bar } from "gnoblin-std";
 
 const second = gnoblin.outputs.at(1);
@@ -484,6 +1160,43 @@ if (second) {
     new Bar({ edge: "bottom", height: 24, output: Number(second.id) });
 }
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import Bar
+
+second = Gnoblin.get().outputs.at(1)
+if second:
+    Bar(edge="bottom", height=24, output=int(second.id))
+```
+
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::GnoblinStdExt;
+use gnoblin_std::objects::{Bar, BarEdge, BarOptions};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let std = g.std()?.objects()?;
+    let model = ModelRoot::get(&g.objects()?)?;
+    let Some(outputs) = model.outputs()? else {
+        return Ok(());
+    };
+    if let Some(second) = outputs.at(1)? {
+        let options = BarOptions {
+            edge: Some(BarEdge::Bottom),
+            height: Some(24.0),
+            output: second.id()?.parse::<u64>().ok(),
+            ..BarOptions::default()
+        };
+        Bar::new_with(&std, options)?;
+    }
+    Ok(())
+}
+```
+
+:::
 
 A bar takes room only from windows on its own output.
 
@@ -509,13 +1222,56 @@ configuration what each output showed, by output name, and each output goes back
 
 ## Move a window between outputs
 
-```ts
+::: tabs
+
+```typescript
 const [client] = gnoblin.find("Window", { focused: true });
 const target = gnoblin.outputs.at(1)?.workspace;
 if (client && target) {
     client.moveToWorkspace(target); // true when it moved
 }
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import ClientAugment, OutputAugment
+
+gnoblin = Gnoblin.get()
+clients = gnoblin.find("Window", {"focused": True})
+second = gnoblin.outputs.at(1)
+target = OutputAugment.get().workspace(second) if second else None
+if clients and target:
+    ClientAugment.get().move_to_workspace(clients[0], target)  # True when it moved
+```
+
+```rust
+use gnoblin_core::objects::{ClientQuery, ModelRoot};
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::objects::{ClientStdExt, OutputStdExt};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let focused = ClientQuery {
+        focused: Some(true),
+        ..ClientQuery::default()
+    };
+    let client = model.find_clients(Some(&focused))?.into_iter().next();
+    let Some(outputs) = model.outputs()? else {
+        return Ok(());
+    };
+    let target = match outputs.at(1)? {
+        Some(second) => second.workspace()?,
+        None => None,
+    };
+    if let (Some(client), Some(target)) = (client, target) {
+        client.move_to_workspace(&target)?; // true when it moved
+    }
+    Ok(())
+}
+```
+
+:::
 
 `client.moveToOutput(output)` moves a window to the workspace an output shows, and `client.moveToWorkspace(ws)` does the same for a workspace. Each fits the window to the work area it
 lands in and returns `false`, moving nothing, for:
@@ -524,6 +1280,9 @@ lands in and returns `false`, moving nothing, for:
 - a dialog, which moves only with its parent;
 - a dead window, an output that is gone or shows nothing, or a workspace that is not in `gnoblin.workspaces`;
 - the workspace the window is on already.
+
+Python calls these on `ClientAugment.get()`, as `move_to_output(client, output)` and `move_to_workspace(client, workspace)`.
+Rust has `client.move_to_output(&output)?` and `client.move_to_workspace(&workspace)?` from the `ClientStdExt` trait.
 
 A window that held the focus and leaves the shown workspace hands the focus to a window that stays, or to nobody. A snapped
 window's remembered floating rectangle is not refitted for the new output.

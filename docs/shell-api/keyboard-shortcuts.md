@@ -1,9 +1,11 @@
 # Keyboard shortcuts
 
-A shortcut is a binding: a trigger, such as `Super+Return`, and an action. Make one with `gnoblin.input.primary.bind(trigger, fn)`. The compositor withholds a claimed chord from
+A shortcut is a binding: a trigger, such as `Super+Return`, and an action. Make one with `bind(trigger, fn)` on the primary input context. The compositor withholds a claimed chord from
 applications and tells the shell, so a shortcut never types into the focused window.
 
-```ts
+::: tabs
+
+```typescript
 const input = gnoblin.input.primary;
 input.bind("Super+Return", () => {
     gnoblin.spawn(["foot"]);
@@ -16,14 +18,91 @@ input.bind("Super+x", () => {
 });
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. `Super+Return` starts a terminal, `Super+Shift+q` closes the focused window and
+```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
+context = gnoblin.input.primary
+
+
+def start_terminal(event):
+    gnoblin.spawn(["foot"])
+
+
+def close_focused(event):
+    client = context.focused_client
+    if client is not None:
+        client.close()
+
+
+def notify(event):
+    gnoblin.spawn(["notify-send", "x"])
+
+
+context.bind("Super+Return", start_terminal)
+context.bind("Super+Shift+q", close_focused)
+context.bind("Super+x", notify)
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = Rc::new(ModelRoot::get(&objects)?);
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    let Some(context) = input.primary()? else {
+        return Ok(());
+    };
+    let input = Rc::new(input);
+    let (launcher, closer, notifier) = (Rc::clone(&model), Rc::clone(&input), Rc::clone(&model));
+    context.bind(
+        "Super+Return",
+        Some(move |_event| {
+            launcher.spawn(&["foot".to_owned()], None)?;
+            Ok(true)
+        }),
+        None,
+    )?;
+    context.bind(
+        "Super+Shift+q",
+        Some(move |_event| {
+            if let Some(client) = closer.focused_client()? {
+                client.close()?;
+            }
+            Ok(true)
+        }),
+        None,
+    )?;
+    context.bind(
+        "Super+x",
+        Some(move |_event| {
+            notifier.spawn(&["notify-send".to_owned(), "x".to_owned()], None)?;
+            Ok(true)
+        }),
+        None,
+    )?;
+    Ok(())
+}
+```
+
+:::
+
+Put a TypeScript shell in `~/.config/gnoblin/shell.ts`, a Python shell in `~/.config/gnoblin/shell.py`, or a Rust shell in its crate. `Super+Return` starts a terminal, `Super+Shift+q` closes the focused window and
 `Super+x` shows a notification. A trigger that is already bound at the same priority is refused, so a file that starts from the
 starter deletes the line it replaces.
 
 ## Triggers
 
 A trigger is modifiers joined to one key or button with `+`. Two spellings of one trigger are the same trigger: its
-`Triggers.parse(trigger).text` is the canonical spelling.
+`Triggers.parse(trigger).text` (`Triggers::parse` in Rust) is the canonical spelling.
 
 | Kind    | Form                                                                | Examples                                         |
 | ------- | ------------------------------------------------------------------- | ------------------------------------------------ |
@@ -42,21 +121,78 @@ A trigger is modifiers joined to one key or button with `+`. Two spellings of on
   takes no modifiers.
 - A wheel trigger parses, and binding one throws, because the compositor has no wheel claim.
 
-A bad trigger throws an error that names the part that is wrong. `Triggers.parse(trigger)` returns the trigger as data, and
-`Triggers.check(trigger)` returns its canonical text, if you want to check one yourself.
+A bad trigger throws an error that names the part that is wrong. `Triggers.parse(trigger)` (Python, TypeScript) or `Triggers::parse` (Rust) returns the trigger as data, and
+`Triggers.check(trigger)` (Python, TypeScript) or `Triggers::check` (Rust) returns its canonical text, if you want to check one yourself.
 
 ## Bind from a script
 
-`gnoblin.input.primary.bind(trigger, action)` binds a trigger on the first seat and returns the `Binding`. The action is a
-function or nothing. A class that extends `KeyBinding`, `PointerDragBinding` or `GestureBinding` goes to `bindBinding`,
-`bindDrag` or `bindGesture`.
+`bind(trigger, action)` on the primary input context binds a trigger on the first seat and returns the `Binding`. The
+action is a function or nothing.
 
-```ts
+A class that extends one of the binding types goes to its own call:
+
+| Binding type         | TypeScript    | Python and Rust |
+| -------------------- | ------------- | --------------- |
+| `KeyBinding`         | `bindBinding` | `bind_binding`  |
+| `PointerDragBinding` | `bindDrag`    | `bind_drag`     |
+| `GestureBinding`     | `bindGesture` | `bind_gesture`  |
+
+::: tabs
+
+```typescript
 const binding = gnoblin.input.primary.bind("Super+x", (event) => {
     gnoblin.spawn(["foot"]);
 });
 binding.unbind();
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
+context = gnoblin.input.primary
+
+
+def open_terminal(event):
+    gnoblin.spawn(["foot"])
+
+
+binding = context.bind("Super+x", open_terminal)
+binding.unbind()
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = Rc::new(ModelRoot::get(&objects)?);
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    let Some(context) = input.primary()? else {
+        return Ok(());
+    };
+    let launcher = Rc::clone(&model);
+    let binding = context.bind(
+        "Super+x",
+        Some(move |_event| {
+            launcher.spawn(&["foot".to_owned()], None)?;
+            Ok(true)
+        }),
+        None,
+    )?;
+    binding.unbind()?;
+    Ok(())
+}
+```
+
+:::
 
 - A function runs when the chord is pressed, or the button is clicked. It receives the event, which has `timestamp`. For a
   gesture trigger it runs once, when the gesture ends having gone far enough its way.
@@ -65,8 +201,8 @@ binding.unbind();
 - A pointer drag trigger, such as `Super+MouseLeft+Drag`, needs a drag binding object, not a function: see
   [Input handlers](input-handlers).
 
-`bind` throws a `GnoblinError` with code `already_exists` when another binding of the same context matches the same
-trigger at the same priority. Its third argument is an object of options:
+`bind` raises a `GnoblinError` with code `already_exists` when another binding of the same context matches the same
+trigger at the same priority. Its options argument is an object of these fields:
 
 | Option      | Meaning                                             |
 | ----------- | --------------------------------------------------- |
@@ -95,9 +231,9 @@ Several bindings may name one trigger. A press goes to the highest-ranked one th
 
 1. Bindings made for one device, with `device.bind`.
 2. The bindings of the layout that owns the window the press is for.
-3. The context's own bindings, from `gnoblin.input.primary.bind`.
+3. The context's own bindings, from its `bind` method.
 
-Inside a tier the binding with the higher `priority` goes first. `context.describeBindings()` lists every binding with its
+Inside a tier the binding with the higher `priority` goes first. The context's `describe_bindings()` method (`describeBindings()` in TypeScript) lists every binding with its
 `owner`, its `priority` and its `rank`: rank 1 is the one a press reaches first.
 
 A reload removes the bindings the old configuration made, and the claims with them.

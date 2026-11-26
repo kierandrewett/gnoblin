@@ -4,7 +4,9 @@ A request is how the compositor asks someone to decide: a portal consent questio
 authentication. The compositor draws the dialog itself, so it works with no shell and a script never sees a password.
 `gnoblin.dialogs` lets your config watch these requests and refuse one before its dialog opens.
 
-```ts
+::: tabs
+
+```typescript
 import { DialogListener } from "gnoblin-core";
 import type { DialogRequest } from "gnoblin-core";
 
@@ -19,7 +21,54 @@ class NoScreenCasts extends DialogListener {
 gnoblin.dialogs.addListener(new NoScreenCasts());
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. A program that asks for a screen cast is refused, and the dialog never opens.
+```python
+from gnoblin.objects.model import DialogListener, DialogRequest, Gnoblin
+
+
+class NoScreenCasts(DialogListener):
+    def on_consent_request(self, request: DialogRequest) -> None:
+        if request.subject == "ScreenCast":
+            request.decline("screen casts are off")
+
+
+Gnoblin.get().dialogs.add_listener(NoScreenCasts())
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::{DialogListenerHandlers, DialogRequest, ModelRoot};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = ModelRoot::get(&objects)?;
+    let Some(dialogs) = model.dialogs()? else {
+        return Ok(());
+    };
+    let listener = DialogListenerHandlers {
+        on_consent_request: Some(Box::new(|request: DialogRequest| {
+            if request.subject()? == "ScreenCast" {
+                request.decline(Some("screen casts are off"))?;
+            }
+            Ok(())
+        })),
+        on_secret_request: None,
+    }
+    .implement(&objects)?;
+    dialogs.add_listener(&listener)?;
+    Ok(())
+}
+```
+
+:::
+
+Put the TypeScript in `~/.config/gnoblin/shell.ts`, the Python in `~/.config/gnoblin/shell.py`, and the Rust in a shell
+library, which [Write a shell in Rust](/rust-shell) builds and runs. A program that asks for a screen cast is refused, and
+the dialog never opens.
+
+Show the app id (`appId` in TypeScript, `app_id` in Python and Rust) when you tell the user who is asking, because it is the
+name the compositor verified.
 
 ## Watch and refuse
 
@@ -47,6 +96,13 @@ A `DialogListener` can define these methods. Both are optional.
 | `onSecretRequest(request)`  | The keyring's passphrase prompt. |
 
 A polkit authentication is watched through [`gnoblin.authentication`](authentication), which serves the same observation.
+
+The tables use the TypeScript spellings. The other languages spell the same members their own way:
+
+- Python uses `snake_case` and methods: `add_listener`, `on_consent_request`, `request.app_id` and `request.decline(reason)`.
+- Rust has a getter for each property, and every call returns a `Result`: `dialogs.add_listener(&listener)?`,
+  `request.app_id()?` and `request.decline(Some(reason))?`. The listener is the handler struct `DialogListenerHandlers`,
+  which `implement` turns into a `DialogListener`.
 
 ### What a request carries
 

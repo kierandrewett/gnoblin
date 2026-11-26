@@ -4,6 +4,10 @@ The records and small types that more than one part of the API uses. The library
 type in full: `gnoblinctl types init` writes them to `.gnoblin`, and your editor reads them for completion. See
 [Editor support](/guides/editor_support).
 
+Each language spells the members its own way. Python uses `snake_case` names, such as `add_listener`, and Rust has a getter for
+each property, such as `alive()?`. A record, such as `Rect`, is a dataclass in Python and a struct in Rust. The
+[API reference](/reference) lists every member in each language.
+
 ## Geometry
 
 Coordinates are logical pixels in the compositor's space. An output further right on the desktop starts at a larger `x`.

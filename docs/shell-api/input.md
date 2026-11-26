@@ -4,7 +4,9 @@
 the devices that drive them. Use it to read the pointer, list devices, make a device keys-only, or bind a chord for one
 device.
 
-```ts
+::: tabs
+
+```typescript
 const pad = gnoblin.input.devices.find((device) => device.name === "Elgato Stream Deck");
 pad?.bind(
     "F13",
@@ -15,22 +17,79 @@ pad?.bind(
 );
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`, and use the name your device reports. Its key `F13` starts a terminal, and
-the device types nothing into a window.
+```python
+from gnoblin.objects.model import BindingEvent, BindingOptions, Gnoblin
+
+gnoblin = Gnoblin.get()
+
+
+def start_terminal(event: BindingEvent) -> None:
+    gnoblin.spawn(["foot"])
+
+
+for device in gnoblin.input.devices:
+    if device.name == "Elgato Stream Deck":
+        device.bind("F13", start_terminal, BindingOptions(only=True))
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::{BindingOptions, ModelRoot};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = Rc::new(ModelRoot::get(&objects)?);
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    let options = BindingOptions {
+        id: None,
+        priority: None,
+        enabled: None,
+        only: Some(true),
+        threshold: None,
+    };
+    for device in input.devices()? {
+        if device.name()? == "Elgato Stream Deck" {
+            let launcher = Rc::clone(&model);
+            device.bind(
+                "F13",
+                Some(move |_event| {
+                    launcher.spawn(&["foot".to_owned()], None)?;
+                    Ok(true)
+                }),
+                Some(&options),
+            )?;
+        }
+    }
+    Ok(())
+}
+```
+
+:::
+
+Put a TypeScript shell in `~/.config/gnoblin/shell.ts`, a Python shell in `~/.config/gnoblin/shell.py`, or a Rust shell in its
+crate. Use the name your device reports. The key `F13` starts a terminal, and the device types nothing into a window.
 
 ## Seats
+
+Member names below are TypeScript spellings. Python uses the same names in snake_case, such as `focused_client`, and Rust uses snake_case methods, such as `focused_client()`. Where a value is missing, the table says none: that is `undefined` in TypeScript, `None` in Python and `None` in Rust's `Option`.
 
 `gnoblin.input` has these members:
 
 | Member                                | Meaning                                                                         |
 | ------------------------------------- | ------------------------------------------------------------------------------- |
 | `contexts`                            | The seats, each an `InputContext`, then the ones a script added, as an array.   |
-| `primary`                             | The first seat, or `undefined` when the compositor reports no seat.             |
+| `primary`                             | The first seat, or none when the compositor reports no seat.                    |
 | `devices`                             | Every device of every seat, as an array.                                        |
-| `focusedClient`                       | The window that holds the keyboard focus, or `undefined`.                       |
+| `focusedClient`                       | The window that holds the keyboard focus, or none.                              |
 | `addContext(context)`                 | Adds a context you made. See [Your own input context](#your-own-input-context). |
 | `removeContext(context)`              | Removes it. Returns `true` when it was there.                                   |
-| `findDevice(id)`, `findContext(name)` | The device or context with that id or name, or `undefined`.                     |
+| `findDevice(id)`, `findContext(name)` | The device or context with that id or name, or none.                            |
 
 An `InputContext` is one seat:
 
@@ -39,7 +98,7 @@ An `InputContext` is one seat:
 | `name`                     | The seat's name.                                                                   |
 | `devices`                  | The devices on this seat.                                                          |
 | `bindings`                 | The context's bindings, by id.                                                     |
-| `focusedClient`            | The window that holds the keyboard focus, or `undefined`.                          |
+| `focusedClient`            | The window that holds the keyboard focus, or none.                                 |
 | `pointer`                  | The pointer in compositor coordinates, `{ x, y }`.                                 |
 | `settings`                 | The window-management settings the seat publishes. See below.                      |
 | `clearFocus()`             | Takes the keyboard focus from every window.                                        |
@@ -122,7 +181,7 @@ every device. Use it for a macro pad.
 
 ## Device classes and their settings
 
-A device is an instance of the class its capabilities name. Test with `instanceof`:
+A device is an instance of the class its capabilities name. Test a device's class with your language's own check: `instanceof` in TypeScript, `isinstance` in Python. Rust has no such check, so match on `capabilities` instead.
 
 - `Keyboard`: a keyboard, also one with a pointing stick.
 - `Mouse`: any other pointer.
@@ -131,7 +190,9 @@ A device is an instance of the class its capabilities name. Test with `instanceo
 - `Tablet`: a device with `tablet-tool` or `tablet-pad`.
 - A device that is none of these, such as a lid switch, is a plain `InputDevice`.
 
-```ts
+::: tabs
+
+```typescript
 import { Keyboard, Mouse, Touchpad } from "gnoblin-core";
 
 for (const device of gnoblin.input.devices) {
@@ -150,6 +211,40 @@ for (const device of gnoblin.input.devices) {
 }
 ```
 
+```python
+from gnoblin.objects.model import Gnoblin, Keyboard, Mouse, Touchpad
+
+gnoblin = Gnoblin.get()
+
+for device in gnoblin.input.devices:
+    if isinstance(device, Mouse):
+        device.sensitivity = 0.5
+        device.acceleration = "flat"
+    if isinstance(device, Keyboard):
+        device.repeat_rate = 40
+        device.repeat_delay = 250
+    if isinstance(device, Touchpad):
+        device.natural_scroll = True
+        device.tap_to_click = True
+```
+
+```rust skip="Rust cannot turn an InputDevice the compositor already has into a Mouse, Keyboard or Touchpad; it can only create one with Mouse::new, so this shows that instead of changing the existing devices in the loop above"
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::Mouse;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let mouse = Mouse::new(&objects)?;
+    mouse.set_sensitivity(0.5)?;
+    mouse.set_natural_scroll(true)?;
+    Ok(())
+}
+```
+
+:::
+
 | Class      | Property                          | Values                                    | Written to                                      |
 | ---------- | --------------------------------- | ----------------------------------------- | ----------------------------------------------- |
 | `Keyboard` | `repeatRate`                      | repeats per second, 0.1 to 1000           | `input.keyboard.repeat-interval` (milliseconds) |
@@ -163,24 +258,26 @@ What backs them:
 
 - The compositor reads device settings from the configuration document's `input` section, once for each kind of device. A
   write on one `Mouse` is the setting of every mouse, and another mouse reads the value back. A setting nobody wrote reads
-  `undefined`, and `reset(name)` gives it back to the system's value.
+  none, and `reset(name)` gives it back to the system's value.
 - The shell commits the document with these writes when the entry loads, and again on the frame after a later write (for
-  example from a key handler). A value outside the range throws a `RangeError` at the write; one the document refuses
-  throws a `GnoblinError` with code `config_rejected` and the document's reason.
+  example from a key handler). A value outside the range is refused at the write; one the document refuses is refused with
+  code `config_rejected` and the document's reason.
 - The compositor applies `input.keyboard` (repeat and delay) when the document is committed, and hands `input.mouse` and
   `input.touchpad` to the backend's devices: the hardware backend applies them through libinput to every device of the
   kind, including one plugged in later, and a nested session leaves its host's devices alone, see
   [Input settings](/config/configure/input). A `Touchscreen` and a `Tablet` have no setting here.
-- `device.enabled` is always `true`. Assigning `false` throws a `GnoblinError` with code `unsupported`, because nothing can
-  disable one device. Use `bindingOnly` to keep a device's keys from windows.
+- `device.enabled` is always `true`. Assigning `false` is refused with code `unsupported`, because nothing can disable one
+  device. Use `bindingOnly` to keep a device's keys from windows.
 
 ## Your own input context
 
-`new InputContext(name)` makes a context, and `gnoblin.input.addContext(context)` puts it in the list. A device
-assigned to it with `device.context = context` is held by it, and the context's bindings match only the events of the
-devices it holds:
+`new InputContext(name)` makes a context (`InputContext(name)` in Python, `InputContext::new(&objects, name)` in Rust).
 
-```ts
+`gnoblin.input.addContext(context)` (`add_context` in Python and Rust) puts it in the list. A device assigned to it with `device.context = context` is held by it. The context's bindings match only the events of the devices it holds:
+
+::: tabs
+
+```typescript
 import { InputContext } from "gnoblin-core";
 
 const other = new InputContext("secondary");
@@ -195,6 +292,61 @@ if (keyboard) {
 }
 ```
 
+```python
+from gnoblin.objects.model import BindingEvent, Gnoblin, InputContext
+
+gnoblin = Gnoblin.get()
+other = InputContext("secondary")
+gnoblin.input.add_context(other)
+
+
+def start_terminal(event: BindingEvent) -> None:
+    gnoblin.spawn(["foot"])
+
+
+other.bind("Super+Return", start_terminal)
+
+for device in gnoblin.input.devices:
+    if device.name == "USB Keyboard":
+        device.context = other
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::{InputContext, ModelRoot};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = Rc::new(ModelRoot::get(&objects)?);
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    let other = InputContext::new(&objects, "secondary")?;
+    input.add_context(&other)?;
+    let launcher = Rc::clone(&model);
+    other.bind(
+        "Super+Return",
+        Some(move |_event| {
+            launcher.spawn(&["foot".to_owned()], None)?;
+            Ok(true)
+        }),
+        None,
+    )?;
+    for device in input.devices()? {
+        if device.name()? == "USB Keyboard" {
+            device.set_context(&other)?;
+        }
+    }
+    Ok(())
+}
+```
+
+:::
+
 Be exact about what is native and what is not. The compositor has one input seat and attaches every device to it, so:
 
 - A context you add holds devices and decides which bindings match them. It is not a second `wl_seat`: pointer and keyboard
@@ -207,8 +359,8 @@ Be exact about what is native and what is not. The compositor has one input seat
 - A layout's bindings (move and resize drags) stay with the seat's own context.
 - Moving a device cancels a drag its old bindings run, so no button is left held. A device that is unplugged and plugged in
   again is a new device, back in its seat's context. A context cannot take a device of another seat.
-- `addContext` throws a `GnoblinError` with code `already_exists` for a name that is taken, and `unavailable` when the
-  compositor reports no seat.
+- `addContext` is refused with code `already_exists` for a name that is taken, and with `unavailable` when the compositor
+  reports no seat.
 - `removeContext(context)` hands the devices back to their seat's context and returns `true`. The seats' own contexts
   cannot be removed (code `denied`).
 - A context that is not in the list throws code `invalid_state` from `pointer`, `clearFocus`, `makeBindingOnly` and

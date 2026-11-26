@@ -5,12 +5,14 @@ compositor draws the stock titlebar, panel and lock screen from the paint lists 
 
 This page describes the paint list and how it is drawn. The widgets built on it are in the [UI toolkit](/js-ui).
 
-```ts
-import { Canvas } from "gnoblin-std";
+::: tabs
+
+```typescript
+import { Canvas, Widget } from "gnoblin-std";
 import type { PaintOp } from "gnoblin-std";
 
-class Label extends Canvas {
-    draw(): PaintOp[] {
+class Label extends Widget {
+    paint(): PaintOp[] {
         return [
             { op: "rect", x: 0, y: 0, width: 120, height: 32, radius: 6, fill: "#1e1e2e" },
             { op: "text", text: "Hello", x: 10, y: 4, size: 16, color: "#cdd6f4" },
@@ -18,15 +20,97 @@ class Label extends Canvas {
     }
 }
 
-const label = new Label({ x: 20, y: 20, width: 120, height: 32 });
+const label = new Canvas({ x: 20, y: 20, width: 120, height: 32, behaviour: new Label() });
 label.mountTop();
 ```
 
-Put the code in `~/.config/gnoblin/shell.ts`. A rounded label that says Hello appears over every window.
+```python
+from gnoblin.objects.std import Canvas, PaintKind, PaintOp, Widget
 
-## `draw` and the content
 
-`draw()` returns an array of drawing ops. The runtime encodes the array into the node's `content`, a byte string the
+class Label(Widget):
+    def paint(self):
+        return [
+            PaintOp(op=PaintKind.RECT, x=0.0, y=0.0, width=120.0, height=32.0, radius=6.0, fill="#1e1e2e"),
+            PaintOp(op=PaintKind.TEXT, text="Hello", x=10.0, y=4.0, size=16.0, color="#cdd6f4"),
+        ]
+
+
+label = Canvas(x=20.0, y=20.0, width=120.0, height=32.0, behaviour=Label())
+label.mount_top()
+```
+
+```rust
+use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_std::objects::{Canvas, CanvasOptions, PaintKind, PaintOp, WidgetHandlers};
+use gnoblin_std::GnoblinStdExt;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+
+    let widget = WidgetHandlers {
+        refresh: None,
+        arrange: None,
+        paint: Some(Box::new(move || {
+            Ok(vec![
+                PaintOp {
+                    x: Some(0.0),
+                    y: Some(0.0),
+                    width: Some(120.0),
+                    height: Some(32.0),
+                    radius: Some(6.0),
+                    fill: Some("#1e1e2e".into()),
+                    ..PaintOp::new(PaintKind::Rect)
+                },
+                PaintOp {
+                    x: Some(10.0),
+                    y: Some(4.0),
+                    size: Some(16.0),
+                    color: Some("#cdd6f4".into()),
+                    text: Some("Hello".into()),
+                    ..PaintOp::new(PaintKind::Text)
+                },
+            ])
+        })),
+        natural_width: None,
+        natural_height: None,
+        on_pointer: None,
+        on_key: None,
+    }
+    .implement(&objects)?;
+
+    let label = Canvas::new_with(
+        &objects,
+        CanvasOptions {
+            children: None,
+            x: Some(20.0),
+            y: Some(20.0),
+            width: Some(120.0),
+            height: Some(32.0),
+            visible: None,
+            opacity: None,
+            secure: None,
+            input: None,
+            placement: None,
+            behaviour: Some(widget),
+            on_pointer: None,
+            on_key: None,
+        },
+    )?;
+    label.mount_top()?;
+
+    Ok(())
+}
+```
+
+:::
+
+Put the code in your shell: `shell.ts` or `shell.py` for a script, or the `lib.rs` of a Rust shell library. A rounded label that says Hello appears over every window.
+
+## The paint list and the content
+
+The `paint` method of a widget (`paint()` in TypeScript and Python, the `paint` handler in Rust) returns a list of drawing ops. The runtime encodes the list into the node's `content`, a byte string the
 compositor decodes, and writes it only when it changed. A script does not write `content` by hand.
 
 The compositor paints the list into a picture of the node's size when `content` or the size changes, not every frame, and
@@ -67,16 +151,23 @@ window's rectangle still takes the pointer. The [window frame](/js-window-frame#
 Coordinates are pixels from the node's top left. Ops draw in order, later over earlier. Each op is an object with an `op`
 field that names it.
 
-| `op`          | Fields                                                                 | Draws                                                     |
-| ------------- | ---------------------------------------------------------------------- | --------------------------------------------------------- |
-| `rect`        | `x`, `y`, `width`, `height`; `radius`, `fill`, `stroke`, `strokeWidth` | A rectangle with optionally rounded corners.              |
-| `line`        | `x1`, `y1`, `x2`, `y2`; `width`, `color`                               | A straight line.                                          |
-| `text`        | `text`; `x`, `y`, `size`, `color`, `font`                              | Text.                                                     |
-| `icon`        | `name`; `x`, `y`, `size`, `color`                                      | A built-in icon in a square of `size`.                    |
-| `pushClip`    | `x`, `y`, `width`, `height`; `radius`                                  | Starts limiting the ops that follow to a rectangle.       |
-| `popClip`     | none                                                                   | Ends the innermost clip. Clips nest.                      |
-| `pushOpacity` | `alpha`                                                                | Starts drawing the ops that follow as a group at `alpha`. |
-| `popOpacity`  | none                                                                   | Ends the group.                                           |
+| `op`           | Fields                                                                 | Draws                                                     |
+| -------------- | ---------------------------------------------------------------------- | --------------------------------------------------------- |
+| `rect`         | `x`, `y`, `width`, `height`; `radius`, `fill`, `stroke`, `strokeWidth` | A rectangle with optionally rounded corners.              |
+| `line`         | `x1`, `y1`, `x2`, `y2`; `width`, `color`                               | A straight line.                                          |
+| `text`         | `text`; `x`, `y`, `size`, `color`, `font`                              | Text.                                                     |
+| `icon`         | `name`; `x`, `y`, `size`, `color`                                      | A built-in icon in a square of `size`.                    |
+| `push-clip`    | `x`, `y`, `width`, `height`; `radius`                                  | Starts limiting the ops that follow to a rectangle.       |
+| `pop-clip`     | none                                                                   | Ends the innermost clip. Clips nest.                      |
+| `push-opacity` | `alpha`                                                                | Starts drawing the ops that follow as a group at `alpha`. |
+| `pop-opacity`  | none                                                                   | Ends the group.                                           |
+
+The `op` column gives the value of `op` in TypeScript. The same kinds in the other languages:
+
+- Python: `PaintKind.RECT`, `PaintKind.PUSH_CLIP`, and so on.
+- Rust: `PaintKind::Rect`, `PaintKind::PushClip`, and so on.
+
+Field names are camelCase in TypeScript (`strokeWidth`) and snake_case in Python and Rust (`stroke_width`).
 
 Defaults of the optional fields:
 
@@ -130,15 +221,11 @@ nothing.
 
 ## Measuring text
 
-`text.metrics` of a `Text` widget is `{ width, height, ascent }` for its string, size and font, in logical pixels. It is a
-read-only property, and the library's painter measures the string when you read it.
+The `metrics` property of a `Text` widget is `{ width, height, ascent }` for its string, size and font, in logical pixels: `text.metrics` in TypeScript and Python, and `metrics` in the Rust text widget's accessors. It is read-only, and the library's painter measures the string when you read it.
 
 - `height` is a line box per line.
 - `ascent` is the distance from the top of the first line to its baseline, where the bottom of a capital letter sits. Align
   two texts of different sizes, or a text and an icon, by it.
 
-`Ui.estimateText(text, size)` returns the guess the library uses for a string it cannot measure: half the size per
-character of the widest line, one and a half sizes per line, and 1.1 sizes of ascent. It needs no desktop.
-
-A `Text` made with `ellipsize: true` that a row gives less room than it measured draws the share of the text that fits and an
+A `Text` made with `ellipsize` on (`ellipsize: true` in TypeScript and Python, `ellipsize` set in Rust) that a row gives less room than it measured draws the share of the text that fits and an
 ellipsis. The stock titlebar's title does, so a long window title never runs under the close button.

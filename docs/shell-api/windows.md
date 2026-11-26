@@ -3,21 +3,70 @@
 A window is a `Client`, one object per managed window. `gnoblin.clients` is the live collection of them. Read it, change a
 window by writing its properties or calling its methods, and attach a listener to hear what happens to it.
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.input.primary.bind("Super+t", () => {
     const terminal = gnoblin.clients.toList().find((client) => client.appId === "foot");
     terminal?.focus();
 });
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. `Super+t` focuses the first terminal window it finds and does nothing when
-there is none.
+```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
+
+
+def focus_terminal() -> None:
+    terminal = next((client for client in gnoblin.clients.to_list() if client.app_id == "foot"), None)
+    if terminal is not None:
+        terminal.focus()
+
+
+gnoblin.input.primary.bind("Super+t", focus_terminal)
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let shell = Rc::clone(&model);
+    g.bind("Super+t", move || -> gnoblin::Result<()> {
+        for client in shell.clients()?.to_list()? {
+            if client.app_id()? == "foot" {
+                client.focus()?;
+                break;
+            }
+        }
+        Ok(())
+    })?;
+    Ok(())
+}
+```
+
+:::
+
+Put the shell code in `~/.config/gnoblin/`: `shell.py` for Python, `shell.ts` for TypeScript, or a shell library for Rust,
+which [Write a shell in Rust](/rust-shell) builds and runs. `Super+t` focuses the first terminal window it finds and does
+nothing when there is none.
 
 ## Read windows
 
 `gnoblin.clients` is a live set. It is not an array: its membership belongs to the compositor, so a script cannot add or
-remove a window. `toList()` returns the windows as an array. Every read of one window returns the same `Client`, so you
-can keep it. A closed window keeps its last values and reads `alive === false`.
+remove a window. The list form (`toList()` in TypeScript, `to_list()` in Python and Rust) returns the windows as an array.
+
+Every read of one window returns the same `Client`, so you can keep it. A closed window keeps its last values and reads
+`alive` as false.
+
+The table uses TypeScript spellings. Python and Rust use snake_case for the same members (`at`, `get`, `to_list`, `where`,
+`add_listener`).
 
 | Member                  | Result                                                                                       |
 | ----------------------- | -------------------------------------------------------------------------------------------- |
@@ -31,10 +80,43 @@ can keep it. A closed window keeps its last values and reads `alive === false`.
 | `style`                 | The style every window starts from. See [window style](/js-style).                           |
 | `addListener(listener)` | Attaches a `ClientCollectionListener` for every window. See [Events](/events/desktop-state). |
 
-```ts
+::: tabs
+
+```typescript
 const terminals = gnoblin.clients.toList().filter((client) => client.appId === "org.gnome.Console");
 const titles = gnoblin.clients.toList().map((client) => client.title);
 ```
+
+```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
+
+terminals = [client for client in gnoblin.clients.to_list() if client.app_id == "org.gnome.Console"]
+titles = [client.title for client in gnoblin.clients.to_list()]
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let mut terminals = Vec::new();
+    let mut titles = Vec::new();
+    for client in model.clients()?.to_list()? {
+        titles.push(client.title()?);
+        if client.app_id()? == "org.gnome.Console" {
+            terminals.push(client);
+        }
+    }
+    Ok(())
+}
+```
+
+:::
 
 ## Properties
 
