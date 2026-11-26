@@ -228,6 +228,38 @@ fn an_object_ends_with_destroy_and_is_released_when_the_script_lets_go() {
     );
 }
 
+#[test]
+fn an_object_the_script_drops_is_released_to_the_library_at_the_next_frame_and_one_it_holds_is_not() {
+    let mut rig = served_rig("");
+    assert!(rig.load_diagnostics.is_empty(), "{:?}", rig.load_diagnostics);
+    let ctx = rig.core.as_ref().expect("a rig over a core").ctx();
+    let before = live_objects_for(ctx);
+    run(
+        &mut rig,
+        "globalThis.kept = new probe.Probe(9); (() => { for (let i = 0; i < 3; i++) new probe.Probe(i); })()",
+    );
+    assert_eq!(
+        live_objects_for(ctx),
+        before + 4,
+        "the library holds what the script made"
+    );
+    // The finaliser of a dropped object only files its slot, so the library hears of it at the frame's safe point, not inside the call.
+    rig.frame();
+    assert_eq!(
+        live_objects_for(ctx),
+        before + 1,
+        "the three the script dropped are released; the one it holds is not"
+    );
+    assert_eq!(rig.eval("kept.count"), "9", "the one it holds still answers");
+    run(&mut rig, "globalThis.kept = undefined");
+    rig.frame();
+    assert_eq!(
+        live_objects_for(ctx),
+        before,
+        "and it is released when the script lets it go"
+    );
+}
+
 /// The options of a constructor: a field is a property that starts set, in the call that makes the object. A field that is `undefined` or
 /// left out is not sent, so the property keeps the library's default; a value the library refuses throws from the constructor, with the
 /// library's words, and leaves no object behind; the constructor without options is the one that was there before.

@@ -5,11 +5,24 @@
 //! [`JsConfig::natives`](crate::JsConfig::natives), and the engine calls it for each generation it builds, the way it installs the
 //! host functions, with what a native needs of the engine: how a node's id becomes the number a script holds ([`ScriptIds`]).
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use rquickjs::Ctx;
 
 use crate::bindings::SharedState;
+
+/// The functions natives asked the engine to run at its safe points ([`ScriptIds::on_safe_point`]), for one generation.
+pub(crate) type SafePoints = Rc<RefCell<Vec<Rc<dyn Fn()>>>>;
+
+/// Runs every function of `points`. The list is copied first, so a function may register another.
+pub(crate) fn run_safe_points(points: &SafePoints) {
+    let hooks: Vec<Rc<dyn Fn()>> = points.borrow().clone();
+    for hook in hooks {
+        hook();
+    }
+}
 
 /// How node ids cross into script numbers, and back.
 ///
@@ -19,11 +32,23 @@ use crate::bindings::SharedState;
 #[derive(Clone)]
 pub struct ScriptIds {
     state: SharedState,
+    points: SafePoints,
 }
 
 impl ScriptIds {
-    pub(crate) fn new(state: &SharedState) -> ScriptIds {
-        ScriptIds { state: state.clone() }
+    pub(crate) fn new(state: &SharedState, points: &SafePoints) -> ScriptIds {
+        ScriptIds {
+            state: state.clone(),
+            points: Rc::clone(points),
+        }
+    }
+
+    /// Has the engine run `hook` at each of its safe points: the end of every frame, and the end of the generation. At a safe point no
+    /// script is running and the engine holds no borrow of its own, so `hook` may call into a library; it must not run script, because
+    /// a safe point is not work and wakes no frame. A native uses it to let go of what a script object's finaliser filed, since a
+    /// finaliser runs while the engine collects, inside any call, and can touch nothing of the native's.
+    pub fn on_safe_point(&self, hook: impl Fn() + 'static) {
+        self.points.borrow_mut().push(Rc::new(hook));
     }
 
     /// The first number that is a handle and not an id: a script number at or above it must go through [`ScriptIds::from_script`].

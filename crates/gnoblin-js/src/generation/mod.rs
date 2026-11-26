@@ -28,6 +28,7 @@ use crate::bytecode::JsBytecodeCache;
 use crate::choice::StockRuntime;
 use crate::error::{JsError, JsErrorKind, JsLoadError, JsLocation};
 use crate::loader::{JsLoadState, JsLoader, JsResolver, JsTypeScriptModule};
+use crate::natives::SafePoints;
 use crate::script_console::{JsConsoleLine, JsScriptConsole};
 use crate::stock::StockLibrary;
 use gnoblin_shell_host::supervisor::{Clock, SystemClock};
@@ -286,6 +287,8 @@ pub struct JsGeneration {
     console: Rc<JsScriptConsole>,
     config: JsConfig,
     id: u64,
+    /// What the generation's natives asked to run at the engine's safe points (`ScriptIds::on_safe_point`).
+    safe_points: SafePoints,
 }
 
 impl std::fmt::Debug for JsGeneration {
@@ -363,6 +366,7 @@ impl JsGeneration {
             console,
             config: config.clone(),
             id,
+            safe_points: SafePoints::default(),
         })
     }
 
@@ -391,7 +395,19 @@ impl JsGeneration {
             console: Rc::clone(&self.console),
             config: self.config.clone(),
             id: self.id,
+            safe_points: Rc::clone(&self.safe_points),
         }
+    }
+
+    /// The functions the generation's natives run at the engine's safe points, for the natives to be installed with.
+    pub(crate) fn safe_points(&self) -> &SafePoints {
+        &self.safe_points
+    }
+
+    /// Runs what the natives asked to run when no script is running: the end of a frame, and the end of the generation. It runs no
+    /// script, so it is not work and wakes no frame.
+    pub(crate) fn run_safe_points(&self) {
+        crate::natives::run_safe_points(&self.safe_points);
     }
 
     /// Bytes the engine currently has allocated for this generation.

@@ -95,6 +95,8 @@ const STAGES: &[FrameStage] = &[
     // The failures the stages before it recorded are reported once each, and the script's console is flushed, after
     // everything that can fail has run.
     stage("reports", JsShell::stage_reports),
+    // After every stage that runs script: what the script dropped is let go of now, and what this stage does is no script.
+    stage("natives", JsShell::stage_natives),
     // Everything the frame wrote goes out as one transaction, last, once the gate allows one in flight.
     stage("send", JsShell::stage_send),
 ];
@@ -111,6 +113,8 @@ const NATIVE_STAGES: &[FrameStage] = &[
     stage("jobs", JsShell::stage_jobs),
     stage("document", JsShell::stage_document),
     stage("console", JsShell::stage_console),
+    // After every stage that runs script: the objects the script dropped give their references back to the libraries.
+    stage("natives", JsShell::stage_natives),
     stage("send", JsShell::stage_send),
 ];
 
@@ -357,6 +361,13 @@ impl JsShell {
     /// Flushes the script's console.
     fn stage_console(&mut self, _work: &mut FrameWork) -> Result<(), JsShellError> {
         self.generation.flush_console();
+        Ok(())
+    }
+
+    /// Lets the libraries have back the references of the objects the script dropped (`ScriptIds::on_safe_point`). It runs no script,
+    /// so it is not work: it marks nothing and wakes no frame.
+    fn stage_natives(&mut self, _work: &mut FrameWork) -> Result<(), JsShellError> {
+        self.generation.run_safe_points();
         Ok(())
     }
 

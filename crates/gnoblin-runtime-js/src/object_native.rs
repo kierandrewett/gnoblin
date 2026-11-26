@@ -6,8 +6,18 @@
 //! the ids the catalog gave, so a class added to a catalog changes no line here.
 //!
 //! A library object is held by a *slot*: a small number the script keeps, which names an entry of a table the native functions share (one
-//! table for each evaluated generation). The entry holds the library's handle, which is a 64-bit number a script cannot hold exactly. A
-//! script's reference ends with `release`, which the generated base queues from a `FinalizationRegistry`.
+//! table for each evaluated generation). The entry holds the library's handle, which is a 64-bit number a script cannot hold exactly.
+//!
+//! A script's reference ends with the script object that holds it. The generated base gives each such object a `guard` of its slot: a
+//! native function whose closure owns a [`SlotGuard`], so that the engine's own finaliser of the function (which runs as the object is
+//! freed, inside any call, and queues no job) drops the guard, and the guard files the slot in the table's list of dropped slots. A
+//! finaliser touches nothing else, because it can run while a native call holds a borrow of the table, and calling into a library from
+//! it could re-enter that library. The engine's safe points (`ScriptIds::on_safe_point`: the end of every frame, and the end of the
+//! generation) then call [`ObjectTable::release_dropped`], which takes each filed slot out of the table and calls the library's
+//! `release`. That runs no script, so it is not work and wakes no frame. No release goes through a script callback: the engine runs every
+//! `FinalizationRegistry` callback as a promise job, and a job left at the end of a frame is a frame due at once, so a shell that reads
+//! `gnoblin.clients` in a listener, which makes and drops script objects on every event, would never rest. `release` itself stays for a
+//! reference the script ends at once (the second delivery of an object it already holds).
 //!
 //! Values cross as the script's own, with three marks on the way in (the generated base writes them): `{ $t: 1, $v: fields }` is a
 //! record, `{ $t: 2, $v: id }` an enum value, `{ $t: 3, $v: slot }` an object and `{ $t: 4, $v: numbers }` bytes. On the way out a record
@@ -55,6 +65,30 @@ struct ObjectTable {
     namespaces: RefCell<Vec<OpenedNamespace>>,
     slots: RefCell<Vec<Option<ObjectSlot>>>,
     free: RefCell<Vec<usize>>,
+    /// The slots whose script objects were freed, until the next safe point gives their references back (see the module's comment).
+    /// A slot filed here stays in `slots`, so its number is not reused before it is released.
+    dropped: Rc<RefCell<Vec<f64>>>,
+}
+
+/// The end of a script object's reference to a slot: dropped by the engine's finaliser as the object is freed, which files the slot for
+/// release. It touches nothing but the list, which no call holds across a point where the engine can collect.
+struct SlotGuard {
+    slot: f64,
+    dropped: Rc<RefCell<Vec<f64>>>,
+}
+
+impl SlotGuard {
+    /// The slot the guard answers for. The closure that owns the guard reads it through this, so that the closure captures the whole
+    /// guard and not the slot number alone: the guard must be dropped with the closure, not when the closure is made.
+    fn slot(&self) -> f64 {
+        self.slot
+    }
+}
+
+impl Drop for SlotGuard {
+    fn drop(&mut self) {
+        self.dropped.borrow_mut().push(self.slot);
+    }
 }
 
 impl ObjectTable {
@@ -114,6 +148,28 @@ impl ObjectTable {
             self.free.borrow_mut().push(index);
         }
         taken
+    }
+
+    /// Ends the script's reference of the slot `number`: the slot leaves the table and the library gets the reference back. A library that
+    /// has retired refuses, and what it held is gone with it, so a refusal is not the script's to hear.
+    fn release(&self, number: f64) {
+        if let Some(slot) = self.take(number)
+            && let Ok(api) = self.api(slot.namespace)
+        {
+            let _ = api.release(slot.obj);
+        }
+    }
+
+    /// Releases every slot whose script object was freed since the last time. Called where no script runs and nothing of this table is
+    /// borrowed; it runs no script.
+    fn release_dropped(&self) {
+        loop {
+            let next = self.dropped.borrow_mut().pop();
+            let Some(number) = next else {
+                break;
+            };
+            self.release(number);
+        }
     }
 
     /// The name of the class `class` of `namespace`.
@@ -767,19 +823,33 @@ fn install<'js>(ctx: &Ctx<'js>, ids: &ScriptIds) -> rquickjs::Result<()> {
         })?,
     )?;
 
-    // A script's reference ends: the library's object does not (see `release` of the protocol). What a retired generation holds is
-    // gone with it, so a refusal here is not the script's to hear.
+    // A script's reference ends: the library's object does not (see `release` of the protocol).
     let state = Rc::clone(&table);
     native.set(
         "release",
-        Function::new(ctx.clone(), move |slot: f64| {
-            if let Some(slot) = state.take(slot)
-                && let Ok(api) = state.api(slot.namespace)
-            {
-                let _ = api.release(slot.obj);
-            }
-        })?,
+        Function::new(ctx.clone(), move |slot: f64| state.release(slot))?,
     )?;
+
+    // The holder of a script object's reference to `slot`: a function that answers the slot, whose closure owns the guard that files it
+    // when the engine frees the function, with the object that keeps it. The closure holds no script value (see above).
+    let state = Rc::clone(&table);
+    native.set(
+        "guard",
+        Function::new(
+            ctx.clone(),
+            move |ctx: Ctx<'js>, slot: f64| -> rquickjs::Result<Function<'js>> {
+                let guard = SlotGuard {
+                    slot,
+                    dropped: Rc::clone(&state.dropped),
+                };
+                Function::new(ctx, move || guard.slot())
+            },
+        )?,
+    )?;
+
+    // The references of the objects the script dropped go back to the libraries at the end of each frame, and with the generation.
+    let state = Rc::clone(&table);
+    ids.on_safe_point(move || state.release_dropped());
 
     let state = Rc::clone(&table);
     native.set(

@@ -372,12 +372,113 @@ fn the_stock_shell_rests_when_nothing_happens() {
 }
 
 /// The turn does not leave work for itself: a frame of a shell that holds the configuration document reads the document's revision
-/// (`commit_document_changes`), and that read must leave nothing behind that asks for another frame. It did: each read made a script
-/// object for the input manager and dropped it, the engine queued the cleanup of that object as a promise job, and a job left at the
-/// end of a frame is a frame due at once (`plan_next_frame`), so the shell ran a frame on every turn for as long as it lived.
+/// (`commit_document_changes`), and that read must leave nothing behind that asks for another frame. Each read makes a script object for
+/// the input manager and drops it, and a promise job queued for that is a job left at the end of a frame, which is a frame due at once
+/// (`plan_next_frame`): the shell ran a frame on every turn for as long as it lived.
 #[test]
 fn the_stock_shell_that_holds_the_configuration_document_rests_when_nothing_happens() {
     assert_rests(stock_with_document());
+}
+
+// ---- object wrappers the script makes and drops --------------------------------------------------------------------
+
+/// The ids of the windows `populate` makes, three of them.
+const WINDOWS: [u64; 3] = [3, 4, 5];
+
+/// A shell whose listener and layout read objects of the model on every event: `gnoblin.clients` and each client's `workspace` are
+/// getters that hand over a library object, so each read makes a script object that is dropped as soon as the read ends.
+const READERS: &str = "class Reads extends Layout {\n\
+    \x20   compute(c: any) {\n\
+    \x20       for (const client of gnoblin.clients) { void [client.title, client.workspace, client.workspace?.id]; }\n\
+    \x20       return [];\n\
+    \x20   }\n\
+    }\n\
+    class Watch extends ClientListener {\n\
+    \x20   onTitleChanged(client: any, title: string) {\n\
+    \x20       void gnoblin.clients.length;\n\
+    \x20       for (const other of gnoblin.clients) { void [other.title, other.workspace, other.workspace?.id]; }\n\
+    \x20   }\n\
+    }\n\
+    for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace(id, { layout: new Reads() }));\n\
+    gnoblin.clients.addListener(new Watch());\n";
+
+/// A shell whose listener and layout read and drop object wrappers on every event, with windows that change their titles. With
+/// `document` it holds the configuration document, as the runtime role does, so each of its frames reads the document's revision through
+/// a wrapper of the input manager too: script that runs in the frame itself, after the stage that runs the promise jobs.
+fn readers(document: bool) -> Rig {
+    settled(rig_prepared(
+        &imports(),
+        READERS,
+        |comp| populate(comp, 3, false),
+        |_| {},
+        |shell| {
+            if document {
+                shell.set_config_link(Box::new(AcceptingDocument::default()));
+            }
+        },
+    ))
+}
+
+/// Changes the titles of the windows one after another, and lets the shell go quiet after each.
+fn change_titles(rig: &mut Rig) {
+    for round in 0..6 {
+        let node = WINDOWS[round % WINDOWS.len()];
+        rig.comp.external_set(node, "title", text(&format!("title {round}")));
+        rig.quiet();
+    }
+}
+
+/// A script object the script drops ends a reference to a library object. The engine used to queue that end as a promise job (a
+/// `FinalizationRegistry` callback), and a job left at the end of a frame is a frame due at once (`plan_next_frame`). The listener and
+/// the layout run in the core's dispatch, between frames, and the next frame's pump ran the jobs they left; but script the frame itself
+/// runs after the pump (the read of the configuration document's revision, by a shell that holds the document) left its job at the
+/// frame's end, and the shell ran a frame on every turn for as long as it lived. The end is now the engine's own finaliser of a native
+/// value, which runs no script and queues no job.
+#[test]
+fn a_shell_that_holds_the_document_and_whose_listener_and_layout_read_and_drop_object_wrappers_rests_once_the_events_stop()
+ {
+    let mut rig = readers(true);
+    change_titles(&mut rig);
+    assert_rests(rig);
+}
+
+#[test]
+fn a_shell_whose_listener_and_layout_read_and_drop_object_wrappers_rests_once_the_events_stop() {
+    let mut rig = readers(false);
+    change_titles(&mut rig);
+    assert_rests(rig);
+}
+
+/// The bound of one frame's promise jobs (`MAX_JOBS_PER_PUMP`) leaves work that no message announces, and the gate must still ask for
+/// the frame that runs it: a reaction left by the pump wakes the next frame. A chain of 8500 reactions is nine pumps; the frames that
+/// follow the listener's own (the one its script marks, the one after a frame that worked, and the one the test's own read marks) are
+/// three, so the last pumps are the gate's own wake.
+#[test]
+fn a_promise_reaction_left_past_the_job_bound_still_wakes_the_next_frame() {
+    let mut rig = settled(rig_setup(
+        &imports(),
+        "globalThis.reactions = 0;\n\
+         class Chain extends ClientListener {\n\
+         \x20   onTitleChanged() {\n\
+         \x20       let link = Promise.resolve();\n\
+         \x20       for (let i = 0; i < 8500; i++) link = link.then(() => { (globalThis as any).reactions += 1; });\n\
+         \x20   }\n\
+         }\n\
+         gnoblin.clients.addListener(new Chain());\n",
+        |comp| populate(comp, 3, false),
+    ));
+    rig.comp.external_set(3, "title", text("chained"));
+    // The listener runs after the frame that told it, so the chain starts one frame later and is cut at the bound.
+    rig.frame();
+    rig.frame();
+    let left = rig.eval("String(reactions)").parse::<u32>().expect("a count");
+    assert!(
+        left < 8500,
+        "the pump is bounded per frame, so the chain is not done yet: {left}"
+    );
+    rig.quiet();
+    assert_eq!(rig.eval("String(reactions)"), "8500", "every reaction ran");
+    assert_rests(rig);
 }
 
 // ---- the clock widget ---------------------------------------------------------------------------------------------

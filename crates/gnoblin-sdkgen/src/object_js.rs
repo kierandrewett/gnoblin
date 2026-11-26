@@ -32,50 +32,50 @@ export { native };
 /** The slot a library object is held in, on the object. */
 export const HANDLE = Symbol("gnoblin.handle");
 
-// A script's reference to a library object is dropped when the script's object is collected. The call is queued by the engine, so it
-// runs between the script's own turns.
+// A script's reference to a library object ends when the script's object is collected. The object holds a native guard of its slot
+// (`native.guard`), a value of the engine's own whose finaliser runs as the object is freed: it files the slot for release and runs no
+// script. The engine lets go of the slot at the next frame, so a script object that is made and dropped queues no promise job, and a
+// shell that does this on every event still comes to rest. (A `FinalizationRegistry` is not an option: the engine runs each of its
+// callbacks as a promise job, and a job left at the end of a frame is a frame due at once.)
 //
 // One library object is one script object: `live` maps the identity of each object the script holds (`native.key`) to its script object,
 // so an object handed over twice is the same script object both times and `===`, `indexOf` and a `Map` key work on it. The second
-// delivery's reference is released at once, since the script object already holds one. An engine without weak references gets a new
-// script object each time.
-const finalizer =
-  typeof FinalizationRegistry === "function"
-    ? new FinalizationRegistry(({ slot, key }) => {
-        try {
-          native.release(slot);
-        } finally {
-          // A slot whose object ended already still leaves the registry; a newer script object filed under the key stays.
-          if (key !== undefined && live.get(key)?.deref() === undefined) {
-            live.delete(key);
-          }
-        }
-      })
-    : undefined;
-const live = finalizer !== undefined && typeof WeakRef === "function" ? new Map() : undefined;
+// delivery's reference is released at once, since the script object already holds one. The entry of an object that was collected is
+// dropped when its identity is next handed over, or when the map has doubled since it was last swept.
+const live = new Map();
+const GUARD = Symbol("gnoblin.guard");
+let sweepAt = 256;
+
+/** Drops the entries of `live` whose script object was collected. */
+function sweep() {
+  for (const [key, ref] of live) {
+    if (ref.deref() === undefined) {
+      live.delete(key);
+    }
+  }
+  sweepAt = Math.max(256, live.size * 2);
+}
 
 /** The script object that already holds the object of `slot`, which then lets `slot` go; or none, with the key to file it under. */
 function held(slot) {
-  if (live === undefined) {
-    return { key: undefined };
-  }
   const key = native.key(slot);
   const found = live.get(key)?.deref();
   if (found !== undefined) {
     native.release(slot);
+  } else {
+    live.delete(key);
   }
   return { found, key };
 }
 
 /** Makes `instance` hold `slot` filed under `key`, and drop it when the instance is collected. */
 function hold(instance, slot, key) {
-  if (key !== undefined) {
-    live.set(key, new WeakRef(instance));
+  if (live.size >= sweepAt) {
+    sweep();
   }
+  live.set(key, new WeakRef(instance));
   instance[HANDLE] = slot;
-  if (finalizer !== undefined) {
-    finalizer.register(instance, { slot, key });
-  }
+  instance[GUARD] = native.guard(slot);
   return instance;
 }
 

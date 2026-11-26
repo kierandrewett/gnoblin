@@ -337,13 +337,21 @@ that field holds (`shader.source`).
 The wire carries the family's record and nothing else, so a variant adds no class to the object table and no byte to the encoding of a
 record. A variant's name is not a class of the namespace, and its surface is in the module's lock (`variant` and `variant_field` lines).
 
-An object is held by a reference that ends when the script's last reference goes (a `FinalizationRegistry` in JavaScript, the dealloc of
-the handle in Python, queued to the shell thread): the library's object lives on until `destroy()`, its parent's end or the generation's.
+A script's reference to a library object ends when the script's last reference goes. The library's object lives on until `destroy()`,
+its parent's end or the generation's end. How each language gives the reference back:
+
+- JavaScript: each script object holds a native guard. When the engine frees it, the guard files the slot, and the slot goes back to the
+  library at the end of the frame.
+- Python: the handle's dealloc queues the release to the shell thread.
+
+The release is never a script callback. The engine runs each `FinalizationRegistry` callback as a promise job, and a job left at the end
+of a frame makes the next frame due at once, so a shell that reads and drops objects on every event would never rest.
 
 One library object is one script object in each language, so a shell can compare objects and use them as keys:
 
 - JavaScript keeps a `WeakRef` to the script object of each library object it holds, keyed by the object's namespace and handle. A second
-  delivery answers that script object and releases the reference it carried.
+  delivery answers that script object and releases the reference it carried; the entry of a collected object is dropped when its identity is
+  handed over again, and by a sweep when the map has doubled.
 - Python files each object in a `weakref.WeakValueDictionary`, keyed by namespace, generation and handle, with the same effect.
 - Rust's handle types implement `PartialEq`, `Eq` and `Hash` by the object they hold, so two values of one object are equal.
 

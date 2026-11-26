@@ -555,7 +555,8 @@ impl JsShell {
         let mut diagnostics = Vec::new();
         if !self.legacy() {
             // The core ends what a generation of the native library holds (its claims, its drags, its dialogs) when the
-            // generation closes; there is nothing of the engine's to give back.
+            // generation closes; there is nothing of the engine's to give back but the references of the objects the script dropped.
+            self.generation.run_safe_points();
             self.generation.flush_console();
             return Ok(JsFrame { diagnostics });
         }
@@ -576,6 +577,7 @@ impl JsShell {
         })?;
         self.idle.retire(&holders);
         self.collect_reports(&mut diagnostics)?;
+        self.generation.run_safe_points();
         self.generation.flush_console();
         Ok(JsFrame { diagnostics })
     }
@@ -697,7 +699,7 @@ fn install_host(
         if legacy {
             bindings::install(ctx, state)?;
         }
-        let ids = crate::natives::ScriptIds::new(state);
+        let ids = crate::natives::ScriptIds::new(state, generation.safe_points());
         for native in &config.natives {
             native.install(ctx, &ids)?;
         }
