@@ -1,5 +1,6 @@
 //! The operations of the protocol, on a [`Library`]: what each function of `GnoblinObjectApi` does once its arguments are read.
 
+use std::any::Any;
 use std::cell::RefCell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
@@ -59,6 +60,23 @@ impl Library {
             class: entry.class,
             state: Rc::clone(&entry.state),
         })
+    }
+
+    /// Runs `work` on the native state of an object of `class`, which `state` holds, for the length of one call about the object.
+    ///
+    /// A class with a state is borrowed for the whole call, and a second call about the same object while the first runs is refused with
+    /// `E_BUSY`: it would be a second `&mut` to a state the first may have half changed. A class registered with `()` for state has none
+    /// to protect (`ClassImpl::stateless`), so the call takes no borrow and gets a `&mut ()` of its own. What runs inside the call may then
+    /// call the same object again, which is how the std library's `request_transition` runs the shell's callback and lets it read
+    /// `gnoblin.workspaces`, another member of the object the call is about.
+    fn with_native<R>(&self, class: ClassId, state: &State, work: impl FnOnce(&mut dyn Any) -> Res<R>) -> Res<R> {
+        if self.classes[class as usize - 1].stateless {
+            return work(&mut ());
+        }
+        let mut guard = state
+            .try_borrow_mut()
+            .map_err(|_| Fail::new(abi::E_BUSY, "the object is in use by a call that is running"))?;
+        work(&mut **guard)
     }
 
     /// The id of the class `name`.
@@ -410,12 +428,10 @@ impl Library {
         let read = imp.get[member as usize - 1].as_ref().ok_or_else(|| {
             Fail::unsupported(format!("`{}` is in the catalog and not implemented yet", property.name))
         })?;
-        let mut guard = target
-            .state
-            .try_borrow_mut()
-            .map_err(|_| Fail::new(abi::E_BUSY, "the object is in use by a call that is running"))?;
         let mut cx = Cx::new(self, &st, obj, target.class);
-        let value = guarded(property.name, || read(&mut **guard, &mut cx))?;
+        let value = self.with_native(target.class, &target.state, |native| {
+            guarded(property.name, || read(native, &mut cx))
+        })?;
         self.tell_tracker(obj, target.class, member);
         Ok(value)
     }
@@ -502,16 +518,13 @@ impl Library {
             ))
         })?;
         let state = self.target(st, obj)?.state;
-        {
-            let mut guard = state
-                .try_borrow_mut()
-                .map_err(|_| Fail::new(abi::E_BUSY, "the object is in use by a call that is running"))?;
-            let mut cx = Cx::new(self, st, obj, class);
-            if let Some(timing) = timing {
-                cx = cx.with_timing(timing);
-            }
-            guarded(property.name, || write(&mut **guard, &mut cx, value))?;
+        let mut cx = Cx::new(self, st, obj, class);
+        if let Some(timing) = timing {
+            cx = cx.with_timing(timing);
         }
+        self.with_native(class, &state, |native| {
+            guarded(property.name, || write(native, &mut cx, value))
+        })?;
         self.queue_changed(st, obj, member);
         Ok(())
     }
@@ -542,14 +555,10 @@ impl Library {
                 def.name, method.name
             ))
         })?;
-        let answer = {
-            let mut guard = target
-                .state
-                .try_borrow_mut()
-                .map_err(|_| Fail::new(abi::E_BUSY, "the object is in use by a call that is running"))?;
-            let mut cx = Cx::new(self, &st, obj, target.class);
-            guarded(method.name, || run(&mut **guard, &mut cx, &args))?
-        };
+        let mut cx = Cx::new(self, &st, obj, target.class);
+        let answer = self.with_native(target.class, &target.state, |native| {
+            guarded(method.name, || run(native, &mut cx, &args))
+        })?;
         args.iter().for_each(Val::adopt_closures);
         check_answer(def.name, method, &answer)?;
         Ok(answer)

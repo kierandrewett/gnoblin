@@ -220,6 +220,8 @@ fn probe_catalog() -> &'static CatalogDef {
                 member("dark", abi::MEMBER_VALUE, 0, none, vec![]),
             ],
         ),
+        relay_class("relay"),
+        relay_class("vault"),
     ];
     leak(CatalogDef {
         namespace: "test.probe",
@@ -370,6 +372,7 @@ fn build_probe() -> Library {
             });
             Ok(Val::None)
         });
+    register_relays(&mut builder);
     builder.finish(hooks())
 }
 
@@ -1251,4 +1254,232 @@ fn a_refused_write_and_a_gone_object_carry_their_codes() {
     assert_eq!(refused.code(), ErrorCode::ReadOnly);
     assert_eq!(stale_read(&PROBE_API).code(), ErrorCode::NotFound);
     assert_eq!(api.class("nothing").unwrap_err().code(), ErrorCode::NotFound);
+}
+
+// ---- a call that runs a closure which calls back into the object the call is about -----------------------------------------------
+//
+// Written before the fix, from the failure in the shell log of `gnoblin.requestTransition` (`GnoblinAugment.workspaces: the object is in
+// use by a call that is running`):
+//
+// 1. The server holds the native state of the object a call is about (`RefCell::try_borrow_mut`) for the whole implementation call.
+// 2. A method that runs the caller's closure inside the call (the std library's `request_transition` runs the shell's `work`) therefore
+//    cannot let that closure read a getter of the same object: the getter finds the borrow taken and answers `E_BUSY`.
+// 3. A class registered with `()` for state has nothing the borrow protects, so it must not be refused; a class with state still is, and
+//    that refusal is kept (the closure is told `E_BUSY`; the call that holds the state goes on).
+//
+// `relay` (state `()`) and `vault` (a state) have the same members, and each calls a closure of the caller's from a method (`run`), a
+// setter (`hook`, which runs the closure it is given at once and keeps it) and a getter (`echo`, which runs the kept one).
+
+/// What `relay` keeps for its one object: a class with no state keeps it where it can, and a test runs on a thread of its own.
+#[derive(Default)]
+struct RelayKept {
+    level: Cell<i64>,
+    hook: RefCell<Option<Rc<dyn Callable>>>,
+}
+
+thread_local! {
+    static RELAY_KEPT: RelayKept = RelayKept::default();
+}
+
+/// A class of the members `relay` and `vault` share.
+fn relay_class(name: &'static str) -> ClassDef {
+    let int = ty(abi::VALUE_INT, "");
+    let (p, m) = (abi::MEMBER_PROPERTY, abi::MEMBER_METHOD);
+    class(
+        name,
+        abi::CLASS_HANDLE,
+        "",
+        0,
+        vec![
+            member("level", p, 0, int, vec![]),
+            member("hook", p, abi::MEMBER_CALLBACK, ty(abi::VALUE_CLOSURE, "tick"), vec![]),
+            member("echo", p, abi::MEMBER_READONLY, int, vec![]),
+            member("run", m, 0, int, vec![("task", ty(abi::VALUE_CLOSURE, "tick"))]),
+        ],
+    )
+}
+
+/// What `vault` holds: a level and the closure `hook` was given.
+#[derive(Default)]
+struct Vault {
+    level: i64,
+    hook: Option<Rc<dyn Callable>>,
+}
+
+/// Runs the closure kept as `hook`, if there is one, for `echo`: its answer, or zero.
+fn echoed(hook: Option<Rc<dyn Callable>>) -> Result<Val, Fail> {
+    hook.map_or(Ok(Val::Int(0)), |hook| hook.call(0, &[Val::Int(2)]))
+}
+
+fn register_relays(builder: &mut Builder) {
+    let _ = builder
+        .class::<()>("relay")
+        .ctor(|_cx, _inits| Ok(()))
+        .get("level", |_, _| Ok(Val::Int(RELAY_KEPT.with(|kept| kept.level.get()))))
+        .set("level", |_, _, value| {
+            let level = value.int()?;
+            RELAY_KEPT.with(|kept| kept.level.set(level));
+            Ok(())
+        })
+        .get("hook", |_, _| {
+            Ok(RELAY_KEPT
+                .with(|kept| kept.hook.borrow().clone())
+                .map_or(Val::None, Val::Closure))
+        })
+        .set("hook", |_, _, value| {
+            let hook = Rc::clone(value.closure()?);
+            RELAY_KEPT.with(|kept| *kept.hook.borrow_mut() = Some(Rc::clone(&hook)));
+            hook.call(0, &[Val::Int(1)]).map(drop)
+        })
+        .get("echo", |_, _| {
+            echoed(RELAY_KEPT.with(|kept| kept.hook.borrow().clone()))
+        })
+        .method("run", |_, _, args| args[0].closure()?.call(0, &[Val::Int(3)]));
+    let _ = builder
+        .class::<Vault>("vault")
+        .ctor(|_cx, _inits| Ok(Vault::default()))
+        .get("level", |s, _| Ok(Val::Int(s.level)))
+        .set("level", |s, _, value| {
+            s.level = value.int()?;
+            Ok(())
+        })
+        .get("hook", |s, _| Ok(s.hook.clone().map_or(Val::None, Val::Closure)))
+        .set("hook", |s, _, value| {
+            let hook = Rc::clone(value.closure()?);
+            s.hook = Some(Rc::clone(&hook));
+            hook.call(0, &[Val::Int(1)]).map(drop)
+        })
+        .get("echo", |s, _| echoed(s.hook.clone()))
+        .method("run", |_, _, args| args[0].closure()?.call(0, &[Val::Int(3)]));
+}
+
+/// A new object of `relay` or `vault` with `level` 40, and the members the closures of these tests call.
+struct Relay {
+    api: Api,
+    obj: u64,
+    level: u32,
+    hook: u32,
+    echo: u32,
+    run: u32,
+}
+
+fn relay_of(class: &str) -> Relay {
+    let api = probe();
+    let class = api.class(class).unwrap();
+    let level = api.member(class, abi::MEMBER_PROPERTY, "level").unwrap();
+    let obj = api.create(class, &[(level, Val::Int(40))]).unwrap();
+    Relay {
+        api,
+        obj,
+        level,
+        hook: api.member(class, abi::MEMBER_PROPERTY, "hook").unwrap(),
+        echo: api.member(class, abi::MEMBER_PROPERTY, "echo").unwrap(),
+        run: api.member(class, abi::MEMBER_METHOD, "run").unwrap(),
+    }
+}
+
+#[test]
+fn a_method_of_a_class_with_no_state_runs_a_closure_that_reads_writes_and_calls_its_own_object() {
+    let Relay {
+        api, obj, level, run, ..
+    } = relay_of("relay");
+    let task = closure(move |_, args| {
+        let seen = api.get(obj, level)?.int()?;
+        api.set(obj, level, &Val::Int(seen + args[0].int()?))?;
+        // The closure calls the same method again from inside the call that runs it.
+        let doubled = api
+            .call(
+                obj,
+                run,
+                &[Val::Closure(closure(|_, args| Ok(Val::Int(args[0].int()? * 2))))],
+            )?
+            .int()?;
+        Ok(Val::Int(seen + doubled))
+    });
+    let answer = api.call(obj, run, &[Val::Closure(task)]).unwrap();
+    assert_eq!(
+        answer.int().unwrap(),
+        40 + 6,
+        "the closure read the level and called `run` again"
+    );
+    assert_eq!(api.get(obj, level).unwrap().int().unwrap(), 43, "and wrote it");
+}
+
+#[test]
+fn a_setter_of_a_class_with_no_state_runs_a_closure_that_reads_and_writes_its_own_object() {
+    let Relay {
+        api, obj, level, hook, ..
+    } = relay_of("relay");
+    let seen = Rc::new(Cell::new(0));
+    let told = Rc::clone(&seen);
+    let task = closure(move |_, args| {
+        told.set(api.get(obj, level)?.int()?);
+        api.set(obj, level, &Val::Int(100 + args[0].int()?))?;
+        Ok(Val::None)
+    });
+    api.set(obj, hook, &Val::Closure(task)).unwrap();
+    assert_eq!(seen.get(), 40, "the closure read the object the setter was running on");
+    assert_eq!(api.get(obj, level).unwrap().int().unwrap(), 101, "and wrote it");
+}
+
+#[test]
+fn a_getter_of_a_class_with_no_state_runs_a_closure_that_reads_its_own_object() {
+    let Relay {
+        api,
+        obj,
+        level,
+        hook,
+        echo,
+        ..
+    } = relay_of("relay");
+    let task = closure(move |_, args| Ok(Val::Int(api.get(obj, level)?.int()? + args[0].int()?)));
+    api.set(obj, hook, &Val::Closure(task)).unwrap();
+    assert_eq!(
+        api.get(obj, echo).unwrap().int().unwrap(),
+        42,
+        "the getter's closure read a getter of the object that is being read"
+    );
+}
+
+#[test]
+fn a_class_with_state_still_refuses_a_closure_that_calls_its_own_object_and_the_call_goes_on() {
+    let Relay {
+        api,
+        obj,
+        level,
+        hook,
+        echo,
+        run,
+    } = relay_of("vault");
+    let heard = Rc::new(RefCell::new(Vec::new()));
+    let log = Rc::clone(&heard);
+    // What the closure sees of its own object: a read and a write, each refused while the call that runs it holds the state.
+    let task = closure(move |_, _| {
+        let codes: Vec<i32> = [api.get(obj, level).map(drop), api.set(obj, level, &Val::Int(1))]
+            .into_iter()
+            .map(|result| result.err().map_or(0, |fail| fail.code))
+            .collect();
+        log.borrow_mut().push(codes);
+        Ok(Val::Int(7))
+    });
+    assert_eq!(
+        api.call(obj, run, &[Val::Closure(Rc::clone(&task))])
+            .unwrap()
+            .int()
+            .unwrap(),
+        7,
+        "the call that holds the state is not harmed by the refusal"
+    );
+    api.set(obj, hook, &Val::Closure(Rc::clone(&task))).unwrap();
+    assert_eq!(api.get(obj, echo).unwrap().int().unwrap(), 7);
+    assert_eq!(
+        *heard.borrow(),
+        [[abi::E_BUSY; 2]; 3],
+        "a method, a setter and a getter each refuse the closure's calls on the object they hold"
+    );
+    assert_eq!(
+        api.get(obj, level).unwrap().int().unwrap(),
+        40,
+        "the refused write changed nothing, and the object is free again when the call ends"
+    );
 }
