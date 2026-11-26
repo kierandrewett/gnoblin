@@ -997,9 +997,9 @@ impl @Ids@ {
                 };
                 let _ = write!(
                     methods,
-                    "    /// This object as a `{base}`, to pass where a `{base}` is taken.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn as_{}(&self) -> go::Res<{}> {{\n        go::typed::FromVal::from_val(&self.objects, &self.object.val())\n    }}\n\n",
-                    snake(base),
-                    class_name(base_object)
+                    "    /// This object as a `{base}`, to pass where a `{base}` is taken. The result holds a reference of its own, so dropping it\n    /// leaves this value and the object as they were.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn as_{snake}(&self) -> go::Res<{class}> {{\n        self.objects.api.retain(self.object.handle()).map_err(|fail| go::typed::at_class(fail, {name:?}, \"as_{snake}\"))?;\n        go::typed::FromVal::from_val(&self.objects, &self.object.val())\n    }}\n\n",
+                    snake = snake(base),
+                    class = class_name(base_object),
                 );
                 above = base_object.base.as_deref();
             }
