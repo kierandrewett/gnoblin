@@ -150,7 +150,7 @@ use smithay::backend::renderer::glow::GlowRenderer;
 use smithay::backend::renderer::{ImportMem, ImportMemWl};
 use smithay::utils::{Physical, Rectangle};
 
-use effects::Paint;
+use effects::EffectLayer;
 use gnoblin_render::{Mat4, Pass, ShaderPass};
 use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 
@@ -1258,7 +1258,7 @@ impl Painter<'_> {
         let filter = effects::filter_of(effects);
         // A filter that blurs is drawn as a picture of the layer's pieces; a grade is put on each piece as it is drawn.
         let picture = flat && filter.blur > 0.0;
-        let paint = Paint {
+        let paint = EffectLayer {
             quad,
             shape,
             radius,

@@ -121,7 +121,7 @@ fn coverage(distance: f32) -> f32 {
 
 /// A rounded rectangle on the output, the shape a layer's corners, borders and shadows follow.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Shape {
+pub(crate) struct RoundedShape {
     x: f32,
     y: f32,
     width: f32,
@@ -129,7 +129,7 @@ pub(crate) struct Shape {
     radius: f32,
 }
 
-impl Shape {
+impl RoundedShape {
     /// The rounded rectangle `rect` with corner `radius`, both physical.
     pub(crate) fn new(rect: Area, radius: f32) -> Self {
         Self {
@@ -179,7 +179,7 @@ impl Shape {
         )
     }
 
-    /// The signed distance of a pixel whose offsets along the axes are `across` and `down` (see [`Shape::axes`]).
+    /// The signed distance of a pixel whose offsets along the axes are `across` and `down` (see [`RoundedShape::axes`]).
     fn distance_at(&self, across: f32, down: f32) -> f32 {
         let beyond = if across > 0.0 && down > 0.0 {
             across.hypot(down)
@@ -205,29 +205,29 @@ fn premultiplied(colour: Color, alpha: f32) -> [f32; 4] {
 
 /// A shadow cast by a shape: the drop shadow outside it, or the inset one inside it.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Cast {
+pub(crate) struct ShadowCast {
     /// Where the shadow is drawn: the pixels outside it are left alone.
     pub(crate) quad: Area,
     /// The straight colour and the alpha the shadow starts from at full strength.
     colour: Color,
     alpha: f32,
     blur: f32,
-    kind: Kind,
+    kind: CastKind,
 }
 
 #[derive(Clone, Copy, Debug)]
-enum Kind {
+enum CastKind {
     /// The shape the shadow is cast from: the layer's, moved and grown, with the layer's own corner radius.
-    Outer(Shape),
+    Outer(RoundedShape),
     /// The hole the shadow is cast from, relative to the layer's shape, which is the quad.
     Inset {
         offset: [f32; 2],
         spread: f32,
-        shape: Shape,
+        shape: RoundedShape,
     },
 }
 
-impl Cast {
+impl ShadowCast {
     /// The drop shadow `held` casts from `base`, the rectangle it follows, with corner `radius`.
     ///
     /// The geometry is the GLES renderer's: the quad is `base` moved by the offset and grown by the spread and by the
@@ -252,7 +252,7 @@ impl Cast {
             ),
             grow,
         );
-        let shape = Shape {
+        let shape = RoundedShape {
             x: quad.loc.x as f32 + blur,
             y: quad.loc.y as f32 + blur,
             width: (quad.size.w as f32 - blur * 2.0).max(1.0),
@@ -264,7 +264,7 @@ impl Cast {
             colour: held.color,
             alpha: held.color.a * held.opacity * fade,
             blur,
-            kind: Kind::Outer(shape),
+            kind: CastKind::Outer(shape),
         }
     }
 
@@ -284,10 +284,10 @@ impl Cast {
             colour: held.color,
             alpha: held.color.a * held.opacity * fade,
             blur: (held.blur * factor).clamp(1.0, MAX_RADIUS),
-            kind: Kind::Inset {
+            kind: CastKind::Inset {
                 offset: [held.offset.x as f32 * factor, held.offset.y as f32 * factor],
                 spread: held.spread * factor,
-                shape: Shape::new(base, radius),
+                shape: RoundedShape::new(base, radius),
             },
         }
     }
@@ -295,8 +295,8 @@ impl Cast {
     /// The share of the shadow's colour at the centre of pixel (`x`, `y`).
     fn strength(&self, x: i32, y: i32) -> f32 {
         match self.kind {
-            Kind::Outer(shape) => 1.0 - smoothstep(0.0, self.blur, shape.distance(x, y)),
-            Kind::Inset { offset, spread, shape } => {
+            CastKind::Outer(shape) => 1.0 - smoothstep(0.0, self.blur, shape.distance(x, y)),
+            CastKind::Inset { offset, spread, shape } => {
                 let point = (x as f32 + 0.5 - shape.x, y as f32 + 0.5 - shape.y);
                 let hole = (
                     (shape.width - spread * 2.0).max(1.0),
@@ -320,7 +320,7 @@ impl Cast {
             return;
         };
         match self.kind {
-            Kind::Outer(shape) => {
+            CastKind::Outer(shape) => {
                 // Most pixels of a shadow are whole shadow or none, so they take the two cheap branches.
                 let (across, down) = shape.axes(area);
                 let whole = premultiplied(self.colour, self.alpha);
@@ -341,7 +341,7 @@ impl Cast {
                     }
                 }
             }
-            Kind::Inset { .. } => {
+            CastKind::Inset { .. } => {
                 for y in area.loc.y..area.loc.y + area.size.h {
                     for x in area.loc.x..area.loc.x + area.size.w {
                         let alpha = self.alpha * self.strength(x, y);
@@ -376,7 +376,7 @@ pub(crate) fn fill(patch: &mut Patch, rect: Area, colour: Color, alpha: f32) {
 /// A border: a ring along the edge of a shape, drawn over the layer's own pixels (`border.wgsl`).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Stroke {
-    shape: Shape,
+    shape: RoundedShape,
     /// The ring is the band of points whose signed distance to the shape lies from `near` to `far`: positive outside
     /// the shape, negative inside it.
     near: f32,
@@ -402,7 +402,7 @@ impl Stroke {
         let reach = if held.inset { -offset } else { offset + width };
         let grow = reach.max(0.0).ceil() as i32 + 1;
         Self {
-            shape: Shape::new(outline, radius),
+            shape: RoundedShape::new(outline, radius),
             near,
             far,
             colour: Color::new(
@@ -485,7 +485,7 @@ pub(crate) fn ring(quad: Area, outline: Area, reach: i32) -> Vec<Area> {
 ///
 /// A rounded layer is drawn square and this puts the pixels outside its curve back, with the edge anti-aliased; a
 /// layer with a backdrop blur is drawn as one group and this fades the group over the frame by the layer's opacity.
-pub(crate) fn fade(drawn: &mut Patch, before: &Patch, shape: Shape, fade: f32) {
+pub(crate) fn fade(drawn: &mut Patch, before: &Patch, shape: RoundedShape, fade: f32) {
     debug_assert_eq!(drawn.rect, before.rect, "the pixels before and after are one rectangle");
     let rect = drawn.rect;
     for y in rect.loc.y..rect.loc.y + rect.size.h {
@@ -590,7 +590,7 @@ mod tests {
     fn a_shadow_falls_off_with_the_shaders_smoothstep() {
         let mut picture = patch(area(0, 0, 48, 48), [255, 255, 255, 255]);
         // A 16 pixel box at (16, 16), a blur of 8 and no offset.
-        let cast = Cast::outer(
+        let cast = ShadowCast::outer(
             &shadow(8.0, 0.0, (0.0, 0.0)),
             area(16, 16, 16, 16),
             0.0,
@@ -615,7 +615,7 @@ mod tests {
     #[test]
     fn a_shadow_is_smooth_not_stepped() {
         let mut picture = patch(area(0, 0, 64, 8), [255, 255, 255, 255]);
-        let cast = Cast::outer(
+        let cast = ShadowCast::outer(
             &shadow(24.0, 0.0, (0.0, 0.0)),
             area(32, 0, 32, 8),
             0.0,
@@ -639,7 +639,7 @@ mod tests {
     fn a_shadow_takes_the_layers_opacity() {
         let drawn = |fade: f32| {
             let mut picture = patch(area(0, 0, 48, 48), [255, 255, 255, 255]);
-            Cast::outer(
+            ShadowCast::outer(
                 &shadow(8.0, 0.0, (0.0, 0.0)),
                 area(16, 16, 16, 16),
                 0.0,
@@ -660,7 +660,7 @@ mod tests {
     #[test]
     fn a_shadow_offset_and_spread_move_and_grow_its_shape() {
         let mut picture = patch(area(0, 0, 48, 48), [255, 255, 255, 255]);
-        let cast = Cast::outer(
+        let cast = ShadowCast::outer(
             &shadow(1.0, 2.0, (4.0, 0.0)),
             area(16, 16, 16, 16),
             0.0,
@@ -678,7 +678,7 @@ mod tests {
     #[test]
     fn an_inset_shadow_is_full_at_the_edge_and_gone_blur_pixels_inside() {
         let mut picture = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
-        let cast = Cast::inset(
+        let cast = ShadowCast::inset(
             &shadow(6.0, 0.0, (0.0, 0.0)),
             area(8, 8, 16, 16),
             0.0,
@@ -711,7 +711,7 @@ mod tests {
     fn an_inset_shadows_offset_moves_the_hole_and_its_spread_shrinks_it() {
         let shift = |offset: (f32, f32), spread: f32| {
             let mut picture = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
-            Cast::inset(
+            ShadowCast::inset(
                 &shadow(2.0, spread, offset),
                 area(8, 8, 16, 16),
                 0.0,
@@ -750,7 +750,7 @@ mod tests {
     #[test]
     fn an_inset_shadow_fades_with_its_layer() {
         let mut picture = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
-        Cast::inset(
+        ShadowCast::inset(
             &shadow(6.0, 0.0, (0.0, 0.0)),
             area(8, 8, 16, 16),
             0.0,
@@ -886,7 +886,7 @@ mod tests {
     fn fading_puts_back_what_a_rounded_corner_hides() {
         let before = patch(area(0, 0, 16, 16), [0, 0, 255, 255]);
         let mut drawn = patch(area(0, 0, 16, 16), [255, 0, 0, 255]);
-        fade(&mut drawn, &before, Shape::new(area(0, 0, 16, 16), 8.0), 1.0);
+        fade(&mut drawn, &before, RoundedShape::new(area(0, 0, 16, 16), 8.0), 1.0);
         assert_eq!(pixel(&drawn, 0, 0), [0, 0, 255, 255], "the corner is what was there");
         assert_eq!(pixel(&drawn, 8, 8), [255, 0, 0, 255], "the middle is the layer");
         let edge = pixel(&drawn, 2, 2);
@@ -900,7 +900,7 @@ mod tests {
     fn fading_by_an_opacity_mixes_the_whole_rectangle() {
         let before = patch(area(0, 0, 8, 8), [0, 0, 0, 255]);
         let mut drawn = patch(area(0, 0, 8, 8), [200, 100, 0, 255]);
-        fade(&mut drawn, &before, Shape::new(area(0, 0, 8, 8), 0.0), 0.5);
+        fade(&mut drawn, &before, RoundedShape::new(area(0, 0, 8, 8), 0.0), 0.5);
         assert_eq!(pixel(&drawn, 4, 4), [100, 50, 0, 255]);
     }
 }

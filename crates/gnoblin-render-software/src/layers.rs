@@ -46,11 +46,11 @@ use gnoblin_render_frame::image::READBACK_FORMAT;
 use gnoblin_types::{Color, Scale};
 
 use crate::blur::Blur;
-use crate::raster::{self, Area, Cast, MAX_RADIUS, Patch, Shape, Stroke};
+use crate::raster::{self, Area, MAX_RADIUS, Patch, RoundedShape, ShadowCast, Stroke};
 use crate::{colour, failed, layer_damage, log, source, tinted};
 
 /// The output buffer and what a layer needs to draw into it.
-pub(crate) struct Canvas<'a, 'b> {
+pub(crate) struct LayerCanvas<'a, 'b> {
     pub(crate) renderer: &'a mut PixmanRenderer,
     pub(crate) target: &'a mut PixmanTarget<'b>,
     pub(crate) output: PhysicalSize<i32, Physical>,
@@ -59,7 +59,7 @@ pub(crate) struct Canvas<'a, 'b> {
     pub(crate) scale: Scale,
 }
 
-impl Canvas<'_, '_> {
+impl LayerCanvas<'_, '_> {
     fn bounds(&self) -> Area {
         Rectangle::from_size(self.output)
     }
@@ -176,7 +176,7 @@ fn corner_squares(outline: Area, radius: f32) -> [Area; 4] {
 /// A filter's picture is drawn by `paint_parts` again, on a canvas of its own, from parts that are the layer's moved
 /// into the picture's coordinates, so the pieces of a filtered layer are drawn by the code that draws any layer.
 #[derive(Clone, Copy)]
-struct Parts<'a> {
+struct LayerGeometry<'a> {
     dst: Area,
     outline: Area,
     radius: f32,
@@ -253,7 +253,7 @@ const MAX_PICTURE: i32 = 16_384;
 /// `texture` is the layer's imported pixels, which a solid layer has none of. `clipped` is scratch for the damage a
 /// draw is clipped to, reused across layers.
 pub(crate) fn paint(
-    canvas: &mut Canvas<'_, '_>,
+    canvas: &mut LayerCanvas<'_, '_>,
     layer: &Layer,
     texture: Option<&PixmanTexture>,
     clipped: &mut Vec<Area>,
@@ -283,7 +283,7 @@ pub(crate) fn paint(
     // The rectangle the corner radius rounds, a shadow that asks for the frame follows and a border runs along: the
     // layer's silhouette when it is one part of a larger frame, else its own rectangle.
     let outline = silhouette.map_or(dst, |area| physical_rect(area, scale));
-    let parts = Parts {
+    let parts = LayerGeometry {
         dst,
         outline,
         radius: corner_radius(logical_radius, scale).min(MAX_RADIUS),
@@ -296,13 +296,13 @@ pub(crate) fn paint(
 }
 
 fn paint_parts(
-    canvas: &mut Canvas<'_, '_>,
-    parts: &Parts<'_>,
+    canvas: &mut LayerCanvas<'_, '_>,
+    parts: &LayerGeometry<'_>,
     layer: &Layer,
     texture: Option<&PixmanTexture>,
     clipped: &mut Vec<Area>,
 ) -> Result<(), RenderError> {
-    let Parts {
+    let LayerGeometry {
         dst,
         outline,
         radius,
@@ -311,7 +311,7 @@ fn paint_parts(
         opacity,
         flat,
     } = *parts;
-    let shape = Shape::new(outline, radius);
+    let shape = RoundedShape::new(outline, radius);
 
     // A layer placed in depth is drawn flat here, without the effects: they are not drawn on a node in 3D.
     let blurs = |pass: &&Pass| matches!(pass, Pass::Blur(held) if held.radius > 0.0);
@@ -393,8 +393,8 @@ fn paint_parts(
 /// and is not clipped to the layer's corners, so the blur spills past the edge. Its extent is what the pieces cover grown
 /// by the blur's reach. It does not depend on the frame's damage; only what the composition writes does.
 fn filter_picture(
-    canvas: &mut Canvas<'_, '_>,
-    parts: &Parts<'_>,
+    canvas: &mut LayerCanvas<'_, '_>,
+    parts: &LayerGeometry<'_>,
     layer: &Layer,
     texture: Option<&PixmanTexture>,
     filter: &FilterParams,
@@ -408,7 +408,7 @@ fn filter_picture(
         match pass {
             Pass::Shadow(held) if !held.inset && held.opacity > 0.0 && held.color.a > 0.0 => {
                 let base = if held.frame { parts.outline } else { parts.dst };
-                painted = painted.merge(Cast::outer(held, base, parts.radius, 1.0, scale).quad);
+                painted = painted.merge(ShadowCast::outer(held, base, parts.radius, 1.0, scale).quad);
             }
             Pass::Border(held) if held.width > 0.0 && held.color.a > 0.0 => {
                 painted = painted.merge(Stroke::new(held, parts.outline, parts.radius, Color::WHITE, 1.0, scale).quad);
@@ -442,8 +442,8 @@ fn filter_picture(
 /// The pieces of a filtered layer, drawn over a transparent picture of `extent` pixels and read back, with the layer's
 /// own tint, opacity and grade left to the composition.
 fn draw_picture(
-    canvas: &mut Canvas<'_, '_>,
-    parts: &Parts<'_>,
+    canvas: &mut LayerCanvas<'_, '_>,
+    parts: &LayerGeometry<'_>,
     layer: &Layer,
     texture: Option<&PixmanTexture>,
     extent: Area,
@@ -470,7 +470,7 @@ fn draw_picture(
             effects.push(pass.clone()).map_err(failed)?;
         }
     }
-    let inner = Parts {
+    let inner = LayerGeometry {
         dst: moved(parts.dst),
         outline: moved(parts.outline),
         radius: parts.radius,
@@ -480,7 +480,7 @@ fn draw_picture(
         flat: true,
     };
     let damage = [whole];
-    let mut sub = Canvas {
+    let mut sub = LayerCanvas {
         renderer: &mut *canvas.renderer,
         target: &mut target,
         output: extent.size,
@@ -498,7 +498,7 @@ fn draw_picture(
 /// whose group is faded as a whole. A solid is graded by `grade` and multiplied by `tint`; a surface's texture is imported
 /// already graded and tinted, so only the tint's alpha is applied here.
 fn draw_own_pixels(
-    canvas: &mut Canvas<'_, '_>,
+    canvas: &mut LayerCanvas<'_, '_>,
     layer: &Layer,
     texture: Option<&PixmanTexture>,
     place: (Area, &[Area]),
@@ -541,7 +541,7 @@ fn draw_own_pixels(
 /// layer's tint and the grade each colour is drawn with, and both multiply an inset shadow's colour as they do on the
 /// GPU, whose inset pass takes no tint of its own.
 fn under_content(
-    canvas: &mut Canvas<'_, '_>,
+    canvas: &mut LayerCanvas<'_, '_>,
     effects: &Effects,
     place: (Area, Area),
     radius: f32,
@@ -573,7 +573,7 @@ fn under_content(
                     color: Color::new(color.r * tint.r, color.g * tint.g, color.b * tint.b, color.a * tint.a),
                     ..*held
                 };
-                Cast::inset(&held, dst, radius, alpha, canvas.scale).draw(&mut patch);
+                ShadowCast::inset(&held, dst, radius, alpha, canvas.scale).draw(&mut patch);
             }
             _ => {}
         }
@@ -585,7 +585,7 @@ fn under_content(
 /// the rectangle a shadow that asks for the frame follows; `opacity` is the layer's, which each shadow takes; `grade` is
 /// the filter's, which each shadow's colour is drawn with.
 fn shadows(
-    canvas: &mut Canvas<'_, '_>,
+    canvas: &mut LayerCanvas<'_, '_>,
     effects: &Effects,
     place: (Area, Area),
     radius: f32,
@@ -593,7 +593,7 @@ fn shadows(
     grade: Grade,
 ) -> Result<(), RenderError> {
     let (dst, outline) = place;
-    let casts: Vec<Cast> = effects
+    let casts: Vec<ShadowCast> = effects
         .passes()
         .iter()
         .filter_map(|pass| match pass {
@@ -602,7 +602,7 @@ fn shadows(
                     color: grade::apply(grade, held.color),
                     ..*held
                 };
-                Some(Cast::outer(
+                Some(ShadowCast::outer(
                     &graded,
                     if held.frame { outline } else { dst },
                     radius,
@@ -632,7 +632,12 @@ fn shadows(
 /// layer's edge are blurred with what lies beyond it, and writes only the layer's own damaged pixels. A blur with a
 /// `downscale` is a blur of the whole region the GLES renderer copies (the layer grown by every sweep's reach, clipped
 /// to the output), reduced and swept as that picture, and so reads all of it whatever the damage.
-fn blur_backdrop(canvas: &mut Canvas<'_, '_>, held: &BlurParams, need: Area, dst: Area) -> Result<(), RenderError> {
+fn blur_backdrop(
+    canvas: &mut LayerCanvas<'_, '_>,
+    held: &BlurParams,
+    need: Area,
+    dst: Area,
+) -> Result<(), RenderError> {
     let radius = (held.radius * canvas.scale.as_f64() as f32).clamp(1.0, MAX_RADIUS);
     let mut blur = Blur::new(
         radius,
@@ -669,7 +674,7 @@ fn blur_backdrop(canvas: &mut Canvas<'_, '_>, held: &BlurParams, need: Area, dst
 /// Draws the layer's borders over its pixels, a strip of the output at a time. `look` is the layer's tint and the grade
 /// each border's colour is drawn with.
 fn borders(
-    canvas: &mut Canvas<'_, '_>,
+    canvas: &mut LayerCanvas<'_, '_>,
     effects: &Effects,
     outline: Area,
     radius: f32,

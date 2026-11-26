@@ -479,7 +479,7 @@ impl Software {
                 draw_overlay_layer(renderer, &mut target, output, overlay, texture, scale, damage, clipped)?;
                 continue;
             }
-            let mut canvas = layers::Canvas {
+            let mut canvas = layers::LayerCanvas {
                 renderer,
                 target: &mut target,
                 output,

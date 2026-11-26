@@ -43,7 +43,7 @@ use crate::{MAX_RADIUS, Painter, Passes, Shaded, flipped_mapping, log};
 
 /// A layer, in the form each of its effects needs it.
 #[derive(Clone, Copy)]
-pub(crate) struct Paint<'a> {
+pub(crate) struct EffectLayer<'a> {
     /// The layer's own physical rectangle.
     pub(crate) quad: Rect,
     /// The shape the corner radius rounds, a background and an inset shadow fill and a border runs along: the layer's
@@ -256,7 +256,7 @@ impl Painter<'_> {
 
     /// Draws the layer's outer shadows behind it, in list order, at the layer's `opacity` as well as their own: opacity
     /// fades the whole element, its shadows included.
-    pub(crate) fn shadows(&mut self, paint: &Paint<'_>, opacity: f32) -> Result<(), RenderError> {
+    pub(crate) fn shadows(&mut self, paint: &EffectLayer<'_>, opacity: f32) -> Result<(), RenderError> {
         let factor = self.scale.as_f64() as f32;
         for pass in paint.effects.passes() {
             let Pass::Shadow(shadow) = pass else { continue };
@@ -282,7 +282,7 @@ impl Painter<'_> {
     }
 
     /// Fills the layer's shape with each background colour, in list order, below its content.
-    pub(crate) fn backgrounds(&mut self, paint: &Paint<'_>, opacity: f32) -> Result<(), RenderError> {
+    pub(crate) fn backgrounds(&mut self, paint: &EffectLayer<'_>, opacity: f32) -> Result<(), RenderError> {
         for pass in paint.effects.passes() {
             let Pass::Background { color } = pass else { continue };
             if color.a <= 0.0 {
@@ -303,7 +303,7 @@ impl Painter<'_> {
     /// inset shadow ignores `frame`: it follows the layer's own shape and never its silhouette.
     ///
     /// The layer's tint multiplies the colour here, on the CPU, because the inset pass carries no tint.
-    pub(crate) fn inset_shadows(&mut self, paint: &Paint<'_>, opacity: f32) -> Result<(), RenderError> {
+    pub(crate) fn inset_shadows(&mut self, paint: &EffectLayer<'_>, opacity: f32) -> Result<(), RenderError> {
         let factor = self.scale.as_f64() as f32;
         for pass in paint.effects.passes() {
             let Pass::Shadow(shadow) = pass else { continue };
@@ -340,7 +340,7 @@ impl Painter<'_> {
 
     /// Draws the borders along the layer's shape, in list order, over everything else. `opacity` is the layer's own, so
     /// a faded window fades its border with it.
-    pub(crate) fn borders(&mut self, paint: &Paint<'_>, opacity: f32) -> Result<(), RenderError> {
+    pub(crate) fn borders(&mut self, paint: &EffectLayer<'_>, opacity: f32) -> Result<(), RenderError> {
         let factor = self.scale.as_f64() as f32;
         for pass in paint.effects.passes() {
             let Pass::Border(border) = pass else { continue };
@@ -360,7 +360,7 @@ impl Painter<'_> {
 
     /// Draws the layer's own pixels (or its solid colour, or its shader passes' result) at `opacity`. `grouped` says the
     /// layer is drawn into its blur group, which the last shader pass binds.
-    pub(crate) fn content(&mut self, paint: &Paint<'_>, opacity: f32, grouped: bool) -> Result<(), RenderError> {
+    pub(crate) fn content(&mut self, paint: &EffectLayer<'_>, opacity: f32, grouped: bool) -> Result<(), RenderError> {
         if paint.ready.is_empty() {
             let mut uniforms = match paint.colour {
                 Some(colour) => {
@@ -485,7 +485,7 @@ impl Painter<'_> {
     /// of their own, the blur over that target, then the target over the frame at the layer's tint and opacity, graded.
     pub(crate) fn picture(
         &mut self,
-        paint: &Paint<'_>,
+        paint: &EffectLayer<'_>,
         filter: &FilterParams,
         opacity: f32,
     ) -> Result<(), RenderError> {
@@ -554,7 +554,7 @@ impl Painter<'_> {
     fn picture_into(
         &mut self,
         leased: &mut Vec<Framebuffer>,
-        paint: &Paint<'_>,
+        paint: &EffectLayer<'_>,
         filter: &FilterParams,
         opacity: f32,
         extent: Rect,
@@ -568,7 +568,7 @@ impl Painter<'_> {
         // The pieces, in the picture's own coordinates, with the identity tint, opacity and grade: those belong to the
         // composition, which treats the picture as one.
         let (dx, dy) = (-extent.x, -extent.y);
-        let local = Paint {
+        let local = EffectLayer {
             quad: shifted(paint.quad, dx, dy),
             shape: shifted(paint.shape, dx, dy),
             rounded_to: paint.rounded_to.map(|frame| shifted(frame, dx, dy)),
@@ -617,7 +617,7 @@ impl Painter<'_> {
     }
 
     /// Draws the pieces of a layer into the picture held as the canvas.
-    fn picture_pieces(&mut self, local: &Paint<'_>, size: Size) -> Result<(), RenderError> {
+    fn picture_pieces(&mut self, local: &EffectLayer<'_>, size: Size) -> Result<(), RenderError> {
         let area = Rect::from_size(size);
         let Self { device, canvas, .. } = self;
         let Some(canvas) = canvas.as_ref() else {

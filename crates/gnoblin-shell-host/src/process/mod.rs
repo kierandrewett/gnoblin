@@ -334,7 +334,7 @@ fn signal_group(pid: u32, signal: Signal) {
 }
 
 /// Owns `child` until it ends: enforces the timeout, then reports how it ended.
-fn wait_for(mut child: Child, reaped: &Mutex<bool>, timeout: Option<Duration>, readers: Readers) -> ProcessExit {
+fn wait_for(mut child: Child, reaped: &Mutex<bool>, timeout: Option<Duration>, readers: PipeReaders) -> ProcessExit {
     let started = Instant::now();
     let pid = child.id();
     let mut timed_out = false;
@@ -388,7 +388,7 @@ fn wait_for(mut child: Child, reaped: &Mutex<bool>, timeout: Option<Duration>, r
 }
 
 /// The threads that read a captured stream to its end.
-struct Readers {
+struct PipeReaders {
     stdout: Option<std::thread::JoinHandle<(Vec<u8>, bool)>>,
     stderr: Option<std::thread::JoinHandle<(Vec<u8>, bool)>>,
 }
@@ -518,7 +518,7 @@ impl Processes {
             });
         }
         let limit = usize::try_from(options.output_limit.unwrap_or(DEFAULT_OUTPUT_LIMIT)).unwrap_or(usize::MAX);
-        let readers = Readers {
+        let readers = PipeReaders {
             stdout: child
                 .stdout
                 .take()
