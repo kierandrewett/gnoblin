@@ -276,6 +276,12 @@ impl Session {
         self.slots.as_ref()
     }
 
+    /// Whether a generation other than `id` is staged: `id` is ending because a reload is committing, and the staged one takes over
+    /// next. A shutdown or a crash ends a generation with nothing staged.
+    pub(crate) fn staged_successor(&self, id: GenerationId) -> bool {
+        self.stage.as_ref().is_some_and(|mark| mark.generation != id)
+    }
+
     /// Installs where the shell's reports to the guardian go. Like the provider, it outlives [`Self::reset`].
     pub(crate) fn set_reports(&mut self, reports: Arc<dyn ShellReports>) {
         self.reports = Some(reports);

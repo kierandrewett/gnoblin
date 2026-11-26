@@ -69,7 +69,6 @@ pub(crate) fn new_context(module_path: &str, language: u32, reload_count: u32, i
 }
 
 /// The generation number of a context handle.
-#[cfg(test)]
 pub(crate) fn generation_of(ctx: GnoblinCtx) -> Option<u64> {
     decode(KIND_CTX, ctx)
 }
