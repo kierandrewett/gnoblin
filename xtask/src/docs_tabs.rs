@@ -21,7 +21,9 @@
 //!
 //! - the container holds fenced blocks and blank lines, nothing else, and starts and ends in the first column;
 //! - it holds exactly one block each of `typescript`, `python` and `rust`, in that order;
-//! - a fence may carry `skip="reason"`, which keeps the example on the page and out of the check; the reason is required.
+//! - a fence may carry `skip="reason"`, which keeps the example on the page and out of the check; the reason is required;
+//! - a TypeScript fence may carry `client` before its options: the example is a program that runs outside a shell, such as a bridge
+//!   client, so it is checked as a Node program with the Node declarations and without the shell's SDK declarations.
 
 use std::fmt;
 
@@ -44,6 +46,8 @@ pub struct Example {
     pub code: String,
     /// Why the example is not checked, when it is not.
     pub skip: Option<String>,
+    /// A TypeScript program that runs outside a shell (`client`), checked against the Node declarations.
+    pub client: bool,
 }
 
 /// A problem with the markup of a page.
@@ -60,21 +64,28 @@ impl fmt::Display for MarkupProblem {
     }
 }
 
-/// What the info string of a fence says after the language.
-fn parse_meta(meta: &str) -> Result<Option<String>, String> {
+/// What the info string of a fence says after the language: `client` (TypeScript only), then `skip="reason"`.
+fn parse_meta(language: Language, meta: &str) -> Result<(bool, Option<String>), String> {
     let meta = meta.trim();
+    let (client, meta) = match meta.strip_prefix("client") {
+        Some(rest) if rest.is_empty() || rest.starts_with(char::is_whitespace) => (true, rest.trim()),
+        _ => (false, meta),
+    };
+    if client && language != Language::TypeScript {
+        return Err("`client` marks a TypeScript program, and this fence is not TypeScript".to_owned());
+    }
     if meta.is_empty() {
-        return Ok(None);
+        return Ok((client, None));
     }
     let Some(reason) = meta.strip_prefix("skip=\"").and_then(|rest| rest.strip_suffix('"')) else {
         return Err(format!(
-            "the fence says `{meta}`, and the only option is skip=\"reason\""
+            "the fence says `{meta}`, and the only options are client (TypeScript) and skip=\"reason\""
         ));
     };
     if reason.trim().is_empty() || reason.contains('"') {
         return Err("skip=\"reason\" needs a reason that says why the example is not checked".to_owned());
     }
-    Ok(Some(reason.to_owned()))
+    Ok((client, Some(reason.to_owned())))
 }
 
 /// Where a fence opens: its marker and the text after it, or `None` when the line is not a fence.
@@ -168,11 +179,11 @@ pub fn examples(page: &str, text: &str) -> (Vec<Example>, Vec<MarkupProblem>) {
                 ));
                 continue;
             };
-            let skip = match parse_meta(meta) {
-                Ok(skip) => skip,
+            let (client, skip) = match parse_meta(language, meta) {
+                Ok(parsed) => parsed,
                 Err(message) => {
                     problems.push(problem(fence_line, message));
-                    None
+                    (false, None)
                 }
             };
             group.push(Example {
@@ -181,6 +192,7 @@ pub fn examples(page: &str, text: &str) -> (Vec<Example>, Vec<MarkupProblem>) {
                 language,
                 code,
                 skip,
+                client,
             });
         }
         if !closed {
@@ -225,6 +237,16 @@ mod tests {
     use super::*;
 
     const GOOD: &str = "# Title\n\n::: tabs\n```typescript\nlet a = 1;\n```\n```python\na = 1\n```\n```rust skip=\"needs a session\"\nlet a = 1;\n```\n:::\n\nAfter.\n";
+
+    #[test]
+    fn a_client_fence_is_a_typescript_program_outside_a_shell() {
+        let text = "::: tabs\n```typescript client\nx\n```\n```python\ny\n```\n```rust\nz\n```\n:::\n";
+        let (found, problems) = examples("a.md", text);
+        assert!(problems.is_empty(), "{problems:?}");
+        assert!(found[0].client && found[0].skip.is_none());
+        let python = "::: tabs\n```typescript\nx\n```\n```python client\ny\n```\n```rust\nz\n```\n:::\n";
+        assert!(examples("a.md", python).1[0].message.contains("not TypeScript"));
+    }
 
     #[test]
     fn a_group_gives_one_example_for_each_language_with_the_line_of_its_fence() {

@@ -16,6 +16,9 @@
 //!
 //! A fence with `skip="reason"` stays on the page and out of the check; the run lists every skip with its reason.
 //!
+//! A TypeScript example marked `client` is a program outside a shell (a bridge client). It is checked with the Node declarations
+//! (`@types/node`) and without the shell's, so `node:` imports and `process` resolve there and nowhere else.
+//!
 //! # `docs-reference`
 //!
 //! Writes what an install gives an editor (`dist::write_editor_tree`: the TypeScript library with its generated declarations, and the Python stub
@@ -263,26 +266,84 @@ type Findings = BTreeMap<String, Vec<Finding>>;
 
 fn check_typescript(repo: &Path, scratch: &Path, dir: &Path, units: &[Unit<'_>]) -> Result<Findings, String> {
     let tsc = find_tool("GNOBLIN_TSC", "tsc", "run `yarn install` in infra/site")?;
-    let prefix = scratch.join("prefix/share/gnoblin/types");
-    let mut files = vec![serde_json::Value::String(
-        prefix.join("gnoblin.d.ts").display().to_string(),
-    )];
-    for unit in units {
-        let path = dir.join(format!("{}.ts", unit.id));
-        // A module of its own, so two examples that declare `client` do not meet.
-        fs::write(&path, format!("{}\nexport {{}};\n", unit.example.code))
-            .map_err(|error| format!("cannot write {}: {error}", path.display()))?;
-        files.push(serde_json::Value::String(path.display().to_string()));
+    let (client, shell): (Vec<&Unit<'_>>, Vec<&Unit<'_>>) = units.iter().partition(|unit| unit.example.client);
+    let mut findings = Findings::new();
+    if !shell.is_empty() {
+        // The shell's programs: the installed configuration, which names no Node types, and the SDK declarations beside them.
+        let prefix = scratch.join("prefix/share/gnoblin/types");
+        let mut files = vec![serde_json::Value::String(
+            prefix.join("gnoblin.d.ts").display().to_string(),
+        )];
+        files.extend(write_units(dir, &shell)?);
+        let config = dir.join("tsconfig.json");
+        let document = serde_json::json!({
+            "extends": prefix.join("tsconfig.json").display().to_string(),
+            "files": files,
+        });
+        write_config(&config, &document)?;
+        merge_findings(&mut findings, run_tsc(&tsc, repo, &config)?);
     }
-    let config = dir.join("tsconfig.json");
-    let document = serde_json::json!({
-        "extends": prefix.join("tsconfig.json").display().to_string(),
-        "files": files,
-    });
-    fs::write(&config, document.to_string()).map_err(|error| format!("cannot write {}: {error}", config.display()))?;
-    let output = Command::new(&tsc)
+    if !client.is_empty() {
+        // A program outside a shell (a bridge client) runs under Node. Its declarations are `@types/node`, found in the `node_modules`
+        // that holds `tsc`, and none of the shell's declarations are in its program.
+        let types = tsc
+            .parent()
+            .and_then(Path::parent)
+            .map(|modules| modules.join("@types"))
+            .ok_or_else(|| format!("cannot find node_modules beside {}", tsc.display()))?;
+        if !types.join("node").is_dir() {
+            return Err(format!(
+                "@types/node is not in {}: run `yarn install` in infra/site",
+                types.display()
+            ));
+        }
+        let config = dir.join("tsconfig.client.json");
+        let document = serde_json::json!({
+            "compilerOptions": {
+                "target": "es2023",
+                "lib": ["es2023"],
+                "module": "esnext",
+                "moduleResolution": "bundler",
+                "strict": true,
+                "types": ["node"],
+                "typeRoots": [types.display().to_string()],
+            },
+            "files": write_units(dir, &client)?,
+        });
+        write_config(&config, &document)?;
+        merge_findings(&mut findings, run_tsc(&tsc, repo, &config)?);
+    }
+    Ok(findings)
+}
+
+/// Writes each example as a module of its own, so two examples that declare the same name do not meet. Returns the paths for `files`.
+fn write_units(dir: &Path, units: &[&Unit<'_>]) -> Result<Vec<serde_json::Value>, String> {
+    units
+        .iter()
+        .map(|unit| {
+            let path = dir.join(format!("{}.ts", unit.id));
+            fs::write(&path, format!("{}\nexport {{}};\n", unit.example.code))
+                .map_err(|error| format!("cannot write {}: {error}", path.display()))?;
+            Ok(serde_json::Value::String(path.display().to_string()))
+        })
+        .collect()
+}
+
+fn write_config(path: &Path, document: &serde_json::Value) -> Result<(), String> {
+    fs::write(path, document.to_string()).map_err(|error| format!("cannot write {}: {error}", path.display()))
+}
+
+fn merge_findings(into: &mut Findings, from: Findings) {
+    for (id, found) in from {
+        into.entry(id).or_default().extend(found);
+    }
+}
+
+/// Runs `tsc -p config` in the repository and returns what it says about the examples, by unit id.
+fn run_tsc(tsc: &Path, repo: &Path, config: &Path) -> Result<Findings, String> {
+    let output = Command::new(tsc)
         .args(["--noEmit", "--pretty", "false", "-p"])
-        .arg(&config)
+        .arg(config)
         .current_dir(repo)
         .output()
         .map_err(|error| format!("cannot run {}: {error}", tsc.display()))?;
@@ -461,7 +522,7 @@ fn check_rust(repo: &Path, dir: &Path, units: &[Unit<'_>]) -> Result<Findings, S
     fs::write(dir.join("src/lib.rs"), lib).map_err(|error| format!("cannot write the crate: {error}"))?;
     let crates = repo.join("crates");
     let manifest = format!(
-        "[package]\nname = \"gnoblin-docs-examples\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[lib]\npath = \"src/lib.rs\"\n\n[dependencies]\ngnoblin-core = {{ path = {core:?} }}\ngnoblin-std = {{ path = {std:?} }}\n\n# A workspace of its own: the crate is built beside the repository, not in it.\n[workspace]\n",
+        "[package]\nname = \"gnoblin-docs-examples\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[lib]\npath = \"src/lib.rs\"\n\n[dependencies]\ngnoblin-core = {{ path = {core:?} }}\ngnoblin-std = {{ path = {std:?} }}\nserde_json = \"1\"\n\n# A workspace of its own: the crate is built beside the repository, not in it.\n[workspace]\n",
         core = crates.join("gnoblin-core").display().to_string(),
         std = crates.join("gnoblin-std").display().to_string(),
     );

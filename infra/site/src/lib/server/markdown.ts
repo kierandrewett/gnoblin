@@ -154,8 +154,8 @@ function container(hName: string, hProperties: Record<string, string>, children:
     return { type: "paragraph", children: blockChildren, data: { hName, hProperties } };
 }
 
-/** The blocks of a `::: tabs` group: one fenced block each of the TAB_LANGS in their order, `skip="reason"` the only option,
- *  and nothing else. A mistake is an error that names the page and the line. */
+/** The blocks of a `::: tabs` group: one fenced block each of the TAB_LANGS in their order, and nothing else. A fence may say
+ *  `client` (TypeScript only: a program outside a shell) and then `skip="reason"`. A mistake is an error that names the page and the line. */
 function checkTabs(children: RootContent[], ctx: RenderContext, at: number | undefined): RootContent[] {
     const problem = (node: RootContent | undefined, message: string) =>
         ctx.errors.push(`${ctx.file}:${node?.position?.start.line ?? at ?? 0}: ${message}`);
@@ -166,9 +166,17 @@ function checkTabs(children: RootContent[], ctx: RenderContext, at: number | und
             continue;
         }
         blocks.push(child);
-        const meta = (child.meta ?? "").trim();
-        if (meta && !/^skip="[^"]*\S[^"]*"$/.test(meta)) {
-            problem(child, `the fence says "${meta}", and the only option is skip="reason" with a reason`);
+        const options = (child.meta ?? "").trim();
+        const client = /^client(?:\s+|$)/.exec(options);
+        const rest = client ? options.slice(client[0].length).trim() : options;
+        if (client && child.lang !== "typescript") {
+            problem(child, "`client` marks a TypeScript program, and this fence is not TypeScript");
+        }
+        if (rest && !/^skip="[^"]*\S[^"]*"$/.test(rest)) {
+            problem(
+                child,
+                `the fence says "${options}", and the only options are client (TypeScript) and skip="reason"`,
+            );
         }
     }
     const order = blocks.map((block) => block.lang ?? "");

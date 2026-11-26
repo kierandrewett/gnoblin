@@ -105,6 +105,9 @@ check only those: `cargo xtask docs-examples shell-api/idle.md`. Run `yarn insta
 | Python     | `pyright` in standard mode, against the stubs `gnoblin` installs                        | The same, for modules, classes, members and arguments.            |
 | Rust       | `cargo check`, in a crate that depends on `gnoblin-core` and `gnoblin-std`              | The file resolves, type-checks and borrow-checks against the SDK. |
 
+Rust examples may use `serde_json`. The check's crate depends on it, so a Rust example can parse the JSON of a protocol the way a
+project would.
+
 The check does not start a shell, so it does not prove that an example does what the page says. Check that by running it
 in a [nested session](source-development.md).
 
@@ -123,6 +126,16 @@ To keep an example on the page and out of the check, add a reason to its fence:
 ````
 
 The build prints each skipped example with its reason. Do not skip an example because it fails.
+
+A TypeScript example that is a program outside a shell, such as a bridge client, is marked `client`. The check reads it as a Node
+program, against the Node declarations (`@types/node`), and not against the shell's SDK declarations. The marker goes before any
+`skip` reason:
+
+````text
+```typescript client
+import { connect } from "node:net";
+```
+````
 
 ## API reference
 
