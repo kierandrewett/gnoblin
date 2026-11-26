@@ -914,7 +914,6 @@ fn a_listener_that_runs_out_its_budget_is_skipped_and_the_request_passes() {
 }
 
 #[test]
-#[ignore = "vrnw: needs a request to be answered `pass` (the built-in dialog serves it) after a listener ran out its budget (no answer is sent)"]
 fn a_request_a_runaway_listener_held_passes_to_the_built_in_dialog() {
     let mut rig = rig_with(
         &init(
@@ -937,7 +936,6 @@ fn a_request_a_runaway_listener_held_passes_to_the_built_in_dialog() {
 }
 
 #[test]
-#[ignore = "vrnw: needs a runaway dialog listener to count as a strike on the generation visible to the engine (`JsShell::strikes` is the engine's; the core's budget is `host::budget_status`)"]
 fn a_runaway_dialog_listener_is_a_strike_on_the_generation() {
     let mut rig = rig_with(
         &init(

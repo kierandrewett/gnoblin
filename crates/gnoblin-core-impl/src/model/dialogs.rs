@@ -3,9 +3,11 @@
 //! The compositor draws these dialogs itself; a shell never does. A shell that claims the `dialogs.observe` slot is shown each request for
 //! a short window before the dialog opens (250 ms on the compositor's side) and may refuse it by policy. The library holds the slot while
 //! any listener could use it, and gives each request back as one of two fixed verdicts: `deny` when a listener declined it and `pass` for
-//! everything else, so a request never waits on a shell. A listener that did nothing, one that failed, one that ran out its budget and a
-//! shell that is not there all leave the request to the built-in dialog. There is no way to allow a request and none to read or give a
-//! secret: the two byte strings `deny` and `pass` are all the library ever sends.
+//! everything else, so a request never waits on a shell. A listener that did nothing, one that failed and one that ran out its budget all
+//! leave the request to the built-in dialog: the generation tells the slot connection it took the request up, so the connection's hold
+//! (which refuses a request that no generation takes up, in the gap of a reload or when the shell is gone) does not answer for a listener
+//! that is still running, and a verdict that never comes leaves the request to the compositor's own window. There is no way to allow a
+//! request and none to read or give a secret: the two byte strings `deny` and `pass` are all the library ever sends.
 //!
 //! A request is offered on the slot connection ([`crate::slots`]), which publishes it as an event. Each request is an object that lives
 //! for the observation window: the listeners are told from the turn after it was offered, each in its own call so a listener that fails
@@ -409,6 +411,12 @@ fn offered(cx: &Cx<'_>, id: u64, deadline: u64, title: &str, message: &str, subj
             table.held.insert(id, obj);
             (table.dialogs, table.authentication)
         })
+    });
+    // The request is in this generation's hands now: its verdict is the generation's, and not the slot connection's hold.
+    session::with(|session| {
+        if let Some(slots) = session.slots_if_open() {
+            slots.taken(id);
+        }
     });
     let shown = cx.object_value(obj);
     match kind {

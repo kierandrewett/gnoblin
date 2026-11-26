@@ -18,8 +18,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use gnoblin_shell_host::stage::{Diagnostic, Located, Reloader, Stager};
-use gnoblin_shell_host::supervisor::{Clock, GenerationFault, Health, StrikeSupervisor, SystemClock};
+use gnoblin_shell_host::stage::{Diagnostic, Located, Reloader, Restaged, Stager};
+use gnoblin_shell_host::supervisor::{Clock, FaultAction, GenerationFault, Health, StrikeSupervisor, SystemClock};
 use gnoblin_shell_host::watch::{ConfigWatcher, ReloadRequest};
 
 use crate::error::{JsError, JsErrorKind};
@@ -170,6 +170,24 @@ where
     /// whether to restage from disk or to keep the last good generation (`Reloader::recover`).
     pub fn recover(&mut self, fault: GenerationFault) -> ReloadReport {
         self.inner.recover(fault)
+    }
+
+    /// Counts a fault of the running generation and says what the supervisor wants done, without staging anything: the first half
+    /// of [`recover`](Self::recover), for a host that stages the replacement itself (`JsRoleConfig::external_reload`). On
+    /// [`FaultAction::GiveUp`] the generation stays and [`gave_up`](Self::gave_up) is the report.
+    pub fn count_fault(&mut self, fault: GenerationFault) -> FaultAction {
+        self.inner.count_fault(fault)
+    }
+
+    /// Stages once from disk as the restage of a recovery that [`count_fault`](Self::count_fault) allowed. It is not a deliberate
+    /// retry, so the supervisor keeps its strikes; a restage that is itself interrupted is another one.
+    pub fn restage(&mut self) -> Restaged<JsErrorKind> {
+        self.inner.restage()
+    }
+
+    /// The report of a recovery the supervisor gave up on.
+    pub fn gave_up(&self) -> ReloadReport {
+        self.inner.gave_up()
     }
 }
 

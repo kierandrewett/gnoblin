@@ -4,6 +4,9 @@
 //! is interrupted, reported and counted as a strike (`JsShell::strikes`), and three strikes in 30 seconds stop the
 //! generation (`StrikeSupervisor`).
 //!
+//! A call a library makes into the script (the core's dispatch of a listener, a layout, a timer or a dialog listener) has the
+//! same limit and the same consequence as one the engine makes itself (`JsShell::call_script`).
+//!
 //! The limit is on the call's own CPU time (the calling thread's `CLOCK_THREAD_CPUTIME_ID`), so a machine that does
 //! not schedule the thread, a build running beside the desktop or a loaded CI box, does not trip it: time the thread
 //! spends off the processor is not charged to the script. A call that never computes but is held up for

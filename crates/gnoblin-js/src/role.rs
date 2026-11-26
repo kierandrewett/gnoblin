@@ -14,7 +14,10 @@
 //! - a [`StrikeSupervisor`], which decides what a budget trip means. A listener that runs past its wall-clock
 //!   budget is interrupted (the compositor never waits for it: it is another process), counts a strike against
 //!   the generation, and the role restages the generation from disk. Three strikes in 30 s stop the restaging
-//!   and leave the last generation running until the file is edited or the user reloads.
+//!   and leave the last generation running until the file is edited or the user reloads. A call a library makes
+//!   into the script (the core's dispatch of a listener, a layout or a timer) runs under the same budget and
+//!   strikes the same way ([`JsShell::call_script`]); a role built with [`JsRoleConfig::external_reload`] does not
+//!   stage the replacement in its own turn but asks its host for it, so that the generation is staged by the core.
 //!
 //! A link failure ends the shell: [`JsRole::tick`] returns it and the caller drops the role, as the the retired shell
 //! shell's slot does, and the runtime keeps serving without a shell.
@@ -44,7 +47,9 @@ use crate::host_idle::{JsClientIdleLink, JsIdleConnector, JsIdleLink};
 use crate::host_session::{JsClientSessionLink, JsSessionLink};
 use crate::reload::{JsReloader, ReloadReport, SCRIPT_EXTENSIONS};
 use crate::shell::{JsShell, JsShellConfig, JsShellError};
-use gnoblin_shell_host::supervisor::{GenerationFault, Health, StrikePolicy, StrikeSupervisor, SystemClock};
+use gnoblin_shell_host::supervisor::{
+    FaultAction, GenerationFault, Health, StrikePolicy, StrikeSupervisor, SystemClock,
+};
 use gnoblin_shell_host::watch::{ConfigWatcher, with_extensions};
 
 gnoblin_log::logger!(log = "js");
@@ -78,8 +83,9 @@ pub struct JsRoleConfig {
     pub commits: Option<JsCommitLog>,
     /// How many diagnostics the role keeps (see [`JsRole::diagnostics`]). A test that floods the role sets it low.
     pub diagnostics_kept: usize,
-    /// Whether a change the watcher sees is left to the host. On, the role does not reload itself: it notes that a reload is
-    /// wanted ([`JsRole::take_reload_wanted`]) and the host, which owns the shell's lifecycle, asks for one and calls
+    /// Whether the generations are staged by the host. On, the role does not reload itself: when the watcher sees a change, and
+    /// when the supervisor allows the restage of a generation a call ran past its budget in, it notes that a reload is wanted
+    /// ([`JsRole::take_reload_wanted`]) and the host, which owns the shell's lifecycle, asks for one and calls
     /// [`JsRole::reload_now`] when it takes it. The runtime library does this so that a script reloads through the loader
     /// that every language shares. Off, the role reloads inside its own turn, as the runtime role always has.
     pub external_reload: bool,
@@ -263,8 +269,12 @@ pub struct JsRole {
     console: Option<JsConsole>,
     /// Whether the host reloads for the watcher ([`JsRoleConfig::external_reload`]).
     external_reload: bool,
-    /// A change the watcher saw that the host has not been told of.
+    /// A change the watcher saw, or a restage the supervisor allowed ([`restaging`](Self::restaging)), that the host has not been
+    /// told of.
     reload_wanted: bool,
+    /// Whether the reload the host is to make is the restage of a recovery (a call ran past its budget and the supervisor allowed
+    /// another generation), and not a deliberate retry: [`reload_now`](Self::reload_now) then keeps the supervisor's strikes.
+    restaging: bool,
     /// A reload of the configuration the compositor asked for (`gnoblinctl config reload`) that the host has not been told of.
     config_reload_asked: bool,
 }
@@ -373,6 +383,7 @@ impl JsRole {
             console: None,
             external_reload: config.external_reload,
             reload_wanted: false,
+            restaging: false,
             config_reload_asked: false,
         };
         if let JsConsoleSite::At(site) = &config.console {
@@ -435,7 +446,9 @@ impl JsRole {
     }
 
     /// Runs one frame: acts on a reload the watcher asked for, applies the compositor's batches and runs the
-    /// listeners, sends what they wrote, and restages the generation when a listener ran past its budget.
+    /// listeners, sends what they wrote, and, when a call ran past its budget (one of the frame's, or one the core made between
+    /// frames), has the supervisor restage the generation or latch the shell degraded. A role built with
+    /// [`JsRoleConfig::external_reload`] does not stage it here: it asks the host ([`take_reload_wanted`](Self::take_reload_wanted)).
     ///
     /// # Errors
     ///
@@ -447,7 +460,9 @@ impl JsRole {
         }
         if let Some(request) = self.watcher.as_ref().and_then(|w| w.next_request(Duration::ZERO)) {
             if self.external_reload {
+                // A change of the files is a deliberate retry, whatever recovery was waiting for the host.
                 self.reload_wanted = true;
+                self.restaging = false;
             } else {
                 self.staged(|reloader| reloader.reload_for(&request));
             }
@@ -458,7 +473,10 @@ impl JsRole {
             console.serve(&self.shell);
         }
         let frame = self.shell.frame()?;
-        self.config_reload_asked |= self.shell.take_config_reload_requested();
+        if self.shell.take_config_reload_requested() {
+            self.config_reload_asked = true;
+            self.restaging = false;
+        }
         for diagnostic in frame.diagnostics {
             log::warn!(area = "shell-vm", "{diagnostic}");
             self.diagnostics.push(diagnostic);
@@ -468,6 +486,26 @@ impl JsRole {
             // The interrupted script skipped its cleanup, so the generation is suspect: the supervisor decides
             // whether a fresh one is staged from the files on disk.
             self.handled_strikes = strikes;
+            self.recover_from_strike();
+        }
+        Ok(())
+    }
+
+    /// Whether a reload somebody asked for (a change of the files, `gnoblinctl config reload`) waits for the host.
+    const fn deliberate_reload_pending(&self) -> bool {
+        (self.reload_wanted && !self.restaging) || self.config_reload_asked
+    }
+
+    /// What a strike against the running generation asks of the supervisor.
+    ///
+    /// A role that stages for itself restages inline, within the supervisor's policy. A role built with
+    /// [`JsRoleConfig::external_reload`] does not stage generations: the host does, in its own lifecycle (the core's stage, where
+    /// the library's registrations of the new generation are kept apart from the old one's), so the supervisor only counts the
+    /// strike here. When it allows a restage the host is asked for one ([`take_reload_wanted`](Self::take_reload_wanted)) and
+    /// [`reload_now`](Self::reload_now) makes it without clearing the strikes; when it does not, the generation that runs stays, as
+    /// the last good one, and the health is degraded.
+    fn recover_from_strike(&mut self) {
+        if !self.external_reload {
             let report = self.staged(|reloader| reloader.recover(GenerationFault::Budget));
             if report.ok {
                 log::warn!(
@@ -476,12 +514,30 @@ impl JsRole {
                     self.shell.generation_id()
                 );
             }
+            return;
         }
-        Ok(())
+        match self.reloader.count_fault(GenerationFault::Budget) {
+            FaultAction::Restage => {
+                // A reload somebody asked for is a deliberate retry and clears the strikes, whatever this one counted.
+                self.restaging |= !self.deliberate_reload_pending();
+                self.reload_wanted = true;
+                log::warn!(
+                    area = "shell-vm",
+                    "a listener ran past its budget; generation {} is restaged from disk by the host",
+                    self.shell.generation_id()
+                );
+            }
+            FaultAction::GiveUp => {
+                let report = self.reloader.gave_up();
+                self.note_report(&report);
+            }
+        }
     }
 
-    /// Whether the watcher saw a change since the last call, once. Only a role built with [`JsRoleConfig::external_reload`]
-    /// sets it; the host answers it by reloading through its own lifecycle and calling [`reload_now`](Self::reload_now).
+    /// Whether the host is to reload since the last call, once: the watcher saw a change, or a call ran past its budget and the
+    /// supervisor allows a restage. Only a role built with [`JsRoleConfig::external_reload`] sets it; the host answers it by
+    /// reloading through its own lifecycle and calling [`reload_now`](Self::reload_now), or tells the role it did not
+    /// ([`reload_refused`](Self::reload_refused)).
     pub fn take_reload_wanted(&mut self) -> bool {
         std::mem::take(&mut self.reload_wanted)
     }
@@ -510,7 +566,12 @@ impl JsRole {
     /// Reloads from disk because the user asked (`gnoblinctl config reload`) or at startup. A deliberate retry
     /// clears the supervisor's strikes. With no entry file there is nothing to reload: the stock config keeps
     /// running and the report says so.
+    ///
+    /// The reload a strike caused is not a deliberate one: a role built with [`JsRoleConfig::external_reload`] asks its host for it
+    /// ([`take_reload_wanted`](Self::take_reload_wanted)) after the supervisor allowed it, and this makes it as the supervisor's
+    /// restage, which keeps the strikes (so that a script that always runs away latches the supervisor and stops being restaged).
     pub fn reload_now(&mut self) -> ReloadReport {
+        let recovering = std::mem::take(&mut self.restaging);
         if !self.entry.is_file() {
             return ReloadReport {
                 ok: true,
@@ -524,7 +585,28 @@ impl JsRole {
                 health: self.reloader.health(),
             };
         }
+        if recovering {
+            // The recovery of a strike, which the supervisor counted when it allowed it: the strikes stay. A restage that is itself
+            // interrupted counts another, and the host is asked for the next one while the supervisor allows it.
+            let mut retry = false;
+            let report = self.staged(|reloader| {
+                let step = reloader.restage();
+                retry = step.retry;
+                step.report
+            });
+            if retry {
+                self.restaging = true;
+                self.reload_wanted = true;
+            }
+            return report;
+        }
         self.staged(JsReloader::reload_now)
+    }
+
+    /// Tells the role that the host did not make the reload it asked for ([`take_reload_wanted`](Self::take_reload_wanted)): the
+    /// generation that runs stays, and the next reload is a deliberate one again.
+    pub fn reload_refused(&mut self) {
+        self.restaging = false;
     }
 
     /// Puts the running generation's document settings back after another commit of the document: the retired host's
@@ -586,6 +668,12 @@ impl JsRole {
         {
             report.warnings.push(error.to_string());
         }
+        self.note_report(&report);
+        report
+    }
+
+    /// Logs and keeps what a reload report says went wrong.
+    fn note_report(&mut self, report: &ReloadReport) {
         for error in &report.errors {
             let text = format!("the running generation stays: {error}");
             log::warn!(area = "shell-vm", "{text}");
@@ -594,7 +682,6 @@ impl JsRole {
         for warning in &report.warnings {
             log::warn!(area = "shell-vm", "{warning}");
         }
-        report
     }
 
     /// Watches the config directory alone, for a role that has no module graph yet.
