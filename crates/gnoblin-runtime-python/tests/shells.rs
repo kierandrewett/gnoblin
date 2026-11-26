@@ -1524,16 +1524,22 @@ fn the_stub_of_the_generated_classes_agrees_with_what_the_runtime_reflects() {
         .collect();
     // The std library adds its augment members to the core's classes when `gnoblin.objects.std` is imported, which the reflection did. A
     // stub cannot add a member to a class of another file, so it declares them on the std classes that hold them (`GnoblinAugment`,
-    // `OutputCollectionAugment`): the core's declared names are completed with those.
+    // `OutputCollectionAugment`): the core's declared names are completed with those. A writable augment property (`floating`) is declared
+    // on the augment class with its writer (`set_floating`); on the core class the writer is the property's setter, not a member of its own.
     let augments: Vec<(String, Vec<String>)> = declared
         .iter()
         .filter_map(|line| {
             let rest = line.strip_prefix("reflect std.")?;
             let (class, names) = rest.split_once(' ').unwrap_or((rest, ""));
-            let members = names
-                .split(' ')
-                .filter(|name| !matches!(*name, "" | "get" | "on" | "destroy"))
-                .map(str::to_owned)
+            let all: Vec<&str> = names.split(' ').collect();
+            let members = all
+                .iter()
+                .filter(|name| !matches!(**name, "" | "get" | "on" | "destroy"))
+                .filter(|name| {
+                    name.strip_prefix("set_")
+                        .is_none_or(|property| !all.contains(&property))
+                })
+                .map(|name| (*name).to_owned())
                 .collect();
             Some((class.strip_suffix("Augment")?.to_owned(), members))
         })
