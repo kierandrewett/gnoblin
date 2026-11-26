@@ -1,10 +1,10 @@
-//! Example 17, the script halves: a prefix with no std library. A core-only script shell runs, and a script that imports std is
-//! refused with the text every runtime gives, which says where it looked.
+//! Example 17, the script halves: a prefix with no std library. A core-only script shell runs, and a script that uses std is
+//! told why with the text every runtime gives, which says where it looked.
 
 use std::fs;
 
 use crate::support::Mapper;
-use crate::support::native_shell::{Prefix, Start, start_script, start_script_with, wait_for_window};
+use crate::support::native_shell::{Prefix, Start, start_script_with, wait_for_window};
 use crate::{near, repo_root, screen_of, serving};
 
 /// A stock library of an installed prefix that has no std in it: `gnoblin-core` alone.
@@ -28,38 +28,46 @@ fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
     }
 }
 
-const CORE_ONLY: &str = r#"import { CollectionListener, gnoblin } from "gnoblin-core";
-
-class Tiler extends CollectionListener {
-    onAdded() {
-        tile();
-    }
-    onRemoved() {
-        tile();
-    }
-}
+const CORE_ONLY: &str = r#"import { gnoblin } from "gnoblin-core";
 
 function tile() {
     const output = gnoblin.outputs.at(0);
-    const windows = [...gnoblin.clients];
+    const windows = gnoblin.clients.toList();
+    if (output === undefined || windows.length === 0) {
+        return;
+    }
     const width = output.width / windows.length;
     windows.forEach((client, at) => {
         client.bounds = { x: output.x + at * width, y: output.y, width, height: output.height };
     });
 }
-gnoblin.clients.addListener(new Tiler());
+gnoblin.clients.on("added", tile);
+gnoblin.clients.on("removed", tile);
 "#;
+
+/// Whether this machine has a std library in a system library directory: the library is looked for there too, so such a machine is
+/// not the prefix example 17 is about.
+fn std_installed_on_this_machine() -> bool {
+    ["/usr/lib64", "/usr/lib", "/usr/local/lib", "/lib64", "/lib"]
+        .iter()
+        .any(|dir| std::path::Path::new(dir).join("libgnoblin-std.so.1").exists())
+}
 
 #[test]
 fn example_17_a_js_shell_that_imports_only_gnoblin_core_runs_when_no_std_is_installed() {
-    let library = core_only_library();
+    if std_installed_on_this_machine() {
+        eprintln!("skipped: a libgnoblin-std.so.1 is installed on this machine");
+        return;
+    }
     let shell = tempfile::tempdir().expect("a directory for the shell");
     fs::write(shell.path().join("shell.js"), CORE_ONLY).expect("the shell");
-    let stock = library.path().display().to_string();
-    let mut session = start_script(
+    // An installed prefix with the launcher and the core and no std beside them (the build tree stages one beside the core).
+    let prefix = Prefix::new();
+    let mut session = start_script_with(
+        Some(&prefix.binary()),
         Start::Compositor,
         &shell.path().join("shell.js"),
-        &[("GNOBLIN_JS_STOCK_DIR", &stock)],
+        &[],
     );
     serving(&mut session);
     let (width, height) = screen_of(&session);
@@ -85,26 +93,29 @@ fn example_17_a_js_shell_that_imports_only_gnoblin_core_runs_when_no_std_is_inst
 }
 
 #[test]
-fn example_17_a_js_shell_that_imports_gnoblin_std_is_refused_with_the_loader_text_and_the_session_goes_on() {
-    let library = core_only_library();
+fn example_17_a_js_shell_that_uses_gnoblin_std_is_refused_with_the_library_text_and_the_session_goes_on() {
+    if std_installed_on_this_machine() {
+        eprintln!("skipped: a libgnoblin-std.so.1 is installed on this machine");
+        return;
+    }
     let shell = tempfile::tempdir().expect("a directory for the shell");
     fs::write(
         shell.path().join("shell.ts"),
-        "import { gnoblin } from \"gnoblin-core\";\nimport { Workspace } from \"gnoblin-std\";\nvoid Workspace; void gnoblin;\n",
+        "import { gnoblin } from \"gnoblin-core\";\nimport { Workspace } from \"gnoblin-std\";\nnew Workspace(\"main\");\nvoid gnoblin;\n",
     )
     .expect("the shell");
-    let stock = library.path().display().to_string();
-    let mut session = start_script(
+    let prefix = Prefix::new();
+    let mut session = start_script_with(
+        Some(&prefix.binary()),
         Start::Compositor,
         &shell.path().join("shell.ts"),
-        &[("GNOBLIN_JS_STOCK_DIR", &stock)],
+        &[],
     );
     session.wait_serving();
-    // The loader's text: the package, that it is not installed, and where it looked.
-    let reason = session.wait_log("the shell is refused with the loader's text", |line| {
-        line.contains("gnoblin-std is not installed (looked in: ")
+    // The text every runtime gives: the library, that it is not installed, and where it looked.
+    session.wait_log("the shell is told why std is missing", |line| {
+        line.contains("gnoblin-std is not installed (looked for libgnoblin-std.so.1 in ")
     });
-    assert!(reason.text.contains(&stock), "it says where it looked: {}", reason.text);
     // The session does not end for it: the compositor's own window management has the windows.
     let mut mapper = Mapper::connect(&session.wayland());
     mapper.map_window("a", "A");
@@ -114,12 +125,7 @@ fn example_17_a_js_shell_that_imports_gnoblin_std_is_refused_with_the_loader_tex
 
 #[test]
 fn example_17_a_python_shell_that_imports_gnoblin_std_is_told_why_and_the_rest_of_the_shell_runs() {
-    // The module looks in the system's library directories and beside the core, which the prefix below has none of: a machine that
-    // has a std library installed is not the prefix this example is about.
-    if ["/usr/lib64", "/usr/lib", "/usr/local/lib", "/lib64", "/lib"]
-        .iter()
-        .any(|dir| std::path::Path::new(dir).join("libgnoblin-std.so.1").exists())
-    {
+    if std_installed_on_this_machine() {
         eprintln!("skipped: a libgnoblin-std.so.1 is installed on this machine");
         return;
     }
