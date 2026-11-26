@@ -66,7 +66,8 @@ use gnoblin_core::objects::ModelRoot;
 ````
 
 The site shows the container as tabs. Choosing a language on one example changes every example on the page, and the
-site remembers the choice for the next page. Without scripts the page shows TypeScript.
+site remembers the choice for the next page. The tabs are always in the same order, so a page read without scripts shows
+the first one, TypeScript; that is the order of the tabs and not a preferred language.
 
 The container follows these rules, and the build fails on a page that breaks one:
 
@@ -74,6 +75,22 @@ The container follows these rules, and the build fails on a page that breaks one
 - `::: tabs` and the closing `:::` start in the first column, and so does each fence.
 - Each example is a whole file: the TypeScript and Python files you would save as `shell.ts` and `shell.py`, and the Rust
   `lib.rs` of a shell library with its `use` lines and `#[gnoblin::main]` function.
+
+### Write for every SDK language
+
+The SDK has three languages, and the documentation treats them alike:
+
+- Do not write a page for one language and leave the others to a note. Every example of shell code goes in a `::: tabs`
+  container with a TypeScript, a Python and a Rust example.
+- Name all three spellings in prose: `isIdle` in TypeScript, `is_idle` in Python and `is_idle()` in Rust. Say where a
+  language differs (for example, a Rust call returns a `Result`) beside the example, not in a footnote.
+- Write headings that do not name a language, such as "Window style" and not "Window style in TypeScript".
+- A page about one language (the [TypeScript](typescript-shell.md), [Python](python-shell.md) and [Rust](rust-shell.md)
+  shell pages) has the same sections as the other two, in the same order: create, run, reload while it runs, types and
+  editor support, imports and libraries, use the objects, window requests, troubleshooting, examples.
+- Say so when something exists in one language only, and only after you have looked it up in the
+  [API reference](reference/index.md) for all three. The console, for example, is a JavaScript prompt, and XR
+  scripting is part of the TypeScript library.
 
 ### Check the examples
 

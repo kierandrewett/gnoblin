@@ -8,7 +8,7 @@
 
     const REFERENCE = [
         {
-            title: "Settings in shell.ts",
+            title: "Settings in your shell",
             href: docsHref("js-settings"),
             text: "What you can set on devices, outputs, windows, workspaces and keys, with an example each.",
         },
@@ -75,9 +75,11 @@
             <p>Keyboards, mice, touchpads, tablets and pens, plus the screens you connect.</p>
         </li>
         <li>
-            <p class="t">One TypeScript file sets it up</p>
+            <p class="t">One file in the language you choose</p>
             <p>
-                Settings live in <code class="inline">~/.config/gnoblin/shell.ts</code> and apply without logging out.
+                Write TypeScript, Python or Rust. Settings live in
+                <code class="inline">~/.config/gnoblin/shell.ts</code>, <code class="inline">shell.py</code> or a Rust library,
+                and apply without logging out.
             </p>
         </li>
     </ul>
@@ -103,6 +105,11 @@
     <h2>Shell development</h2>
     <ul>
         <li><a href={docsHref("shell-integration")}>Integration guide</a>: what a shell needs to work with Gnoblin.</li>
+        <li>
+            Write a shell in <a href={docsHref("typescript-shell")}>TypeScript</a>,
+            <a href={docsHref("python-shell")}>Python</a> or <a href={docsHref("rust-shell")}>Rust</a>: the same objects
+            in each language.
+        </li>
         <li><a href={docsHref("bridge")}>Compositor bridge</a>: talk to Gnoblin from your own program.</li>
         <li><a href={docsHref("wayland-protocols")}>Wayland protocols</a>: the interfaces Gnoblin offers.</li>
     </ul>

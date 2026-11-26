@@ -82,8 +82,10 @@
 {#snippet configure()}
     <h3>Configure Gnoblin</h3>
     <p>
-        Run <code class="inline">gnoblinctl config init</code> to write
-        <code class="inline">~/.config/gnoblin/shell.ts</code>, and start from the starter config.
+        Write your shell in TypeScript, Python or Rust. Run <code class="inline">gnoblinctl config init</code> to write
+        a starter <code class="inline">~/.config/gnoblin/shell.ts</code>; a Python shell is
+        <code class="inline">shell.py</code> in the same directory, and a Rust shell is a library you build and run with
+        <code class="inline">gnoblin</code>.
     </p>
     <MoreLink href={docsHref("recipes/complete-starter-config")}>Starter config</MoreLink>
 {/snippet}

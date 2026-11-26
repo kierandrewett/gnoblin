@@ -16,18 +16,20 @@ Gnoblin is built on [Smithay](https://github.com/Smithay/smithay). It does not s
 
 ## Run a shell
 
-Gnoblin starts a compositor and one shell, which you can write in Rust, Python, JavaScript or TypeScript. There are three
-ways to choose it:
+Gnoblin starts a compositor and one shell, which you can write in TypeScript, Python or Rust (JavaScript runs too). These
+are the ways to choose it:
 
 ```sh
-gnoblin ./target/debug/libmyshell.so   # run this file; add --watch to reload it when it is rebuilt
+gnoblin ./shell.ts                     # run this file; a TypeScript, Python (shell.py) or Rust (libmyshell.so) shell runs the same way
+gnoblin ./target/debug/libmyshell.so   # a Rust shell; add --watch to reload it when it is rebuilt
 gnoblin --shell tiler                  # run the installed shell called tiler
-gnoblin                                # run the shell Gnoblin finds: ~/.config/gnoblin/shell.so, shell.py or shell.ts, or the default
+gnoblin                                # run the shell Gnoblin finds: ~/.config/gnoblin/shell.ts, shell.py or shell.so, or the default
 ```
 
 `gnoblin --list-shells` prints every shell Gnoblin can see and marks the one that would run. See
 [Start Gnoblin and choose a shell](docs/starting-gnoblin.md) for how it chooses, [Build a desktop](docs/build-a-desktop.md)
-and the [examples](examples/README.md) for small example shells, and [Write a shell in Rust](docs/rust-shell.md).
+and the [examples](examples/README.md) for small example shells, and the [TypeScript](docs/typescript-shell.md),
+[Python](docs/python-shell.md) and [Rust](docs/rust-shell.md) shell guides.
 
 ## Features
 
@@ -35,7 +37,7 @@ and the [examples](examples/README.md) for small example shells, and [Write a sh
   [Waybar](https://github.com/Alexays/Waybar) or another layer-shell client
   for the bar, dock, launcher and notifications. Gnoblin does not impose a
   replacement desktop shell.
-- **Layer-shell first.** `zwlr_layer_shell_v1` version 5 supports panels,
+- **Layer-shell first.** `zwlr_layer_shell_v1` supports panels,
   docks, wallpapers, launchers and overlays, including layer popups and
   exclusive zones. See [bring-your-own-shell](docs/bring-your-own-shell.md).
 - **Cursor themes.** [Configure compositor cursors](docs/guides/cursors.md) with
@@ -46,10 +48,10 @@ and the [examples](examples/README.md) for small example shells, and [Write a sh
 - **Compositor effects.** Configure [blur, opacity, rounded corners, borders,
   shadows and layer animations](docs/guides/window_effects.md) with
   window rules.
-- **Live configuration.** Edit [one TypeScript file](docs/config.md) for workspaces, shortcuts,
+- **Live configuration.** Edit one file, in [TypeScript, Python or Rust](docs/config.md), for workspaces, shortcuts,
   window style and monitors, written as the statements of a program. Saving the file reloads it.
 - **Window control and scripting.** [`gnoblinctl`](docs/cli/index.md) exposes windows, workspaces,
-  monitors and input sources. TypeScript listeners and the user-private compositor
+  monitors and input sources. Listeners in your shell and the user-private compositor
   bridge expose supported runtime state and actions.
 - **External desktop controls.** A separate shell or desktop clients provide
   bars, docks, launchers, notifications and other visible controls.
@@ -65,9 +67,9 @@ and the [examples](examples/README.md) for small example shells, and [Write a sh
 - **Portal routing.** Gnoblin routes portal interfaces to the backend you choose.
   It does not manage app permissions; the selected backend decides them. The
   Gnoblin backend shows its normal consent dialogs.
-- **TypeScript shell.** Configure the compositor and handle supported runtime events
-  with TypeScript. See [event handlers](docs/user-scripts.md) and the
-  [TypeScript shell](docs/typescript-shell.md).
+- **Shells in three languages.** Configure the compositor and handle supported runtime events
+  in TypeScript, Python or Rust, with the same objects in each. See [event handlers](docs/user-scripts.md) and the
+  [TypeScript shell](docs/typescript-shell.md), [Python shell](docs/python-shell.md) and [Rust shell](docs/rust-shell.md).
 
 ## Supported protocols
 

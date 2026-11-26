@@ -1,7 +1,7 @@
 # Gnoblin
 
-Gnoblin is a standalone Wayland compositor session built on Mutter. Its TypeScript
-configuration and runtime API control compositor state; independent shell
+Gnoblin is a standalone Wayland compositor session built on Mutter. Its shell API controls compositor state, and you
+write the shell in TypeScript, Python or Rust, with the same objects in each language. Independent shell
 projects such as Bingux provide the panels, launchers, and other desktop UI.
 Build your own shell or try Bingux, a separate project that uses Gnoblin.
 
@@ -29,6 +29,7 @@ The [configuration API](/config) links each setting to a detailed reference.
 
 ## Develop
 
+- Write a shell in [TypeScript](/typescript-shell), [Python](/python-shell) or [Rust](/rust-shell)
 - [Shell integration](/shell-integration)
 - [Compositor bridge](/bridge/)
 - [Wayland protocols](/wayland-protocols)

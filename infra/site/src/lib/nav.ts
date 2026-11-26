@@ -82,7 +82,7 @@ export const NAV: NavSection[] = [
                     { label: "Dialogs", slug: "config/configure/dialogs" },
                 ],
             },
-            { label: "Settings in shell.ts", slug: "js-settings" },
+            { label: "Settings in your shell", slug: "js-settings" },
             {
                 label: "Guides",
                 items: [
@@ -136,7 +136,7 @@ export const NAV: NavSection[] = [
             { label: "SDK generator", slug: "sdk-generator" },
             { label: "Write your own shell", slug: "user-shell" },
             { label: "Event handlers", slug: "user-scripts" },
-            { label: "Console and inspector", slug: "js-console" },
+            { label: "JavaScript console", slug: "js-console" },
             { label: "UI toolkit", slug: "js-ui" },
             { label: "Window style", slug: "js-style" },
             { label: "Window frame", slug: "js-window-frame" },
