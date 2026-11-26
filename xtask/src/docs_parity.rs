@@ -1,14 +1,10 @@
 //! The docs-parity gate: a name that a shell-api or events page documents must be implemented.
 //!
-//! The implemented surface is what a script imports, read from two sources that are joined:
-//!
-//! - The native library, which a bare `import ... from "gnoblin-core"` / `"gnoblin-std"` runs on: the declarations of its generated
-//!   classes (the `object-types` target of `gnoblin-sdkgen`, the files `crates/gnoblin-js/build.rs` embeds and `gnoblinctl types
-//!   init` hands an editor), rendered here because no generated file is committed. The members `gnoblin-std` adds to the core's
-//!   classes are `declare module` augmentations in them.
-//! - The TypeScript library (`data/js/gnoblin-core` and `data/js/gnoblin-std`) with the modules `gnoblin-sdkgen` generates for it
-//!   (`generated/*`). It stays in the union for now: pages still document it for a shell that imports `gnoblin-std/native`, and
-//!   `data/js` is deleted later, at which point only the native source remains.
+//! The implemented surface is what a script imports: the native library, which a bare `import ... from "gnoblin-core"` /
+//! `"gnoblin-std"` runs on. It is the declarations of its generated classes (the `object-types` target of `gnoblin-sdkgen`, the
+//! files `crates/gnoblin-js/build.rs` embeds and `gnoblinctl types init` hands an editor), rendered here because no generated
+//! file is committed. The members `gnoblin-std` adds to the core's classes are `declare module` augmentations in them. The
+//! TypeScript library under `data/js` is not read: a page that documents a name only it has fails.
 //!
 //! Plus the schema's signals. A dotted `gnoblin.` name is followed member by member from the `Gnoblin` class through the types it
 //! names. A `gnoblin.<object>.<signal>` event is a signal of the schema. A `.method(` call is matched by name across every
@@ -26,8 +22,8 @@ use std::process::ExitCode;
 use gnoblin_schema::{Catalog, proto};
 use serde::Deserialize;
 
-/// The packages of the library the surface is read from.
-const LIBRARY: &[&str] = &["data/js/gnoblin-core", "data/js/gnoblin-std"];
+/// The packages of the native library the surface is read from.
+const PACKAGES: &[&str] = &["gnoblin-core", "gnoblin-std"];
 const ALLOW: &str = "xtask/docs-parity-allow.toml";
 const DOC_DIRS: &[&str] = &["docs/shell-api", "docs/events"];
 const DOC_FILES: &[&str] = &["docs/user-shell.md", "docs/user-scripts.md"];
@@ -643,42 +639,6 @@ fn load_docs(root: &Path) -> Result<Vec<Mention>, String> {
     Ok(mentions)
 }
 
-/// The text the TypeScript library is read from: every source of the library under `LIBRARY`, package by package and
-/// in path order within each, with the generated modules of the package at the paths they are imported by. The library is the
-/// real TypeScript that `gnoblinctl types init` hands an editor for a shell that imports `gnoblin-std/native`.
-fn typescript_surface(root: &Path) -> Result<String, String> {
-    let spec = gnoblin_sdkgen::SdkSpec::load(root)?;
-    let generated = gnoblin_sdkgen::files_of(&gnoblin_sdkgen::render(&spec, Some("typescript"))?);
-    let mut text = String::new();
-    for package in LIBRARY {
-        let mut sources: Vec<(String, String)> = Vec::new();
-        let mut files = Vec::new();
-        collect_sources(&root.join(package), &mut files)?;
-        for source in files {
-            let relative = source
-                .strip_prefix(root.join(package))
-                .map_or_else(|_| source.display().to_string(), |path| path.display().to_string());
-            sources.push((
-                relative,
-                fs::read_to_string(&source).map_err(|error| format!("could not read {}: {error}", source.display()))?,
-            ));
-        }
-        let name = package.rsplit('/').next().unwrap_or(package);
-        let prefix = format!("js/{name}/");
-        for (path, generated_text) in &generated {
-            if let Some(relative) = path.strip_prefix(&prefix) {
-                sources.push((relative.to_owned(), generated_text.clone()));
-            }
-        }
-        sources.sort();
-        for (_, source) in sources {
-            text.push('\n');
-            text.push_str(&source);
-        }
-    }
-    Ok(text)
-}
-
 /// The declarations of the native library: what `gnoblin-sdkgen` renders for the `object-types` target, rendered here the way
 /// `crates/gnoblin-js/build.rs` renders them (`gnoblin_sdkgen::emit_for_build`) and `gnoblinctl types init` hands them to an
 /// editor. A bare `import ... from "gnoblin-core"` or `"gnoblin-std"` runs on the classes these declare
@@ -688,10 +648,6 @@ fn typescript_surface(root: &Path) -> Result<String, String> {
 fn native_surface(root: &Path) -> Result<String, String> {
     let spec = gnoblin_sdkgen::SdkSpec::load(root)?;
     let rendered = gnoblin_sdkgen::files_of(&gnoblin_sdkgen::render(&spec, Some("object-types"))?);
-    let packages: Vec<&str> = LIBRARY
-        .iter()
-        .map(|package| package.rsplit('/').next().unwrap_or(package))
-        .collect();
     let mut files: Vec<(String, String)> = rendered
         .into_iter()
         .filter(|(path, _)| {
@@ -699,7 +655,7 @@ fn native_surface(root: &Path) -> Result<String, String> {
                 && path
                     .strip_prefix("js/")
                     .and_then(|rest| rest.split('/').next())
-                    .is_some_and(|package| packages.contains(&package))
+                    .is_some_and(|package| PACKAGES.contains(&package))
         })
         .collect();
     files.sort();
@@ -708,13 +664,6 @@ fn native_surface(root: &Path) -> Result<String, String> {
         text.push_str(source);
         text
     }))
-}
-
-/// The implemented surface: what a bare import gets ([`native_surface`]) and the TypeScript library ([`typescript_surface`]).
-fn load_surface(root: &Path) -> Result<String, String> {
-    let mut text = native_surface(root)?;
-    text.push_str(&typescript_surface(root)?);
-    Ok(text)
 }
 
 /// Every signal the schema declares, as `namespace.object.signal`: the events the compositor raises, which the
@@ -732,27 +681,11 @@ fn schema_signals(root: &Path) -> Result<BTreeSet<String>, String> {
     Ok(signals)
 }
 
-/// Every `.ts` file under `dir`.
-fn collect_sources(dir: &Path, into: &mut Vec<std::path::PathBuf>) -> Result<(), String> {
-    let entries = fs::read_dir(dir).map_err(|error| format!("could not read {}: {error}", dir.display()))?;
-    for entry in entries {
-        let path = entry
-            .map_err(|error| format!("could not read {}: {error}", dir.display()))?
-            .path();
-        if path.is_dir() {
-            collect_sources(&path, into)?;
-        } else if path.extension().is_some_and(|extension| extension == "ts") {
-            into.push(path);
-        }
-    }
-    Ok(())
-}
-
 /// Run the gate from the repository root. Prints one line per failure and exits non-zero on any.
 pub fn run() -> ExitCode {
     let root = Path::new(".");
     let outcome = (|| -> Result<DocsReport, String> {
-        let mut implemented = parse_declarations(&load_surface(root)?);
+        let mut implemented = parse_declarations(&native_surface(root)?);
         implemented.events.extend(schema_signals(root)?);
         let allow = load_allow(root)?;
         Ok(reconcile(&load_docs(root)?, &implemented, &allow))
@@ -1024,7 +957,7 @@ declare module "gnoblin-core" {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("the xtask lives in the repository");
-        let text = load_surface(root).expect("the library reads");
+        let text = native_surface(root).expect("the library reads");
         let mut surface = parse_declarations(&text);
         surface.events.extend(schema_signals(root).expect("the schema loads"));
         for name in [
@@ -1032,16 +965,15 @@ declare module "gnoblin-core" {
             "gnoblin.process.spawn",
             "gnoblin.session.lock",
             "gnoblin.session.addListener",
-            "gnoblin.session.onBell",
-            "gnoblin.runtime.onConfigReloaded",
             "gnoblin.onClientCreated",
             "gnoblin.onClientTitleChanged",
             "gnoblin.onOutputModeChanged",
-            "gnoblin.clients.onAdded",
-            "gnoblin.clients.onTitleChanged",
-            "gnoblin.outputs.onModeChanged",
+            "gnoblin.session.on",
+            "gnoblin.runtime.on",
+            "gnoblin.clients.on",
+            "gnoblin.clients.addListener",
+            "gnoblin.outputs.on",
             ".onClientCreated",
-            ".onClientRequest",
             "gnoblin.window.created",
             "gnoblin.config.reload_failed",
             ".set",
@@ -1051,6 +983,17 @@ declare module "gnoblin-core" {
         }
         assert!(!surface.provides("gnoblin.no_such_member"));
         assert!(surface.provides("gnoblin.on"), "the native root has the generated `on`");
+        // The TypeScript library's one method for each event of an object (`gnoblin.clients.onAdded(handler)`) is not native: an
+        // object has `on("added", handler)` and `addListener`, so a page that writes the method form must fail the gate.
+        for name in [
+            "gnoblin.session.onBell",
+            "gnoblin.runtime.onConfigReloaded",
+            "gnoblin.clients.onAdded",
+            "gnoblin.clients.onTitleChanged",
+            "gnoblin.outputs.onModeChanged",
+        ] {
+            assert!(!surface.provides(name), "{name} is the TypeScript library's spelling");
+        }
     }
 
     /// A listener, and the objects that take it, as the library declares them: the subscriptions are generated from the
@@ -1160,12 +1103,11 @@ declare module "gnoblin-core/generated/objects" {
     }
 
     #[test]
-    fn a_member_only_the_native_library_has_counts_as_implemented() {
+    fn the_native_surface_alone_provides_the_members_the_pages_use() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("the xtask lives in the repository");
-        let typescript = parse_declarations(&typescript_surface(root).expect("the TypeScript library reads"));
-        let native = parse_declarations(&load_surface(root).expect("the library reads"));
+        let native = parse_declarations(&native_surface(root).expect("the library reads"));
         for name in [
             ".toList",
             ".showById",
@@ -1173,7 +1115,6 @@ declare module "gnoblin-core/generated/objects" {
             "gnoblin.workspaces.list",
             "gnoblin.shell",
         ] {
-            assert!(!typescript.provides(name), "{name} is in the TypeScript library");
             assert!(native.provides(name), "{name} is not in the native surface");
         }
         assert!(!native.provides("gnoblin.workspaces.no_such_member"));
