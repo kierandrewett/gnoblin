@@ -34,6 +34,10 @@ if (input === undefined) {
     }
 }
 
+// A window the shell has been told of is always told closed. The model reads the tree a batch at a time, so a window that opens and
+// closes within a single batch is told of neither way.
+gnoblin.on("clientCreated", () => say("a window appeared"));
+
 // A window that has closed is still a `Client`; a call on it says it is gone.
 gnoblin.on("clientClosed", (client) => {
     try {

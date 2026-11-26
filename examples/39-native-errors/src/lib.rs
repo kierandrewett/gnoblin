@@ -51,6 +51,12 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         g.log("errors: the compositor has no input");
     }
 
+    // A window the shell has been told of is always told closed. The model reads the tree a batch at a time, so a window that opens
+    // and closes within a single batch is told of neither way.
+    model
+        .on_client_created(move |_client, _| g.log("errors: a window appeared"))?
+        .keep();
+
     // A window that has closed is still a `Client`; a call on it says it is gone.
     model
         .on_client_closed(move |client| {

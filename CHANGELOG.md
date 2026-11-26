@@ -62,6 +62,7 @@
 
 #### Documentation and tests
 
+- The events documentation now says that a window which opens and closes inside one batch of what the compositor published is told of neither way, and example 39 logs a line when its shell is told a window appeared, which its test waits for before closing the window; the test closed the window as soon as the compositor published it and sometimes saw no closed window (bead gnoblin-7f4v; `docs/events/desktop-state.md`, `examples/39-native-errors`).
 - The JavaScript shell's frame stages are now listed in a table with their ordering requirements recorded and tested, with no change in behaviour.
 - The location settings page now says how to allow the `gnoblin` agent in GeoClue's `[agent]` whitelist, with the drop-in to save (also in the source tree as `packaging/geoclue/50-gnoblin.conf`).
 
