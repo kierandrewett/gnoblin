@@ -14,10 +14,10 @@ references = [{ mutter-gnoblin = {} }]
 id = "workspace.list"
 description = "The workspaces `gnoblinctl workspace list` reports at start."
 expect = { workspaces = [
-    { id = "<id:1>", number = 1, name = "Workspace 1", active = true, persistent = true, revision = 1, windows = 0 },
-    { id = "<id:2>", number = 2, name = "Workspace 2", active = false, persistent = true, revision = 1, windows = 0 },
-    { id = "<id:3>", number = 3, name = "Workspace 3", active = false, persistent = true, revision = 1, windows = 0 },
-    { id = "<id:4>", number = 4, name = "Workspace 4", active = false, persistent = true, revision = 1, windows = 0 },
+    { id = "<id:1>", number = 1, name = "Workspace 1", active = true, persistent = true, windows = 0 },
+    { id = "<id:2>", number = 2, name = "Workspace 2", active = false, persistent = true, windows = 0 },
+    { id = "<id:3>", number = 3, name = "Workspace 3", active = false, persistent = true, windows = 0 },
+    { id = "<id:4>", number = 4, name = "Workspace 4", active = false, persistent = true, windows = 0 },
 ] }
 
 [steps.divergence.candidate]

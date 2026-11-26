@@ -39,6 +39,9 @@ const VOLATILE_KEYS: &[&str] = &[
     "monotonic",
     "monotonic_time",
     "pid",
+    // A per-session change counter: its value at the instant of a read depends on whether the session has finished
+    // its first update yet, so one target reads 0 or 1 at start (`candidate-workspace-list` against `mutter-gnoblin`).
+    "revision",
     "serial",
     "started_at",
     "time",

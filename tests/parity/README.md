@@ -253,9 +253,9 @@ A step's `expect` is compared after normalisation:
 - A key that names an object (`id`, `window_id`, `surface_id`) has its value
   replaced by `<id:N>`, numbered in first-seen order, so two recordings that
   allocate objects in the same order agree.
-- A key that names a serial, a timestamp or a process id (`serial`, `timestamp`,
-  `pid`, and any `*_serial`, `*_timestamp`, `*_msec`, `*_nsec`, `*_usec`, `*_pid`)
-  is removed entirely.
+- A key that names a serial, a change counter, a timestamp or a process id
+  (`serial`, `revision`, `timestamp`, `pid`, and any `*_serial`, `*_timestamp`,
+  `*_msec`, `*_nsec`, `*_usec`, `*_pid`) is removed entirely.
 - Array order is kept, because a scenario that compares a stacking order depends
   on it.
 
