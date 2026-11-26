@@ -84,14 +84,25 @@ pub struct Exit(pub u8);
 /// [`Exit`] with 2 for a command line clap refuses, and with 1 when the compositor
 /// cannot start or stops with an error.
 pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<(), Exit> {
+    run_reporting(arguments, |error| {
+        // clap writes help and version to standard output and a usage error to standard error.
+        let _ = error.print();
+    })
+}
+
+/// [`run`], with the command line error clap refuses reported through `report` instead of printed, so a test that refuses
+/// a command line on purpose reads the message and writes nothing to the log of the run.
+fn run_reporting(
+    arguments: impl IntoIterator<Item = std::ffi::OsString>,
+    report: impl FnOnce(&clap::Error),
+) -> Result<(), Exit> {
     let matches = match role::command()
         .try_get_matches_from(std::iter::once(std::ffi::OsString::from("gnoblin")).chain(arguments))
     {
         Ok(matches) => matches,
         Err(error) => {
-            // clap writes help and version to standard output and a usage error to
-            // standard error, and its own exit code says which.
-            let _ = error.print();
+            report(&error);
+            // clap's own exit code says whether it was a usage error (2) or help and version (0).
             return Err(Exit(if error.use_stderr() { 2 } else { 0 }));
         }
     };
@@ -340,7 +351,17 @@ fn never_stopped() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Exit, run};
+    use super::{Exit, run_reporting};
+
+    /// Runs one command line the way `run` does and returns its exit and what clap said, which is not printed.
+    fn refused(arguments: &[&str]) -> (Exit, String) {
+        let mut said = String::new();
+        let exit = run_reporting(arguments.iter().map(std::ffi::OsString::from), |error| {
+            said = error.render().to_string();
+        })
+        .expect_err("the command line is refused");
+        (exit, said)
+    }
 
     #[test]
     fn the_guardian_is_the_default_role() {
@@ -355,33 +376,32 @@ mod tests {
 
     #[test]
     fn an_unknown_role_is_a_command_line_error() {
-        assert_eq!(
-            run(["--role", "compositorr"].map(std::ffi::OsString::from)).expect_err("unknown"),
-            Exit(2)
+        let (exit, said) = refused(&["--role", "compositorr"]);
+        assert_eq!(exit, Exit(2));
+        assert!(
+            said.contains("invalid value 'compositorr' for '--role <ROLE>'"),
+            "{said}"
         );
     }
 
     #[test]
     fn the_help_is_not_an_error() {
-        assert_eq!(
-            run(["--help"].map(std::ffi::OsString::from)).expect_err("help exits without running a role"),
-            Exit(0)
-        );
+        let (exit, said) = refused(&["--help"]);
+        assert_eq!(exit, Exit(0));
+        assert!(said.contains("Usage: gnoblin"), "{said}");
     }
 
     #[test]
     fn the_version_is_printed_and_not_run_as_a_role() {
-        assert_eq!(
-            run(["--version"].map(std::ffi::OsString::from)).expect_err("version exits"),
-            Exit(0)
-        );
+        let (exit, said) = refused(&["--version"]);
+        assert_eq!(exit, Exit(0));
+        assert!(said.starts_with("gnoblin "), "{said}");
     }
 
     #[test]
     fn a_flag_this_build_does_not_have_is_refused() {
-        assert_eq!(
-            run(["--daemon"].map(std::ffi::OsString::from)).expect_err("no such flag"),
-            Exit(2)
-        );
+        let (exit, said) = refused(&["--daemon"]);
+        assert_eq!(exit, Exit(2));
+        assert!(said.contains("unexpected argument '--daemon'"), "{said}");
     }
 }
