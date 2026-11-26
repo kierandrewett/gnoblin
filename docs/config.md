@@ -1,12 +1,14 @@
 # Configuration
 
-Gnoblin is configured with one TypeScript file, `~/.config/gnoblin/shell.ts`. The file is a program: it runs from top to
-bottom against live objects such as `gnoblin.workspaces`, `gnoblin.input` and `gnoblin.clients`, and what it sets is
+Gnoblin is configured with one shell file: `~/.config/gnoblin/shell.ts`, `shell.py`, or a Rust shell library. The file is a
+program: it runs from top to bottom against live objects such as `workspaces`, `input` and `clients`, and what it sets is
 what the desktop does. There is no config object and nothing is layered under the file.
 
 A file replaces the stock setup, and a statement you delete is gone after the next reload.
 
-```ts
+::: tabs
+
+```typescript
 import { FloatingLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace("main", { layout: new FloatingLayout() }));
@@ -15,13 +17,45 @@ gnoblin.input.primary.bind("Super+Return", () => {
 });
 ```
 
+```python
+import gnoblin.objects.std  # puts the std members on `gnoblin`
+from gnoblin import gnoblin
+from gnoblin.objects.std import Workspace
+
+gnoblin.workspaces.add(Workspace("main"))  # floating is the default layout
+
+
+@gnoblin.bind("<Super>Return")
+def terminal():
+    gnoblin.spawn(["foot"])
+```
+
+```rust
+use gnoblin_std::objects::Workspace;
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    Workspace::builder("main")?.add()?; // floating is the default layout
+
+    g.bind("<Super>Return", move || {
+        if let Err(error) = g.spawn("foot") {
+            g.log(&format!("cannot start a terminal: {error}"));
+        }
+    })?;
+    Ok(())
+}
+```
+
+:::
+
 ## Where to go
 
-- [TypeScript shell](/typescript-shell): write your first config, where it lives and how it reloads.
+- [Shell files](/typescript-shell): write your first config, where it lives and how it reloads (TypeScript; see also [Python](/python-shell) and [Rust](/rust-shell)).
 - [Start Gnoblin and choose a shell](/starting-gnoblin): run a shell from a file, a name or `config.toml`, and list the
   shells Gnoblin can see. The shell can also be a [Python script](/python-shell) or a [Rust library](/rust-shell).
-- [Settings in shell.ts](/js-settings): what you can set on each object, with an example, and the settings that have no
-  TypeScript home yet.
+- [Settings in the shell file](/js-settings): what you can set on each object, with an example, and the settings that have no
+  home in the shell API yet.
 - [Settings reference](/config/configure): the pages for devices, monitors, dialogs and the other settings.
 - [Shortcuts](/guides/shortcuts): bind keys and gestures.
 - [Files and load order](/guides/files_and_load_order): split a config over several files.
@@ -29,7 +63,7 @@ gnoblin.input.primary.bind("Super+Return", () => {
 
 ## First config
 
-Write a commented starter `shell.ts` and the editor files that give you completion, then reload the session:
+Write a commented starter shell file (`shell.ts`) and the editor files that give you completion, then reload the session:
 
 ```sh
 gnoblinctl config init

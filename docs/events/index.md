@@ -1,11 +1,22 @@
 # Events
 
-A script hears the compositor through listeners. A listener is a class with optional `on…` methods, attached to the
-object the event is about. Its methods receive that object first and the event's own values after it.
+A shell hears the compositor through listeners. A listener is an object with optional methods, one for each event it
+wants. You attach it to the object the event is about, and the compositor calls the matching method when the event
+happens. Each method receives the object first and the event's own values after it.
 
-```ts
-import { SessionListener } from "gnoblin-core";
-import type { Session } from "gnoblin-core";
+Each language writes a listener in its own way:
+
+- **TypeScript:** a class that extends a listener class from `gnoblin-core`, attached with `addListener`.
+- **Python:** a class that subclasses a listener class from `gnoblin.objects.model`, attached with `add_listener`.
+- **Rust:** a struct of closures, built with `implement` and attached with `add_listener`, or a closure registered
+  directly with an `on_*` method.
+
+A listener that counts terminal bells, in each language:
+
+::: tabs
+
+```typescript
+import { Session, SessionListener } from "gnoblin-core";
 import { Toast } from "gnoblin-std";
 
 class Bell extends SessionListener {
@@ -17,89 +28,196 @@ class Bell extends SessionListener {
 gnoblin.session.addListener(new Bell());
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. Ring a terminal bell and a message appears in the top right corner. A reload
-detaches every listener the old file attached, so the new file attaches its own.
+```python
+from gnoblin.objects.model import Gnoblin, SessionListener
+from gnoblin.objects.std import Toast
 
-## The listeners
 
-| Listener                   | Attach it with                                               | It hears                                                     |
-| -------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| `ClientListener`           | `client.addListener(l)`                                      | One window: title, focus, geometry, pointer, close.          |
-| `ClientCollectionListener` | `gnoblin.clients.addListener(l)`, and the other window lists | Every window of the collection, and one joining or leaving.  |
-| `OutputListener`           | `output.addListener(l)`                                      | One output: connected, mode, scale, applied.                 |
-| `OutputCollectionListener` | `gnoblin.outputs.addListener(l)`                             | Every output of the collection, and one joining or leaving.  |
-| `SessionListener`          | `gnoblin.session.addListener(l)`                             | The session: ready, bell, reload asked for, lock state.      |
-| `RuntimeListener`          | `gnoblin.runtime.addListener(l)`                             | A configuration reload that was accepted or refused.         |
-| `ProcessListener`          | `gnoblin.process.addListener(l)`                             | A process that ended. See [Processes](/shell-api/processes). |
+class Bell(SessionListener):
+    def on_bell(self, session, count):
+        Toast.show(f"Bell number {count}")
 
-- Every method of a listener is optional.
-- Each method of a listener is also a named subscription, which [Subscribe to one event](#subscribe-to-one-event) describes.
-- A listener added twice is called once, and `removeListener` detaches it.
-- A method runs as a queued call under the same time budget as every other listener.
-- A method that throws is reported once in the log, and the next listener still runs.
-- A listener that is not an object, or has an `on…` member that is not a function, throws a `TypeError` when it is added.
+
+Gnoblin.get().session.add_listener(Bell())
+```
+
+```rust
+use std::time::Instant;
+
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::Toast;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let Some(session) = ModelRoot::get(&objects)?.session()? else {
+        return Ok(());
+    };
+    let toasts = objects.clone();
+    let bell = session.on_bell(move |_session, count| {
+        let started = Instant::now();
+        let clock = move || Ok(started.elapsed().as_secs_f64() * 1000.0);
+        let _ = Toast::show(
+            &toasts,
+            &format!("Bell number {count}"),
+            Some(20.0),
+            Some(400.0),
+            Some(20.0),
+            Some(clock),
+        );
+    })?;
+    // Dropping the Listener stops the subscription, so the shell keeps it for as long as it runs.
+    std::mem::forget(bell);
+    Ok(())
+}
+```
+
+:::
+
+The Rust example uses `on_bell`, a closure registered on the session. It returns a `Listener`, which stops listening when
+it is dropped, so the example keeps it. The Rust `SessionListenerHandlers` struct is the alternative when one listener
+must answer several events at once.
+
+Put the TypeScript file in `~/.config/gnoblin/shell.ts`, the Python file in `~/.config/gnoblin/shell.py`, and the Rust
+code in the `src/lib.rs` of a shell library. A reload removes every listener the old file attached, so the new file
+attaches its own and nothing runs twice.
+
+## The listener classes
+
+Every object that emits events has a listener class. Attach one with `addListener` (TypeScript), `add_listener`
+(Python) or `add_listener(&listener)` (Rust), and detach it with the matching `removeListener` or `remove_listener`.
+
+| Listener                   | Attached to                            | It hears                                               |
+| -------------------------- | -------------------------------------- | ------------------------------------------------------ |
+| `ClientListener`           | a window                               | Its title, focus, geometry, pointer and close.         |
+| `ClientCollectionListener` | a window collection, `gnoblin.clients` | Windows joining or leaving, and each member's changes. |
+| `OutputListener`           | an output                              | Its connection, mode, scale and applied configuration. |
+| `OutputCollectionListener` | the output collection                  | Outputs joining or leaving, and each member's changes. |
+| `SessionListener`          | the session                            | Ready, bell, reload requested and lock state.          |
+| `RuntimeListener`          | the runtime                            | A configuration reload that was accepted or refused.   |
+| `ProcessListener`          | the process collection                 | A process that ended.                                  |
+
+- Every method of a listener is optional. A listener defines only the ones it needs.
+- Adding the same listener twice has no effect.
+- Removing a listener that is not attached is ignored.
+- A method that throws is reported, and the other listeners still run.
+
+## A listener for windows
+
+A `ClientCollectionListener` hears every window the collection holds, including the ones already open when it is
+attached. Its `on_added` method runs for each one, and `on_title_changed` runs when a title changes:
+
+::: tabs
+
+```typescript
+import { Client, ClientCollection, ClientCollectionListener } from "gnoblin-core";
+
+class Titles extends ClientCollectionListener {
+    onAdded(client: Client, _collection: ClientCollection) {
+        console.log(`window ${client.appId} opened`);
+    }
+
+    onTitleChanged(client: Client, title: string) {
+        console.log(`window ${client.appId} is now ${title}`);
+    }
+}
+
+gnoblin.clients.addListener(new Titles());
+```
+
+```python
+from gnoblin.objects.model import ClientCollectionListener, Gnoblin
+
+
+class Titles(ClientCollectionListener):
+    def on_added(self, client, collection):
+        print(f"window {client.app_id} opened")
+
+    def on_title_changed(self, client, title):
+        print(f"window {client.app_id} is now {title}")
+
+
+Gnoblin.get().clients.add_listener(Titles())
+```
+
+```rust
+use gnoblin_core::objects::{Client, ClientCollection, ClientCollectionListenerHandlers};
+use gnoblin_core::Gnoblin;
+
+fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
+    let objects = g.objects()?;
+    let Some(clients) = g.clients()? else {
+        return Ok(());
+    };
+    let titles = ClientCollectionListenerHandlers {
+        on_added: Some(Box::new(move |client: Client, _collection: ClientCollection| {
+            println!("window {} opened", client.app_id()?);
+            Ok(())
+        })),
+        on_title_changed: Some(Box::new(move |client: Client, title: String| {
+            println!("window {} is now {title}", client.app_id()?);
+            Ok(())
+        })),
+        ..Default::default()
+    }
+    .implement(&objects)?;
+    clients.add_listener(&titles)?;
+    // The core holds the listener from here on.
+    std::mem::forget(titles);
+    Ok(())
+}
+```
+
+:::
 
 ## Subscribe to one event
 
-Every object that takes a listener also has `on(event, handler)`. The event is the name of a listener method without the
-`on`, starting with a lower-case letter.
+A listener is the right tool when one object answers several events. When a script needs one event only, each object
+also has a method that subscribes to that single event:
 
-- `onBell` is `"bell"`, and `onTitleChanged` is `"titleChanged"`.
-- The handler receives what the method receives.
-- `on` returns a `Listener` whose `stop()` detaches the handler.
+::: tabs
 
-```ts
-const bell = gnoblin.session.on("bell", (session, count) => {
+```typescript
+import { verbs } from "gnoblin-core/generated/verbs";
+
+verbs.session.onBell((count) => {
     gnoblin.spawn(["notify-send", `Bell number ${count}`]);
 });
 
-gnoblin.clients.on("titleChanged", (client, title) => {
-    gnoblin.spawn(["logger", "-t", "titles", `${client.appId}: ${title}`]);
-});
-
-bell.stop(); // the bell is not heard any more
+gnoblin.onClientCreated((client) => {});
 ```
 
-Put the file in `~/.config/gnoblin/shell.ts`. The first handler runs for every bell until `stop()` is called, and the second
-for every title change of every window.
+```python
+from gnoblin import verbs
+from gnoblin.objects.model import Gnoblin
 
-| Object                             | Events                                                                                       |
-| ---------------------------------- | -------------------------------------------------------------------------------------------- |
-| `gnoblin.session`                  | The methods of `SessionListener`: `ready`, `bell`, `reloadRequested` and `lockStateChanged`. |
-| `gnoblin.runtime`                  | The methods of `RuntimeListener`: `configReloaded` and `configReloadFailed`.                 |
-| a `Client`                         | The methods of `ClientListener`: `client.on("titleChanged", handler)`.                       |
-| an `Output`                        | The methods of `OutputListener`: `output.on("modeChanged", handler)`.                        |
-| a collection                       | `added` and `removed`, and the methods of the listener of its members.                       |
-| `gnoblin`, for windows and outputs | `clientCreated`, a `client<Event>` and an `output<Event>` for each method, below.            |
+gnoblin = Gnoblin.get()
 
-Every property of an object has a `<property>Changed` event too: `client.on("maximisedChanged", handler)` hears the window
-maximise and unmaximise. The declarations of each class list its events.
-
-`gnoblin` forwards a subscription to `gnoblin.clients` or to `gnoblin.outputs`, so a script that watches windows does not
-reach for the collection first. It has a named function for each of its events, such as `gnoblin.onClientCreated(handler)`,
-which is the same as `gnoblin.on("clientCreated", handler)`:
-
-```ts
-gnoblin.onClientCreated((client) => {
-    gnoblin.spawn(["logger", "-t", "windows", `${client.appId} appeared`]);
-});
+verbs.session.on_bell(lambda session, count: gnoblin.spawn(["notify-send", f"Bell number {count}"]))
 ```
 
-- `gnoblin.onClientCreated(handler)` runs for each window that appears, and once for each window that is there when it is
-  called, as `added` on a collection does.
-- A `client<Event>` event exists on `gnoblin` for each method of `ClientListener`: `clientTitleChanged`,
-  `clientFocusChanged`, `clientClosed`, `clientReady` and the rest, with a function of the same name that starts with
-  `on`, such as `gnoblin.onClientTitleChanged`. It hears every window.
-- `outputAdded` and `outputRemoved` are the membership of `gnoblin.outputs`, and an `output<Event>` event exists for each
-  method of `OutputListener`: `outputConnected`, `outputModeChanged` and the rest, with `gnoblin.onOutputConnected` and the
-  like.
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::Gnoblin;
 
-A subscription and `addListener` are one list. A handler and a listener that hear the same event are called in the
-order they were attached, with the same arguments.
+fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
+    let objects = g.objects()?;
+    if let Some(session) = ModelRoot::get(&objects)?.session()? {
+        let bell = session.on_bell(|_session, count| {
+            println!("bell number {count}");
+        })?;
+        std::mem::forget(bell);
+    }
+    Ok(())
+}
+```
 
-- A handler that is not a function throws a `TypeError`.
-- Calling `stop()` twice is harmless.
-- A reload detaches every handler the old file attached, as it does every listener.
+:::
+
+Each subscription call returns a handle that keeps it alive until it is stopped, or until a reload removes it. A reload
+removes every subscription the old file made.
 
 ## Which events exist
 
@@ -107,5 +225,4 @@ order they were attached, with the same arguments.
 - [Window, workspace and output events](desktop-state): what happens to the things on screen.
 
 Seat chords and gestures have no listener. A shortcut is a binding that runs your function: see
-[Keyboard shortcuts](/shell-api/keyboard-shortcuts). The `tree` namespace holds signals about nodes of the compositor's
-tree, for the stock library's own use: a config uses listeners and bindings instead.
+[Keyboard shortcuts](/shell-api/keyboard-shortcuts).

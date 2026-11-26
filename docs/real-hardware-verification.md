@@ -75,7 +75,7 @@ Confirm the setting changed and existing windows survived.
 
 Then check a device setting, which only a real device can prove:
 
-1. Set `Touchpad.tapToClick = true` in `shell.ts`, reload, and tap the touchpad. It should click.
+1. Set `Touchpad.tapToClick = true` in your shell file, reload, and tap the touchpad. It should click.
 2. Delete the line, reload, and tap again. It should not click, because tap-to-click is off by default on most
    touchpads.
 3. Do the same with `Mouse.sensitivity` or `Mouse.naturalScroll` for a mouse.

@@ -189,12 +189,12 @@ gnoblinctl output call 6 apply supersample=2
 ## Config
 
 - `gnoblinctl config get` prints the configuration the compositor last accepted.
-- `gnoblinctl config reload` asks the runtime to re-read its configuration. When the runtime runs the
-  [TypeScript shell](typescript-shell.md), the request reloads its `shell.ts` as well.
+- `gnoblinctl config reload` asks the runtime to re-read its configuration. When the runtime runs a shell file (see
+  [starting Gnoblin](starting-gnoblin.md)), the request reloads that shell file as well.
 - `gnoblinctl config validate FILE` checks a file with the runtime's parser. It
   needs no session.
-- `gnoblinctl config init [DIR] [--force]` writes a starter `shell.ts` for the
-  [TypeScript shell](typescript-shell.md). It needs no session.
+- `gnoblinctl config init [DIR] [--force]` writes a starter `shell.ts`, the
+  [TypeScript shell](typescript-shell.md) file. It needs no session.
 
 ```sh
 gnoblinctl config validate FILE
@@ -204,11 +204,12 @@ gnoblinctl config validate FILE
 valid
 ```
 
-A `.ts` or `.js` file is checked as `gnoblinctl check` checks it, so a syntax error exits 1 with the
-`error: file:line:column` block shown under [What a module check finds](#what-a-module-check-finds). A JSON document
-that does not parse exits 1 with `invalid-config`.
+A `.ts`, `.py` or `.js` file is checked as `gnoblinctl check` checks it, so a syntax error exits 1 with the
+`error: file:line:column` block shown under [What a module check finds](#what-a-module-check-finds).
 
-`config reload` with the TypeScript shell reloads the shell first and then the configuration document, and the reply is
+A JSON document that does not parse exits 1 with `invalid-config`.
+
+`config reload` with a shell file reloads the shell first and then the configuration document, and the reply is
 one answer for both:
 
 ```sh
@@ -219,15 +220,15 @@ gnoblinctl config reload
 reloaded: revision 3
 ```
 
-A `shell.ts` that fails to load refuses the whole request before the document is touched. The running shell keeps
-its config, the command exits 1, and the message names the file, line and column in the `.ts` source:
+A shell file that fails to load refuses the whole request before the document is touched. The running shell keeps
+its config, the command exits 1, and the message names the file, line and column in the source:
 
 ```text
 gnoblinctl: config-rejected: the shell's configuration was not reloaded, and the running one stays: shell.ts:3:22: Unexpected token
 ```
 
 A document that is refused after the shell reloaded leaves the new shell config running: the two are separate files
-and the shell cannot take its swap back. A session with no `shell.ts` has nothing to reload on the shell side, and the
+and the shell cannot take its swap back. A session with no shell file has nothing to reload on the shell side, and the
 request reloads the document alone.
 
 ## Shell

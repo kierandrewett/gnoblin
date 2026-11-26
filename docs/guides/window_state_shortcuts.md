@@ -6,7 +6,11 @@ Bind Super+Down to restore a maximised window first, then minimise it on a secon
 
 A key is a function, and the function can read and write the focused window:
 
-```ts
+::: tabs
+
+```typescript
+import { gnoblin } from "gnoblin";
+
 gnoblin.input.primary.bind("Super+Down", () => {
     const client = gnoblin.input.primary.focusedClient;
     if (client === null) {
@@ -19,6 +23,45 @@ gnoblin.input.primary.bind("Super+Down", () => {
     }
 });
 ```
+
+```python
+from gnoblin import gnoblin
+
+
+@gnoblin.input.primary.bind("Super+Down")
+def toggle_window(event):
+    client = gnoblin.input.primary.focused_client
+    if client is None:
+        return
+    if client.maximised:
+        client.maximised = False
+    else:
+        client.minimised = True
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::{Gnoblin, ModelRoot};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    g.bind("Super+Down", move || -> gnoblin::Result<()> {
+        let Some(input) = model.input()? else { return Ok(()) };
+        let Some(primary) = input.primary()? else { return Ok(()) };
+        let Some(client) = primary.focused_client()? else { return Ok(()) };
+        if client.maximised()? {
+            client.set_maximised(false)?;
+        } else {
+            client.set_minimised(true)?;
+        }
+        Ok(())
+    })?;
+    Ok(())
+}
+```
+
+:::
 
 Save the file and the running shell reloads it. Press Super+Down on a maximised window to return it to its previous
 size. Press it again to minimise it. On an ordinary window, the first press minimises it at once.

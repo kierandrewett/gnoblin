@@ -114,14 +114,26 @@ A dialog has no View of its own. Its parent's View shows it, because the dialog 
 A client that is `secure` never gets a View, and one that turns secure loses it. The compositor enforces that on its
 own: it masks a secure node in every View's picture.
 
-A script on the TypeScript library can keep other windows out of the room with an `accept` function. It runs every frame,
+A TypeScript script can keep other windows out of the room with an `accept` function; XR scripting is TypeScript-only today. It runs every frame,
 so a window comes in when it starts to say yes:
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.extensions.configure("xr", {
     accept: (client) => !client.appId.startsWith("org.keepassxc"),
 });
 ```
+
+```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+# The XR extension is TypeScript-only.
+```
+
+```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+// The XR extension is TypeScript-only.
+```
+
+:::
 
 A window's `accept` function is the one way to choose which windows appear: there is no declarative window-rule key for it.
 
@@ -295,28 +307,64 @@ layout, ring, room, runtime, session, viewport and bindings.
 `gnoblin.extensions.xr` is `null` until the program has a session, which is while the seat named `xr` exists. A script
 guards the use:
 
-```ts
+::: tabs
+
+```typescript
 const xr = gnoblin.extensions.xr;
 if (xr?.session) {
     // The session is alive, and the stock room is built.
 }
 ```
 
+```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+# The XR extension is TypeScript-only.
+```
+
+```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+// The XR extension is TypeScript-only.
+```
+
+:::
+
 A session object that a script kept reads `alive === false` once the session ends, and every write to it, to its room
 or to a panel throws. A script that wants to follow the headset comes and goes listens for it:
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.extensions.addListener({
     onSessionStarted: (session) => {},
     onSessionEnded: (session) => {},
 });
 ```
 
+```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+# The XR extension is TypeScript-only.
+```
+
+```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+// The XR extension is TypeScript-only.
+```
+
+:::
+
 Importing the module fails at load, with a message that says what to do, when there is no XR extension:
 
-```ts
+::: tabs
+
+```typescript
 import { XRCamera3D, ViewMoveBinding } from "gnoblin-std/extensions/xr";
 ```
+
+```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+# The XR extension is TypeScript-only.
+```
+
+```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+// The XR extension is TypeScript-only.
+```
+
+:::
 
 The import works when the session declared XR (`GNOBLIN_XR=1`) or when the program already has a session. A config that
 must also work without a headset guards `gnoblin.extensions.xr` instead of importing.
@@ -326,17 +374,31 @@ must also work without a headset guards `gnoblin.extensions.xr` instead of impor
 The stock shell builds the room when the session starts. To change what it builds, configure it before the session
 starts, which a config can because it runs first:
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.extensions.configure("xr", {
     room: true,
     layout: { radius: 1.8, triggers: { move: "Right.Grip+Drag", resize: null } },
 });
 ```
 
+```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+# The XR extension is TypeScript-only.
+```
+
+```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+// The XR extension is TypeScript-only.
+```
+
+:::
+
 `room: false` builds nothing and leaves the room to the script. A script that builds its own room hands it over with a
 viewport; the program reads the node named `room` and the camera named `head`, and assigning the viewport names them:
 
-```ts
+::: tabs
+
+```typescript
 const xr = gnoblin.extensions.xr;
 if (xr?.session) {
     const head = new xr.Camera3D({ tracking: xr.session.head, near: 0.05, far: 100 });
@@ -344,15 +406,37 @@ if (xr?.session) {
 }
 ```
 
+```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+# The XR extension is TypeScript-only.
+```
+
+```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+// The XR extension is TypeScript-only.
+```
+
+:::
+
 `near` and `far` are in metres. The stock room is replaced by the new one. `composition: "projection"` draws each panel
 through the head camera as a projection layer; `"layers"` and `"auto"` leave them as flat quads.
 
 A client can also be shown in a panel that is fixed to your head, in metres in front of the eyes. The window keeps its
 panel on the ring as well:
 
-```ts
+::: tabs
+
+```typescript
 const panel = xr.room.pinToHead(client, { x: 0.1, y: -0.2, z: -1 });
 ```
+
+```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+# The XR extension is TypeScript-only.
+```
+
+```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+// The XR extension is TypeScript-only.
+```
+
+:::
 
 ### Moving, resizing, turning and scaling a panel
 
@@ -371,7 +455,9 @@ own, and `layout.bindings` is their collection:
 - A `ViewScaleBinding` is added by the script, with `minScale` and `maxScale` (0.2 and 3) as limits.
 - `ViewResizeBinding` takes `edges`: `"quadrant"` (the corner nearest the ray) or one corner, such as `"top-left"`.
 
-```ts
+::: tabs
+
+```typescript
 const xr = gnoblin.extensions.xr;
 if (xr?.room) {
     const spatial = new xr.SpatialLayout({ triggers: { rotate: null } });
@@ -383,6 +469,16 @@ if (xr?.room) {
 }
 ```
 
+```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+# The XR extension is TypeScript-only.
+```
+
+```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+// The XR extension is TypeScript-only.
+```
+
+:::
+
 `bindings.add` refuses a binding whose id is taken, as every layout's collection does, so a script removes the stock
 binding first. A binding that matches the same trigger at the same priority as another is refused too.
 
@@ -393,7 +489,9 @@ A cancelled drag, which an untracked hand or a throw causes, puts the panel back
 `xr.ControllerDragBinding` is the base of the four classes above. A script extends it and gets the same hooks, which
 run once a frame while the trigger's buttons are down together:
 
-```ts
+::: tabs
+
+```typescript
 class Nudge extends xr.ControllerDragBinding {
     constructor() {
         super({ id: "nudge", trigger: "Primary+Drag" });
@@ -415,6 +513,16 @@ class Nudge extends xr.ControllerDragBinding {
 xr.room.layout.bindings.add(new Nudge());
 ```
 
+```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+# The XR extension is TypeScript-only.
+```
+
+```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+// The XR extension is TypeScript-only.
+```
+
+:::
+
 `onStart` returns a state object to take the drag or `false` to decline it. The event has:
 
 - `controller`, its `ray`, and the `view` under the ray;
@@ -428,7 +536,9 @@ write it as a class like this one, with a physics stepper of your own.
 
 A layer-shell client can use the headset as a screen when a virtual output is attached to the viewer:
 
-```ts
+::: tabs
+
+```typescript
 const hud = new VirtualOutput({ name: "XR-HUD", width: 1600, height: 900, attachment: "viewer" });
 try {
     gnoblin.outputs.add(hud);
@@ -436,6 +546,16 @@ try {
     // Today: GnoblinError, code "unsupported".
 }
 ```
+
+```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+# The XR extension is TypeScript-only.
+```
+
+```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+// The XR extension is TypeScript-only.
+```
+
+:::
 
 The class checks its options: whole pixel sizes above zero, and `attachment` `"viewer"` or none.
 
@@ -506,12 +626,24 @@ A panel that was moved or resized is pinned: the ring leaves it where it is unti
 
 Turning a binding off and replacing it are the collection's calls:
 
-```ts
+::: tabs
+
+```typescript
 const bindings = xr.room.layout.bindings;
 bindings.remove("move");
 bindings.add(new xr.ViewMoveBinding({ id: "move", trigger: "Right.Grip+Drag", tracking: "ray", rotation: "keep" }));
 bindings.get("resize").enabled = false;
 ```
+
+```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+# The XR extension is TypeScript-only.
+```
+
+```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+// The XR extension is TypeScript-only.
+```
+
+:::
 
 A binding of your own extends `XRControllerDragBinding` and is added the same way. `event.view` is the panel under the
 ray when the drag began, `event.controller.pose` and `event.ray` are the hand, and `event.hit` is where the ray struck.
@@ -529,12 +661,24 @@ A drag takes its buttons from the window under the ray:
 A script can claim inputs of its own on a controller. Each owner has one claim, a later one of the same owner replaces
 it, and the node holds the union of every owner's, so a claim made for a menu is not undone when a drag ends:
 
-```ts
+::: tabs
+
+```typescript
 const hand = xr.sessions.at(0)?.controllers.get("60");
 const menu = {};
 hand?.claim(menu, ["thumbstick"]);
 hand?.release(menu);
 ```
+
+```python skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+# The XR extension is TypeScript-only.
+```
+
+```rust skip="the XR extension is TypeScript-only; the Python and Rust references do not document it"
+// The XR extension is TypeScript-only.
+```
+
+:::
 
 The names are the five of the table above, in lower case. A list that is anything else throws a `TypeError` that names
 `Controller#<id>.claimed`, and a controller that is gone throws a `SceneError`. `hand.claimed` reads the union.

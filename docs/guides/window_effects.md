@@ -1,49 +1,122 @@
 # Window effects
 
-A window's blur and shadow come from its style. This page says which effects work today and which do not. The source
-of truth is the code, not this page.
+A window's blur and shadow come from its style. This page says which effects each renderer draws today. The source of
+truth is the code, not this page.
 
-## What works now
+## What each renderer draws
 
-| Effect                 | Where it works     | Set from                                            |
-| ---------------------- | ------------------ | --------------------------------------------------- |
-| Opacity                | Every renderer     | `style.opacity`                                     |
-| Outer shadow           | GLES renderer only | `style.shadows`                                     |
-| Blur behind the window | GLES renderer only | `style.backdropFilter`                              |
-| Rounded corners        | Stored, not drawn  | `style.cornerRadius`                                |
-| Borders, filter, fill  | Stored, not drawn  | `style.borders`, `style.filter`, `style.background` |
-| Your own shader        | See below          | A `ShaderFilter` in `style.filter`                  |
+GLES is the renderer with the most effects. Vulkan is getting full parity with GLES. The software renderer draws the
+simpler effects and cannot run user shaders.
+
+| Effect                                           | GLES                          | Vulkan    | Software                      |
+| ------------------------------------------------ | ----------------------------- | --------- | ----------------------------- |
+| Opacity                                          | Drawn                         | Drawn     | Drawn                         |
+| Rounded corners (window clip)                    | Drawn                         | Drawn     | Drawn, clipped by centre      |
+| Rounded corners (shadow shape)                   | Drawn                         | Not drawn | Drawn, stepped and hard-edged |
+| Outer shadow                                     | Drawn, with spread and colour | Not drawn | Partial: stepped, not smooth  |
+| Inset shadow                                     | Not drawn                     | Not drawn | Not drawn                     |
+| Borders (several, offset)                        | Drawn                         | Not drawn | Drawn, hard edge              |
+| Backdrop blur                                    | Drawn                         | Not drawn | Not drawn                     |
+| Backdrop grades (saturate, brightness, contrast) | Drawn                         | Not drawn | Not drawn                     |
+| Filter grades on the window                      | Not drawn                     | Not drawn | Not drawn                     |
+| Background                                       | Not drawn                     | Not drawn | Not drawn                     |
+| Your own shader                                  | Drawn                         | Drawn     | Not drawn: no shader compiler |
+
+A few notes on the table:
+
+- Rounded corners on a shader window are drawn by the shader wrapper on GLES and Vulkan, and not on software, which has
+  no shader.
+- A grade on the backdrop takes effect only with a blur behind the window, and only GLES draws that blur.
+- Filter grades on the window itself (`blur`, `saturate`, `brightness`, `contrast`) are stored and not drawn by any
+  renderer. Use a shader if you need them.
 
 A property that no renderer draws is still stored and reported in the window's `computedStyle`, so a config that sets
 it keeps working when the renderer learns to draw it.
 
 ## Set an effect
 
-Set the style on the scope it should reach:
+Set the style on the scope it should reach. A style set on all windows is overridden by one set on a selection of
+windows, or on one window. The scopes, the full property list and the filters are in [window style](/js-style).
 
-```ts
+::: tabs
+
+```typescript
 import "gnoblin-std";
 
 gnoblin.clients.style.shadows = [{ x: 0, y: 8, blur: 24, color: "#00000066" }];
 gnoblin.clients.where({ appId: "foot" }).style.opacity = 0.92;
 ```
 
-`gnoblin.clients.style` sets the style of every window. The style of a `where` selection, a workspace's `clients` or one
-client sits above it and wins. The scopes, the full property list and the filters are in [window style](/js-style).
+```python
+from gnoblin import gnoblin as session
+from gnoblin.objects.model import ClientQuery
+from gnoblin.objects.std import ClientStyle, Shadow
+
+style = ClientStyle.of_clients()
+style.shadows = [Shadow(x=0, y=8, blur=24, color="#00000066")]
+session.clients.where(ClientQuery(app_id="foot")).style.opacity = 0.92
+```
+
+```rust
+use gnoblin_std::objects::{ClientStyle, Shadow};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let style = ClientStyle::of_clients(&objects)?;
+    style.set_shadows(&[Shadow {
+        x: 0.0,
+        y: 8.0,
+        blur: 24.0,
+        color: "#00000066".into(),
+        ..Shadow::default()
+    }])?;
+    Ok(())
+}
+```
+
+:::
 
 A frosted window is a blur and a little saturation behind it:
 
-```ts
+::: tabs
+
+```typescript
 import "gnoblin-std";
 
 gnoblin.clients.where({ appId: "foot" }).style.backdropFilter = [{ blur: 24 }, { saturate: 1.35 }];
 ```
 
+```python
+from gnoblin import gnoblin as session
+from gnoblin.objects.model import ClientQuery
+from gnoblin.objects.std import BlurFilter, SaturateFilter
+
+style = session.clients.where(ClientQuery(app_id="foot")).style
+style.backdrop_filter = [BlurFilter(radius=24.0), SaturateFilter(amount=1.35)]
+```
+
+```rust
+use gnoblin_std::objects::{BlurFilter, ClientStyle, SaturateFilter};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let style = ClientStyle::of_clients(&objects)?;
+    style.set_backdrop_filter(&[BlurFilter::default().into(), SaturateFilter::default().into()])?;
+    Ok(())
+}
+```
+
+:::
+
 ## Your own shader
 
 A `ShaderFilter` gives a window a shader you wrote. It is on by default: the compositor draws one when the renderer draws
-shaders, unless the `compositor.user-shaders` setting is switched off. [Custom shaders](/custom-shaders) has the
-contract, the limits and two complete examples.
+shaders, unless the `compositor.user-shaders` setting is switched off. The software renderer draws no shader.
+[Custom shaders](/custom-shaders) has the contract, the limits and two complete examples.
 
 ## Background blur from applications
 

@@ -13,7 +13,7 @@ A backend is where Gnoblin gets its outputs and its input. Gnoblin has three, an
 The backend is chosen once, when the compositor starts. Two things name it:
 
 - The `GNOBLIN_BACKEND` environment variable, for a session wrapper or a test. It wins over everything else.
-- The `compositor.backend` setting of the accepted configuration, which holds the same words. `shell.ts` has no object for
+- The `compositor.backend` setting of the accepted configuration, which holds the same words. No shell object (`shell.ts`, `shell.py`, or Rust) has
   this leaf: of the `compositor` section it can set only `user-shaders` (see [compositor settings](/js-settings#compositor-settings)), so the variable is the way to choose.
 
 Both take `auto`, `headless`, `nested` or `drm`. Anything else stops the start and names the accepted values:

@@ -11,7 +11,7 @@ choose their light or dark appearance.
 
 ## Set the preference
 
-`shell.ts` cannot set the preference. See [dropped settings](/js-settings#dropped-settings).
+A shell written in `shell.ts`, `shell.py` or Rust cannot set the preference. See [dropped settings](/js-settings#dropped-settings).
 
 The preference reaches applications through the Settings portal and the dconf layer, and a change is announced to apps
 that are already running. The GNOME setting is the same one under the hood.
@@ -32,7 +32,12 @@ Gnoblin does not pick an application theme. It publishes the preference you set.
 
 ## Window styling
 
-A window's style carries `opacity`, with `cornerRadius` and `shadows` stored and not drawn. Set it on
-`gnoblin.clients.style`, on a `gnoblin.clients.where({ ... }).style` selection or on one client. A config cannot read the
-preference and branch on it: there is no colour-scheme event in the TypeScript shell. To restyle windows for dark mode,
-edit the style statements and save.
+A window's style carries `opacity`, with `cornerRadius` and `shadows` stored and not drawn. Set it on the client style
+of any shell:
+
+- `gnoblin.clients.style` in `shell.ts`, or its equivalent in `shell.py` and a Rust shell.
+- The matching `style` on a `where` selection.
+- The same field on one client.
+
+A shell in any language cannot read the preference and branch on it: there is no colour-scheme event in the shell API. To
+restyle windows for dark mode, edit the style statements and save.

@@ -3,10 +3,10 @@
 Gnoblin draws its own consent dialog for portal requests, the keyring's passphrase dialog and the polkit password dialog.
 They are the default, and the first two are replaceable by a program of your own.
 
-Your `shell.ts` has two smaller options, and neither draws a dialog:
+Your shell file has two smaller options, and neither draws a dialog:
 
 - Watch the requests and refuse one by policy: [Requests and dialogs](/shell-api/requests).
-- Restyle the dialogs: `shell.ts` cannot set the dialog style, which [dialogs](/config/configure/dialogs) describes.
+- Restyle the dialogs: your shell file cannot set the dialog style, which [dialogs](/config/configure/dialogs) describes.
 
 The built-in dialog stays in the compositor as the fallback, so a request is never left without a way to ask the user.
 
@@ -39,7 +39,7 @@ the session, as [autostart](/guides/autostart) describes, for example from a sys
 
 Replace the path with your own program. The program finds the socket through
 `$GNOBLIN_IPC_SOCKET`, or at `$XDG_RUNTIME_DIR/gnoblin/ipc.sock` when that is
-unset, and claims the slot with `gnoblin-client`:
+unset, and claims the slot with the `gnoblin-client` crate. The example below is a Rust program:
 
 ```rust
 use gnoblin_client::unix::{UnixTransport, socket_path};

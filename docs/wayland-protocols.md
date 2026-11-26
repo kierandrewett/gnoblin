@@ -13,7 +13,7 @@ Every listed interface is on by default. A setting under `protocols` switches of
 Notes column, and a global switched off is advertised to nobody. Clients that already bound an interface keep their
 existing connection until they disconnect.
 
-`shell.ts` cannot turn one off: no object of the shell API carries the choice (see
+`shell.ts`, `shell.py` and a Rust shell cannot turn one off: no object of the shell API carries the choice (see
 [Settings with no object](/js-settings)).
 
 ## Access

@@ -7,9 +7,16 @@ separate programs that you start with the session. It gives you two ways to open
 
 _Firefox is an ordinary window; Waybar runs as a separate desktop client._
 
-Add this to `~/.config/gnoblin/shell.ts`. Replace any command with an application installed on your system.
+Put the bindings in your shell, in whichever language you write it in. Replace any command with an application installed
+on your system.
 
-```ts
+- TypeScript: `~/.config/gnoblin/shell.ts`
+- Python: `~/.config/gnoblin/shell.py`
+- Rust: `src/lib.rs` of a shell library; see [write a shell in Rust](/rust-shell)
+
+::: tabs
+
+```typescript
 const input = gnoblin.input.primary;
 
 input.bind("Super+d", () => {
@@ -20,10 +27,40 @@ input.bind("Super+Return", () => {
 });
 ```
 
-Install the selected applications first. Start Waybar and Mako with the session, because `shell.ts` has no autostart list:
-see [autostart](/guides/autostart). `shell.ts` cannot set the cursor theme either: see
-[cursor themes](/guides/cursors).
+```python
+from gnoblin import gnoblin
 
-A trigger is bound once, so if the starter you wrote with `gnoblinctl config init` already binds one of these, edit that
+
+@gnoblin.bind("Super+d")
+def launcher():
+    gnoblin.spawn(["fuzzel"])
+
+
+@gnoblin.bind("Super+Return")
+def terminal():
+    gnoblin.spawn(["foot"])
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let shell = g.clone();
+    g.bind("Super+d", move || shell.spawn("fuzzel"))?;
+    let shell = g.clone();
+    g.bind("Super+Return", move || shell.spawn("foot"))?;
+    Ok(())
+}
+```
+
+:::
+
+Install the selected applications first. Start Waybar and Mako with the session: see [autostart](/guides/autostart).
+A shell file can start them too; [Waybar, Fuzzel and Mako](/bring-your-own-shell#waybar-fuzzel-and-mako) shows how.
+No shell can set the cursor theme either: see [cursor themes](/guides/cursors).
+
+A trigger is bound once, so if the starter that `gnoblinctl config init` wrote already binds one of these, edit that
 line instead of adding another. See [shell setup](/bring-your-own-shell) for choosing the programs that provide the
 visible desktop.

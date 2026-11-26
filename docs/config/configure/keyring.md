@@ -2,7 +2,7 @@
 
 Gnoblin runs a built-in keyring. Programs such as libsecret, browsers and `secret-tool` look up passwords on
 `org.freedesktop.secrets`, and Gnoblin serves that name from its own store. Whether it does is the `keyring.enabled`
-setting, which has no TypeScript home yet: see [settings with no TypeScript home yet](/js-settings#dropped-settings).
+setting, which no shell object sets yet in any language: see [settings with no object yet](/js-settings#dropped-settings).
 The keyring stays enabled.
 
 ## What the keyring does

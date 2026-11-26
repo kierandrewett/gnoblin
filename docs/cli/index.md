@@ -21,11 +21,12 @@ gnoblinctl config validate FILE
 gnoblinctl config init [DIR] [--force]
 ```
 
-`config validate` and `config init` need no running session. `config init` writes a starter `shell.ts`:
-the stock desktop as statements against the shell's objects.
+`config validate` and `config init` need no running session. `config init` writes a starter `shell.ts`, which sets up the
+stock desktop as statements against the shell's objects. Python and Rust shells start from the same objects; see
+[starting Gnoblin](../starting-gnoblin.md).
 
-`config reload` also reloads the `shell.ts` of the [TypeScript shell](../typescript-shell.md), and exits 1 with
-`file:line:column` when that file fails to load.
+`config reload` also reloads the shell file, whatever language it is in, and exits 1 with `file:line:column` when that
+file fails to load.
 
 ## Shell
 
@@ -45,7 +46,7 @@ gnoblinctl shell watch [PATH] [--once]
 `status`, `reload` and `watch` reach a shell that runs in the compositor's process (the default). See
 [Start Gnoblin and choose a shell](../starting-gnoblin.md#reload-and-watch).
 
-## TypeScript configuration
+## Shell file checks
 
 ```sh
 gnoblinctl check shell.ts
@@ -53,10 +54,10 @@ gnoblinctl check shell.ts --types
 gnoblinctl types init [DIR]
 ```
 
-- `check` runs the file in the dry-run shell, the shell's own library over an empty tree, and reports a syntax error, a
-  missing import or export, a refused value or trigger and a top-level throw at its `.ts` line.
+- `check` runs a TypeScript or Python file in the dry-run shell, the shell's own library over an empty tree, and reports a
+  syntax error, a missing import or export, a refused value or trigger and a top-level throw at its source line.
 - `check --types` also runs an installed TypeScript compiler.
-- `types init` writes the library sources, `gnoblin.d.ts` and `tsconfig.json` for your editor.
+- `types init` writes the TypeScript library sources, `gnoblin.d.ts` and `tsconfig.json` for your editor.
 
 Neither needs a running session. See the
 [gnoblinctl reference](../gnoblinctl.md#check-and-types).

@@ -1,31 +1,65 @@
 # Mouse settings
 
-A `Mouse` stands for a mouse, a trackball or a pointing stick, and has three settings. The hardware backend gives them
-to every mouse through libinput when the session starts, when you plug a mouse in and after every reload; a nested
-session leaves its host's devices alone ([input device settings](/backends#input-device-settings)).
+A `Mouse` stands for every pointer that is not a touchpad: a mouse, a trackball or a pointing stick. Its settings apply to
+all of them. The hardware backend gives them to each device when the session starts, when you plug a device in and after
+every reload; a nested session leaves its host's devices alone ([input device settings](/backends#input-device-settings)).
 
-```ts
-import { Mouse } from "gnoblin-core";
+::: tabs
 
-for (const device of gnoblin.input.devices) {
-    if (device instanceof Mouse) {
-        device.sensitivity = -0.2;
-        device.acceleration = "flat";
-        device.naturalScroll = true;
-    }
+```typescript
+import { Mouse } from "gnoblin-core/generated/objects";
+
+const mouse = new Mouse({
+    sensitivity: -0.2,
+    acceleration: "flat",
+    naturalScroll: true,
+});
+```
+
+```python
+from gnoblin.objects.model import AccelerationProfile, Mouse
+
+mouse = Mouse(
+    sensitivity=-0.2,
+    acceleration=AccelerationProfile.FLAT,
+    natural_scroll=True,
+)
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::{AccelerationProfile, Mouse, MouseOptions};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let _mouse = Mouse::new_with(
+        &objects,
+        MouseOptions {
+            enabled: None,
+            context: None,
+            binding_only: None,
+            sensitivity: Some(-0.2),
+            acceleration: Some(AccelerationProfile::Flat),
+            natural_scroll: Some(true),
+        },
+    )?;
+    Ok(())
 }
 ```
 
-| Property        | Values                                | Default      | Written to                   |
-| --------------- | ------------------------------------- | ------------ | ---------------------------- |
-| `sensitivity`   | Number from `-1` (slowest) to `1`     | The system's | `input.mouse.speed`          |
-| `acceleration`  | `"default"`, `"flat"` or `"adaptive"` | The system's | `input.mouse.accel-profile`  |
-| `naturalScroll` | Boolean                               | The system's | `input.mouse.natural-scroll` |
+:::
 
-`device.reset(name)` takes a property back to the system's value, where `name` is `"sensitivity"`, `"acceleration"` or
-`"natural_scroll"`. A custom acceleration curve, the double-click time, the drag
-threshold, middle-click emulation and the left-handed layout have no TypeScript home yet: see
-[settings with no TypeScript home yet](/js-settings#dropped-settings).
+| Setting           | TypeScript      | Python           | Rust             | Values                                                                     |
+| ----------------- | --------------- | ---------------- | ---------------- | -------------------------------------------------------------------------- |
+| Speed             | `sensitivity`   | `sensitivity`    | `sensitivity`    | A number from `-1` (slowest) to `1`, or none for the system's              |
+| Acceleration      | `acceleration`  | `acceleration`   | `acceleration`   | `AccelerationProfile`: default, flat or adaptive, or none for the system's |
+| Natural scrolling | `naturalScroll` | `natural_scroll` | `natural_scroll` | Boolean, or none for the system's                                          |
 
-GNOME's [pointer-speed guide](https://help.gnome.org/gnome-help/mouse-sensitivity.html) explains the user-facing
-speed setting.
+The acceleration values are `"default"`, `"flat"` and `"adaptive"` in TypeScript; `AccelerationProfile.DEFAULT`, `FLAT` and
+`ADAPTIVE` in Python (a plain string is also accepted); and `AccelerationProfile::Default`, `Flat` and `Adaptive` in Rust.
+
+Each handle also has `reset(name)`, which takes one setting back to the system's value. `name` is `"sensitivity"`,
+`"acceleration"` or `"natural_scroll"`, and any other name is refused. The double-click time and drag threshold are not
+applied yet: see [input device settings](/backends#input-device-settings).

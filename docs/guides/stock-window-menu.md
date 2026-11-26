@@ -2,7 +2,8 @@
 
 The stock shell draws two small dialogs that belong to a window: the window menu, and the alert for a window that has
 stopped answering. Both are the shell's own interface, so a config can change what they offer or draw its own. Each has a
-switch: leave `WindowMenus.get().start()` or `NotRespondingAlerts.get().start()` out of your `shell.ts`.
+switch: leave `WindowMenus` `start()` or `NotRespondingAlerts` `start()` out of your shell file (`shell.ts`, `shell.py`,
+or your Rust shell library).
 
 ## The window menu
 
@@ -50,12 +51,13 @@ gives it back when it closes.
 
 Move and Resize use the keyboard. The arrow keys move the window by 16 pixels, or grow and shrink it when you chose Resize.
 Return keeps the new place and Escape puts the window back. The window stays inside the work area. The same modes are
-`client.moveWithKeys()` and `client.resizeWithKeys()`: see [Window policy](/js-window-policy#move-and-resize-with-the-keyboard).
+the `moveWithKeys` and `resizeWithKeys` members of `WindowMenus`, described in
+[Window policy](/js-window-policy#move-and-resize-with-the-keyboard).
 
 ## Change what the menu offers
 
-Give the menu a `MenuProvider` in your `shell.ts`. Its `items(client)` method takes a window, as its id in text, and
-returns the list of entries to show. Each entry is a `MenuEntry`: a `label` and any of these:
+Give the menu a menu provider in your shell file. Its `items` method takes a window's id, as text, and returns the list of
+entries to show. Each entry is a `MenuEntry`: a label and any of these:
 
 | Field            | Meaning                                                                       |
 | ---------------- | ----------------------------------------------------------------------------- |
@@ -66,8 +68,10 @@ returns the list of entries to show. Each entry is a `MenuEntry`: a `label` and 
 | `submenuEntries` | A function that takes the window's id and returns the entries of the submenu. |
 | `separator`      | `true` draws a rule between groups. An entry with `separator` has no label.   |
 
-```ts
-import { MenuEntry, MenuProvider, WindowMenus } from "gnoblin-std";
+::: tabs
+
+```typescript
+import { Gnoblin, MenuEntry, MenuProvider, WindowMenus } from "gnoblin-std";
 
 const menus = WindowMenus.get();
 
@@ -88,15 +92,93 @@ menus.provider = new CopyTitle();
 menus.start();
 ```
 
-Put this in `~/.config/gnoblin/shell.ts`, or in a module you import. `defaultItems(client)` is the stock list, so a provider
-can add to it. Right-click a titlebar and Copy title sits above Close. The entry runs `wl-copy`, so install it first.
+```python
+from gnoblin_std import Gnoblin, MenuEntry, MenuProvider, WindowMenus
+from gnoblin_core import ClientQuery, Gnoblin as CoreGnoblin
+
+
+class CopyTitle(MenuProvider):
+    def items(self, id: str) -> list[MenuEntry]:
+        clients = CoreGnoblin.get().find_clients(ClientQuery(id=id))
+        window = clients[0] if clients else None
+        entries = [] if window is None else WindowMenus.get().default_items(window)
+        copy = MenuEntry("Copy title")
+
+        def run(target: str) -> None:
+            found = CoreGnoblin.get().find_clients(ClientQuery(id=target))
+            title = found[0].title if found else ""
+            CoreGnoblin.get().spawn(["wl-copy", title])
+
+        copy.run = run
+        entries.insert(len(entries) - 1, copy)
+        return entries
+
+
+menus = WindowMenus.get()
+menus.provider = CopyTitle()
+menus.start()
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_std::{MenuEntry, MenuEntryOptions, MenuProvider, MenuProviderHandlers, WindowMenus};
+use gnoblin_core::{ClientQuery, ModelRoot, Objects};
+
+fn find_client(objects: &Objects, id: &str) -> gnoblin_core::Res<Option<gnoblin_core::Client>> {
+    let query = ClientQuery { id: Some(id.to_string()), ..Default::default() };
+    Ok(ModelRoot::get(objects)?.find_clients(Some(&query))?.into_iter().next())
+}
+
+fn copy_title_items(objects: Rc<Objects>, id: String) -> gnoblin_core::Res<Vec<MenuEntry>> {
+    let menus = WindowMenus::get(&objects)?;
+    let mut entries = match find_client(&objects, &id)? {
+        Some(window) => menus.default_items(&window)?,
+        None => Vec::new(),
+    };
+    let copy = MenuEntry::new(&objects, "Copy title")?;
+    let run_objects = objects.clone();
+    copy.set_run(move |target: String| {
+        if let Some(window) = find_client(&run_objects, &target)? {
+            let title = window.title()?;
+            ModelRoot::get(&run_objects)?.spawn(&["wl-copy".to_string(), title], None)?;
+        }
+        Ok(())
+    })?;
+    entries.insert(entries.len() - 1, copy);
+    Ok(entries)
+}
+
+pub fn install(objects: Rc<Objects>) -> gnoblin_core::Res<()> {
+    let handlers = MenuProviderHandlers {
+        items: Some(Box::new({
+            let objects = objects.clone();
+            move |id: String| copy_title_items(objects.clone(), id)
+        })),
+        show: None,
+    };
+    let provider = MenuProvider::implement(&objects, handlers)?;
+    let menus = WindowMenus::get(&objects)?;
+    menus.set_provider(&provider)?;
+    menus.start()
+}
+```
+
+:::
+
+Put this in `~/.config/gnoblin/shell.ts`, `shell.py`, or a module you import. `defaultItems(client)` is the stock list, so a
+provider can add to it. Right-click a titlebar and Copy title sits above Close. The entry runs `wl-copy`, so install it
+first.
 
 ## Draw your own menu
 
-Every request ends in the provider's `show(client, x, y)`, with the anchor in global coordinates. Give a provider a `show`
-method to draw something else in place of the library's card:
+Every request ends in the provider's `show` method, with the window and the anchor in global coordinates. Give a provider
+a `show` method to draw something else in place of the library's card. A menu you draw yourself should take the keyboard,
+close on a press elsewhere, and be `secure` when the window is, as the stock menu does.
 
-```ts
+::: tabs
+
+```typescript
 import { Box, MenuProvider, Text, WindowMenus } from "gnoblin-std";
 
 class OwnMenu extends MenuProvider {
@@ -121,21 +203,83 @@ menus.provider = new OwnMenu();
 menus.start();
 ```
 
-A menu you draw yourself should take the keyboard, close on a press elsewhere, and be `secure` when the window is, as the
-stock menu does. Without `WindowMenus.get().start()` the compositor still sends the requests and nothing answers them.
+```python
+from gnoblin_std import Box, MenuProvider, Text, WindowMenus
+from gnoblin_core import ClientQuery, Gnoblin as CoreGnoblin
+
+
+class OwnMenu(MenuProvider):
+    def show(self, id: str, x: float, y: float) -> None:
+        found = CoreGnoblin.get().find_clients(ClientQuery(id=id))
+        if not found:
+            return
+        client = found[0]
+        card = Box(x=x, y=y, width=160, height=36, radius=8, fill="#1e1e2e", secure=client.secure)
+        card.add(Text(text="Close", size=14))
+
+        def on_pointer(event) -> bool:
+            if event.kind == "press":
+                card.destroy()
+                client.close()
+            return True
+
+        card.on_pointer = on_pointer
+        card.mount_top()
+
+
+menus = WindowMenus.get()
+menus.provider = OwnMenu()
+menus.start()
+```
+
+```rust skip="The reference shows no documented Rust way to add a Text child to a UiBox"
+
+```
+
+:::
+
+Without `WindowMenus` `start()` the compositor still sends the requests and nothing answers them.
 
 ## Keyboard modes and the open card
 
-The stock Move and Resize entries start a keyboard mode, where the arrow keys move or resize the window, Return keeps the place and Escape puts the window back. The entries are dim until a mode can start. Start the library's own modes with `Repositioning.get().start()`, or give the service a function of your own:
+The stock Move and Resize entries start a keyboard mode, where the arrow keys move or resize the window, Return keeps the
+place and Escape puts the window back. The entries are dim until a mode can start. Start the library's own modes with
+`Repositioning` `start()`, or give the service a function of your own:
 
-- `moveWithKeys` starts the keyboard move mode in place of the library's.
-- `resizeWithKeys` starts the keyboard resize mode in place of the library's.
+::: tabs
+
+```typescript
+import { Repositioning } from "gnoblin-std";
+
+Repositioning.get().start();
+```
+
+```python
+from gnoblin_std import Repositioning
+
+Repositioning.get().start()
+```
+
+```rust
+use gnoblin_std::Repositioning;
+
+pub fn start_modes(objects: &gnoblin_core::Objects) -> gnoblin_core::Res<()> {
+    Repositioning::get(objects)?.start()
+}
+```
+
+:::
+
+- The `moveWithKeys` member starts the keyboard move mode in place of the library's.
+- The `resizeWithKeys` member starts the keyboard resize mode in place of the library's.
 
 Example 32 (`examples/32-native-policy`, with `-ts` and `-py`) starts the library's window policy, including these modes.
 
-`WindowMenus.current` is the open card. Listen to `currentChanged` to hear a card open, and to the card's `closed` signal to hear it close.
+`WindowMenus` `current` is the open card. Listen to `currentChanged` (`on_current_changed` in Rust) to hear a card open,
+and to the card's `closed` signal to hear it close.
 
-Example 29 (`examples/29-native-menus`, with `-ts` and `-py`) starts the menu with three entries of its own and logs what the card does.
+Example 29 (`examples/29-native-menus`, with `-ts` and `-py`) starts the menu with three entries of its own and logs what the
+card does.
 
 ## The not-responding alert
 
@@ -155,5 +299,5 @@ The stock shell looks at the windows once a second and opens an alert for each o
 The alert takes the keyboard and gives it back when it closes. It is `secure` when the window is. It closes by itself when the
 window answers again or goes, and no alert opens while the session is locked.
 
-To turn it off, leave `NotRespondingAlerts.get().start()` out of your `shell.ts`. To draw your own alert, turn it off and read `client.unresponsive`
-yourself. `client.kill()` is the call behind Force quit.
+To turn it off, leave `NotRespondingAlerts` `start()` out of your shell file. To draw your own alert, turn it off and read the
+window's `unresponsive` property yourself. The `kill()` method on a client is the call behind Force quit.

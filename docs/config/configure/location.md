@@ -1,8 +1,8 @@
 # Location settings
 
 Gnoblin registers as the session's GeoClue agent, which holds the global location policy: whether location requests may
-be approved and the maximum precision an approved request gets. The policy has no TypeScript home yet: see
-[settings with no TypeScript home yet](/js-settings#dropped-settings).
+be approved and the maximum precision an approved request gets. No shell object carries the policy yet, in any language:
+see [settings with no object yet](/js-settings#dropped-settings).
 
 The agent follows the system's
 `org.gnome.system.location` settings, and the

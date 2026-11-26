@@ -1,9 +1,12 @@
 # Route new app windows to named workspaces
 
-Give workspaces stable IDs in `shell.ts`, then place each matching new window on its workspace when it opens. Replace
-the example app IDs with the values reported by `gnoblinctl window list --json`.
+Give workspaces stable IDs in your shell, then place each matching new window on its workspace when it opens. The
+shell can be `shell.ts`, `shell.py` or a Rust shell library; the code is the same in each. Replace the example app IDs
+with the values reported by `gnoblinctl window list --json`.
 
-```ts
+::: tabs
+
+```typescript
 import { ClientCollectionListener } from "gnoblin-core";
 import { FloatingLayout, Workspace } from "gnoblin-std";
 import type { Client } from "gnoblin-core";
@@ -31,25 +34,93 @@ gnoblin.clients.addListener(
 );
 ```
 
-Each `Workspace` has a unique non-empty `id`, and `gnoblin.workspaces.byId(id)` finds it. The first one added is shown when
-the shell starts.
+```python
+from gnoblin.objects.model import Client, ClientCollectionListener, Gnoblin
+from gnoblin.objects.std import FloatingLayout, Workspace, Workspaces
 
-| Part                        | Values and default                    | Effect                                                         |
-| --------------------------- | ------------------------------------- | -------------------------------------------------------------- |
-| `client.appId`              | The application ID of the window      | Selects windows by application ID, here by exact match.        |
-| `client.moveToWorkspace(w)` | A `Workspace` in `gnoblin.workspaces` | Moves the window; false when it cannot (a dialog, fullscreen). |
+homes = {
+    "org.gnome.TextEditor": "code",
+    "org.mozilla.firefox": "web",
+    "org.gnome.Fractal": "chat",
+}
 
-An ID matches whole, so `"org.mozilla.firefox"` matches only that app. For every app of one prefix, test
-`client.appId.startsWith("org.mozilla.")`, or use a `RegExp`.
+for id in ["code", "web", "chat"]:
+    Workspaces.get().add(Workspace(id, layout=FloatingLayout()))
 
-Save the file and the running shell reloads it. A listener also runs for the windows that are already open, so they move
-too when the file loads.
 
-Placement happens once; it does not lock a window to its workspace. You can move it afterward, and the shell leaves it
-there.
+class Homes(ClientCollectionListener):
+    def on_added(self, client: Client, collection) -> None:
+        id = homes.get(client.app_id)
+        target = None if id is None else Workspaces.get().by_id(id)
+        if target is not None:
+            client.move_to_workspace(target)
 
-- If an app reuses an existing window, the listener does not run again.
-- Dialogs stay with their parent window.
-- A workspace id you did not declare makes `gnoblin.workspaces.get` return `undefined`, so the window stays where it is.
+
+Gnoblin.get().clients.add_listener(Homes())
+```
+
+```rust
+use std::collections::HashMap;
+
+use gnoblin_core::objects::{Client, ModelRoot};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::objects::{FloatingLayout, Workspace, WorkspaceOptions, Workspaces};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let homes = [
+        ("org.gnome.TextEditor", "code"),
+        ("org.mozilla.firefox", "web"),
+        ("org.gnome.Fractal", "chat"),
+    ];
+
+    let mut workspaces: HashMap<String, Workspace> = HashMap::new();
+    for id in ["code", "web", "chat"] {
+        let layout = FloatingLayout::new(&objects)?.as_layout()?;
+        let workspace = Workspace::new_with(
+            &objects,
+            id,
+            WorkspaceOptions { name: None, gaps: None, layout: Some(layout) },
+        )?;
+        Workspaces::get(&objects)?.add(&workspace)?;
+        workspaces.insert(id.to_string(), workspace);
+    }
+
+    let clients = ModelRoot::get(&objects)?.clients()?.expect("the model has clients");
+    clients
+        .on_added(move |client: Client, _collection| {
+            let app_id = client.app_id().unwrap_or_default();
+            if let Some((_, id)) = homes.iter().find(|(app, _)| *app == app_id) {
+                if let Some(target) = workspaces.get(*id) {
+                    let _ = client.move_to_workspace(target);
+                }
+            }
+        })?
+        .keep();
+    Ok(())
+}
+```
+
+:::
+
+Each workspace has a unique non-empty `id`. `Workspaces.get().by_id(id)` in Python, `gnoblin.workspaces.byId(id)` in
+TypeScript and `Workspaces::get(&objects)?.by_id(id)?` in Rust find one you added, and return nothing for an ID you did
+not add. The first workspace added is shown when the shell starts.
+
+| Part                        | Values and default                  | Effect                                                                                                          |
+| --------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `client.appId`              | The application ID of the window    | Selects windows by application ID; the example matches it exactly.                                              |
+| `client.moveToWorkspace(w)` | A `Workspace` in the workspace list | Moves the window. Returns false when it cannot move it: a fullscreen client, a dialog, a window already on `w`. |
+
+An app ID matches as a whole string, so `"org.mozilla.firefox"` matches only that app. To match every app with one prefix,
+test the prefix with `startsWith` in TypeScript, `startswith` in Python or `starts_with` in Rust.
+
+A `ClientCollectionListener` also hears the windows that are already open when it is added, so they move too.
+
+Placement happens when a window is added. Moving a window afterwards is allowed; the rule does not run again for it.
+
+- If an app reuses an existing window, the listener does not run again for that window.
 
 See [window rules](/guides/window_rules#workspaces) and the [workspaces](/shell-api/workspaces) reference.

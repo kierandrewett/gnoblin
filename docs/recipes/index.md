@@ -1,11 +1,12 @@
 # Recipes
 
-Short TypeScript examples for common desktop configuration tasks. Each recipe is a statement or two you add to your
-`~/.config/gnoblin/shell.ts`, or a set of files that `shell.ts` imports. The file runs top to bottom against live objects,
-such as `gnoblin.input`, `gnoblin.workspaces` and `gnoblin.clients`, and nothing is layered under it: see the
-[complete starter](/recipes/complete-starter-config) for the stock file.
+Short examples for common desktop configuration tasks. Each recipe gives its example in TypeScript, Python and Rust.
 
-A save reloads the running shell, and `gnoblinctl config reload` does it on request.
+A recipe is a statement or two you add to your shell file. That is `shell.ts` or `shell.py` in `~/.config/gnoblin/`, or the `lib.rs` of a shell library. A shell file can also import other files of its own.
+
+The file runs top to bottom against live objects, such as `gnoblin.input`, `gnoblin.workspaces` and `gnoblin.clients`. Nothing is layered under it. See the [complete starter](/recipes/complete-starter-config) for the stock file in all three languages.
+
+A save reloads a running TypeScript or Python shell. A Rust shell reloads when its library is rebuilt, or when you run `gnoblinctl shell reload`.
 
 - [Complete starter config](/recipes/complete-starter-config): start with a working focus and shortcut setup.
 - [Add a shortcut](/recipes/add-a-shortcut): add or change one key without replacing other keys.
@@ -25,5 +26,7 @@ A save reloads the running shell, and `gnoblinctl config reload` does it on requ
   opens, rotate and swap splits, pseudotile a window, and bind each to a key.
 
 See the [shell API](/shell-api) for the objects and the [configuration guides](/guides/window_rules) for behaviour and
-tradeoffs. The cursor theme, pointer feedback and tablet settings cannot be set from `shell.ts`, so they have no recipe.
-For fades, see [animations](/guides/animations).
+tradeoffs.
+
+The cursor theme, pointer feedback and tablet settings cannot be set from a shell file, so they have no recipe. For
+fades, see [animations](/guides/animations).

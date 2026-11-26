@@ -3,12 +3,19 @@
 Choose a check based on the code you changed. The workspace tests, the conformance suites, the nested session and a real
 login each verify a different part of the session. `justfile` lists every recipe CI runs.
 
-## Test the TypeScript shell
+## Test the shell libraries
 
-The TypeScript shell and the config document have Rust tests. Run them with
-`cargo test -p gnoblin-js -p gnoblin-js-types -p gnoblinctl`. The tests in `crates/gnoblin/tests/js_shell.rs` run the
-shell against a headless compositor in the test's own process, so they need no seat or display. A passing run proves the
-shell's behaviour over the compositor's own sockets; it does not prove a graphical login (see
+The shells have tests in each language:
+
+- The TypeScript tests are in `crates/gnoblin/tests/js_shell.rs` and `crates/gnoblin-runtime-js/tests/shells.rs`, and run
+  with `cargo test -p gnoblin-js -p gnoblin-js-types -p gnoblinctl`.
+- The Python tests in `crates/gnoblin-runtime-python/tests/shells.rs` run `.py` shells through the Python runtime, and the
+  `crates/gnoblin/tests/modular/` sessions also start `shell.py` examples.
+- The Rust tests are in `crates/gnoblin/tests/native_shell.rs` and `crates/gnoblin/tests/modular/native_input.rs`, which
+  build a Rust shell library and reload it.
+
+Each test runs its shell against a headless compositor in the test's own process, so they need no seat or display. A passing
+run proves the shell's behaviour over the compositor's own sockets; it does not prove a graphical login (see
 [hardware verification](real-hardware-verification.md)).
 
 ## Available checks

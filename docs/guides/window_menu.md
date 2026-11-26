@@ -5,12 +5,16 @@ Looking for the menu the stock shell draws? See [the window menu and alerts](/gu
 The compositor reports a window's menu request to the shell that holds the tree. The shell draws the menu as its own
 interface and chooses which actions to show.
 
-## Hear a request in TypeScript
+## Answer a menu request
 
-A menu request is one kind of request a client makes of its window. A `RequestListener` added to `WindowState` hears it in
-`onRequest`, with the anchor the menu opens at in `request.x` and `request.y`, in global logical coordinates:
+A menu request is one kind of request a client makes of its window. A `RequestListener` added to `WindowState` hears it.
 
-```ts
+- The handler is `on_request` in Python and Rust, and `onRequest` in TypeScript.
+- The anchor the menu opens at is `x` and `y` on the request, in global logical coordinates.
+
+::: tabs
+
+```typescript
 import { RequestListener, WindowState } from "gnoblin-std";
 import type { ClientRequest } from "gnoblin-std";
 
@@ -18,8 +22,7 @@ class OwnMenu extends RequestListener {
     onRequest(request: ClientRequest) {
         if (request.kind === "menu") {
             request.handle();
-            const title = gnoblin.clients.get(request.client)?.title ?? "";
-            gnoblin.spawn(["notify-send", `Menu for ${title} at ${request.x}, ${request.y}`]);
+            gnoblin.spawn(["notify-send", `Menu at ${request.x}, ${request.y}`]);
         }
     }
 }
@@ -29,9 +32,52 @@ state.addListener(new OwnMenu());
 state.start();
 ```
 
-Put the code in `~/.config/gnoblin/shell.ts`. Right-click a titlebar: the stock menu does not open, and a notification says where
-the menu would have been. `request.handle()` takes the request, so the stock menu does not run. To change what the stock
-menu offers or draw another one, give `WindowMenus.get()` a `MenuProvider` instead.
+```python
+from gnoblin import gnoblin as session
+from gnoblin.objects.std import ClientRequestKind, RequestListener, WindowState
+
+
+class OwnMenu(RequestListener):
+    def on_request(self, request):
+        if request.kind == ClientRequestKind.MENU:
+            request.handle()
+            session.spawn(["notify-send", f"Menu at {request.x}, {request.y}"])
+
+
+state = WindowState.get()
+state.add_listener(OwnMenu())
+state.start()
+```
+
+```rust
+use gnoblin_core::Gnoblin;
+use gnoblin_std::objects::{ClientRequest, ClientRequestKind, RequestListenerHandlers, WindowState};
+
+fn main(g: &Gnoblin) -> gnoblin_core::Result<()> {
+    let objects = g.std()?.objects()?;
+    let listener = RequestListenerHandlers {
+        on_request: Box::new(move |request: ClientRequest| {
+            if request.kind()? == ClientRequestKind::Menu {
+                request.take()?;
+                g.spawn(&format!("notify-send Menu at {} {}", request.x()?, request.y()?))?;
+            }
+            Ok(())
+        }),
+    }
+    .implement(&objects)?;
+    let state = WindowState::get(&objects)?;
+    state.add_listener(&listener, None)?;
+    state.start()
+}
+```
+
+:::
+
+Put the code in the shell's entry file: `~/.config/gnoblin/shell.ts`, `shell.py`, or the `main` of a Rust shell.
+Right-click a titlebar: the stock menu does not open, and a notification says where the menu would have been.
+
+Answering the request stops the stock menu from running. Call `handle()` in Python and TypeScript, or `take()` in Rust. To
+change what the stock menu offers, see the [stock window menu](/guides/stock-window-menu).
 
 A request comes from one of these:
 

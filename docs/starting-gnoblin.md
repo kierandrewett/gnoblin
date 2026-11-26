@@ -93,7 +93,7 @@ holds `config.toml`:
 path = "~/dev/tiler/shell.ts"
 ```
 
-Use `default = "tiler"` instead to name an installed shell. Setting both is an error:
+`path` can name a shell in any language: `path = "~/dev/tiler/shell.ts"` (TypeScript), `path = "~/dev/tiler/shell.py"` (Python) or `path = "~/dev/tiler/libtiler.so"` (a Rust shell). Use `default = "tiler"` instead to name an installed shell. Setting both is an error:
 
 ```text
 gnoblin: /home/me/.config/gnoblin/config.toml: `[shell]` sets both `default` and `path`; keep one
@@ -110,7 +110,9 @@ cp tiler.py ~/.config/gnoblin/shell.py                       # or a script
 
 ```sh
 mkdir -p ~/.local/share/gnoblin/shells
-cp tiler.ts ~/.local/share/gnoblin/shells/tiler.ts
+cp tiler.ts ~/.local/share/gnoblin/shells/tiler.ts    # TypeScript
+cp tiler.py ~/.local/share/gnoblin/shells/tiler.py    # Python
+cp libtiler.so ~/.local/share/gnoblin/shells/tiler.so # Rust
 gnoblin --shell tiler
 ```
 
@@ -118,7 +120,7 @@ gnoblin --shell tiler
 package ships its shell this way.
 
 **Tier 7: the packaged default.** Install Gnoblin and choose nothing. With no `shell.*` file of your own, `gnoblin` runs
-the stock shell, `<prefix>/share/gnoblin/default-shell/shell.ts`.
+the stock shell, `<prefix>/share/gnoblin/default-shell/shell.ts`. It is the only shell that ships; it is a TypeScript file.
 
 An earlier tier hides a later one, and a request that names something missing is an error. To check which shell a setup
 selects without starting a session, run `gnoblin --list-shells`.
@@ -324,5 +326,8 @@ isolated shell reloads with `--watch`.
 ## The packaged default
 
 A package installs a starter shell as `<prefix>/share/gnoblin/default-shell/shell.ts`: the stock desktop as a shell you can
-read. It is what runs on a fresh install, and it is only the last tier: write a `shell.ts` with `gnoblinctl config init` and
-that one runs instead. See the [TypeScript shell](/typescript-shell).
+read. It is what runs on a fresh install, and it is only the last tier. Any shell file of your own runs instead:
+
+- `gnoblinctl config init` writes a starter `shell.ts` (TypeScript).
+- Write a `shell.py` by hand (see the [Python shell](/python-shell)).
+- Build a Rust shell crate (see the [Rust shell](/rust-shell)).

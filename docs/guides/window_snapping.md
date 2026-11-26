@@ -2,7 +2,7 @@
 
 [Configuration reference](/config/configure)
 
-Dropping a dragged window on a screen edge tiles it. Edge tiling is always on, and `shell.ts` has no setting for it.
+Dropping a dragged window on a screen edge tiles it. Edge tiling is always on, and your shell file has no setting for it.
 
 Drag a window with `Super` and the left button until the pointer is within 4
 pixels of an edge, then release:

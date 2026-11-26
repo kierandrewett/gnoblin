@@ -46,11 +46,11 @@ Check which case applies:
   If the message still appears, include the output of `journalctl -b -u gdm` in
   your bug report.
 
-If no configuration exists, the session runs the stock TypeScript config. `gnoblinctl config init` writes a starter `~/.config/gnoblin/shell.ts`
+If no configuration exists, the session runs the stock configuration. `gnoblinctl config init` writes a starter `~/.config/gnoblin/shell.ts`
 and never replaces an existing file.
 
 Gnoblin starts with its embedded configuration before applying the user
-configuration. If loading `shell.ts` or the native settings fail, it tries the last
+configuration. If loading the shell file or the native settings fail, it tries the last
 accepted settings, then keeps embedded defaults if those also fail. A failed load leaves your files unchanged: read the
 error with `gnoblinctl log --level WARN`, fix the file, and run `gnoblinctl config reload`. See
 [the TypeScript shell](/typescript-shell#with-no-shell-ts).
@@ -77,16 +77,16 @@ Open the network's sign-in page in a browser. The NetworkManager secret agent ha
 gnoblinctl config reload
 ```
 
-Edit `~/.config/gnoblin/shell.ts` and read the reload error. Then check:
+Edit your shell file in `~/.config/gnoblin/` and read the reload error. Then check:
 
 - Does this setting restart a child service, and does that affect its clients?
   See [reload behavior](/guides/files_and_load_order#reload).
-- Did an `import` in `shell.ts` name a file that is not there?
+- Did an `import` in the shell file name a file that is not there?
 - Did the file bind a trigger twice? A second binding of one trigger at one priority is refused.
 
 ## My component's shortcuts disappeared
 
-A `shell.ts` replaces the default entirely, so the keys, workspaces and titlebars the default made are gone unless your
+A shell file replaces the default entirely, so the keys, workspaces and titlebars the default made are gone unless your
 file makes them. Run `gnoblinctl config init` to write the default as code, then keep the lines you want.
 
 ## A shortcut fails
@@ -94,7 +94,7 @@ file makes them. Run `gnoblinctl config init` to write the default as code, then
 Run its command in a terminal. Check that the executable is on PATH.
 Command arguments do not expand `~`, `$HOME` or pipes.
 
-Check for another binding in your `shell.ts` on the same trigger: the shell refuses a second binding of one trigger, and
+Check for another binding in your shell file on the same trigger: the shell refuses a second binding of one trigger, and
 the load reports it. See [shortcut conflicts](/guides/shortcuts#avoid-conflicts).
 
 ## Shell integration errors

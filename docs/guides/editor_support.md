@@ -1,6 +1,9 @@
 # Editor support
 
-Get completion, argument hints and type checking for `gnoblin` in your editor.
+Get completion, argument hints and type checking for `gnoblin` in your editor. Every shell language has its own support:
+TypeScript (`shell.ts`), Python (`shell.py`) and Rust (a shell library built with cargo).
+
+## TypeScript
 
 The types are the library's own TypeScript. `gnoblinctl types init` writes that source next to your `shell.ts`, with a
 `tsconfig.json` that finds it.
@@ -11,7 +14,7 @@ Any editor that runs the TypeScript language service, such as VS Code, Neovim, H
 - shows the comment written above a class when you hover it,
 - opens the file the shell runs when you go to the definition of an import.
 
-## Set it up
+### Set it up
 
 1. Run `gnoblinctl types init`. It writes a `.gnoblin` directory and a `tsconfig.json` beside your `shell.ts`.
    `gnoblinctl config init` runs it for you.
@@ -20,7 +23,7 @@ Any editor that runs the TypeScript language service, such as VS Code, Neovim, H
 3. Check a file from the command line with `gnoblinctl check --types ~/.config/gnoblin/shell.ts`. It runs a TypeScript
    compiler when one is installed.
 
-## What is written where
+### What is written where
 
 ```text
 ~/.config/gnoblin/
@@ -45,6 +48,22 @@ Any editor that runs the TypeScript language service, such as VS Code, Neovim, H
 `gnoblinctl types init` never replaces a `tsconfig.json` you already have. It rewrites `.gnoblin` every time, so run it
 again after you update Gnoblin: the files match the release that wrote them. If your `tsconfig.json` does not extend
 `.gnoblin/tsconfig.json`, the command says so, and the editor cannot find the library until it does.
+
+## Python
+
+The Python package ships type stubs, so `mypy` and `pyright` check a `shell.py` without running it. Editors that use
+Pylance or the `pyright` language server get the same completion and hover text.
+
+The stubs are installed as a stub-only package at `<prefix>/share/gnoblin/types/python/`. Point your checker at that
+directory, or add it to `extraPaths`. The page [Python shell](/python-shell) lists what the stubs cover and how they
+differ from the classes at run time.
+
+## Rust
+
+A Rust shell is an ordinary cargo crate that depends on the `gnoblin-core` library. `rust-analyzer` reads the crate like
+any other: completion, hover and go-to-definition work on the `Gnoblin` handle and on the callbacks you register. Build
+the crate with `cargo check` to see type errors without installing the shell. See [Rust shell](/rust-shell) for the crate
+layout.
 
 ## The same hints in the console
 

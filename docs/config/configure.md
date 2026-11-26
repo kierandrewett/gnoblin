@@ -1,8 +1,11 @@
 # Configuration reference
 
-A setting is a property of an object that `shell.ts` reaches from the `gnoblin` global: a device, an output profile,
-the clients' style, a workspace, a binding. [Settings in shell.ts](/js-settings) lists them all with an example for
-each.
+A setting is a property of an object that your shell reaches from its root: a device, an output profile, the clients'
+style, a workspace, a binding.
+
+The root is the `gnoblin` global in TypeScript (`shell.ts`) and Python (`shell.py`), and the `Gnoblin` value passed to
+`main` in a Rust shell library. The same settings exist in all three languages, spelled in each language's own style.
+[Settings in your shell](/js-settings) lists them all with an example for each, in TypeScript, Python and Rust.
 
 A setting you do not write keeps the shell's default, and an out-of-range value throws an error that names the
 property, so a typo never goes unnoticed. Sizes use logical pixels.
@@ -21,8 +24,8 @@ property, so a typo never goes unnoticed. Sizes use logical pixels.
 - [`portals`](/config/configure/portals): which backend answers a portal interface.
 
 Every other setting of the old configuration document, among them the colour scheme, the cursor theme, the
-magnifier, `autostart`, `protocols` and `xwayland`, has no TypeScript home yet: see
-[settings with no TypeScript home yet](/js-settings#dropped-settings). Window rules are in that list as well.
+magnifier, `autostart`, `protocols` and `xwayland`, has no typed home yet: see
+[settings with no object yet](/js-settings#dropped-settings). Window rules are in that list as well.
 
 See [recipes](/recipes/) for complete examples, [files and load order](/guides/files_and_load_order) for splitting a
-config over files, and [configuration files](/config/configure/config-files) for where the file lives.
+config over files, and [configuration files](/config/configure/config-files) for where the file lives in each language.

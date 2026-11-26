@@ -1,7 +1,7 @@
 # Session settings
 
-Layer-shell focus, the window drag boundary and the Wayland protocol list are compositor settings that `shell.ts`
-cannot set.
+Layer-shell focus, the window drag boundary and the Wayland protocol list are compositor settings that no shell can set,
+whether it is written in `shell.ts`, `shell.py` or Rust.
 
 What each one controls, and where it is documented:
 
@@ -15,8 +15,8 @@ What each one controls, and where it is documented:
 The compositor's defaults stay in force: exclusive layers keep the application beneath them active, a drag stays in the
 work area, every protocol is advertised, and a hardware display keeps its mode.
 
-The last one is an environment variable and not a setting. A config file or a script cannot allow a mode change. See the [protocol catalog](/wayland-protocols) for the interface names and
-the related guides.
+The last one is an environment variable and not a setting. A config file or a script cannot allow a mode change. See the
+[protocol catalog](/wayland-protocols) for the interface names and the related guides.
 
 Disabling a protocol does not block all screen sharing, because portal backends decide what apps may do; see
 [portals](/config/configure/portals).

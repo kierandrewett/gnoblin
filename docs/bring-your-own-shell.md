@@ -18,9 +18,11 @@ Install [Waybar](https://github.com/Alexays/Waybar),
 [Fuzzel](https://codeberg.org/dnkl/fuzzel) and
 [Mako](https://github.com/emersion/mako) with your distribution's package manager.
 
-Add this to `~/.config/gnoblin/shell.ts`:
+Add this to your shell (`shell.ts`, `shell.py`, or the `src/lib.rs` of a Rust shell):
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.spawn(["waybar"]);
 gnoblin.spawn(["mako"]);
 
@@ -28,6 +30,37 @@ gnoblin.input.primary.bind("Super+d", () => {
     gnoblin.spawn(["fuzzel"]);
 });
 ```
+
+```python
+from gnoblin import gnoblin
+
+gnoblin.spawn(["waybar"])
+gnoblin.spawn(["mako"])
+
+
+@gnoblin.bind("<Super>d")
+def launcher():
+    gnoblin.spawn(["fuzzel"])
+```
+
+```rust
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    g.spawn("waybar")?;
+    g.spawn("mako")?;
+
+    g.bind("<Super>d", move || {
+        if let Err(error) = g.spawn("fuzzel") {
+            g.log(&format!("cannot start fuzzel: {error}"));
+        }
+    })?;
+    Ok(())
+}
+```
+
+:::
 
 Save the file. The shell reloads it, starts Waybar and Mako, and `Super+d` opens Fuzzel. A reload keeps a program the
 file starts at its top level running and does not start it a second time; it stops one you took out of the file (see
@@ -122,7 +155,7 @@ not.
 
 If none appears while the session is unlocked, the recovery panel offers:
 
-- Open `~/.config/gnoblin/shell.ts`.
+- Open your shell file in `~/.config/gnoblin/` (`shell.ts`, `shell.py`, or the Rust shell library).
 - Launch a terminal, if one is installed.
 - Read this shell setup guide.
 
@@ -144,5 +177,5 @@ journalctl --user -b -u bingux-searchd.service -u bingux-statusd.service
 ```
 
 See [troubleshooting](troubleshooting.md#no-bar-dock-or-launcher).
-To write your own shell in TypeScript, start with [Write your own shell](user-shell.md). To write one in another language,
-start with the [compositor bridge](bridge/index.md).
+To write your own shell, start with [Write your own shell](user-shell.md). To write a shell that talks to the compositor
+in any language, start with the [compositor bridge](bridge/index.md).

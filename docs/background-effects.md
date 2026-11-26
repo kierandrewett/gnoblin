@@ -43,7 +43,7 @@ fade-out without help from the client.
 
 ## Disable the protocol
 
-Which Wayland protocols the compositor advertises is not something `shell.ts` can set: no object of the shell API carries
+Which Wayland protocols the compositor advertises is not something the shell file can set: no object of the shell API carries
 that choice (see [Settings with no object](/js-settings)).
 
 ## Rendering

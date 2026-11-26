@@ -33,12 +33,16 @@ Replace the app ID with the exact value from `gnoblinctl window list --json`.
 IDs expire when their windows close. If you need repeated updates, subscribe to
 snapshots instead of polling the command.
 
-## Python: watch windows
+## Python and Rust: no client library
 
-The [Python watcher](/bridge/examples#python-watch-windows)
-subscribes with `{"op":"windows"}` and prints each full snapshot. Keep its
-connection open for as long as your dock or switcher needs updates. An empty
-`windows` array means no eligible windows, not a request failure.
+No Python or Rust bridge client library ships. The protocol is plain
+newline-delimited JSON over a Unix socket, so a Python or Rust client can
+use the standard socket and JSON modules directly. The Node.js and Go
+examples below show the full request and reply handling to copy.
+
+For a long-running dock or switcher, subscribe with `{"op":"windows"}` and
+handle every `windows` event. An empty `windows` array means no eligible
+windows, not a request failure.
 
 ## Node.js: request a snapshot
 

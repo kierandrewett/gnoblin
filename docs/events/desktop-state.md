@@ -1,16 +1,17 @@
 # Window, workspace and output events
 
-Windows, workspaces and outputs are objects in `gnoblin.clients`, `gnoblin.workspaces` and `gnoblin.outputs`. A listener
-attached to one of them is told what happens to it and receives the object itself.
+Windows, workspaces and outputs are objects in `clients`, `workspaces` and `outputs`. A listener attached to one of them
+is told what happens to it and receives the object itself.
 
 ## Listen to windows
 
-Attach a `ClientCollectionListener` to `gnoblin.clients` to hear every window, or a `ClientListener` to one window's
-`addListener` to hear that one.
+Attach a `ClientCollectionListener` to the window collection to hear every window, or a `ClientListener` to one window to
+hear that one. The two have the same methods, and a collection listener adds `on_added` and `on_removed`. Every method is
+optional.
 
-The two have the same methods, and a collection listener adds `onAdded` and `onRemoved`. Every method is optional.
+::: tabs
 
-```ts
+```typescript
 import { ClientCollectionListener, gnoblin } from "gnoblin-core";
 import type { Client } from "gnoblin-core";
 
@@ -18,6 +19,7 @@ class Titles extends ClientCollectionListener {
     onTitleChanged(client: Client, title: string) {
         gnoblin.spawn(["logger", "-t", "titles", `${client.appId}: ${title}`]);
     }
+
     onClosed(client: Client) {
         gnoblin.spawn(["logger", "-t", "titles", `${client.appId} closed`]);
     }
@@ -26,34 +28,81 @@ class Titles extends ClientCollectionListener {
 gnoblin.clients.addListener(new Titles());
 ```
 
-Save it as `shell.ts`. Open a terminal and read the lines with `journalctl --user -t titles -f`.
+```python
+from gnoblin.objects.model import Client, ClientCollectionListener, Gnoblin
 
-| Method                                | Called when                                                                 |
-| ------------------------------------- | --------------------------------------------------------------------------- |
-| `onTitleChanged(client, title)`       | The window's title changed.                                                 |
-| `onAppIdChanged(client, appId)`       | The window's application id changed.                                        |
-| `onFocusChanged(client, focused)`     | The window gained or lost the keyboard focus.                               |
-| `onGeometryChanged(client, geometry)` | The window's rectangle changed. `geometry` is `{ x, y, width, height }`.    |
-| `onClosed(client)`                    | The window closed. The object keeps its last values and `alive` is `false`. |
-| `onPointerEnter(client, event)`       | The pointer crossed into the window.                                        |
-| `onPointerMotion(client, event)`      | The pointer moved over the window.                                          |
-| `onPointerLeave(client, event)`       | The pointer left the window.                                                |
-| `onPointerPress(client, event)`       | A button went down on the window.                                           |
-| `onPointerRelease(client, event)`     | A button came up on the window.                                             |
-| `onDecorationChanged(client, mode)`   | Who draws the window's frame changed: `client`, `server` or `none`.         |
-| `onReady(client)`                     | The window finished its first setup. A window there at boot hears it once.  |
 
-A pointer `event` has `x` and `y` in the window's own coordinates and `button`, which is 0 for every event but a press and
+class Titles(ClientCollectionListener):
+    def on_title_changed(self, client: Client, title: str) -> None:
+        Gnoblin.get().spawn(["logger", "-t", "titles", f"{client.app_id}: {title}"])
+
+    def on_closed(self, client: Client) -> None:
+        Gnoblin.get().spawn(["logger", "-t", "titles", f"{client.app_id} closed"])
+
+
+Gnoblin.get().clients.add_listener(Titles())
+```
+
+```rust
+use gnoblin_core::objects::{Client, ClientCollectionListenerHandlers};
+use gnoblin_core::Gnoblin;
+
+fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
+    let objects = g.objects()?;
+    let Some(clients) = g.clients()? else {
+        return Ok(());
+    };
+    let titles = ClientCollectionListenerHandlers {
+        on_title_changed: Some(Box::new(move |client: Client, title: String| {
+            println!("{}: {title}", client.app_id()?);
+            Ok(())
+        })),
+        on_closed: Some(Box::new(move |client: Client| {
+            println!("{} closed", client.app_id()?);
+            Ok(())
+        })),
+        ..Default::default()
+    }
+    .implement(&objects)?;
+    clients.add_listener(&titles)?;
+    // The core holds the listener from here on.
+    std::mem::forget(titles);
+    Ok(())
+}
+```
+
+:::
+
+Save the TypeScript as `shell.ts`, the Python as `shell.py`, and put the Rust in a shell library. Read the lines with
+`journalctl --user -t titles -f`.
+
+| Method                                          | Called when                                                                 |
+| ----------------------------------------------- | --------------------------------------------------------------------------- |
+| `onTitleChanged` / `on_title_changed`           | The window's title changed.                                                 |
+| `onAppIdChanged` / `on_app_id_changed`          | The window's application id changed.                                        |
+| `onFocusChanged` / `on_focus_changed`           | The window gained or lost the keyboard focus.                               |
+| `onGeometryChanged` / `on_geometry_changed`     | The window's rectangle changed.                                             |
+| `onClosed` / `on_closed`                        | The window closed. The object keeps its last values and `alive` is `false`. |
+| `onPointerEnter` / `on_pointer_enter`           | The pointer crossed into the window.                                        |
+| `onPointerMotion` / `on_pointer_motion`         | The pointer moved over the window.                                          |
+| `onPointerLeave` / `on_pointer_leave`           | The pointer left the window.                                                |
+| `onPointerPress` / `on_pointer_press`           | A button went down on the window.                                           |
+| `onPointerRelease` / `on_pointer_release`       | A button came up on the window.                                             |
+| `onDecorationChanged` / `on_decoration_changed` | Who draws the window's frame changed: `client`, `server` or `none`.         |
+| `onReady` / `on_ready`                          | The window finished its first setup. A window there at boot hears it once.  |
+
+A pointer event has `x` and `y` in the window's own coordinates and `button`, which is 0 for every event but a press and
 a release.
 
-Each method is also an event that `on` takes with just the handler, and `on` returns a `Listener` whose `stop()` detaches
-it. See [Events](/events/#subscribe-to-one-event).
+Each method is also available as a single subscription that returns a `Listener`, whose `stop()` detaches it:
 
-- A window has them: `client.on("titleChanged", handler)`.
-- Every collection of windows has them: `gnoblin.clients.on("titleChanged", handler)` hears every window.
-- `gnoblin` has them under a longer name: `gnoblin.onClientTitleChanged(handler)`.
+- A window has them as `client.on("titleChanged", handler)`.
+- Every collection has them as `clients.on("titleChanged", handler)`, which hears every window.
+- `gnoblin` has them under a longer name, such as `gnoblin.onClientFocusChanged(handler)`.
 
-```ts
+::: tabs
+
+```typescript
 const focus = gnoblin.onClientFocusChanged((client, focused) => {
     if (focused) {
         gnoblin.spawn(["logger", "-t", "focus", client.appId]);
@@ -63,90 +112,184 @@ const focus = gnoblin.onClientFocusChanged((client, focused) => {
 focus.stop(); // focus is not logged any more
 ```
 
+```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
+
+
+def log_focus(client, focused):
+    if focused:
+        gnoblin.spawn(["logger", "-t", "focus", client.app_id])
+
+
+focus = gnoblin.clients.on("focus_changed", log_focus)
+focus.stop()  # focus is not logged any more
+```
+
+```rust
+use gnoblin_core::Gnoblin;
+
+fn watch_focus(g: &Gnoblin) -> gnoblin_core::Result<()> {
+    let objects = g.objects()?;
+    let Some(clients) = g.clients()? else {
+        return Ok(());
+    };
+    let focus = clients.on_focus_changed(|client, focused| {
+        if focused {
+            println!("{}", client.app_id().unwrap_or_default());
+        }
+    })?;
+    // Dropping the Listener stops the subscription, so keep it while it is needed.
+    std::mem::forget(focus);
+    Ok(())
+}
+```
+
+:::
+
 ### Answer a request yourself
 
-A client asks the compositor to maximise, fullscreen, minimise, close, raise or move its window, and the compositor does
-nothing until the shell answers. `WindowState.get().start()` makes the shell answer every kind. A `RequestListener` added
-with `WindowState.get().addListener(listener)` hears the request first, and `request.handle()` answers it: the stock
-answer does not run. The kinds and the `WindowState` policy are in [Windows](/shell-api/windows#window-requests).
+A client asks the compositor to maximise, fullscreen, minimise, close, raise or move its window, and the compositor waits
+for the shell to answer. The kinds and the policy are in [Windows](/shell-api/windows#window-requests).
 
 ## Listen to membership
 
-A `ClientCollectionListener` on `gnoblin.clients` hears windows join and leave, and an `OutputCollectionListener` on
-`gnoblin.outputs` does the same for outputs:
+A `ClientCollectionListener` on the window collection hears windows join and leave, and an `OutputCollectionListener` on
+the output collection does the same for outputs:
 
-- `onAdded(member, collection)` runs when a window or an output joins.
-- `onRemoved(member, collection)` runs when one leaves.
+- `onAdded` / `on_added` runs when a window or an output joins.
+- `onRemoved` / `on_removed` runs when one leaves.
 
-`gnoblin.workspaces` has `added` and `removed` events for workspaces: `gnoblin.workspaces.on("added", handler)`.
+The workspace collection has `added` and `removed` events of its own: `workspaces.on("added", handler)`. See
+[Workspaces](/shell-api/workspaces).
 
-```ts
+::: tabs
+
+```typescript
 import { ClientCollectionListener, gnoblin } from "gnoblin-core";
 import { Toast } from "gnoblin-std";
 import type { Client } from "gnoblin-core";
 
 class Count extends ClientCollectionListener {
     onAdded(client: Client) {
-        Toast.show(`${client.appId} opened: ${gnoblin.clients.length} windows`);
+        Toast.show(`${client.appId} opened`);
     }
 }
 
 gnoblin.clients.addListener(new Count());
-```
 
-Each is also an event of the collection: `gnoblin.clients.on("added", handler)` runs the handler for every window there is
-now and every one that joins, and `gnoblin.onClientCreated(handler)` is the same for windows from `gnoblin`.
-
-```ts
 gnoblin.onClientCreated((client) => {
     gnoblin.spawn(["logger", "-t", "windows", `${client.appId} appeared`]);
 });
 ```
 
+```python
+from gnoblin.objects.model import Client, ClientCollectionListener, Gnoblin
+from gnoblin.objects.std import Toast
+
+
+class Count(ClientCollectionListener):
+    def on_added(self, client: Client, collection) -> None:
+        Toast.show(f"{client.app_id} opened")
+
+
+Gnoblin.get().clients.add_listener(Count())
+```
+
+```rust
+use gnoblin_core::objects::{Client, ClientCollection, ClientCollectionListenerHandlers};
+use gnoblin_core::Gnoblin;
+
+fn count(g: &Gnoblin) -> gnoblin_core::Result<()> {
+    let objects = g.objects()?;
+    let Some(clients) = g.clients()? else {
+        return Ok(());
+    };
+    let added = ClientCollectionListenerHandlers {
+        on_added: Some(Box::new(move |client: Client, _collection: ClientCollection| {
+            println!("{} opened", client.app_id()?);
+            Ok(())
+        })),
+        ..Default::default()
+    }
+    .implement(&objects)?;
+    clients.add_listener(&added)?;
+    std::mem::forget(added);
+    Ok(())
+}
+```
+
+:::
+
 The shell reads what the compositor published a batch at a time:
 
-- A window that opens and closes inside one batch is gone when the batch is read. The shell is told of it neither way: no
-  `onAdded` or `clientCreated`, and no `onClosed`.
+- A window that opens and closes inside one batch is gone when the batch is read. The shell is told of it neither way.
 - A window the shell has been told of is always told closed later.
 - A script that acts on a window it has just opened, such as closing it, listens for the window to appear first and acts
   from there.
 
 ## Listen to outputs
 
-An `OutputCollectionListener` attached to `gnoblin.outputs`, or an `OutputListener` attached to one output, has these
-methods:
+An `OutputCollectionListener` on the output collection, or an `OutputListener` on one output, has these methods:
 
-| Method                                | Called when                                                                |
-| ------------------------------------- | -------------------------------------------------------------------------- |
-| `onConnected(output)`                 | An output was plugged in while the shell runs.                             |
-| `onDisconnected(output)`              | An output is gone. Its last values stay readable.                          |
-| `onModeChanged(output, mode)`         | The mode changed. `mode` is `WxH@Hz`.                                      |
-| `onScaleChanged(output, scale)`       | The scale changed.                                                         |
-| `onGeometryChanged(output, geometry)` | The output's position or size changed.                                     |
-| `onApplied(output, error)`            | An `apply` or `mirror` was answered. `error` is empty when it took effect. |
+| Method                                      | Called when                                                                  |
+| ------------------------------------------- | ---------------------------------------------------------------------------- |
+| `onConnected` / `on_connected`              | An output was plugged in while the shell runs.                               |
+| `onDisconnected` / `on_disconnected`        | An output is gone. Its last values stay readable.                            |
+| `onModeChanged` / `on_mode_changed`         | The mode changed. The mode is `WxH@Hz`.                                      |
+| `onScaleChanged` / `on_scale_changed`       | The scale changed.                                                           |
+| `onGeometryChanged` / `on_geometry_changed` | The output's position or size changed.                                       |
+| `onApplied` / `on_applied`                  | An `apply` or `mirror` was answered. The error is empty when it took effect. |
 
 A listener on the collection does not hear `onConnected` for an output that was there when the shell started. See
 [Outputs](/shell-api/outputs#listen-for-plugging-and-unplugging).
 
-Each method is also an event that `on` takes with just the handler:
+::: tabs
 
-- `output.on("modeChanged", handler)` hears one output, and `gnoblin.outputs.on("modeChanged", handler)` hears every output.
-- `gnoblin` has them as `gnoblin.onOutputModeChanged`, `gnoblin.onOutputConnected` and so on.
-- `gnoblin.onOutputAdded` and `gnoblin.onOutputRemoved` follow the membership of `gnoblin.outputs`.
+```typescript
+import { gnoblin } from "gnoblin-core";
 
-`onAdded` runs for the outputs there are now as well as for each that joins. `onConnected` runs only for an output that is
-plugged in later.
-
-```ts
 gnoblin.onOutputConnected((output) => {
     gnoblin.spawn(["notify-send", `${output.connector} connected`]);
 });
 ```
 
+```python
+from gnoblin.objects.model import Gnoblin
+
+gnoblin = Gnoblin.get()
+
+gnoblin.outputs.on(
+    "connected",
+    lambda output: gnoblin.spawn(["notify-send", f"{output.connector} connected"]),
+)
+```
+
+```rust
+use gnoblin_core::Gnoblin;
+
+fn watch_outputs(g: &Gnoblin) -> gnoblin_core::Result<()> {
+    let Some(outputs) = g.outputs()? else {
+        return Ok(());
+    };
+    let connected = outputs.on_connected(|output| {
+        println!("{} connected", output.connector().unwrap_or_default());
+    })?;
+    std::mem::forget(connected);
+    Ok(())
+}
+```
+
+:::
+
+`onAdded` runs for the outputs there are now as well as for each that joins. `onConnected` runs only for an output that is
+plugged in later.
+
 ## Signals the compositor raises
 
 These are the compositor's own signals behind the listeners above. A script hears them through the listener methods, which
-receive the object itself; the signals carry object identities.
+receive the object itself. The signals carry object identities.
 
 | Event                           | Fields                                        | When                                              |
 | ------------------------------- | --------------------------------------------- | ------------------------------------------------- |
@@ -166,6 +309,5 @@ receive the object itself; the signals carry object identities.
 - `x`, `y`, `width` and `height` of the menu request are an anchor in the compositor's coordinates. A point has no size.
 - `source` is `client` for a program's own request, `keyboard` for the window menu key and `extension` for a script that
   asked. `seat` names the seat that made the request.
-- `closed` is raised by the object that is gone, so its `object` field says which one.
 
-`gnoblin.window.changed` does not report a focus change. A focus change reaches `ClientListener.onFocusChanged`.
+`gnoblin.window.changed` does not report a focus change. A focus change reaches `onFocusChanged` on a `ClientListener`.

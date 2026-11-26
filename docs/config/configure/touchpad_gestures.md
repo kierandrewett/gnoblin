@@ -1,35 +1,100 @@
 # Touchpad gestures
 
-A swipe or a pinch of several fingers is a binding: `input.bind` takes a gesture trigger and a function, and the
-function runs once, when the fingers lift.
+A touchpad gesture is a swipe or a pinch with a finger count, such as `Swipe3` or `Pinch2In`. A gesture binding is an
+object that answers the gesture as it runs. Give it to the input context:
 
-```ts
-const input = gnoblin.input.primary;
+- TypeScript: `bindGesture`
+- Python and Rust: `bind_gesture`
 
-input.bind("Swipe4Up", () => {
-    input.focusedClient?.close();
-});
-input.bind("Pinch3In", () => {
-    gnoblin.spawn(["kgx"]);
-});
-```
+Its hooks are `onBegin` (required), `onUpdate`, `onEnd` and `onCancel`.
 
-A trigger is `Swipe` or `Pinch`, a finger count, and a direction: `Swipe3Left`, `Swipe4Up`, `Pinch3In`, `Pinch4Out`.
-The stock setup binds a three-finger swipe to `WorkspaceSlideBinding`, which follows the fingers while they move:
+The stock three-finger slide between workspaces is `WorkspaceSlideBinding`. It follows the fingers and commits when they
+lift past `commit`, a fraction from 0 to 1 that defaults to 0.25.
 
-```ts
+::: tabs
+
+```typescript
+import { GestureBinding } from "gnoblin-core";
 import { WorkspaceSlideBinding } from "gnoblin-std";
+
+class CloseOnSwipe extends GestureBinding {
+    onBegin(): boolean {
+        return true;
+    }
+
+    onEnd(): void {
+        gnoblin.input.primary?.focusedClient?.close();
+    }
+}
+
+gnoblin.input.primary?.bindGesture("Swipe4Up", new CloseOnSwipe());
 
 new WorkspaceSlideBinding({ trigger: "Swipe3" }).install();
 ```
 
-A trigger that is already bound at the same priority is refused, so delete the stock line before you bind a three-finger
-swipe of your own. See [window policy](/js-window-policy#gesture-actions) for the event a function receives.
+```python
+from gnoblin import gnoblin
+from gnoblin.objects.model import GestureBinding
+from gnoblin.objects.std import WorkspaceSlideBinding
 
-A gesture drawn as a path of points (`touchpadGestures`) has no TypeScript home yet: see
-[settings with no TypeScript home yet](/js-settings#dropped-settings).
 
-## Status
+class CloseOnSwipe(GestureBinding):
+    def on_begin(self, event):
+        return True
 
-None of this has been run against a touchpad. The routing, cancel, lock and finger-count rules are covered by tests
-that feed synthetic samples, and no hardware proof is claimed.
+    def on_end(self, event):
+        primary = gnoblin.input.primary
+        if primary is not None and primary.focused_client is not None:
+            primary.focused_client.close()
+
+
+gnoblin.input.primary.bind_gesture("Swipe4Up", CloseOnSwipe())
+
+WorkspaceSlideBinding(trigger="Swipe3").install()
+```
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::{GestureBindingHandlers, ModelRoot};
+use gnoblin_std::objects::{WorkspaceSlideBinding, WorkspaceSlideBindingOptions};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let objects = g.objects()?;
+    let model = ModelRoot::get(&objects)?;
+    let Some(input) = model.input()? else {
+        return Ok(());
+    };
+    let Some(context) = input.primary()? else {
+        return Ok(());
+    };
+
+    let close = GestureBindingHandlers {
+        on_begin: Box::new(|_| Ok(true)),
+        on_update: None,
+        on_end: Some(Box::new(|_| Ok(()))),
+        on_cancel: None,
+    }
+    .implement(&objects)?;
+    context.bind_gesture("Swipe4Up", &close, None)?;
+
+    let slide = WorkspaceSlideBinding::new_with(
+        &objects,
+        WorkspaceSlideBindingOptions {
+            priority: None,
+            trigger: Some("Swipe3".to_string()),
+            travel: None,
+            commit: None,
+            duration: None,
+        },
+    )?;
+    slide.install(None)?;
+    Ok(())
+}
+```
+
+:::
+
+`WorkspaceSlideBinding` takes `trigger`, `priority`, `travel` (the distance in touchpad units for a whole slide),
+`commit` and `duration` (in milliseconds). Installing a second binding with the same trigger and priority is refused.

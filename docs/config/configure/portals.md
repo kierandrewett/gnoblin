@@ -3,7 +3,7 @@
 Gnoblin's portal backend answers some XDG Desktop Portal interfaces for apps in the session. This page says which,
 how to route an interface to another backend, and which settings it publishes.
 
-`shell.ts` has no setting for portals. The `portals` section of the config document is carried and no process reads it.
+The shell config (`shell.ts`, `shell.py`, or a Rust shell library) has no setting for portals. The `portals` section of the config document is carried and no process reads it.
 Route portals with a standard `portals.conf` file instead, as
 [below](#route-an-interface-to-another-backend).
 

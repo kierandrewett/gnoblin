@@ -17,11 +17,30 @@ capture sees. See [the limits](#limits) and [the backdrop](#the-backdrop).
 The setting is `compositor.user-shaders`. It takes `true` or `false` and defaults to `true`. It is read when the compositor
 starts, so a change needs a new session.
 
-Switch it off in `shell.ts`, with the other settings of the compositor itself:
+Switch it off in the shell, with the other settings of the compositor itself. The three shell languages write it the same way:
 
-```ts
+::: tabs
+
+```typescript
 gnoblin.compositor.userShaders = false;
 ```
+
+```python
+from gnoblin import gnoblin
+
+gnoblin.compositor.user_shaders = False
+```
+
+```rust
+use gnoblin_core::objects::ModelRoot;
+
+let model = ModelRoot::get(&g.objects()?)?;
+if let Some(compositor) = model.compositor()? {
+    compositor.set_user_shaders(false)?;
+}
+```
+
+:::
 
 The shell commits the setting with the rest of its configuration, and the compositor keeps it in the last configuration
 document it accepted. The running compositor does not change: it started with shaders.
@@ -31,22 +50,20 @@ document it accepted. The running compositor does not change: it started with sh
 - `gnoblinctl config get` prints the document the compositor holds.
 - `gnoblinctl check shell.ts` runs the file without a session to show that the setting is accepted.
 
-A shell written in Rust or Python needs no `shell.ts` for this. It writes the same setting (`compositor.set_user_shaders(false)?` in
-Rust, `gnoblin.compositor.user_shaders = False` in Python), and Gnoblin commits it over the configuration the last login accepted. See
-the [Rust shell](/rust-shell) and [Python shell](/python-shell).
+A Rust or Python shell writes the same setting through its own compositor object, as the other two tabs show. Gnoblin commits it over the configuration the last login accepted. See the [Rust shell](/rust-shell) and [Python shell](/python-shell).
 
-Whether shaders are accepted is also a fact a shell can read. The seat has a read-only `user_shaders` property that is `true`
-unless the setting is switched off, and `effect_kinds`, which lists the effect kinds the active renderer draws. A shader is
-drawn only when both say yes: the setting is not off and `effect_kinds` holds `shader`.
+A shell can read the setting back: `gnoblin.compositor.userShaders` in TypeScript, `gnoblin.compositor.user_shaders` in Python and `user_shaders()` on `CompositorSettings` in Rust. It is `true` unless the setting is switched off. Whether a shader is drawn also depends on the renderer: the window is drawn without the shader when the renderer does not draw shaders, see [window effects](/guides/window_effects).
 
 ## Set one on a window
 
 A `ShaderFilter` is an element of a style's `filter` or `backdropFilter` list. Either list makes the same thing, one
 `shader` effect on the window's node. The `backdropFilter`'s shaders come first, after its blur, then the `filter`'s.
 
-In TypeScript:
+The three shell languages set the same filter on a window's style. Each tab defines the same shader source:
 
-```ts
+::: tabs
+
+```typescript
 import { ShaderFilter } from "gnoblin-std";
 
 const tint = `
@@ -59,20 +76,38 @@ fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {
 gnoblin.clients.style.filter = [new ShaderFilter({ source: tint, params: [1.0, 0.55, 0.2, 0.25] })];
 ```
 
-A literal does the same: `{ shader: { source: tint, params: [1.0, 0.55, 0.2, 0.25] } }`.
+```python
+from gnoblin.std import ClientStyle, ShaderFilter
 
-In Rust, with `gnoblin-std`:
+TINT = """
+fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {
+    let tint = vec3<f32>(p[0], p[1], p[2]) * c.a;
+    return vec4<f32>(mix(c.rgb, tint, p[3]), c.a);
+}
+"""
+
+ClientStyle.of_clients().filter = [ShaderFilter(source=TINT, params=[1.0, 0.55, 0.2, 0.25])]
+```
 
 ```rust
-std.clients()?.style()?.set_filter(&[Filter::shader(TINT, &[1.0, 0.55, 0.2, 0.25])])?;
+use gnoblin_std::objects::{ClientStyle, Filter, ShaderFilter};
+
+const TINT: &str = r#"
+fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {
+    let tint = vec3<f32>(p[0], p[1], p[2]) * c.a;
+    return vec4<f32>(mix(c.rgb, tint, p[3]), c.a);
+}
+"#;
+
+let objects = g.std()?.objects()?;
+let mut tint = ShaderFilter::new(TINT.to_string());
+tint.params = vec![1.0, 0.55, 0.2, 0.25];
+ClientStyle::of_clients(&objects)?.set_filter(&[Filter::Shader(tint)])?;
 ```
 
-In Python, over the generated bindings of `libgnoblin-std`:
+:::
 
-```python
-style = Style.scope(StyleKind.SCOPE_COLLECTION, clients().handle)
-style.set_list(StyleKind.FILTER, [StyleEntry.of_shader(TINT, [1.0, 0.55, 0.2, 0.25])])
-```
+A TypeScript literal does the same: `{ shader: { source: tint, params: [1.0, 0.55, 0.2, 0.25] } }`.
 
 The scopes work as they do for every style property: a client's own style beats a `where` selection, which beats its
 workspace, which beats the global style. A list a scope sets replaces the inherited list whole. See [window style](/js-style).
