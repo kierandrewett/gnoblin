@@ -38,6 +38,7 @@ struct World {
     list: W,
     desks: W,
     view: W,
+    room: W,
 }
 
 impl World {
@@ -55,6 +56,7 @@ impl World {
         let alerts = rig.make("not_responding_alerts", &[]);
         let desks = rig.make("desks", &[]);
         let view = rig.make("view", &[("id", t("panel"))]);
+        let room = rig.make("xr_room", &[]);
         let clients = workspace.obj("clients");
         rig.settle();
         World {
@@ -70,6 +72,7 @@ impl World {
             list,
             desks,
             view,
+            room,
         }
     }
 }
@@ -304,6 +307,16 @@ fn members() -> Vec<Member> {
             &w.desks,
             "restore_snap",
             &[c.clone(), en(1), rect(0.0, 0.0, 10.0, 10.0)]
+        )),
+        m!("xr_room.pin_to_head", |w, c| call(
+            &w.room,
+            "pin_to_head",
+            &[c.clone(), Val::None]
+        )),
+        m!("xr_room.view_of", |w, c| call(
+            &w.room,
+            "view_of",
+            std::slice::from_ref(c)
         )),
     ]
 }

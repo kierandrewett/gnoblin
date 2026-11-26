@@ -271,6 +271,8 @@ fn a_handler_stops_an_event_and_a_signal_tells_what_reached_a_canvas() {
 fn a_canvas_whose_node_goes_reads_as_it_was_and_says_so() {
     let mut rig = scratch();
     rig.comp.create_window(3, "win", "app");
+    // The library attaches when the shell opens it, so the window mapped after that reaches the shell on the next turn.
+    rig.settle();
     let card = rig.make("box", &[("x", d(4.0)), ("width", d(30.0)), ("height", d(20.0))]);
     let label = rig.make("text", &[("text", t("hello"))]);
     card.add(label);
