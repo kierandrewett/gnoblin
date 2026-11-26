@@ -3,7 +3,7 @@
 # A style holds only what was set on its scope. A property nobody set is inherited, from the scopes below it: every window's style, then
 # its workspace's, then the selections that hold it (a higher `priority` wins over a lower one, and of equal ones the selection that first
 # got a style is lower), then its own. Of each property the highest scope that sets it wins, and a list a scope sets replaces the
-# inherited list whole. A style is changed with `set`ting its properties, which are checked at once (a bad value is refused with the path
+# inherited list whole. A style is changed by setting its properties with `set`, which are checked at once (a bad value is refused with the path
 # of the property, and changes nothing). What the compositor can draw of the resolved style is written to the window's node in the next
 # turn; what it cannot draw is kept in `warnings`.
 #

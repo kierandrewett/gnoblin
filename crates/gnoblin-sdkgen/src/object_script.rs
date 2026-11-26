@@ -29,6 +29,7 @@ use std::collections::BTreeMap;
 
 use gnoblin_schema::{CallbackDecl, Catalog, EnumDecl, Namespace, ObjectType};
 
+use super::docs::{NO_DOCS, NamespaceDocs, base_of};
 use super::objects::{foreign_handle, foreign_handles, stem_of};
 use super::text::pascal;
 use super::{Comment, File, SdkSpec, Target, object_js, object_py, values};
@@ -40,6 +41,8 @@ pub(super) struct ScriptView<'a> {
     pub(super) objects: BTreeMap<&'a str, &'a ObjectType>,
     pub(super) enums: BTreeMap<&'a str, &'a EnumDecl>,
     pub(super) callbacks: BTreeMap<&'a str, &'a CallbackDecl>,
+    /// What the schema files say about the classes; empty for a catalog that has no comments (a test fixture).
+    pub(super) docs: &'a NamespaceDocs,
 }
 
 impl<'a> ScriptView<'a> {
@@ -59,7 +62,34 @@ impl<'a> ScriptView<'a> {
                 .callbacks(namespace)
                 .map(|declared| (declared.name.as_str(), declared))
                 .collect(),
+            docs: &NO_DOCS,
         }
+    }
+
+    /// The same view, with the descriptions the schema files carry.
+    pub(super) fn with_docs(mut self, docs: &'a NamespaceDocs) -> ScriptView<'a> {
+        self.docs = docs;
+        self
+    }
+
+    /// Whether the view carries the schema's descriptions.
+    pub(super) fn has_docs(&self) -> bool {
+        !std::ptr::eq(self.docs, &NO_DOCS)
+    }
+
+    /// The description of the class `name`, or an empty text.
+    pub(super) fn class_doc(&self, name: &str) -> &'a str {
+        self.docs.class(name)
+    }
+
+    /// The description of the member `member` of the class `class`, from the class or the nearest base that has one.
+    pub(super) fn member_doc(&self, class: &str, member: &str) -> &'a str {
+        self.docs.member(class, member, |name| base_of(&self.objects, name))
+    }
+
+    /// The description of the enum `name`, or an empty text.
+    pub(super) fn enum_doc(&self, name: &str) -> &'a str {
+        self.docs.enum_doc(name)
     }
 
     /// The class `name` names, or why a reference to it cannot be rendered.
@@ -259,7 +289,7 @@ impl Target for ObjectTypesTarget {
             },
         ];
         for namespace in spec.objects.namespaces() {
-            let view = ScriptView::new(&spec.objects, &namespace);
+            let view = ScriptView::new(&spec.objects, &namespace).with_docs(spec.docs.namespace(&namespace));
             files.push(File {
                 path: format!("js/{}/generated/objects.d.ts", package_of(&namespace)?),
                 comment: Some(Comment::Slashes),

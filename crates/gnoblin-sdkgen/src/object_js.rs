@@ -1716,6 +1716,7 @@ impl Js<'_> {
         c.line(format!("interface {} {{", class_name(target)));
         c.indent();
         for property in &class.properties {
+            c.jsdoc(self.view.member_doc(&class.name, &property.name));
             let ident = member_name(&property.name, &property.extras.export.js);
             c.line(format!("readonly {ident}: {};", self.ts(&property.ty, false)?));
         }
@@ -1724,6 +1725,7 @@ impl Js<'_> {
             if is_augment_setter(class, &method.name) {
                 continue;
             }
+            c.jsdoc(self.view.member_doc(&class.name, &method.name));
             let ident = member_name(&method.name, &method.extras.export.js);
             let returns = match &method.returns {
                 Some(ty) if method.optional => self.ts_read(ty)?,
@@ -1883,6 +1885,15 @@ impl Js<'_> {
         })
     }
 
+    /// A `/** */` comment of `text`, or of `fallback` when the schema describes nothing.
+    fn doc_or(&self, c: &mut CodeWriter, text: &str, fallback: impl FnOnce() -> String) {
+        if text.is_empty() {
+            c.line(format!("/** {} */", fallback()));
+        } else {
+            c.jsdoc(text);
+        }
+    }
+
     fn record_dts(&self, c: &mut CodeWriter, object: &ObjectType) -> Result<(), String> {
         for class in values::value_classes([object]) {
             self.class_dts(c, &class)?;
@@ -1893,10 +1904,12 @@ impl Js<'_> {
                 .iter()
                 .map(|variant| values::js_class(&variant.name, &variant.export))
                 .collect();
-            c.line(format!(
-                "/** The record `{}`: any one of its variants, told apart by its class. */",
-                object.name
-            ));
+            self.doc_or(c, self.view.class_doc(&object.name), || {
+                format!(
+                    "The record `{}`: any one of its variants, told apart by its class.",
+                    object.name
+                )
+            });
             c.line(format!("export type {} = {};", class_name(object), classes.join(" | ")));
             let literals: Vec<String> = object
                 .variants
@@ -1927,10 +1940,13 @@ impl Js<'_> {
     /// is optional) may be left out.
     fn class_dts(&self, c: &mut CodeWriter, class: &ValueClass<'_>) -> Result<(), String> {
         let name = class.js();
-        c.line(format!("/** The value class `{}`. */", class.name));
+        self.doc_or(c, self.view.class_doc(class.name), || {
+            format!("The value class `{}`.", class.name)
+        });
         c.line(format!("export class {name} {{"));
         c.indent();
         for property in class.properties {
+            c.jsdoc(self.view.member_doc(class.name, &property.name));
             let field = js_field(property);
             let ty = self.ts(&property.ty, false)?;
             if property.optional {
@@ -1955,6 +1971,7 @@ impl Js<'_> {
         c.line(format!("export interface {name}Init {{"));
         c.indent();
         for property in class.properties {
+            c.jsdoc(self.view.member_doc(class.name, &property.name));
             let field = js_field(property);
             let ty = self.ts(&property.ty, true)?;
             if property.default.is_some() || property.optional {
@@ -1999,7 +2016,9 @@ impl Js<'_> {
         c.line(format!("export interface {} {{", self.options_type(object)?));
         c.indent();
         for property in &ctor.options {
-            c.line(format!("/** The property `{}`. */", property.name));
+            self.doc_or(c, self.view.member_doc(&object.name, &property.name), || {
+                format!("The property `{}`.", property.name)
+            });
             c.line(format!(
                 "{}?: {};",
                 member_name(&property.name, &property.extras.export.js),
@@ -2045,7 +2064,15 @@ impl Js<'_> {
             ));
             c.line(format!("export interface {name}Events {{"));
             c.indent();
-            for (event, _, fields, property) in &events {
+            for (event, lookup, fields, property) in &events {
+                match property {
+                    Some(property) => c.jsdoc(&format!(
+                        "The property `{}` changed. {}",
+                        property.name,
+                        self.view.member_doc(&object.name, &property.name)
+                    )),
+                    None => c.jsdoc(self.view.member_doc(&object.name, &lookup.name)),
+                }
                 let args: Vec<String> = match property {
                     Some(property) => vec![format!(
                         "{}: {}",
@@ -2072,10 +2099,9 @@ impl Js<'_> {
         if has_instance_members && object.kind != ObjectKind::Service {
             self.options_dts(c, object, &slots)?;
         }
-        c.line(format!(
-            "/** The class `{}` of `{}`. */",
-            object.name, self.view.namespace
-        ));
+        self.doc_or(c, self.view.class_doc(&object.name), || {
+            format!("The class `{}` of `{}`.", object.name, self.view.namespace)
+        });
         c.line(format!("export declare class {name} {{"));
         c.indent();
         if has_instance_members {
@@ -2105,8 +2131,9 @@ impl Js<'_> {
         }
         for slot in &slots {
             match &slot.member {
-                Member::Property(property) => self.property_dts(c, property)?,
+                Member::Property(property) => self.property_dts(c, &object.name, property)?,
                 Member::Method(method) => {
+                    c.jsdoc(self.view.member_doc(&object.name, &method.name));
                     let ident = member_name(&method.name, &method.extras.export.js);
                     let returns = match &method.returns {
                         Some(ty) if method.optional => self.ts_read(ty)?,
@@ -2169,7 +2196,8 @@ impl Js<'_> {
         Ok(())
     }
 
-    fn property_dts(&self, c: &mut CodeWriter, property: &Property) -> Result<(), String> {
+    fn property_dts(&self, c: &mut CodeWriter, class: &str, property: &Property) -> Result<(), String> {
+        c.jsdoc(self.view.member_doc(class, &property.name));
         let ident = member_name(&property.name, &property.extras.export.js);
         let callback = matches!(property.ty, Type::Callback(_));
         let read = if callback {
@@ -2201,13 +2229,16 @@ impl Js<'_> {
 
     fn interface_dts(&self, c: &mut CodeWriter, object: &ObjectType) -> Result<(), String> {
         let name = class_name(object);
-        c.line(format!(
-            "/** The interface `{}` of `{}`: a script extends it and defines the methods it wants to answer. */",
-            object.name, self.view.namespace
-        ));
+        self.doc_or(c, self.view.class_doc(&object.name), || {
+            format!(
+                "The interface `{}` of `{}`: a script extends it and defines the methods it wants to answer.",
+                object.name, self.view.namespace
+            )
+        });
         c.line(format!("export declare abstract class {name} {{"));
         c.indent();
         for method in &object.methods {
+            c.jsdoc(self.view.member_doc(&object.name, &method.name));
             let ident = member_name(&method.name, &method.extras.export.js);
             let returns = match &method.returns {
                 // The script's method may answer nothing, which the library reads as the method's comment says.
@@ -2276,7 +2307,9 @@ pub(super) fn render_dts(view: &ScriptView<'_>) -> Result<String, String> {
     c.blank();
     for declared in view.enums.values() {
         let values: Vec<String> = declared.values.iter().map(|value| quote(value)).collect();
-        c.line(format!("/** The enum `{}`. */", declared.name));
+        js.doc_or(&mut c, view.enum_doc(&declared.name), || {
+            format!("The enum `{}`.", declared.name)
+        });
         c.line(format!(
             "export type {} = {};",
             pascal(&declared.name),

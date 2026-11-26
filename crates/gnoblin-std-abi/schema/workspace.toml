@@ -821,7 +821,7 @@ type = "object:floating_query"
 
 # A live list of clients, in order. A workspace's clients are one the shell changes (`add`, `remove`, `swap`, `clear`); the list of every
 # client and a selection of one (`where`) follow what the library tracks and refuse a change. `add`, `remove`, `contains` and `swap` take the
-# core's `Client`, and `members` lists the core's `Client`s.
+# core's `Client`, and `members` lists the core's `Client` objects.
 [[object]]
 name = "client_collection"
 since = "0.2.0"

@@ -55,8 +55,9 @@ subcommands:
                      declarations, pyright over the installed stubs, cargo check against the SDK crates; a failure names the
                      page and the line; see xtask/src/docs_examples.rs
   docs-reference [--out DIR]
-                     write the generated API reference pages (TypeScript, Python, Rust) into infra/site/.generated/docs,
-                     where the website reads them; they are never committed
+                     write the declarations the TypeScript and Python API reference tools read (what an install gives an
+                     editor, with the schema's descriptions) into infra/site/.generated/sdk; never committed. The site
+                     build runs TypeDoc, Sphinx and rustdoc over them; see infra/site/scripts/reference.mjs
   compat-report --json  the same report as JSON
   dist install|uninstall --prefix P [--destdir D] [--profile NAME] [--libdir NAME]
                      install or remove the session tree; see xtask/src/dist.rs

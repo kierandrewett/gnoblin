@@ -39,6 +39,9 @@ pub struct SdkSpec {
     /// The catalogs of the namespaces the libraries serve through the object protocol (`gnoblin.model`, `gnoblin.std`), loaded
     /// together so a class of one can name a class of the other.
     pub objects: Catalog,
+    /// The descriptions the schema files of those catalogs carry as comments: what each class, property, method, signal and enum is for.
+    /// The catalog does not keep comments, so they are read from the files beside it.
+    pub docs: crate::docs::Docs,
     /// The libraries' ABIs, core first.
     pub libraries: Vec<Library>,
     /// The workspace root the specification was loaded from, where the locks of the namespaces are (`surface::module_units`). `None`
@@ -88,6 +91,7 @@ impl SdkSpec {
         let layouts = crate::layout_schema::schema_text();
         let objects = Catalog::load_dirs_with(&dirs, &[], &[(layouts_origin.as_str(), layouts.as_str())])
             .map_err(|error| format!("the catalogs of the libraries do not load: {error}"))?;
+        let docs = crate::docs::Docs::load(model_dirs, &[layouts.as_str()])?;
         let mut libraries: Vec<Library> = Vec::new();
         for (name, reflection) in [
             ("core", gnoblin_core_abi::reflect::reflection as fn() -> Reflection),
@@ -100,6 +104,7 @@ impl SdkSpec {
             catalog,
             catalog_hash,
             objects,
+            docs,
             libraries,
             root: root.map(Path::to_path_buf),
         })

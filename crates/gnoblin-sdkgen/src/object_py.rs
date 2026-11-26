@@ -475,6 +475,15 @@ fn enum_member(value: &str) -> String {
     }
 }
 
+/// The docstring of `on`: what it does, and the events of the class with what each is.
+fn on_doc(events: &[ScriptEvent]) -> String {
+    let mut text = "Calls `handler` each time `event` happens, until the returned listener is stopped. Without a handler it is a decorator.\n\nThe events:".to_owned();
+    for event in events {
+        text.push_str(&format!("\n\n* `{}`: {}", event.name, event.doc.replace("\n\n", " ")));
+    }
+    text
+}
+
 /// An event of a class: a signal, or a property's change.
 struct ScriptEvent {
     /// Whether the catalog declares it as a signal (the change of a property is the other kind).
@@ -483,6 +492,8 @@ struct ScriptEvent {
     at: usize,
     decoders: Vec<String>,
     params: Vec<(String, String)>,
+    /// What the event is, for the docstring of `on`.
+    doc: String,
 }
 
 /// A member of a class's lookup list, as the runtime is asked for it.
@@ -681,10 +692,22 @@ impl<'a> Py<'a> {
         }
     }
 
-    /// `header` and its body: one `...` line in a stub, the body indented in a module.
+    /// `header` and its body: one `...` line in a stub, the body indented in a module. A stub carries the schema's description of the
+    /// member, when there is one, as the member's docstring.
     fn def(&self, c: &mut CodeWriter, header: &str, doc: &str, body: &[String]) {
+        self.def_described(c, header, "", doc, body);
+    }
+
+    fn def_described(&self, c: &mut CodeWriter, header: &str, schema: &str, doc: &str, body: &[String]) {
         if self.stub {
-            c.line(format!("{header}: ..."));
+            if schema.is_empty() {
+                c.line(format!("{header}: ..."));
+            } else {
+                c.line(format!("{header}:"));
+                c.indent();
+                c.pydoc(schema);
+                c.dedent();
+            }
         } else {
             c.line(format!("{header}:"));
             c.indent();
@@ -696,20 +719,31 @@ impl<'a> Py<'a> {
         }
     }
 
+    /// The docstring of a class: the schema's description, or `fallback` when the schema has none.
+    fn class_doc(&self, c: &mut CodeWriter, text: &str, fallback: impl FnOnce() -> String) {
+        if text.is_empty() {
+            c.line(format!("\"\"\"{}\"\"\"", fallback()));
+        } else {
+            c.pydoc(text);
+        }
+    }
+
     fn enum_source(&self, c: &mut CodeWriter, declared: &EnumDecl) {
         let name = pascal(&declared.name);
         c.line(format!("class {name}(enum.IntEnum):"));
         c.indent();
-        c.line(format!(
-            "\"\"\"The enum `{}`: {}.\"\"\"",
-            declared.name,
-            declared
-                .values
-                .iter()
-                .map(|value| format!("`{value}`"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
+        let values = declared
+            .values
+            .iter()
+            .map(|value| format!("`{value}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let text = self.view.enum_doc(&declared.name);
+        if text.is_empty() {
+            c.line(format!("\"\"\"The enum `{}`: {values}.\"\"\"", declared.name));
+        } else {
+            c.pydoc(&format!("{text}\n\nThe values: {values}."));
+        }
         for (index, value) in declared.values.iter().enumerate() {
             c.line(format!("{} = {}", enum_member(value), index + 1));
         }
@@ -805,7 +839,9 @@ impl<'a> Py<'a> {
         c.line(format!("class {name}:"));
         c.indent();
         match class.of {
-            None => c.line(format!("\"\"\"The record `{}`.\"\"\"", class.name)),
+            None => self.class_doc(c, self.view.class_doc(class.name), || {
+                format!("The record `{}`.", class.name)
+            }),
             Some((family, variant)) => c.line(format!(
                 "\"\"\"The `{}` variant of the record `{}`.\"\"\"",
                 variant.tag, family.name
@@ -814,6 +850,7 @@ impl<'a> Py<'a> {
         for property in class.properties {
             let field = py_field(property);
             let ty = self.ty(&property.ty, false)?;
+            let described = self.stub.then(|| self.view.member_doc(class.name, &property.name));
             match absent(property) {
                 Absent::Default(default) => {
                     let value = self.default_expr(&property.ty, default)?;
@@ -832,6 +869,9 @@ impl<'a> Py<'a> {
                     if self.stub { "..." } else { "None" }
                 )),
                 Absent::Required => c.line(format!("{field}: {ty}")),
+            }
+            if let Some(text) = described {
+                c.pydoc(text);
             }
         }
         c.dedent();
@@ -1202,6 +1242,7 @@ impl<'a> Py<'a> {
                         at: Self::at(&lookups, 's', &signal.name),
                         decoders,
                         params,
+                        doc: self.view.member_doc(&object.name, &signal.name).to_owned(),
                     });
                 }
                 Member::Property(property) if !matches!(property.ty, Type::Callback(_)) => events.push(ScriptEvent {
@@ -1213,6 +1254,7 @@ impl<'a> Py<'a> {
                         member_name(&property.name, &None),
                         self.ty_read(&property.ty, property.optional)?,
                     )],
+                    doc: format!("The property `{}` changed.", property.name),
                 }),
                 _ => {}
             }
@@ -1261,10 +1303,9 @@ impl<'a> Py<'a> {
         };
         c.line(format!("class {name}{bases}:"));
         c.indent();
-        c.line(format!(
-            "\"\"\"The class `{}` of `{}`.\"\"\"",
-            object.name, self.view.namespace
-        ));
+        self.class_doc(c, self.view.class_doc(&object.name), || {
+            format!("The class `{}` of `{}`.", object.name, self.view.namespace)
+        });
         if !self.stub && has_instance_members {
             c.line("__slots__ = ()");
             c.line("_NS = _NS");
@@ -1293,10 +1334,10 @@ impl<'a> Py<'a> {
         for slot in &slots {
             match &slot.member {
                 Member::Property(property) => {
-                    self.property_source(c, &class_name(object), &snake_name, &lookups, property, &mut claim)?;
+                    self.property_source(c, object, &snake_name, &lookups, property, &mut claim)?;
                 }
                 Member::Method(method) => {
-                    self.method_source(c, &class_name(object), &snake_name, &lookups, method, &mut claim)?;
+                    self.method_source(c, object, &snake_name, &lookups, method, &mut claim)?;
                 }
                 Member::Signal(_) => {}
             }
@@ -1403,15 +1444,28 @@ impl<'a> Py<'a> {
 
     /// The overloads of `on` in a stub: a handler for each event, and the decorator form.
     fn on_stubs(&self, c: &mut CodeWriter, events: &[ScriptEvent]) {
+        // The docstring is the first overload's: the events of the class and what each is.
+        let mut described = false;
         for event in events {
             let (name, params) = (&event.name, &event.params);
             let types: Vec<&str> = params.iter().map(|(_, ty)| ty.as_str()).collect();
             let handler = format!("Callable[[{}], object]", types.join(", "));
             c.line("@overload");
-            c.line(format!(
-                "def on(self, event: Literal[{}], handler: {handler}) -> Listener: ...",
-                quote(name)
-            ));
+            if described || !self.view.has_docs() {
+                c.line(format!(
+                    "def on(self, event: Literal[{}], handler: {handler}) -> Listener: ...",
+                    quote(name)
+                ));
+            } else {
+                described = true;
+                c.line(format!(
+                    "def on(self, event: Literal[{}], handler: {handler}) -> Listener:",
+                    quote(name)
+                ));
+                c.indent();
+                c.pydoc(&on_doc(events));
+                c.dedent();
+            }
             c.line("@overload");
             c.line(format!(
                 "def on(self, event: Literal[{}]) -> Callable[[_F], _F]: ...",
@@ -1503,12 +1557,15 @@ impl<'a> Py<'a> {
     fn property_source(
         &self,
         c: &mut CodeWriter,
-        class: &str,
+        object: &ObjectType,
         snake_name: &str,
         lookups: &[MemberLookup],
         property: &Property,
         claim: &mut impl FnMut(&str) -> Result<(), String>,
     ) -> Result<(), String> {
+        let class_owned = class_name(object);
+        let class = class_owned.as_str();
+        let schema = self.view.member_doc(&object.name, &property.name);
         let ident = member_name(&property.name, &property.extras.export.py);
         let spell = format!("_spell_{snake_name}");
         claim(&ident)?;
@@ -1520,6 +1577,7 @@ impl<'a> Py<'a> {
             // Written, never read back: a plain attribute in a stub, a write-only property in the module.
             if self.stub {
                 c.line(format!("{ident}: {write_ty}"));
+                c.pydoc(schema);
             } else {
                 self.named(c, class, &ident, false, Some(&spell));
                 c.line(format!("def _set_{ident}(self, value):"));
@@ -1531,9 +1589,10 @@ impl<'a> Py<'a> {
         let read = self.ty_read(&property.ty, property.optional)?;
         c.line("@builtins.property");
         self.named(c, class, &ident, false, Some(&spell));
-        self.def(
+        self.def_described(
             c,
             &format!("def {ident}(self) -> {read}"),
+            schema,
             &format!("The property `{}`.", property.name),
             &[format!(
                 "return {}",
@@ -1570,12 +1629,15 @@ impl<'a> Py<'a> {
     fn method_source(
         &self,
         c: &mut CodeWriter,
-        class: &str,
+        object: &ObjectType,
         snake_name: &str,
         lookups: &[MemberLookup],
         method: &Method,
         claim: &mut impl FnMut(&str) -> Result<(), String>,
     ) -> Result<(), String> {
+        let class_owned = class_name(object);
+        let class = class_owned.as_str();
+        let schema = self.view.member_doc(&object.name, &method.name);
         let ident = member_name(&method.name, &method.extras.export.py);
         let spell = format!("_spell_{snake_name}");
         claim(&ident)?;
@@ -1604,7 +1666,7 @@ impl<'a> Py<'a> {
         if method.function {
             c.line("@staticmethod");
             self.named(c, class, &ident, true, Some(&spell));
-            self.def(c, &format!("def {ident}({params}) -> {returns}"), &doc, &body);
+            self.def_described(c, &format!("def {ident}({params}) -> {returns}"), schema, &doc, &body);
         } else {
             let params = if params.is_empty() {
                 "self".to_owned()
@@ -1612,7 +1674,7 @@ impl<'a> Py<'a> {
                 format!("self, {params}")
             };
             self.named(c, class, &ident, false, Some(&spell));
-            self.def(c, &format!("def {ident}({params}) -> {returns}"), &doc, &body);
+            self.def_described(c, &format!("def {ident}({params}) -> {returns}"), schema, &doc, &body);
         }
         Ok(())
     }
@@ -1642,10 +1704,12 @@ impl<'a> Py<'a> {
             if self.stub { "" } else { "(_B.Implementor)" }
         ));
         c.indent();
-        c.line(format!(
-            "\"\"\"The interface `{}` of `{}`: a script subclasses it and defines the methods it wants to answer.\"\"\"",
-            object.name, self.view.namespace
-        ));
+        self.class_doc(c, self.view.class_doc(&object.name), || {
+            format!(
+                "The interface `{}` of `{}`: a script subclasses it and defines the methods it wants to answer.",
+                object.name, self.view.namespace
+            )
+        });
         for method in &object.methods {
             let ident = member_name(&method.name, &method.extras.export.py);
             let (params, _) = self.params(&method.params)?;
@@ -1661,7 +1725,13 @@ impl<'a> Py<'a> {
                 None => "None".to_owned(),
             };
             if self.stub {
-                c.line(format!("def {ident}({params}) -> {returns}: ..."));
+                self.def_described(
+                    c,
+                    &format!("def {ident}({params}) -> {returns}"),
+                    self.view.member_doc(&object.name, &method.name),
+                    "",
+                    &[],
+                );
             }
         }
         if self.stub && object.methods.is_empty() {

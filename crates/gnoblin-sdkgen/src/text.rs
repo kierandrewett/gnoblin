@@ -217,6 +217,47 @@ impl CodeWriter {
         }
     }
 
+    /// A `/** */` comment of a schema description (paragraphs are separated by an empty line) at the current indent. Nothing for an empty text.
+    pub fn jsdoc(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let lines = description_lines(&text.replace("*/", "*\\/"));
+        if let [only] = lines.as_slice() {
+            self.line(format!("/** {only} */"));
+        } else {
+            self.line("/**");
+            self.doc(" *", &lines);
+            self.line(" */");
+        }
+    }
+
+    /// A docstring of a schema description at the current indent: `"""text"""`, or the paragraphs between a pair of `"""` lines. Nothing
+    /// for an empty text.
+    pub fn pydoc(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let mut lines = description_lines(&rst_text(text).replace('\\', "\\\\").replace("\"\"\"", "\\\"\\\"\\\""));
+        // A quote at the end would run into the closing quotes.
+        if let Some(last) = lines.last_mut().filter(|last| last.ends_with('"')) {
+            last.insert(last.len() - 1, '\\');
+        }
+        if let [only] = lines.as_slice() {
+            self.line(format!("\"\"\"{only}\"\"\""));
+        } else {
+            self.line(format!("\"\"\"{}", lines[0]));
+            for line in &lines[1..] {
+                if line.is_empty() {
+                    self.line("");
+                } else {
+                    self.line(line);
+                }
+            }
+            self.line("\"\"\"");
+        }
+    }
+
     /// The finished text, with one newline at the end.
     pub fn finish(mut self) -> String {
         while self.text.ends_with("\n\n") {
@@ -227,6 +268,74 @@ impl CodeWriter {
         }
         self.text
     }
+}
+
+/// A schema description as rustdoc reads it: a bracket outside code is text, not a link to an item, and a fenced block says it is not Rust.
+pub fn rustdoc_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_code = false;
+    let mut in_fence = false;
+    for (index, line) in text.split('\n').enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        if line.starts_with("```") {
+            in_fence = !in_fence;
+            out.push_str(line);
+            continue;
+        }
+        if in_fence {
+            out.push_str(line);
+            continue;
+        }
+        for c in line.chars() {
+            match c {
+                '`' => {
+                    in_code = !in_code;
+                    out.push(c);
+                }
+                '[' | ']' if !in_code => {
+                    out.push('\\');
+                    out.push(c);
+                }
+                '<' if !in_code => out.push_str("&lt;"),
+                _ => out.push(c),
+            }
+        }
+        in_code = false;
+    }
+    out
+}
+
+/// A schema description as reStructuredText, which Python documentation tools read: a fenced block is a literal block, and a backtick is
+/// a code span (the tools are told that the default role is `code`).
+pub fn rst_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_fence = false;
+    for (index, line) in text.split('\n').enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        if line.starts_with("```") {
+            if in_fence {
+                in_fence = false;
+            } else {
+                in_fence = true;
+                out.push_str("::\n");
+            }
+            continue;
+        }
+        if in_fence {
+            out.push_str("    ");
+        }
+        out.push_str(line);
+    }
+    out
+}
+
+/// The lines of a schema description: its paragraphs' lines, with an empty line between two paragraphs.
+pub fn description_lines(text: &str) -> Vec<String> {
+    text.split('\n').map(|line| line.trim_end().to_owned()).collect()
 }
 
 /// The lines of a doc string the ABI macros produce: one `///` literal per line, each starting with a space.

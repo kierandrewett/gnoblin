@@ -15,8 +15,10 @@
 //!
 //! Adding a language is one [`Target`] implementation and one line in [`targets`]; `docs/sdk-generator.md` is the contract.
 //!
-//! Beside the targets, [`render_reference`] renders the API reference pages of the website (`cargo xtask docs-reference`): Markdown
-//! sliced from the same declarations, with the descriptions the schema files carry as comments. Nothing of it is committed either.
+//! The descriptions of the classes (the comments above each class, property, method, signal and enum in the schema files) are read once
+//! into [`SdkSpec::docs`], and the declaration targets (`object-types`, `object-api`) write them as the doc comments of their language
+//! (`/** */`, a docstring, `///`). The generated reference of the website is the tool of each language run over those declarations, so
+//! a description is the same sentence in an editor, in TypeDoc, in Sphinx and in rustdoc.
 //!
 //! The targets, and the logical paths they write (relative to the output directory):
 //!
@@ -30,6 +32,7 @@
 pub mod abi_c;
 #[cfg(test)]
 mod augment_tests;
+mod docs;
 mod layout_schema;
 mod layouts;
 mod model;
@@ -40,7 +43,6 @@ mod object_script;
 mod objects;
 mod python;
 mod python_std;
-mod reference;
 mod rust;
 mod std_dyn;
 mod surface;
@@ -54,8 +56,8 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub use docs::{DocLanguage, Docs, NamespaceDocs};
 pub use model::SdkSpec;
-pub use reference::{DocLanguage, render_reference};
 pub use surface::{LockReport, check_surface_lock, render_surface_locks, surface_lines};
 
 /// The command that writes a readable copy of everything, named in every banner and error.
@@ -442,12 +444,45 @@ mod tests {
             .expect("the property is declared");
         assert!(!launches.contains("None"), "{launches}");
         // A member the catalog marks optional still answers `| None`.
+        // (A member the schema describes has its docstring under the header, so the line ends at the colon.)
         assert!(
-            model
-                .lines()
-                .any(|line| line.contains("def ") && line.contains("-> ") && line.ends_with("| None: ...")),
+            model.lines().any(|line| line.contains("def ")
+                && line.contains("-> ")
+                && (line.ends_with("| None: ...") || line.ends_with("| None:"))),
             "an optional answer is `| None`"
         );
+    }
+
+    #[test]
+    fn a_schema_description_is_the_comment_of_its_member_in_every_language() {
+        let sentence = "True while the session has been idle for `ms` with no inhibitor.";
+        let typescript = generated("object-types", "js/gnoblin-core/generated/objects.d.ts");
+        assert!(typescript.contains(&format!("/** {sentence}")), "a TSDoc comment");
+        let python = generated("object-types", "python/gnoblin/objects/model.pyi");
+        assert!(python.contains(&format!("\"\"\"{sentence}")), "a docstring");
+        let rust = generated("object-api", "rust-objects/model_api.rs");
+        assert!(rust.contains(&format!("/// {sentence}")), "a doc comment");
+        // A class has its description as well, and a member an augment adds to a core class has the augment's.
+        assert!(typescript.contains("/** One idle watch."), "{}", &typescript[..400]);
+        let moved = "Starts moving the window with the arrow keys.";
+        let std = generated("object-types", "js/gnoblin-std/generated/objects.d.ts");
+        assert!(std.contains(&format!("/** {moved}")), "the augment's member in TSDoc");
+        let rust_std = generated("object-api", "rust-objects/std_api.rs");
+        assert!(
+            rust_std.contains(&format!("/// {moved}")),
+            "the augment's member in a doc comment"
+        );
+    }
+
+    #[test]
+    fn a_description_that_would_end_a_comment_does_not() {
+        let mut code = crate::text::CodeWriter::new("  ");
+        code.jsdoc("A star-slash */ in the text.");
+        code.pydoc("A \"\"\" in the text, and a quote at the end\"");
+        let text = code.finish();
+        assert_eq!(text.matches("*/").count(), 1, "only the comment's own end: {text}");
+        assert!(text.contains("\\\"\\\"\\\""), "{text}");
+        assert!(text.trim_end().ends_with("end\\\"\"\"\""), "{text}");
     }
 
     #[test]
