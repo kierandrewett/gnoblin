@@ -7,12 +7,13 @@ with the values reported by `gnoblinctl window list --json`.
 ::: tabs
 
 ```typescript
-import { ClientCollectionListener } from "gnoblin-core";
-import { FloatingLayout, Workspace } from "gnoblin-std";
-import type { Client } from "gnoblin-core";
+import { ClientCollectionListener, gnoblin } from "gnoblin-core/generated/objects";
+import type { Client } from "gnoblin-core/generated/objects";
+import { FloatingLayout, Workspace, Workspaces } from "gnoblin-std/generated/objects";
 
+const workspaces = Workspaces.get();
 for (const id of ["code", "web", "chat"]) {
-    gnoblin.workspaces.add(new Workspace(id, { layout: new FloatingLayout() }));
+    workspaces.add(new Workspace(id, { layout: new FloatingLayout() }));
 }
 
 const homes: Record<string, string> = {
@@ -25,7 +26,7 @@ gnoblin.clients.addListener(
     new (class extends ClientCollectionListener {
         onAdded(client: Client) {
             const id = homes[client.appId];
-            const target = id === undefined ? undefined : gnoblin.workspaces.byId(id);
+            const target = id === undefined ? undefined : workspaces.byId(id);
             if (target !== undefined) {
                 client.moveToWorkspace(target);
             }
@@ -35,7 +36,7 @@ gnoblin.clients.addListener(
 ```
 
 ```python
-from gnoblin.objects.model import Client, ClientCollectionListener, Gnoblin
+from gnoblin.objects.model import ClientCollectionListener, Gnoblin
 from gnoblin.objects.std import FloatingLayout, Workspace, Workspaces
 
 homes = {
@@ -48,12 +49,16 @@ for id in ["code", "web", "chat"]:
     Workspaces.get().add(Workspace(id, layout=FloatingLayout()))
 
 
+def move_to(client, workspace) -> bool:
+    return client.move_to_workspace(workspace)
+
+
 class Homes(ClientCollectionListener):
-    def on_added(self, client: Client, collection) -> None:
+    def on_added(self, client, collection) -> None:
         id = homes.get(client.app_id)
         target = None if id is None else Workspaces.get().by_id(id)
         if target is not None:
-            client.move_to_workspace(target)
+            move_to(client, target)
 
 
 Gnoblin.get().clients.add_listener(Homes())
@@ -62,7 +67,7 @@ Gnoblin.get().clients.add_listener(Homes())
 ```rust
 use std::collections::HashMap;
 
-use gnoblin_core::objects::{Client, ModelRoot};
+use gnoblin_core::objects::{Client, ClientCollection, ClientCollectionListenerHandlers, ModelRoot};
 use gnoblin_core::Gnoblin;
 use gnoblin_std::objects::{FloatingLayout, Workspace, WorkspaceOptions, Workspaces};
 use gnoblin_std::prelude::*;
@@ -88,24 +93,42 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         workspaces.insert(id.to_string(), workspace);
     }
 
-    let clients = ModelRoot::get(&objects)?.clients()?.expect("the model has clients");
-    clients
-        .on_added(move |client: Client, _collection| {
-            let app_id = client.app_id().unwrap_or_default();
-            if let Some((_, id)) = homes.iter().find(|(app, _)| *app == app_id) {
-                if let Some(target) = workspaces.get(*id) {
-                    let _ = client.move_to_workspace(target);
-                }
+    let core = g.objects()?;
+    let clients = ModelRoot::get(&core)?.clients()?.expect("the model has clients");
+    let listener = ClientCollectionListenerHandlers {
+        on_added: Some(Box::new(move |client: Client, _collection: ClientCollection| {
+            let app_id = client.app_id()?;
+            if let Some((_, id)) = homes.iter().find(|(app, _)| *app == app_id)
+                && let Some(target) = workspaces.get(*id)
+            {
+                client.move_to_workspace(target)?;
             }
-        })?
-        .keep();
+            Ok(())
+        })),
+        on_removed: None,
+        on_title_changed: None,
+        on_app_id_changed: None,
+        on_decoration_changed: None,
+        on_pointer_enter: None,
+        on_pointer_motion: None,
+        on_pointer_leave: None,
+        on_pointer_press: None,
+        on_pointer_release: None,
+        on_focus_changed: None,
+        on_geometry_changed: None,
+        on_closed: None,
+        on_ready: None,
+    }
+    .implement(&core)?;
+    clients.add_listener(&listener)?;
+    std::mem::forget(listener);
     Ok(())
 }
 ```
 
 :::
 
-Each workspace has a unique non-empty `id`. `Workspaces.get().by_id(id)` in Python, `gnoblin.workspaces.byId(id)` in
+Each workspace has a unique non-empty `id`. `Workspaces.get().by_id(id)` in Python, `workspaces.byId(id)` in
 TypeScript and `Workspaces::get(&objects)?.by_id(id)?` in Rust find one you added, and return nothing for an ID you did
 not add. The first workspace added is shown when the shell starts.
 

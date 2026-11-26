@@ -13,13 +13,14 @@ object the same way, with each language's naming: `forceSplit` in TypeScript is 
 ::: tabs
 
 ```typescript
-import { DwindleLayout, Workspace } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { DwindleLayout, Workspace, Workspaces } from "gnoblin-std/generated/objects";
 
 const input = gnoblin.input.primary;
 
 // `pointer: "seat"` is what `forceSplit: "by_pointer"` and `smartSplit` read.
 const dwindle = new DwindleLayout({ gap: 8, preserveSplit: true, pointer: "seat" });
-gnoblin.workspaces.add(new Workspace("main", { layout: dwindle }));
+Workspaces.get().add(new Workspace("main", { layout: dwindle }));
 
 const keys: Record<string, () => unknown> = {
     "Super+j": () => dwindle.toggleSplit(),
@@ -44,7 +45,7 @@ for (const [trigger, action] of Object.entries(keys)) {
 ```
 
 ```python
-from gnoblin import gnoblin
+from gnoblin.objects.model import Gnoblin
 from gnoblin.objects.std import DwindleLayout, Workspace, Workspaces
 
 # `pointer="seat"` is what `force_split="by_pointer"` and `smart_split` read.
@@ -71,7 +72,7 @@ def bind_action(trigger, action):
     def run(_event):
         action()
 
-    gnoblin.input.primary.bind(trigger, run)
+    Gnoblin.get().input.primary.bind(trigger, run)
 
 
 for trigger, action in keys.items():
@@ -81,30 +82,29 @@ for trigger, action in keys.items():
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core as gnoblin;
-use gnoblin_core::{BindingEvent, Gnoblin, InputContext, InputManager};
+use gnoblin_core::objects::{BindingEvent, InputContext, ModelRoot};
+use gnoblin_core::Gnoblin;
 use gnoblin_std::objects::{
     DwindleDirection, DwindleLayout, DwindleLayoutOptions, DwindlePointer, Workspace, WorkspaceOptions, Workspaces,
 };
+use gnoblin_std::prelude::*;
 
-fn bind_action(
+fn bind_action<E>(
     input: &InputContext,
     trigger: &str,
-    mut action: impl FnMut() -> gnoblin::Result<bool> + 'static,
-) -> gnoblin::Result<()> {
+    mut action: impl FnMut() -> Result<bool, E> + 'static,
+) -> gnoblin_std::Result<()> {
     input.bind(
         trigger,
-        Some(move |_event: BindingEvent| {
-            action()?;
-            Ok(true)
-        }),
+        // An action that fails declines the press, so it goes on to the next binding.
+        Some(move |_event: BindingEvent| Ok(action().unwrap_or(false))),
         None,
     )?;
     Ok(())
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
 
     // `pointer: Seat` is what `force_split: ByPointer` and `smart_split` read.
@@ -124,7 +124,9 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     )?;
     Workspaces::get(&objects)?.add(&main)?;
 
-    let input = InputManager::get(&objects)?.primary()?.ok_or("no primary seat")?;
+    let Some(input) = ModelRoot::get(&g.objects()?)?.input()?.and_then(|manager| manager.primary().ok().flatten()) else {
+        return Ok(());
+    };
 
     let d = Rc::clone(&dwindle);
     bind_action(&input, "Super+j", move || d.toggle_split())?;
