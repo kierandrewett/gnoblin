@@ -12,12 +12,79 @@ use crate::catalog::{CatalogDef, ClassDef};
 use crate::error::{Fail, Res};
 use crate::value::{MemberId, Obj, Val};
 
+/// What a call about an object holds of its native state: a shared borrow for a getter and a member registered `_ref`, a unique one for
+/// the rest. Shared borrows nest, so a `_ref` member may run a closure of the shell that reads a getter or calls another `_ref` member of
+/// the same object.
+pub(crate) enum Native<'a> {
+    Shared(&'a dyn Any),
+    Exclusive(&'a mut dyn Any),
+}
+
+impl Native<'_> {
+    /// The state as a shared reference, which either borrow gives.
+    pub(crate) fn shared(&self) -> &dyn Any {
+        match self {
+            Native::Shared(state) => *state,
+            Native::Exclusive(state) => &**state,
+        }
+    }
+}
+
 /// Reads a property: the object's native state and the context.
-pub(crate) type GetFn = Rc<dyn Fn(&mut dyn Any, &mut Cx<'_>) -> Res<Val>>;
-/// Writes a property.
-pub(crate) type SetFn = Rc<dyn Fn(&mut dyn Any, &mut Cx<'_>, Val) -> Res<()>>;
-/// Runs a method with its checked arguments.
-pub(crate) type MethodFn = Rc<dyn Fn(&mut dyn Any, &mut Cx<'_>, &[Val]) -> Res<Val>>;
+pub(crate) type GetFn = Rc<dyn Fn(&dyn Any, &mut Cx<'_>) -> Res<Val>>;
+type SetShared = Rc<dyn Fn(&dyn Any, &mut Cx<'_>, Val) -> Res<()>>;
+type SetExclusive = Rc<dyn Fn(&mut dyn Any, &mut Cx<'_>, Val) -> Res<()>>;
+type MethodShared = Rc<dyn Fn(&dyn Any, &mut Cx<'_>, &[Val]) -> Res<Val>>;
+type MethodExclusive = Rc<dyn Fn(&mut dyn Any, &mut Cx<'_>, &[Val]) -> Res<Val>>;
+
+/// Writes a property: with a shared borrow of the state (`set_ref`) or a unique one (`set`).
+#[derive(Clone)]
+pub(crate) enum SetFn {
+    Shared(SetShared),
+    Exclusive(SetExclusive),
+}
+
+impl SetFn {
+    /// The call needs a unique borrow of the state.
+    pub(crate) fn exclusive(&self) -> bool {
+        matches!(self, SetFn::Exclusive(_))
+    }
+
+    pub(crate) fn run(&self, native: Native<'_>, cx: &mut Cx<'_>, value: Val) -> Res<()> {
+        match (self, native) {
+            (SetFn::Shared(write), native) => write(native.shared(), cx, value),
+            (SetFn::Exclusive(write), Native::Exclusive(state)) => write(state, cx, value),
+            (SetFn::Exclusive(_), Native::Shared(_)) => {
+                Err(Fail::err("a setter that changes its object was given a shared borrow"))
+            }
+        }
+    }
+}
+
+/// Runs a method with its checked arguments: with a shared borrow of the state (`method_ref`) or a unique one (`method`).
+#[derive(Clone)]
+pub(crate) enum MethodFn {
+    Shared(MethodShared),
+    Exclusive(MethodExclusive),
+}
+
+impl MethodFn {
+    /// The call needs a unique borrow of the state.
+    pub(crate) fn exclusive(&self) -> bool {
+        matches!(self, MethodFn::Exclusive(_))
+    }
+
+    pub(crate) fn run(&self, native: Native<'_>, cx: &mut Cx<'_>, args: &[Val]) -> Res<Val> {
+        match (self, native) {
+            (MethodFn::Shared(run), native) => run(native.shared(), cx, args),
+            (MethodFn::Exclusive(run), Native::Exclusive(state)) => run(state, cx, args),
+            (MethodFn::Exclusive(_), Native::Shared(_)) => {
+                Err(Fail::err("a method that changes its object was given a shared borrow"))
+            }
+        }
+    }
+}
+
 /// Runs a function of a class.
 pub(crate) type StaticFn = Rc<dyn Fn(&mut Cx<'_>, &[Val]) -> Res<Val>>;
 /// Makes an object's native state from the properties it was created with.
@@ -32,8 +99,9 @@ pub(crate) type ReplayFn = Rc<dyn Fn(&mut Cx<'_>) -> Vec<Vec<Val>>>;
 pub(crate) struct ClassImpl {
     /// The class holds `()` for state ([`Builder::class`]). There is nothing a call about one of its objects could leave half changed,
     /// so the server takes no borrow of the object for the length of a call, and what runs in the call may call the same object again
-    /// (`Library::with_native`). A class with a state is borrowed for the whole call, and a second call about the object while the
-    /// first runs is refused with `E_BUSY`.
+    /// (`Library::with_native`). A class with a state is borrowed for the length of a call: shared for a getter and a member registered
+    /// `_ref` (`method_ref`, `set_ref`), unique for the rest. A second call about the object that needs a unique borrow, or that runs
+    /// while a unique one is held, is refused with `E_BUSY`.
     pub(crate) stateless: bool,
     pub(crate) ctor: Option<CtorFn>,
     pub(crate) get: Vec<Option<GetFn>>,
@@ -107,10 +175,13 @@ impl Builder {
     ///
     /// A `T` of `()` says the class has no state: a call about one of its objects takes no borrow, so an implementation may run a closure
     /// of the shell that reads or writes the same object (the std library's `request_transition` runs the shell's callback inside its
-    /// call, and the callback reads `gnoblin.workspaces`, another member of the same object). Any other `T` is borrowed for the whole call
-    /// about its object, and a call about the same object from inside it is refused with `E_BUSY`: a closure of the shell that an
-    /// implementation of such a class runs inside a call cannot call the object back. `Cx::later` runs the closure from the next turn,
-    /// when nothing is borrowed.
+    /// call, and the callback reads `gnoblin.workspaces`, another member of the same object). Any other `T` is borrowed for the length of
+    /// a call about its object, by what the member does with it: a getter and a member registered with `method_ref` or `set_ref` (which
+    /// take `&T`) hold a shared borrow, and any number of those may run inside one another, so a closure of the shell that a `_ref`
+    /// member runs can read the object's properties and call its other `_ref` members. A member registered with `method` or `set` (which
+    /// take `&mut T`) holds a unique borrow, and a call about the same object from inside it, or a call to a `method` or `set` member
+    /// from inside a `_ref` member, is refused with `E_BUSY`: it would be a second reference that aliases a `&mut`. A member that does
+    /// not change its `T` belongs on the `_ref` form. `Cx::later` runs a closure from the next turn, when nothing is borrowed.
     pub fn class<T: Any>(&mut self, name: &str) -> ClassBuilder<'_, T> {
         let catalog: &'static CatalogDef = self.catalog;
         let index = catalog.classes.iter().position(|class| class.name == name);
@@ -168,7 +239,7 @@ impl<T: Any> ClassBuilder<'_, T> {
         self
     }
 
-    /// Reads the property `name`.
+    /// Reads the property `name`. A getter holds a shared borrow of the state.
     #[must_use]
     pub fn get(mut self, name: &str, read: impl Fn(&T, &mut Cx<'_>) -> Res<Val> + 'static) -> Self {
         if let Some(index) = self.find(abi::MEMBER_PROPERTY, name, "property") {
@@ -185,35 +256,75 @@ impl<T: Any> ClassBuilder<'_, T> {
         self
     }
 
-    /// Writes the property `name`.
+    /// Writes the property `name`, with a unique borrow of the state: a call about the same object from inside `write` is refused with
+    /// `E_BUSY`. A setter that does not change its `T` is [`ClassBuilder::set_ref`].
     #[must_use]
     pub fn set(mut self, name: &str, write: impl Fn(&mut T, &mut Cx<'_>, Val) -> Res<()> + 'static) -> Self {
         if let Some(index) = self.find(abi::MEMBER_PROPERTY, name, "property") {
             let class = self.def.map_or("", |def| def.name);
             if let Some(slot) = self.slot.as_deref_mut() {
-                slot.set[index] = Some(Rc::new(move |state, cx, value| {
+                slot.set[index] = Some(SetFn::Exclusive(Rc::new(move |state, cx, value| {
                     let state = state
                         .downcast_mut::<T>()
                         .ok_or_else(|| Fail::err(format!("an object of `{class}` holds the wrong state")))?;
                     write(state, cx, value)
-                }));
+                })));
             }
         }
         self
     }
 
-    /// Runs the method `name`. Its arguments are checked against the catalog, and an optional one left out reads as [`Val::None`].
+    /// Writes the property `name` without changing the state: the borrow is a shared one, so `write` may run a closure of the shell
+    /// that reads the object or calls its other `_ref` members.
+    #[must_use]
+    pub fn set_ref(mut self, name: &str, write: impl Fn(&T, &mut Cx<'_>, Val) -> Res<()> + 'static) -> Self {
+        if let Some(index) = self.find(abi::MEMBER_PROPERTY, name, "property") {
+            let class = self.def.map_or("", |def| def.name);
+            if let Some(slot) = self.slot.as_deref_mut() {
+                slot.set[index] = Some(SetFn::Shared(Rc::new(move |state, cx, value| {
+                    let state = state
+                        .downcast_ref::<T>()
+                        .ok_or_else(|| Fail::err(format!("an object of `{class}` holds the wrong state")))?;
+                    write(state, cx, value)
+                })));
+            }
+        }
+        self
+    }
+
+    /// Runs the method `name`, with a unique borrow of the state: a call about the same object from inside `run` is refused with
+    /// `E_BUSY`. Its arguments are checked against the catalog, and an optional one left out reads as [`Val::None`]. A method that does
+    /// not change its `T` is [`ClassBuilder::method_ref`].
     #[must_use]
     pub fn method(mut self, name: &str, run: impl Fn(&mut T, &mut Cx<'_>, &[Val]) -> Res<Val> + 'static) -> Self {
         if let Some(index) = self.find(abi::MEMBER_METHOD, name, "method") {
             let class = self.def.map_or("", |def| def.name);
             if let Some(slot) = self.slot.as_deref_mut() {
-                slot.call[index] = Some(Rc::new(move |state, cx, args| {
+                slot.call[index] = Some(MethodFn::Exclusive(Rc::new(move |state, cx, args| {
                     let state = state
                         .downcast_mut::<T>()
                         .ok_or_else(|| Fail::err(format!("an object of `{class}` holds the wrong state")))?;
                     run(state, cx, args)
-                }));
+                })));
+            }
+        }
+        self
+    }
+
+    /// Runs the method `name` without changing the state: the borrow is a shared one, so `run` may run a closure of the shell that
+    /// reads the object's properties or calls its other `_ref` members (a call to a `method` or `set` member is refused with `E_BUSY`).
+    /// Arguments are checked as for [`ClassBuilder::method`].
+    #[must_use]
+    pub fn method_ref(mut self, name: &str, run: impl Fn(&T, &mut Cx<'_>, &[Val]) -> Res<Val> + 'static) -> Self {
+        if let Some(index) = self.find(abi::MEMBER_METHOD, name, "method") {
+            let class = self.def.map_or("", |def| def.name);
+            if let Some(slot) = self.slot.as_deref_mut() {
+                slot.call[index] = Some(MethodFn::Shared(Rc::new(move |state, cx, args| {
+                    let state = state
+                        .downcast_ref::<T>()
+                        .ok_or_else(|| Fail::err(format!("an object of `{class}` holds the wrong state")))?;
+                    run(state, cx, args)
+                })));
             }
         }
         self

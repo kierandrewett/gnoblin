@@ -67,30 +67,30 @@ pub(crate) fn canvas_members(class: Class<'_>) -> Class<'_> {
             }
             Ok(Val::List(list))
         })
-        .set("children", |h, cx, value| {
+        .set_ref("children", |h, cx, value| {
             for kid in value.list()? {
                 add_child(h, cx, kid.object()?)?;
             }
             Ok(())
         })
         .get("x", |h, _| h.number(|w| w.x))
-        .set("x", |h, _, v| h.edit(|w| w.x = v.double().unwrap_or(0.0)))
+        .set_ref("x", |h, _, v| h.edit(|w| w.x = v.double().unwrap_or(0.0)))
         .get("y", |h, _| h.number(|w| w.y))
-        .set("y", |h, _, v| h.edit(|w| w.y = v.double().unwrap_or(0.0)))
+        .set_ref("y", |h, _, v| h.edit(|w| w.y = v.double().unwrap_or(0.0)))
         .get("width", |h, _| Ok(Val::Double(h.ui.width_of(h.cid))))
-        .set("width", |h, _, v| h.edit(|w| w.width = v.double().ok()))
+        .set_ref("width", |h, _, v| h.edit(|w| w.width = v.double().ok()))
         .get("height", |h, _| Ok(Val::Double(h.ui.height_of(h.cid))))
-        .set("height", |h, _, v| h.edit(|w| w.height = v.double().ok()))
+        .set_ref("height", |h, _, v| h.edit(|w| w.height = v.double().ok()))
         .get("visible", |h, _| h.flag(|w| w.visible))
-        .set("visible", |h, _, v| h.edit(|w| w.visible = v.bool().unwrap_or(true)))
+        .set_ref("visible", |h, _, v| h.edit(|w| w.visible = v.bool().unwrap_or(true)))
         .get("opacity", |h, _| h.number(|w| w.opacity))
-        .set("opacity", |h, _, v| h.edit(|w| w.opacity = v.double().unwrap_or(1.0)))
+        .set_ref("opacity", |h, _, v| h.edit(|w| w.opacity = v.double().unwrap_or(1.0)))
         .get("secure", |h, _| h.flag(|w| w.secure))
-        .set("secure", |h, _, v| h.edit(|w| w.secure = v.bool().unwrap_or(false)))
+        .set_ref("secure", |h, _, v| h.edit(|w| w.secure = v.bool().unwrap_or(false)))
         .get("input", |h, _| h.flag(|w| w.input))
-        .set("input", |h, _, v| h.edit(|w| w.input = v.bool().unwrap_or(true)))
+        .set_ref("input", |h, _, v| h.edit(|w| w.input = v.bool().unwrap_or(true)))
         .get("placement", |h, _| h.read(|w| enumeration(w.placement)))
-        .set("placement", |h, _, v| {
+        .set_ref("placement", |h, _, v| {
             let value = v.enum_value()?;
             h.edit(|w| w.placement = value)
         })
@@ -114,7 +114,7 @@ pub(crate) fn canvas_members(class: Class<'_>) -> Class<'_> {
                 _ => Val::None,
             })
         })
-        .set("behaviour", |h, cx, value| {
+        .set_ref("behaviour", |h, cx, value| {
             let obj = value.object()?;
             let shell = cx.shell(obj)?;
             h.edit(|w| w.behaviour = Some(Behaviour { obj, shell }))
@@ -122,30 +122,30 @@ pub(crate) fn canvas_members(class: Class<'_>) -> Class<'_> {
         .get("on_pointer", |h, _| {
             Ok(h.read(|w| w.on_pointer.clone())?.map_or(Val::None, Val::Closure))
         })
-        .set("on_pointer", |h, _, value| {
+        .set_ref("on_pointer", |h, _, value| {
             let closure = Rc::clone(value.closure()?);
             h.edit(|w| w.on_pointer = Some(closure))
         })
         .get("on_key", |h, _| {
             Ok(h.read(|w| w.on_key.clone())?.map_or(Val::None, Val::Closure))
         })
-        .set("on_key", |h, _, value| {
+        .set_ref("on_key", |h, _, value| {
             let closure = Rc::clone(value.closure()?);
             h.edit(|w| w.on_key = Some(closure))
         })
-        .method("clear_width", |h, _, _| {
+        .method_ref("clear_width", |h, _, _| {
             h.edit(|w| w.width = None)?;
             Ok(Val::None)
         })
-        .method("clear_height", |h, _, _| {
+        .method_ref("clear_height", |h, _, _| {
             h.edit(|w| w.height = None)?;
             Ok(Val::None)
         })
-        .method("add", |h, cx, args| {
+        .method_ref("add", |h, cx, args| {
             add_child(h, cx, args[0].object()?)?;
             Ok(Val::None)
         })
-        .method("remove", |h, cx, args| {
+        .method_ref("remove", |h, cx, args| {
             let child = canvas_of(cx, args[0].object()?)?;
             if h.ui.read(child, |w| w.parent) != Some(Some(h.cid)) {
                 return Err(Fail::type_error("that canvas is not a child of this one"));
@@ -153,22 +153,22 @@ pub(crate) fn canvas_members(class: Class<'_>) -> Class<'_> {
             h.ui.kill(child);
             Ok(Val::None)
         })
-        .method("mount", |h, _, args| {
+        .method_ref("mount", |h, _, args| {
             h.ui.mount(h.cid, args[0].uint()?)?;
             Ok(Val::None)
         })
-        .method("mount_top", |h, _, _| {
+        .method_ref("mount_top", |h, _, _| {
             h.ui.mount_top(h.cid)?;
             Ok(Val::None)
         })
-        .method("focus", |h, _, _| {
+        .method_ref("focus", |h, _, _| {
             let node = h
                 .read(|w| w.alive.then_some(w.node))?
                 .ok_or_else(|| Fail::stale("Canvas.focus: the canvas is destroyed"))?;
             h.ui.focus_node(node)?;
             Ok(Val::None)
         })
-        .method("contains", |h, cx, args| {
+        .method_ref("contains", |h, cx, args| {
             let other = args[0].object()?;
             if other == cx.me() {
                 return Ok(Val::Bool(true));
@@ -176,19 +176,19 @@ pub(crate) fn canvas_members(class: Class<'_>) -> Class<'_> {
             let other = canvas_of(cx, other)?;
             Ok(Val::Bool(h.ui.w.borrow().contains(h.cid, other)))
         })
-        .method("invalidate", |h, _, _| {
+        .method_ref("invalidate", |h, _, _| {
             h.ui.schedule();
             Ok(Val::None)
         })
-        .method("paint_default", |h, _, _| {
+        .method_ref("paint_default", |h, _, _| {
             let ops = h.ui.paint_default(h.cid).map_err(Fail::err)?;
             Ok(paint::to_val(&ops))
         })
-        .method("arrange_default", |h, _, _| {
+        .method_ref("arrange_default", |h, _, _| {
             h.ui.arrange_default(h.cid);
             Ok(Val::None)
         })
-        .method("to_global", |h, _, args| {
+        .method_ref("to_global", |h, _, args| {
             let (mut x, mut y) = (args[0].double()?, args[1].double()?);
             let w = h.ui.w.borrow();
             let mut at = Some(h.cid);
@@ -223,23 +223,23 @@ pub(crate) fn add_child(h: &CanvasHandle, cx: &mut Cx<'_>, child: u64) -> Res<()
 pub(crate) fn box_members(class: Class<'_>) -> Class<'_> {
     class
         .get("direction", |h, _| h.read(|w| enumeration(w.b.direction)))
-        .set("direction", |h, _, v| {
+        .set_ref("direction", |h, _, v| {
             let value = v.enum_value()?;
             h.edit(|w| w.b.direction = value)
         })
         .get("gap", |h, _| h.number(|w| w.b.gap))
-        .set("gap", |h, _, v| h.edit(|w| w.b.gap = v.double().unwrap_or(0.0)))
+        .set_ref("gap", |h, _, v| h.edit(|w| w.b.gap = v.double().unwrap_or(0.0)))
         .get("padding", |h, _| h.number(|w| w.b.padding))
-        .set("padding", |h, _, v| h.edit(|w| w.b.padding = v.double().unwrap_or(0.0)))
+        .set_ref("padding", |h, _, v| h.edit(|w| w.b.padding = v.double().unwrap_or(0.0)))
         .get("grow", |h, _| h.number(|w| w.b.grow))
-        .set("grow", |h, _, v| h.edit(|w| w.b.grow = v.double().unwrap_or(0.0)))
+        .set_ref("grow", |h, _, v| h.edit(|w| w.b.grow = v.double().unwrap_or(0.0)))
         .get("fill", |h, _| h.text(|w| &w.b.fill))
-        .set("fill", |h, _, v| {
+        .set_ref("fill", |h, _, v| {
             let fill = v.text()?.to_owned();
             h.edit(|w| w.b.fill = fill)
         })
         .get("radius", |h, _| h.number(|w| w.b.radius))
-        .set("radius", |h, _, v| h.edit(|w| w.b.radius = v.double().unwrap_or(0.0)))
+        .set_ref("radius", |h, _, v| h.edit(|w| w.b.radius = v.double().unwrap_or(0.0)))
 }
 
 /// A `text_metrics` record of `metrics`.

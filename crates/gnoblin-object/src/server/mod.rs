@@ -7,8 +7,10 @@
 //! - the object table of a generation, with handles that cannot name a new object after the old one is gone;
 //! - the argument checks the catalog implies, so an implementation reads values of the types it declared;
 //! - references, parents and children, and what a `release` or a `destroy` ends;
-//! - the native state of an object, borrowed for the length of one call about it: a closure of the shell that the call runs and that calls the
-//!   same object again is refused with `E_BUSY`, unless the class is registered with `()` for state and has none to protect;
+//! - the native state of an object, borrowed for the length of one call about it: shared for a getter and a `_ref` member (`method_ref`,
+//!   `set_ref`), so a closure of the shell that such a member runs may call the object's getters and other `_ref` members, and unique for
+//!   a member that changes the state, where a call about the same object from inside is refused with `E_BUSY`. A class registered with
+//!   `()` for state has none to protect and takes no borrow;
 //! - closures and implemented interfaces the shell gave (`wire::RawClosure`, [`ShellImpl`]), adopted only when a call succeeds;
 //! - signals and property changes, queued by the implementation and told to listeners from the next turn, never inside a call;
 //! - the extern "C" functions of `GnoblinObjectApi` ([`api_table`]).

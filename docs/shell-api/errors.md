@@ -106,8 +106,16 @@ sets it where it refuses the call.
 | A generation a reload has replaced                                      | `invalid_state`                 |
 | A value of the wrong kind or out of range                               | none: `TypeError`, `RangeError` |
 
-An object that holds state of its own is in use while a call on it runs. A callback the call runs cannot call that object back: the
-callback gets `busy`, and the call goes on. A `Workspace` that runs its layout's `findSplit` is an example.
+An object that holds state of its own is in use while a call about it runs. What a callback of that call may do depends on the
+call:
+
+- A call that changes the state, such as setting `Workspace.layout`: the callback cannot call the object back. It gets `busy`, and
+  the call goes on.
+- A call that only reads the state, or a property read: the callback may read the object's properties and call its other members
+  that only read it.
+
+For example, a layout's `findSplit` or `setSplit` may read the `Workspace` that runs it, and an entry's `run` may read the
+`menu.client` of the `WindowMenu` that runs it.
 
 The members the std library adds to `gnoblin` hold no state, so they are never in use. The callback of `gnoblin.requestTransition` may
 read `gnoblin.workspaces` or `gnoblin.displays`.

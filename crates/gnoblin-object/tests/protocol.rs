@@ -222,6 +222,7 @@ fn probe_catalog() -> &'static CatalogDef {
         ),
         relay_class("relay"),
         relay_class("vault"),
+        lens_class(),
     ];
     leak(CatalogDef {
         namespace: "test.probe",
@@ -1351,6 +1352,55 @@ fn register_relays(builder: &mut Builder) {
         })
         .get("echo", |s, _| echoed(s.hook.clone()))
         .method("run", |_, _, args| args[0].closure()?.call(0, &[Val::Int(3)]));
+    let _ = builder
+        .class::<Lens>("lens")
+        .ctor(|_cx, _inits| Ok(Lens::default()))
+        .get("level", |s, _| Ok(Val::Int(s.level)))
+        .set("level", |s, _, value| {
+            s.level = value.int()?;
+            Ok(())
+        })
+        .get("seen", |s, _| Ok(Val::Int(s.level)))
+        .get("hook", |_, _| Ok(Val::None))
+        .set_ref("hook", |_, _, value| value.closure()?.call(0, &[Val::Int(1)]).map(drop))
+        .method_ref("run", |_, _, args| args[0].closure()?.call(0, &[Val::Int(3)]))
+        .method_ref("twice", |_, _, args| Ok(Val::Int(args[0].int()? * 2)))
+        .method("bump", |s, _, _| {
+            s.level += 1;
+            Ok(Val::Int(s.level))
+        })
+        .method("stir", |s, _, args| {
+            s.level += 1;
+            args[0].closure()?.call(0, &[Val::Int(3)])
+        });
+}
+
+/// What `lens` holds: a level that `level`, `bump` and `stir` change and the other members only read.
+#[derive(Default)]
+struct Lens {
+    level: i64,
+}
+
+/// A class of a real state whose members that do not change it read, in the catalog, like the ones that do.
+fn lens_class() -> ClassDef {
+    let int = ty(abi::VALUE_INT, "");
+    let task = ty(abi::VALUE_CLOSURE, "tick");
+    let (p, m) = (abi::MEMBER_PROPERTY, abi::MEMBER_METHOD);
+    class(
+        "lens",
+        abi::CLASS_HANDLE,
+        "",
+        0,
+        vec![
+            member("level", p, 0, int, vec![]),
+            member("seen", p, abi::MEMBER_READONLY, int, vec![]),
+            member("hook", p, abi::MEMBER_CALLBACK, task, vec![]),
+            member("run", m, 0, int, vec![("task", task)]),
+            member("twice", m, 0, int, vec![("n", int)]),
+            member("bump", m, 0, int, vec![]),
+            member("stir", m, 0, int, vec![("task", task)]),
+        ],
+    )
 }
 
 /// A new object of `relay` or `vault` with `level` 40, and the members the closures of these tests call.
@@ -1474,12 +1524,178 @@ fn a_class_with_state_still_refuses_a_closure_that_calls_its_own_object_and_the_
     assert_eq!(api.get(obj, echo).unwrap().int().unwrap(), 7);
     assert_eq!(
         *heard.borrow(),
-        [[abi::E_BUSY; 2]; 3],
-        "a method, a setter and a getter each refuse the closure's calls on the object they hold"
+        [[abi::E_BUSY, abi::E_BUSY], [abi::E_BUSY, abi::E_BUSY], [0, abi::E_BUSY]],
+        "a method and a setter refuse the closure's calls on the object they hold; a getter holds a shared borrow, so its closure reads \
+         the object and is refused the write"
     );
     assert_eq!(
         api.get(obj, level).unwrap().int().unwrap(),
         40,
         "the refused write changed nothing, and the object is free again when the call ends"
+    );
+}
+
+// ---- a class with a real state whose members do not change it ----------------------------------------------------------------------
+//
+// Written before the fix, from reading `Library::with_native`: it took `try_borrow_mut` on the state for the whole call, so a member that
+// runs a closure of the shell inside the call (`window_menu.activate`, `workspace.set_split`, ...) could not let the closure read a getter
+// or call another member of the same object, though the member only reads its state. Since the fix, a member that does not change its
+// state is registered `method_ref` or `set_ref` and holds a shared borrow, which nests; a member that changes it holds the unique one.
+//
+// `lens` has a real state, `run` and the setter `hook` (which do not change it, and run a closure), `twice` (which does not change it),
+// `seen` (a getter), `bump` and `stir` (which change it, `stir` running a closure).
+
+struct Lens4 {
+    api: Api,
+    obj: u64,
+    level: u32,
+    seen: u32,
+    hook: u32,
+    run: u32,
+    twice: u32,
+    bump: u32,
+    stir: u32,
+}
+
+fn a_lens() -> Lens4 {
+    let api = probe();
+    let class = api.class("lens").unwrap();
+    let level = api.member(class, abi::MEMBER_PROPERTY, "level").unwrap();
+    let obj = api.create(class, &[(level, Val::Int(40))]).unwrap();
+    let property = |name| api.member(class, abi::MEMBER_PROPERTY, name).unwrap();
+    let method = |name| api.member(class, abi::MEMBER_METHOD, name).unwrap();
+    Lens4 {
+        api,
+        obj,
+        level,
+        seen: property("seen"),
+        hook: property("hook"),
+        run: method("run"),
+        twice: method("twice"),
+        bump: method("bump"),
+        stir: method("stir"),
+    }
+}
+
+#[test]
+fn a_ref_method_runs_a_closure_that_reads_a_getter_and_calls_another_ref_method_of_its_object() {
+    let Lens4 {
+        api,
+        obj,
+        seen,
+        run,
+        twice,
+        ..
+    } = a_lens();
+    let task = closure(move |_, args| {
+        let read = api.get(obj, seen)?.int()?;
+        let doubled = api.call(obj, twice, &[Val::Int(args[0].int()?)])?.int()?;
+        Ok(Val::Int(read + doubled))
+    });
+    let answer = api.call(obj, run, &[Val::Closure(task)]).unwrap();
+    assert_eq!(
+        answer.int().unwrap(),
+        40 + 6,
+        "the closure read `seen` and called `twice` on the object `run` was running on"
+    );
+}
+
+#[test]
+fn a_ref_setter_runs_a_closure_that_reads_a_getter_and_calls_a_ref_method_of_its_object() {
+    let Lens4 {
+        api,
+        obj,
+        seen,
+        hook,
+        twice,
+        ..
+    } = a_lens();
+    let told = Rc::new(Cell::new(0));
+    let log = Rc::clone(&told);
+    let task = closure(move |_, args| {
+        let read = api.get(obj, seen)?.int()?;
+        log.set(read + api.call(obj, twice, &[Val::Int(args[0].int()?)])?.int()?);
+        Ok(Val::None)
+    });
+    api.set(obj, hook, &Val::Closure(task)).unwrap();
+    assert_eq!(
+        told.get(),
+        40 + 2,
+        "the closure read `seen` and called `twice` from inside the setter"
+    );
+}
+
+#[test]
+fn a_ref_method_still_refuses_a_closure_that_calls_a_member_that_changes_the_state() {
+    let Lens4 {
+        api,
+        obj,
+        level,
+        run,
+        bump,
+        ..
+    } = a_lens();
+    let heard = Rc::new(RefCell::new(Vec::new()));
+    let log = Rc::clone(&heard);
+    // `bump` and a write to `level` change the state `run` is reading, which would alias it.
+    let task = closure(move |_, _| {
+        let codes: Vec<i32> = [api.call(obj, bump, &[]).map(drop), api.set(obj, level, &Val::Int(1))]
+            .into_iter()
+            .map(|result| result.err().map_or(0, |fail| fail.code))
+            .collect();
+        log.borrow_mut().push(codes);
+        Ok(Val::Int(7))
+    });
+    assert_eq!(
+        api.call(obj, run, &[Val::Closure(task)]).unwrap().int().unwrap(),
+        7,
+        "the call that holds the shared borrow goes on"
+    );
+    assert_eq!(*heard.borrow(), [[abi::E_BUSY; 2]]);
+    assert_eq!(
+        api.get(obj, level).unwrap().int().unwrap(),
+        40,
+        "the refused calls changed nothing"
+    );
+}
+
+#[test]
+fn a_member_that_changes_the_state_refuses_a_closure_that_calls_its_object_even_to_read() {
+    let Lens4 {
+        api,
+        obj,
+        level,
+        seen,
+        twice,
+        stir,
+        ..
+    } = a_lens();
+    let heard = Rc::new(RefCell::new(Vec::new()));
+    let log = Rc::clone(&heard);
+    let task = closure(move |_, _| {
+        let codes: Vec<i32> = [
+            api.get(obj, seen).map(drop),
+            api.call(obj, twice, &[Val::Int(1)]).map(drop),
+        ]
+        .into_iter()
+        .map(|result| result.err().map_or(0, |fail| fail.code))
+        .collect();
+        log.borrow_mut().push(codes);
+        Ok(Val::Int(7))
+    });
+    assert_eq!(
+        api.call(obj, stir, &[Val::Closure(task)]).unwrap().int().unwrap(),
+        7,
+        "the call that holds the unique borrow goes on"
+    );
+    assert_eq!(
+        *heard.borrow(),
+        [[abi::E_BUSY; 2]],
+        "a getter and a `_ref` method are refused while a `&mut` member runs"
+    );
+    assert_eq!(
+        api.get(obj, level).unwrap().int().unwrap(),
+        41,
+        "`stir` changed the level, and the object is free again when it ends"
     );
 }

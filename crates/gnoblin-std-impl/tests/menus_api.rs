@@ -331,3 +331,91 @@ fn the_pointer_on_a_row_outside_the_submenu_closes_its_card() {
     assert!(matches!(menu.get("sub"), Val::None), "the submenu's card is gone");
     assert!(!sub.flag("alive"), "and its canvas with it");
 }
+
+// ---- a shell closure that a call of the menu runs, and that calls the menu back ----------------------------------------------------------
+//
+// Written before the fix (lane x92p). `window_menu.activate` and `window_menu.open_submenu` run a closure of the shell inside the call (an
+// entry's `run`, a submenu's function), and the call held a unique borrow of the menu's state, so the closure's read of `menu.client`
+// found the borrow taken and was refused with `E_BUSY`.
+
+/// The menu object a closure of the shell reads from, set when the menu opens.
+type Seen = Rc<RefCell<Vec<Result<Val, Fail>>>>;
+
+/// What `menu.client` answers to a closure of the shell, noted in `seen`.
+fn read_client(menu: &Rc<Cell<Option<W>>>, seen: &Seen) {
+    let menu = menu.get().expect("the menu is open");
+    let client = menu
+        .api
+        .member(menu.class, abi::MEMBER_PROPERTY, "client")
+        .expect("a property");
+    seen.borrow_mut().push(menu.api.get(menu.obj, client));
+}
+
+#[test]
+fn an_entry_run_by_the_menus_activate_reads_the_menu_it_ran_from() {
+    let (mut rig, menus) = started();
+    let slot: Rc<Cell<Option<W>>> = Rc::new(Cell::new(None));
+    let seen: Seen = Rc::new(RefCell::new(Vec::new()));
+    let mine = rig.make("menu_entry", &[("label", t("Mine"))]);
+    let (menu_for, seen_for) = (Rc::clone(&slot), Rc::clone(&seen));
+    mine.set(
+        "run",
+        callback(move |_| {
+            read_client(&menu_for, &seen_for);
+            Ok(Val::None)
+        }),
+    );
+    let items = Val::List(vec![mine.val()]);
+    menus.set("provider", provide(&rig, &["items"], move |_, _| Ok(items.clone())));
+    let menu = open(&mut rig, &menus);
+    slot.set(Some(menu));
+    let row = objects(&menu.obj("panel").get("rows"), menus.api)
+        .into_iter()
+        .next()
+        .expect("a row");
+    menu.call("activate", &[row.val()]);
+    rig.settle();
+    let seen = seen.borrow();
+    assert_eq!(seen.len(), 1, "the entry ran once");
+    match &seen[0] {
+        Ok(Val::Text(client)) => assert_eq!(client, "3"),
+        other => panic!("the entry could not read the menu it ran from: {other:?}"),
+    }
+}
+
+#[test]
+fn a_submenu_function_run_by_the_menus_open_submenu_reads_the_menu_it_was_asked_from() {
+    let (mut rig, menus) = started();
+    let slot: Rc<Cell<Option<W>>> = Rc::new(Cell::new(None));
+    let seen: Seen = Rc::new(RefCell::new(Vec::new()));
+    let child = rig.make("menu_entry", &[("label", t("child"))]);
+    let asked = rig.make("menu_entry", &[("label", t("Asked"))]);
+    let (menu_for, seen_for, answer) = (Rc::clone(&slot), Rc::clone(&seen), child.val());
+    asked.set(
+        "submenu_entries",
+        callback(move |_| {
+            read_client(&menu_for, &seen_for);
+            Ok(Val::List(vec![answer.clone()]))
+        }),
+    );
+    let items = Val::List(vec![asked.val()]);
+    menus.set("provider", provide(&rig, &["items"], move |_, _| Ok(items.clone())));
+    let menu = open(&mut rig, &menus);
+    slot.set(Some(menu));
+    let row = objects(&menu.obj("panel").get("rows"), menus.api)
+        .into_iter()
+        .next()
+        .expect("a row");
+    menu.call("open_submenu", &[row.val()]);
+    rig.settle();
+    let seen = seen.borrow();
+    assert_eq!(seen.len(), 1, "the function was asked once");
+    match &seen[0] {
+        Ok(Val::Text(client)) => assert_eq!(client, "3"),
+        other => panic!("the function could not read the menu it was asked from: {other:?}"),
+    }
+    assert!(
+        !matches!(menu.get("sub"), Val::None),
+        "the submenu opened with the entries the function answered"
+    );
+}

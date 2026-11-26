@@ -194,7 +194,7 @@ fn alerts_class(builder: &mut Builder) {
         })
         .get("started", |h, _| Ok(Val::Bool(h.ui.shell.borrow().alerts.started)))
         .get("arm_ms", |h, _| Ok(Val::Double(h.ui.shell.borrow().alerts.arm_ms)))
-        .set("arm_ms", |h, _, v| {
+        .set_ref("arm_ms", |h, _, v| {
             h.ui.shell.borrow_mut().alerts.arm_ms = v.double()?;
             h.ui.schedule();
             Ok(())
@@ -202,37 +202,37 @@ fn alerts_class(builder: &mut Builder) {
         .get("interval_ms", |h, _| {
             Ok(Val::Double(h.ui.shell.borrow().alerts.interval_ms))
         })
-        .set("interval_ms", |h, _, v| {
+        .set_ref("interval_ms", |h, _, v| {
             h.ui.shell.borrow_mut().alerts.interval_ms = v.double()?;
             h.ui.schedule();
             Ok(())
         })
         .get("now", |h, _| Ok(closure_val(h.ui.shell.borrow().alerts.now.clone())))
-        .set("now", |h, _, v| {
+        .set_ref("now", |h, _, v| {
             h.ui.shell.borrow_mut().alerts.now = closure_of(&v)?;
             Ok(())
         })
         .get("close_menu", |h, _| {
             Ok(closure_val(h.ui.shell.borrow().alerts.close_menu.clone()))
         })
-        .set("close_menu", |h, _, v| {
+        .set_ref("close_menu", |h, _, v| {
             h.ui.shell.borrow_mut().alerts.close_menu = closure_of(&v)?;
             Ok(())
         })
         .get("tracker", |h, cx| cx.handout(h.ui.shell.borrow().alerts.tracker_obj))
-        .method("start", |h, _, _| {
+        .method_ref("start", |h, _, _| {
             alerts::start(&h.ui)?;
             Ok(Val::None)
         })
-        .method("stop", |h, _, _| {
+        .method_ref("stop", |h, _, _| {
             alerts::stop(&h.ui);
             Ok(Val::None)
         })
-        .method("check", |h, _, _| {
+        .method_ref("check", |h, _, _| {
             alerts::check(&h.ui);
             Ok(Val::None)
         })
-        .method("card_of", |h, cx, args| {
+        .method_ref("card_of", |h, cx, args| {
             alerts::card_of(&h.ui, cx, client_node(cx.ctx(), "card_of", &args[0])?)
         });
 }
