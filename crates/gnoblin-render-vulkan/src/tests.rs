@@ -626,6 +626,42 @@ fn an_unmatched_device_is_a_named_error() {
     }
 }
 
+/// A node that names no device on this machine is refused with every device's reason, so a backend that wanted the host's
+/// device can say so in its log and ask for the best one. A device that names a node ([`DeviceInfo`]'s render node) is found
+/// again by it; a software driver names none, so the second half runs only where the driver does.
+#[test]
+fn a_node_no_device_is_on_is_a_named_error_and_a_device_is_found_by_its_own() {
+    let wanted = VulkanOptions {
+        device: DeviceChoice::RenderNode(0x00ff_ffff),
+        ..options()
+    };
+    match VulkanDevice::with_options(&wanted) {
+        Err(VulkanError::NoDevice { reason }) => {
+            println!("refused as expected: {reason}");
+            assert!(reason.contains("DRM node"), "the reason names the node: {reason}");
+        }
+        Err(VulkanError::NoLoader { .. }) => {
+            println!("skipping: there is no Vulkan loader on this machine");
+            return;
+        }
+        Err(other) => panic!("expected no device on the node, got {other}"),
+        Ok(_) => panic!("a node nothing is on must not produce a device"),
+    }
+    let Ok(device) = VulkanDevice::with_options(&VulkanOptions { ..options() }) else {
+        return;
+    };
+    let Some(node) = device.render_node() else {
+        println!("the driver names no render node (a software driver), so there is nothing to find by");
+        return;
+    };
+    let found = VulkanDevice::with_options(&VulkanOptions {
+        device: DeviceChoice::RenderNode(node),
+        ..options()
+    })
+    .expect("the device is found by its own render node");
+    assert_eq!(found.render_node(), Some(node));
+}
+
 #[test]
 fn a_broken_shader_is_a_startup_error() {
     let shared = ShaderSources::shared();

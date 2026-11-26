@@ -380,6 +380,13 @@ impl VulkanDevice {
         self.context.limits.max_image_dimension2_d
     }
 
+    /// The `dev_t` of the device's DRM render node, when the driver names one (`VK_EXT_physical_device_drm`): the device a
+    /// client is told to allocate on. A software driver has none.
+    #[must_use]
+    pub fn render_node(&self) -> Option<u64> {
+        self.context.render_node
+    }
+
     /// Whether the device draws a View's subtree into an image: it has a depth-stencil format to draw them with. A backend
     /// answers `draws_views` from this, because a device without one skips every View layer.
     #[must_use]

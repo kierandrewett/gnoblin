@@ -14,11 +14,12 @@
 
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::image::Image;
+use gnoblin_types::{Point, Rect};
 use smithay::backend::allocator::Format;
 use smithay::backend::allocator::dmabuf::Dmabuf;
 
 use super::Vulkan;
-use super::dmabuf::{DmabufError, read_image, write_image};
+use super::dmabuf::{DmabufError, read_image, write_image, write_region};
 use super::formats::dmabuf_formats;
 use crate::log;
 
@@ -36,6 +37,24 @@ impl Vulkan {
     #[must_use]
     pub fn dmabuf_formats(&self) -> Vec<Format> {
         dmabuf_formats()
+    }
+
+    /// Whether a client's `dmabuf` can be drawn: a single linear plane in an offered format. Nothing is read; a refused buffer
+    /// is reported here so the client's `create` fails and no layer of it is ever skipped silently.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unsupported`] for a buffer the renderer does not offer.
+    pub fn import_dmabuf(&self, dmabuf: &Dmabuf) -> Result<(), RenderError> {
+        super::dmabuf::linear(dmabuf)
+            .map(|_| ())
+            .map_err(|error| refused(&error))
+    }
+
+    /// The `dev_t` of the DRM render node of the device this output draws on, when it has one.
+    #[must_use]
+    pub fn render_node(&self) -> Option<u64> {
+        self.device.render_node()
     }
 
     /// Draws what the output shows, with the cursor when `with_cursor`, into `dmabuf`. The copy has finished when it returns.
@@ -57,6 +76,39 @@ impl Vulkan {
     /// [`RenderError::Unsupported`] for a buffer the renderer does not offer.
     pub fn copy_image_into_dmabuf(&self, image: &Image, dmabuf: &Dmabuf) -> Result<(), RenderError> {
         write_image(dmabuf, image).map_err(|error| refused(&error))
+    }
+
+    /// [`Vulkan::copy_frame_into_dmabuf`] for the `region` of the buffer that is read from the output at `from`: buffer pixel
+    /// `(x, y)` is output pixel `(from.x + x, from.y + y)`, and what does not fit either is not written.
+    ///
+    /// # Errors
+    ///
+    /// As [`Vulkan::copy_frame_into_dmabuf`].
+    pub fn copy_frame_region_into_dmabuf(
+        &mut self,
+        dmabuf: &Dmabuf,
+        region: Rect,
+        from: Point,
+        with_cursor: bool,
+    ) -> Result<(), RenderError> {
+        super::dmabuf::linear(dmabuf).map_err(|error| refused(&error))?;
+        let image = self.capture(with_cursor)?;
+        write_region(dmabuf, &image, region, from).map_err(|error| refused(&error))
+    }
+
+    /// [`Vulkan::copy_image_into_dmabuf`] for the `region` of the buffer, read from `image` at `from`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Vulkan::copy_image_into_dmabuf`].
+    pub fn copy_image_region_into_dmabuf(
+        &self,
+        image: &Image,
+        dmabuf: &Dmabuf,
+        region: Rect,
+        from: Point,
+    ) -> Result<(), RenderError> {
+        write_region(dmabuf, image, region, from).map_err(|error| refused(&error))
     }
 
     /// Reads a client's `dmabuf` as an [`Image`], waiting for whoever is writing it.

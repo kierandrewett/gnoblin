@@ -21,7 +21,7 @@
 use std::fmt;
 
 use gnoblin_render_frame::image::Image;
-use gnoblin_types::{Rect, Size};
+use gnoblin_types::{Point, Rect, Size};
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::dmabuf::{DmabufMappingMode, DmabufSyncFlags};
 use smithay::backend::allocator::{Buffer, Modifier};
@@ -205,20 +205,49 @@ pub fn read_image(dmabuf: &Dmabuf) -> Result<Image, DmabufError> {
 /// The [`DmabufError`] of a buffer that cannot be written.
 pub fn write_image(dmabuf: &Dmabuf, image: &Image) -> Result<(), DmabufError> {
     let shape = linear(dmabuf)?;
+    write_region(
+        dmabuf,
+        image,
+        Rect::new(0, 0, shape.width, shape.height),
+        Point::new(0, 0),
+    )
+}
+
+/// Writes the `region` of a linear dmabuf from `image`: buffer pixel `(x, y)` is image pixel `(from.x + x, from.y + y)`. A
+/// region that does not fit the buffer, or reaches outside the image, writes the part that does, which is what the
+/// shared-memory copy (`gnoblin_render_frame::shm::copy_into`) does with the same two numbers.
+///
+/// # Errors
+///
+/// The [`DmabufError`] of a buffer that cannot be written.
+pub fn write_region(dmabuf: &Dmabuf, image: &Image, region: Rect, from: Point) -> Result<(), DmabufError> {
+    let shape = linear(dmabuf)?;
     let blue = blue_first(dmabuf.format().code);
-    let width = shape.width.min(image.size().width) as usize;
-    let height = shape.height.min(image.size().height) as usize;
+    let bounds = Rect::new(0, 0, shape.width, shape.height);
+    let Some(region) = region.intersection(bounds) else {
+        return Ok(());
+    };
+    let source = image.size();
     with_mapping(dmabuf, &shape, true, |base, _| {
-        for y in 0..height {
+        for y in region.y..region.y + region.height as i32 {
+            let source_y = i64::from(from.y) + i64::from(y);
+            if source_y < 0 || source_y >= i64::from(source.height) {
+                continue;
+            }
             let target_row = if shape.inverted {
-                shape.height as usize - 1 - y
+                shape.height as usize - 1 - y as usize
             } else {
-                y
+                y as usize
             };
-            let Some(pixels) = image.data().get(y * image.stride()..y * image.stride() + width * 4) else {
-                return;
-            };
-            for (x, pixel) in pixels.as_chunks::<4>().0.iter().enumerate() {
+            for x in region.x..region.x + region.width as i32 {
+                let source_x = i64::from(from.x) + i64::from(x);
+                if source_x < 0 || source_x >= i64::from(source.width) {
+                    continue;
+                }
+                let at = source_y as usize * image.stride() + source_x as usize * 4;
+                let Some(pixel) = image.data().get(at..at + 4) else {
+                    continue;
+                };
                 let bytes = if blue {
                     [pixel[2], pixel[1], pixel[0], pixel[3]]
                 } else {
@@ -226,7 +255,11 @@ pub fn write_image(dmabuf: &Dmabuf, image: &Image) -> Result<(), DmabufError> {
                 };
                 // SAFETY: the row and column are inside the buffer, which `with_mapping` checked lies inside the mapping.
                 unsafe {
-                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), base.add(target_row * shape.stride + x * 4), 4)
+                    std::ptr::copy_nonoverlapping(
+                        bytes.as_ptr(),
+                        base.add(target_row * shape.stride + x as usize * 4),
+                        4,
+                    )
                 };
             }
         }

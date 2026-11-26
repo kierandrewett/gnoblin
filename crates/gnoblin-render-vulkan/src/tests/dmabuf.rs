@@ -111,6 +111,50 @@ fn a_linear_dmabuf_imports_and_draws() {
     clean(&vulkan);
 }
 
+/// A capture of a part of the output lands in the part of the buffer the client asked for: buffer pixel `(x, y)` of the
+/// region is output pixel `(from.x + x, from.y + y)`, and what does not fit either is not written.
+#[test]
+fn a_region_of_a_picture_lands_where_the_region_says() {
+    use gnoblin_types::Point;
+    let Some(buffer) = dmabuf(16, Fourcc::Argb8888) else {
+        return;
+    };
+    write_image(&buffer, &bitmap(16, 16, |_, _| [9, 9, 9, 255])).expect("a background");
+    let Some(vulkan) = renderer(SIZE) else { return };
+    // The picture's pixel (x, y) is red where x < 8 and blue elsewhere; take its right half into the buffer's left half.
+    let source = bitmap(16, 16, |x, _| if x < 8 { [255, 0, 0, 255] } else { [0, 0, 255, 255] });
+    vulkan
+        .copy_image_region_into_dmabuf(&source, &buffer, Rect::new(0, 0, 8, 16), Point::new(8, 0))
+        .expect("the region is copied");
+    let read = read_image(&buffer).expect("read back");
+    assert_eq!(
+        read.colour_at(2, 5),
+        Some([0, 0, 255, 255]),
+        "the left half holds the picture's right half"
+    );
+    assert_eq!(
+        read.colour_at(12, 5),
+        Some([9, 9, 9, 255]),
+        "the rest of the buffer is untouched"
+    );
+    // A region that reaches past the picture writes only what the picture has.
+    vulkan
+        .copy_image_region_into_dmabuf(&source, &buffer, Rect::new(8, 0, 8, 16), Point::new(12, 0))
+        .expect("an overhanging region is copied in part");
+    let read = read_image(&buffer).expect("read back");
+    assert_eq!(
+        read.colour_at(8, 5),
+        Some([0, 0, 255, 255]),
+        "the pixels the picture has are written"
+    );
+    assert_eq!(
+        read.colour_at(12, 5),
+        Some([9, 9, 9, 255]),
+        "past the picture's edge nothing is"
+    );
+    clean(&vulkan);
+}
+
 #[test]
 fn an_inverted_dmabuf_reverses_the_v_axis() {
     let Some(buffer) = dmabuf(16, Fourcc::Argb8888) else {

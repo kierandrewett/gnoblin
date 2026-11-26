@@ -94,6 +94,10 @@ pub enum DeviceChoice {
     Best,
     /// The first acceptable device whose name contains this text, case-insensitively.
     Named(String),
+    /// The device on the DRM node with this `dev_t`, primary or render: the one a host compositor's dmabuf `main_device` or a
+    /// KMS card names. Without a device on that node the choice is [`VulkanError::NoDevice`], and the caller may ask for
+    /// [`DeviceChoice::Best`].
+    RenderNode(u64),
 }
 
 /// Whether the validation layer is enabled.
@@ -223,6 +227,9 @@ pub(super) struct VkContext {
     /// The depth-stencil format a View's picture and a 3D layer's depth test use: `D24S8` where the device draws into it,
     /// else `D32S8`, and `None` on a device with neither (which then draws no View and no 3D layer).
     pub(super) depth_format: Option<vk::Format>,
+    /// The `dev_t` of the render node of the device, when the driver names one (`VK_EXT_physical_device_drm`): what a client
+    /// is told to allocate on, and what a host's dmabuf `main_device` is matched with.
+    pub(super) render_node: Option<u64>,
     #[cfg(test)]
     pub(super) faults: Faults,
 }
@@ -520,6 +527,8 @@ struct Candidate {
     family: u32,
     timestamp_bits: u32,
     info: DeviceInfo,
+    /// The `dev_t` of the device's render node, when `VK_EXT_physical_device_drm` names one.
+    render_node: Option<u64>,
     cache_identity: CacheIdentity,
 }
 
@@ -594,6 +603,7 @@ fn build(
         timeline,
         extensions,
         depth_format,
+        render_node: candidate.render_node,
         #[cfg(test)]
         faults: Faults::default(),
     })
@@ -624,6 +634,13 @@ fn choose(instance: &Instance, choice: &DeviceChoice) -> Result<Candidate, Vulka
         let name = unsafe { CStr::from_ptr(properties.device_name.as_ptr()) }
             .to_string_lossy()
             .into_owned();
+        let nodes = drm_nodes(instance, device);
+        if let DeviceChoice::RenderNode(wanted) = choice
+            && !nodes.contains(wanted)
+        {
+            refusals.push(format!("{name}: is not on the DRM node {wanted:#x}"));
+            continue;
+        }
         if let DeviceChoice::Named(wanted) = choice
             && !name.to_lowercase().contains(&wanted.to_lowercase())
         {
@@ -665,6 +682,7 @@ fn choose(instance: &Instance, choice: &DeviceChoice) -> Result<Candidate, Vulka
                 name,
                 kind: GpuKind::from_vulkan(properties.device_type),
             },
+            render_node: nodes.iter().copied().next(),
             cache_identity: CacheIdentity {
                 vendor: properties.vendor_id,
                 device: properties.device_id,
@@ -716,6 +734,34 @@ fn formats_supported(instance: &Instance, device: vk::PhysicalDevice) -> Result<
         }
     }
     Ok(())
+}
+
+/// The `dev_t` of a device's render node and then its primary node, for those `VK_EXT_physical_device_drm` names.
+fn drm_nodes(instance: &Instance, device: vk::PhysicalDevice) -> Vec<u64> {
+    // SAFETY: a plain query of a device this instance listed.
+    let present = unsafe { instance.enumerate_device_extension_properties(device) }.unwrap_or_default();
+    let has_drm = present.iter().any(|extension| {
+        // SAFETY: the driver NUL-terminates `extension_name` within its 256 bytes.
+        unsafe { CStr::from_ptr(extension.extension_name.as_ptr()) == c"VK_EXT_physical_device_drm" }
+    });
+    if !has_drm {
+        return Vec::new();
+    }
+    let mut drm = vk::PhysicalDeviceDrmPropertiesEXT::default();
+    {
+        let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut drm);
+        // SAFETY: the extension is present, so the structure may be chained; the device is one this instance listed.
+        unsafe { instance.get_physical_device_properties2(device, &mut properties) };
+    }
+    let node = |major: i64, minor: i64| rustix::fs::makedev(major as u32, minor as u32);
+    let mut nodes = Vec::new();
+    if drm.has_render == vk::TRUE {
+        nodes.push(node(drm.render_major, drm.render_minor));
+    }
+    if drm.has_primary == vk::TRUE {
+        nodes.push(node(drm.primary_major, drm.primary_minor));
+    }
+    nodes
 }
 
 /// The depth-stencil format the device can draw into, `D24S8` first.
