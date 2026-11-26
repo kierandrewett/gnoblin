@@ -63,7 +63,8 @@ use crate::input_settings::{DeviceBook, Setting, VirtualDevice};
 use crate::render::renderer::{AnyRenderer, GpuShare, RendererKind};
 use crate::{
     Backend, BackendError, BackendEvent, DmabufCopy, DmabufCopyError, DmabufImportError, DmabufProvider, DmabufSource,
-    DmabufSupport, GammaRamp, Host, InputEvent, InputSource, Output, OutputControls, Present, Target,
+    DmabufSupport, ExplicitSync, GammaRamp, Host, InputEvent, InputSource, Output, OutputControls, Present, Retirement,
+    Target,
 };
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::{OutputFrame, SecureTreatment};
@@ -1055,6 +1056,14 @@ impl<S: Host + 'static> Backend<S> for Headless {
 
     fn import_dmabuf(&mut self, dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<(), DmabufImportError> {
         self.import(dmabuf)
+    }
+
+    fn explicit_sync(&mut self) -> Option<ExplicitSync> {
+        self.dmabuf.explicit_sync(self.targets.first_mut())
+    }
+
+    fn buffers_retired(&mut self) -> Retirement {
+        self.dmabuf.buffers_retired(self.targets.first_mut())
     }
 
     fn dmabuf_capture_support(&mut self, output: OutputId) -> Option<DmabufSupport> {

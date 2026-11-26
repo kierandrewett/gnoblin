@@ -170,6 +170,17 @@ pub trait DmabufProvider: Send {
     fn read(&mut self, _dmabuf: &Dmabuf) -> Result<Image, DmabufCopyError> {
         Err(DmabufCopyError::Unsupported)
     }
+
+    /// The DRM device a stand-in serves explicit sync on, or `None` to serve none. The default serves none, so a
+    /// stand-in that only imports is a session without `wp_linux_drm_syncobj_manager_v1`.
+    fn explicit_sync(&mut self) -> Option<crate::ExplicitSync> {
+        None
+    }
+
+    /// How far the stand-in's frames have got, as a renderer reports it. The default is nothing outstanding.
+    fn buffers_retired(&mut self) -> crate::Retirement {
+        crate::Retirement::default()
+    }
 }
 
 /// Where the pixels of a capture into a client's buffer come from.

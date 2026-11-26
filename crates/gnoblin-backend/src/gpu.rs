@@ -19,7 +19,10 @@ use gnoblin_render_frame::view_scene::ViewScene;
 use gnoblin_types::{Rect, Scale};
 
 use crate::render::renderer::{AnyRenderer, CaptureRequest, RendererKind, capture_redacted};
-use crate::{DmabufCopy, DmabufCopyError, DmabufImportError, DmabufProvider, DmabufSource, DmabufSupport};
+use crate::{
+    DmabufCopy, DmabufCopyError, DmabufImportError, DmabufProvider, DmabufSource, DmabufSupport, ExplicitSync,
+    Retirement,
+};
 
 /// The pieces of a target a GPU-facing call reads, borrowed together because a redacted read needs the renderer
 /// mutably while it reads the frame last drawn.
@@ -79,6 +82,16 @@ pub(crate) trait GpuTarget {
         let gles = self.parts().renderer.kind() == RendererKind::Gles;
         self.dmabuf_support()
             .filter(|support| support.main_device.is_some() || !gles)
+    }
+
+    /// The device explicit sync may be served on for this target's renderer; see [`AnyRenderer::explicit_sync`].
+    fn explicit_sync(&mut self) -> Option<ExplicitSync> {
+        self.parts().renderer.explicit_sync()
+    }
+
+    /// How far the GPU has got through this target's renderer's frames; see [`AnyRenderer::buffers_retired`].
+    fn buffers_retired(&mut self) -> Retirement {
+        self.parts().renderer.buffers_retired()
     }
 
     /// Imports a client's GPU buffer into this target's renderer.
@@ -202,6 +215,23 @@ impl DmabufHub {
         };
         self.support.clone_from(&support);
         support
+    }
+
+    /// The device explicit sync may be served on: the provider's answer, or the first output's renderer's. `None` when
+    /// the renderer cannot keep the protocol's promise.
+    pub fn explicit_sync<T: GpuTarget>(&mut self, first: Option<&mut T>) -> Option<ExplicitSync> {
+        match self.provider.as_mut() {
+            Some(provider) => provider.explicit_sync(),
+            None => first.and_then(GpuTarget::explicit_sync),
+        }
+    }
+
+    /// How far the GPU has got through the frames drawn: the provider's answer, or the first output's renderer's.
+    pub fn buffers_retired<T: GpuTarget>(&mut self, first: Option<&mut T>) -> Retirement {
+        match self.provider.as_mut() {
+            Some(provider) => provider.buffers_retired(),
+            None => first.map(GpuTarget::buffers_retired).unwrap_or_default(),
+        }
     }
 
     /// Imports `dmabuf` after the checks that need no driver: a format and modifier the clients were not offered,

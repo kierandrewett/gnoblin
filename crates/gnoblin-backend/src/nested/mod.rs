@@ -1176,6 +1176,16 @@ impl<S: Host + 'static> Backend<S> for Nested {
         dmabuf.import(targets.iter_mut().flatten().next(), buffer)
     }
 
+    fn explicit_sync(&mut self) -> Option<crate::ExplicitSync> {
+        let Self { dmabuf, targets, .. } = self;
+        dmabuf.explicit_sync(targets.iter_mut().flatten().next())
+    }
+
+    fn buffers_retired(&mut self) -> crate::Retirement {
+        let Self { dmabuf, targets, .. } = self;
+        dmabuf.buffers_retired(targets.iter_mut().flatten().next())
+    }
+
     fn dmabuf_capture_support(&mut self, output: OutputId) -> Option<crate::DmabufSupport> {
         // An output this session does not drive has no frame to export.
         self.index(output)?;

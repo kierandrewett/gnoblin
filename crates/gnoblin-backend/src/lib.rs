@@ -158,6 +158,7 @@
 //!     rather than about the contract.
 
 pub mod dmabuf;
+pub mod explicit_sync;
 mod gpu;
 pub mod headless;
 pub mod input_settings;
@@ -180,6 +181,7 @@ pub use selection::{SelectionRefusal, SelectionTarget};
 pub use tablet::{PadLayout, Stylus, TabletAxes, TabletEvent, TabletTool, ToolAxes, ToolKind};
 
 pub use dmabuf::{DmabufCopy, DmabufCopyError, DmabufImportError, DmabufProvider, DmabufSource, DmabufSupport};
+pub use explicit_sync::{ExplicitSync, ExplicitSyncRefusal, Retirement};
 
 gnoblin_log::logger!(log = "backend");
 
@@ -946,6 +948,28 @@ pub trait Backend<S: Host + 'static> {
         _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
     ) -> Result<(), DmabufImportError> {
         Err(DmabufImportError::Unsupported)
+    }
+
+    /// The DRM device `wp_linux_drm_syncobj_manager_v1` imports a client's timelines on, or `None` when this backend
+    /// cannot keep the protocol's promise: the host then never serves it, and a client keeps implicit sync.
+    ///
+    /// A backend answers `Some` only when its renderer reports when the GPU has finished reading a client's buffer
+    /// ([`Backend::buffers_retired`]) and its device can wait on a timeline point through an eventfd, which
+    /// [`ExplicitSync::on_node`] checks. Asked once, before any client connects, after [`Backend::dmabuf`]. See
+    /// [`crate::explicit_sync`].
+    fn explicit_sync(&mut self) -> Option<ExplicitSync> {
+        None
+    }
+
+    /// How many frames this backend's renderer has submitted and how many the GPU has finished, which is what the host
+    /// holds a client's release point against: a buffer that frames up to `submitted` may have read is given back once
+    /// `retired` reaches that count. Asked after every turn that drew, and only while [`Backend::explicit_sync`] is
+    /// served.
+    ///
+    /// A count that goes backwards is a device that was made anew, and the host reads it as every earlier frame being
+    /// over. The default, all zero, is nothing outstanding.
+    fn buffers_retired(&mut self) -> Retirement {
+        Retirement::default()
     }
 
     /// What a capture of `output` may be written into on the GPU, or `None` when this backend cannot render the

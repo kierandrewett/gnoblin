@@ -477,6 +477,47 @@ impl AnyRenderer {
         }
     }
 
+    /// The DRM device explicit sync may be served on, when this renderer can keep its promise.
+    ///
+    /// Only Vulkan can: its timeline says when the GPU has finished each frame ([`AnyRenderer::buffers_retired`]), so a
+    /// client's release point signals after the last frame that may have read the buffer. GLES and the software renderer
+    /// report no retirement, so a client of theirs keeps implicit sync. Vulkan answers when its device names a DRM render
+    /// node whose kernel waits on a timeline point through an eventfd; a software driver names no node, so it answers `None`.
+    #[must_use]
+    pub fn explicit_sync(&self) -> Option<crate::ExplicitSync> {
+        match self {
+            Self::Software(_) => None,
+            #[cfg(feature = "gles")]
+            Self::Gles(_) => None,
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(vulkan) => match crate::ExplicitSync::on_node(vulkan.render_node()) {
+                Ok(device) => Some(device),
+                Err(refusal) => {
+                    crate::log::info!(area = "explicit-sync", %refusal, "explicit sync is not offered on this Vulkan device");
+                    None
+                }
+            },
+        }
+    }
+
+    /// How far the GPU has got through this renderer's frames; all zero for a renderer that reports none.
+    #[must_use]
+    pub fn buffers_retired(&self) -> crate::Retirement {
+        match self {
+            Self::Software(_) => crate::Retirement::default(),
+            #[cfg(feature = "gles")]
+            Self::Gles(_) => crate::Retirement::default(),
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(vulkan) => {
+                let progress = vulkan.gpu().frame_progress();
+                crate::Retirement {
+                    submitted: progress.submitted,
+                    retired: progress.completed,
+                }
+            }
+        }
+    }
+
     /// Copies the frame last drawn into a client's GPU buffer, with the cursor composed in when `with_cursor` is set.
     ///
     /// # Errors

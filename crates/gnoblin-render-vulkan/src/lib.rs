@@ -233,6 +233,18 @@ pub struct Stats {
     pub pipeline_cache_loaded: bool,
 }
 
+/// The device's timeline as two counts: what was submitted and what the GPU has finished.
+///
+/// Both only grow. A submission signals the next value of the timeline, so a thing that read a client's buffer for
+/// every submission up to `submitted` is done reading it once `completed` reaches that count.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FrameProgress {
+    /// The number of the last submission: a frame, a capture, the clear of a new target.
+    pub submitted: u64,
+    /// The number of the last submission the GPU has finished, and every one before it.
+    pub completed: u64,
+}
+
 /// One physical GPU, shared by every output on it.
 ///
 /// It owns what is the GPU's and not an output's: the Vulkan device, the allocator, the compiled pipelines and the shell's
@@ -356,6 +368,22 @@ impl VulkanDevice {
             device_memory: self.context.memory.capacity(),
             pipeline_cache_loaded: self.pipelines.cache_loaded(),
         }
+    }
+
+    /// How far the GPU has got through what this device was asked to do: see [`FrameProgress`].
+    ///
+    /// A device that was lost reports everything as finished, because nothing will run on it again, and a caller that
+    /// waits for a frame to retire (the compositor, before it tells a client it may reuse a buffer) must not wait for
+    /// ever on work that is gone.
+    #[must_use]
+    pub fn frame_progress(&self) -> FrameProgress {
+        let submitted = self.context.timeline.submitted();
+        let completed = if self.lost.get() {
+            submitted
+        } else {
+            self.context.completed()
+        };
+        FrameProgress { submitted, completed }
     }
 
     /// The bytes the device holds that are not an output's: the textures of client buffers, as `scratch`.
