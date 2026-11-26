@@ -449,6 +449,7 @@
 - After a shell restart, windows are placed again and stay mapped, keeping their client size.
 - Fixes a bug where an attaching shell received the compositor's seat and screen node changes twice, once in the attach snapshot and again as `changes` events.
 - A gnoblin started by a systemd service whose stderr was then redirected (a test harness, a CI runner, a wrapper that pipes the log) now prints its log on stderr. It trusted an inherited `JOURNAL_STREAM` as proof that stderr was the journal and sent every line there, so a refusal at start showed nothing on stderr. The variable now counts only when its device and inode are stderr's own, as systemd documents.
+- A shell instance that starts after another ended no longer hears what the ended one's connections had queued. `reset_session` left the events no generation had dispatched in the queue, so the next shell's first turn delivered them: a dialog request of the old slot connection reached the new shell's listeners and was answered `pass` on the new connection. The `services` tests of `gnoblin-core-impl` failed whenever a test that offered a request ran before one that listened for requests. The reset now drops those events (`GenerationHost::discard_events`; lane SvcIdle).
 
 #### Configuration
 

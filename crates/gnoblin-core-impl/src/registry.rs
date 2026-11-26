@@ -459,6 +459,14 @@ pub(crate) fn queued_events() -> usize {
     HOST.queued_events()
 }
 
+/// Drops the events nobody has dispatched: what the connections of an ended shell instance queued.
+pub(crate) fn discard_events() {
+    let dropped = HOST.discard_events();
+    if dropped > 0 {
+        log::debug!("the end of a shell instance dropped {dropped} queued events");
+    }
+}
+
 /// The shell thread's own turn of work: reads the tree link, applies what it sent, and publishes what that brings with the
 /// timers that fell due and the programs that ended.
 ///

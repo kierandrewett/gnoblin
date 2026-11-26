@@ -92,10 +92,13 @@ pub fn set_clock(clock: std::sync::Arc<dyn gnoblin_shell_host::supervisor::Clock
     crate::session::with(|session| session.set_clock(clock));
 }
 
-/// Ends the shell instance of this thread: the tree is detached and everything that belonged to it is dropped (the compositor
-/// releases a connection's claims by itself). The provider and the clock stay. For a host that restarts its shell and for tests.
+/// Ends the shell instance of this thread: the tree is detached and everything that belonged to it is dropped, the events its
+/// connections queued and no generation has dispatched among them (the compositor releases a connection's claims by itself). The
+/// provider and the clock stay. For a host that restarts its shell and for tests.
 pub fn reset_session() {
     crate::session::with(crate::session::Session::reset);
+    // The session joined the threads of its connections when it dropped them, so what they queued is all there is to discard.
+    crate::registry::discard_events();
     crate::budget::reset();
     crate::document::reset();
 }

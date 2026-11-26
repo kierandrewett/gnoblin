@@ -624,6 +624,15 @@ impl<E> GenerationHost<E> {
         self.lock().events.len()
     }
 
+    /// Drops every event still queued and returns how many there were. Events belong to the shell instance whose connections queued
+    /// them: when that instance ends, nothing of it may reach the next generation to dispatch. Posts stay: they belong to a generation.
+    pub fn discard_events(&self) -> usize {
+        let mut state = self.lock();
+        let dropped = state.events.len();
+        state.events.clear();
+        dropped
+    }
+
     /// Runs the posts of `owner`, then delivers every queued event, waiting up to `timeout_ms` for the first. Returns the
     /// number of callbacks run.
     ///
