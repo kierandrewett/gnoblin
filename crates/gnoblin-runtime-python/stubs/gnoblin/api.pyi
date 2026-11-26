@@ -28,6 +28,7 @@ from typing import Any, Callable, Mapping, Sequence
 from ._base import Node
 from ._generated.classes import Window
 from .events import Process, ProcessExit, Subscription
+from .objects.model import GnoblinRoot
 
 class Event:
     """One named subscription: parameters (a class name, a chord) and then the function.
@@ -40,8 +41,13 @@ class Event:
         """Registers ``args[-1]`` with the parameters before it; returns the :class:`Subscription`."""
     def __call__(self, *args: Any) -> Any: ...
 
-class Gnoblin:
-    """The shell's handle on the compositor. Use the instance ``gnoblin``, not the class."""
+class Gnoblin(GnoblinRoot):
+    """The shell's handle on the compositor. Use the instance ``gnoblin``, not the class.
+
+    It has the members of the root of the object model, written from the schema: ``gnoblin.input``, ``gnoblin.clients``,
+    ``gnoblin.session``, ``gnoblin.find_clients(...)`` and the rest are those of ``gnoblin.objects.model.Gnoblin``, and a member
+    of this class with the same name (``spawn``) is the one that answers.
+    """
 
     on_client_created: Event
     on_client_destroyed: Event

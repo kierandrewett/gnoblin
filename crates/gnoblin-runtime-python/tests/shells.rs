@@ -1458,8 +1458,22 @@ def decorated_as(node, name):
     )
 
 
-for node in tree.body:
-    if not isinstance(node, ast.ClassDef):
+classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
+
+
+def members(node):
+    """The methods and attributes of a class body, and of the stub classes of this file it extends: a class at run time is flat."""
+    names = {n.name for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and not n.name.startswith("_")}
+    names |= {n.target.id for n in node.body if isinstance(n, ast.AnnAssign) and not n.target.id.startswith("_")}
+    for base in node.bases:
+        if isinstance(base, ast.Name) and base.id in classes:
+            names |= members(classes[base.id])
+    return names
+
+
+for node in classes.values():
+    if (ast.get_docstring(node) or "").startswith("The members of the root"):
+        # A class of the stub alone: the members of the root, which `Gnoblin` extends. The runtime has the class `Gnoblin` and no other.
         continue
     if any(isinstance(base, ast.Attribute) and base.attr in ("IntEnum", "Enum") for base in node.bases):
         names = [t.id for n in node.body if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)]
@@ -1468,8 +1482,7 @@ for node in tree.body:
     elif decorated_as(node, "dataclass"):
         names = [n.target.id for n in node.body if isinstance(n, ast.AnnAssign)]
     else:
-        names = {n.name for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and not n.name.startswith("_")}
-        names |= {n.target.id for n in node.body if isinstance(n, ast.AnnAssign) and not n.target.id.startswith("_")}
+        names = members(node)
     print("reflect " + sys.argv[2] + "." + node.name + " " + " ".join(sorted(names)))
 "#;
 
@@ -1569,6 +1582,100 @@ fn the_stub_of_the_generated_classes_agrees_with_what_the_runtime_reflects() {
         "the stub has the classes: {declared:?}"
     );
     assert_eq!(reflected, declared, "the stub and the runtime disagree\n{}", run.dump());
+}
+
+/// A shell that checks what `from gnoblin import gnoblin` answers for the members of the root of the object model, which it takes from the
+/// generated class `gnoblin.objects.model.Gnoblin` itself: every property is the same object the root gives, every method is the root's,
+/// and a member the object has of its own (`spawn`) is its own.
+const ROOT_MEMBERS_SHELL: &str = r#"
+from gnoblin import gnoblin
+from gnoblin.objects import model
+
+root = model.Gnoblin.get()
+for name, value in sorted(vars(model.Gnoblin).items()):
+    if name.startswith("_") or name in ("get", "destroy"):
+        continue
+    if hasattr(type(gnoblin), name):
+        gnoblin.log("rootcheck own " + name)
+    elif isinstance(value, property):
+        gnoblin.log("rootcheck property " + name + (" same" if getattr(gnoblin, name) is getattr(root, name) else " DIFFERENT"))
+    elif callable(value):
+        gnoblin.log("rootcheck method " + name + (" same" if getattr(gnoblin, name) == getattr(root, name) else " DIFFERENT"))
+for name in ("on", "_private", "get", "destroy", "no_such_member"):
+    try:
+        getattr(gnoblin, name)
+        gnoblin.log("rootcheck reads " + name)
+    except AttributeError:
+        gnoblin.log("rootcheck refuses " + name)
+gnoblin.log("rootcheck done")
+"#;
+
+#[test]
+fn the_gnoblin_object_reaches_every_member_of_the_root_the_schema_declares() {
+    let dir = project("root-members");
+    let shell = dir.join("shell.py");
+    fs::write(&shell, ROOT_MEMBERS_SHELL).unwrap();
+    let run = start_in_std_prefix(&shell);
+    assert_eq!(run.code, 0, "{}", run.dump());
+    assert!(!run.stderr.contains("Traceback"), "{}", run.dump());
+    let lines: Vec<String> = run
+        .stderr
+        .lines()
+        .filter_map(|line| {
+            line.find("rootcheck ").map(|at| {
+                line[at + "rootcheck ".len()..]
+                    .split("  generation=")
+                    .next()
+                    .unwrap_or_default()
+                    .trim_end()
+                    .to_owned()
+            })
+        })
+        .collect();
+    assert!(lines.iter().any(|line| line == "done"), "{}", run.dump());
+    // The 14 properties the schema marks `always`, each the root's own object.
+    for member in [
+        "clients",
+        "outputs",
+        "focus",
+        "session",
+        "runtime",
+        "process",
+        "idle",
+        "launches",
+        "input",
+        "dialogs",
+        "authentication",
+        "lock",
+        "timers",
+        "compositor",
+    ] {
+        assert!(
+            lines.iter().any(|line| *line == format!("property {member} same")),
+            "gnoblin.{member} is the root's {member}: {lines:?}\n{}",
+            run.dump()
+        );
+    }
+    assert!(
+        lines.iter().all(|line| !line.ends_with("DIFFERENT")),
+        "every member is the root's: {lines:?}"
+    );
+    // The methods of the root are reached too, and a member of the object's own is not the root's.
+    for wanted in ["method find_clients same", "method find_outputs same", "own spawn"] {
+        assert!(
+            lines.iter().any(|line| line == wanted),
+            "{wanted}: {lines:?}\n{}",
+            run.dump()
+        );
+    }
+    // `on` is the root's; what is private, the class's own constructor and a name nothing has are the attribute error of any object.
+    assert!(lines.iter().any(|line| line == "reads on"), "{lines:?}");
+    for refused in ["_private", "get", "destroy", "no_such_member"] {
+        assert!(
+            lines.iter().any(|line| *line == format!("refuses {refused}")),
+            "{refused} is refused: {lines:?}"
+        );
+    }
 }
 
 /// What a call from a Python script costs, in nanoseconds, for the calls the object protocol times from Rust. A measurement

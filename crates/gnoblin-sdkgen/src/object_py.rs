@@ -203,6 +203,13 @@ def need(value: Any, what: str) -> Any:
     return value
 
 
+def always(value: Any, what: str) -> Any:
+    """`value` of the property `what`, which the catalog says always has an object: a none answer is the library's fault."""
+    if value is None:
+        raise GnoblinError(f"{what} has no object, but the catalog says the library always has one")
+    return value
+
+
 def enum_(cls: type[enum.IntEnum], value: Any) -> Any:
     """`value` as a member of `cls`: a member, or the name the catalog gives it (`"follow-mouse"`)."""
     if isinstance(value, cls):
@@ -456,11 +463,16 @@ def assign(obj: Any, label: str, props: Any, options: Any, request: Callable[[Ca
     return request(work, options)
 "#;
 
+/// The namespace and the object of the root every shell starts from, and what its stub's class of members is called after the class.
+const ROOT_NAMESPACE: &str = "gnoblin.model";
+const ROOT_OBJECT: &str = "gnoblin";
+const ROOT_SUFFIX: &str = "Root";
+
 fn class_name(object: &ObjectType) -> String {
     values::py_class(&object.name, &object.export)
 }
 
-fn member_name(name: &str, export: &Option<String>) -> String {
+pub(super) fn member_name(name: &str, export: &Option<String>) -> String {
     python_ident(&export.clone().unwrap_or_else(|| snake(name)))
 }
 
@@ -580,10 +592,11 @@ impl<'a> Py<'a> {
         })
     }
 
-    /// The type a property or a result is read as: an object or a record is absent only where the catalog marks it `optional`.
-    fn ty_read(&self, ty: &Type, optional: bool) -> Result<String, String> {
+    /// The type a property or a result is read as: an object or a record may be absent (`T | None`) unless the catalog says the library
+    /// `always` has one, the rule of `T | undefined` in TypeScript and of `Option<T>` in Rust.
+    fn ty_read(&self, ty: &Type, always: bool) -> Result<String, String> {
         let text = self.ty(ty, false)?;
-        Ok(if optional && matches!(ty, Type::ObjectRef(_)) {
+        Ok(if !always && matches!(ty, Type::ObjectRef(_)) {
             format!("{text} | None")
         } else {
             text
@@ -729,6 +742,13 @@ impl<'a> Py<'a> {
         } else {
             c.pydoc(text);
         }
+    }
+
+    /// True for the root service of the object model: `gnoblin` of `gnoblin.model`.
+    fn is_root(&self, object: &ObjectType) -> bool {
+        object.kind == ObjectKind::Service
+            && self.view.namespace.as_str() == ROOT_NAMESPACE
+            && object.name == ROOT_OBJECT
     }
 
     fn enum_source(&self, c: &mut CodeWriter, declared: &EnumDecl) {
@@ -1255,7 +1275,7 @@ impl<'a> Py<'a> {
                     decoders: vec![self.decoder(&property.ty, true)?],
                     params: vec![(
                         member_name(&property.name, &None),
-                        self.ty_read(&property.ty, property.optional)?,
+                        self.ty_read(&property.ty, property.always || object.augment_of.is_some())?,
                     )],
                     doc: format!("The property `{}` changed.", property.name),
                 }),
@@ -1304,11 +1324,23 @@ impl<'a> Py<'a> {
         } else {
             String::new()
         };
-        c.line(format!("class {name}{bases}:"));
-        c.indent();
-        self.class_doc(c, self.view.class_doc(&object.name), || {
-            format!("The class `{}` of `{}`.", object.name, self.view.namespace)
-        });
+        // The root's members are a class of their own in the stub, which `Gnoblin` extends with `get`: `from gnoblin import gnoblin` has them
+        // too (the runtime hands them to the root), so what the root has is written once and in the schema's words.
+        let root = self.stub && self.is_root(object);
+        if root {
+            c.line(format!("class {name}{ROOT_SUFFIX}{bases}:"));
+            c.indent();
+            c.line(format!(
+                "\"\"\"The members of the root `{}` of `{}`: the class `{name}` has them, and so has the `gnoblin` object of `gnoblin.api`.\"\"\"",
+                object.name, self.view.namespace
+            ));
+        } else {
+            c.line(format!("class {name}{bases}:"));
+            c.indent();
+            self.class_doc(c, self.view.class_doc(&object.name), || {
+                format!("The class `{}` of `{}`.", object.name, self.view.namespace)
+            });
+        }
         if !self.stub && has_instance_members {
             c.line("__slots__ = ()");
             c.line("_NS = _NS");
@@ -1331,13 +1363,21 @@ impl<'a> Py<'a> {
                 .collect();
             c.line(format!("_EVENTS = {{{}}}", table.join(", ")));
         }
-        if has_instance_members {
+        if has_instance_members && !root {
             self.constructor_source(c, object, &slots, &lookups)?;
         }
         for slot in &slots {
             match &slot.member {
                 Member::Property(property) => {
-                    self.property_source(c, object, &snake_name, &lookups, property, &mut claim)?;
+                    self.property_source(
+                        c,
+                        object,
+                        &snake_name,
+                        &lookups,
+                        property,
+                        object.augment_of.is_some(),
+                        &mut claim,
+                    )?;
                 }
                 Member::Method(method) => {
                     self.method_source(c, object, &snake_name, &lookups, method, &mut claim)?;
@@ -1356,10 +1396,21 @@ impl<'a> Py<'a> {
             self.assign_source(c, &format!("self, {}", quote(&name)))?;
         }
         if self.stub && has_instance_members {
-            self.on_stubs(c, &events);
+            self.on_stubs(c, &events, !root);
         }
         c.dedent();
         c.blank();
+        if root {
+            c.line(format!("class {name}({name}{ROOT_SUFFIX}):"));
+            c.indent();
+            self.class_doc(c, self.view.class_doc(&object.name), || {
+                format!("The class `{}` of `{}`.", object.name, self.view.namespace)
+            });
+            self.constructor_source(c, object, &slots, &lookups)?;
+            c.line("def destroy(self) -> None: ...");
+            c.dedent();
+            c.blank();
+        }
         if !self.stub {
             c.line(format!("_B.register(_NS_NAME, {}, {name})", quote(&object.name)));
             c.blank();
@@ -1446,7 +1497,7 @@ impl<'a> Py<'a> {
     }
 
     /// The overloads of `on` in a stub: a handler for each event, and the decorator form.
-    fn on_stubs(&self, c: &mut CodeWriter, events: &[ScriptEvent]) {
+    fn on_stubs(&self, c: &mut CodeWriter, events: &[ScriptEvent], destroy: bool) {
         // The docstring is the first overload's: the events of the class and what each is.
         let mut described = false;
         for event in events {
@@ -1479,7 +1530,9 @@ impl<'a> Py<'a> {
             // The base class has `on` whatever the class: with no event to name it raises, and the stub says what it takes.
             c.line("def on(self, event: str, handler: Callable[..., object] | None = None) -> Listener: ...");
         }
-        c.line("def destroy(self) -> None: ...");
+        if destroy {
+            c.line("def destroy(self) -> None: ...");
+        }
     }
 
     fn constructor_source(
@@ -1564,6 +1617,7 @@ impl<'a> Py<'a> {
         snake_name: &str,
         lookups: &[MemberLookup],
         property: &Property,
+        augment: bool,
         claim: &mut impl FnMut(&str) -> Result<(), String>,
     ) -> Result<(), String> {
         let class_owned = class_name(object);
@@ -1589,18 +1643,25 @@ impl<'a> Py<'a> {
             }
             return Ok(());
         }
-        let read = self.ty_read(&property.ty, property.optional)?;
+        // The member an augment adds to a class of another library is read as the object, as in TypeScript and Rust: it is the augmenting
+        // library's own, and `T | None` is for what the library the object belongs to may not have.
+        let read = self.ty_read(&property.ty, property.always || augment)?;
         c.line("@builtins.property");
         self.named(c, class, &ident, false, Some(&spell));
+        // A property the catalog says the library `always` has an object for is read as one: a none answer is the library breaking its word,
+        // and is refused where it is read, not handed to the script as `None` under a type that does not allow it.
+        let body = if property.always && matches!(property.ty, Type::ObjectRef(_)) {
+            let held = format!("_B.always(self._h.get({ids}), {})", quote(&format!("{class}.{ident}")));
+            self.dec(&property.ty, &held, false)?
+        } else {
+            self.dec(&property.ty, &format!("self._h.get({ids})"), true)?
+        };
         self.def_described(
             c,
             &format!("def {ident}(self) -> {read}"),
             schema,
             &format!("The property `{}`.", property.name),
-            &[format!(
-                "return {}",
-                self.dec(&property.ty, &format!("self._h.get({ids})"), true)?
-            )],
+            &[format!("return {body}")],
         );
         if !property.readonly {
             c.line(format!("@{ident}.setter"));
@@ -1647,7 +1708,7 @@ impl<'a> Py<'a> {
         let (params, args) = self.params(&method.params)?;
         let at = Self::at(lookups, 'm', &method.name);
         let returns = match &method.returns {
-            Some(ty) if method.optional => self.ty_read(ty, true)?,
+            Some(ty) if method.optional => self.ty_read(ty, false)?,
             Some(ty) => self.ty(ty, false)?,
             None => "None".to_owned(),
         };

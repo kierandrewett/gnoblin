@@ -765,6 +765,192 @@ new Probe(3, { count: 4 });
             "only the marked method: {tables}"
         );
     }
+    /// The same three properties, an object that may be absent (`plain`), one the catalog marks `optional` and one it says the library
+    /// `always` has, in every language: `T | None` unless `always` in Python, as `T | undefined` and `Option<T>` are, and the module reads
+    /// an `always` property with the check that refuses a none answer.
+    #[test]
+    fn python_reads_an_object_as_none_able_unless_the_catalog_says_always() {
+        let root = tempfile::tempdir().expect("a directory");
+        let catalog = thing_catalog(
+            root.path(),
+            "[[object.property]]\nname = \"plain\"\ntype = \"object:thing\"\nsince = \"0.1.0\"\n\n\
+             [[object.property]]\nname = \"maybe\"\ntype = \"object:thing\"\nsince = \"0.1.0\"\noptional = true\n\n\
+             [[object.property]]\nname = \"held\"\ntype = \"object:thing\"\nsince = \"0.1.0\"\nalways = true\n",
+        );
+        let namespaces = catalog.namespaces();
+        let view = ScriptView::new(&catalog, &namespaces[0]);
+
+        let stub = object_py::render(&view, true).expect("the stub renders");
+        assert!(stub.contains("def plain(self) -> Thing | None"), "{stub}");
+        assert!(stub.contains("def maybe(self) -> Thing | None"), "{stub}");
+        assert!(stub.contains("def held(self) -> Thing: ..."), "{stub}");
+        assert!(!stub.contains("def held(self) -> Thing | None"), "{stub}");
+        // The change of a property hands over the type the property reads as.
+        assert!(
+            stub.contains("event: Literal[\"plain_changed\"], handler: Callable[[Thing | None], object]"),
+            "{stub}"
+        );
+        assert!(
+            stub.contains("event: Literal[\"held_changed\"], handler: Callable[[Thing], object]"),
+            "{stub}"
+        );
+
+        let py = object_py::render(&view, false).expect("the Python renders");
+        assert!(py.contains("_B.opt(self._h.get("), "a none answer is None: {py}");
+        assert!(
+            py.contains("_B.always(self._h.get(") && py.contains("\"Thing.held\""),
+            "an `always` property refuses a none answer and says which: {py}"
+        );
+        assert_eq!(py.matches("_B.always(").count(), 1, "only the marked property: {py}");
+
+        // The other two languages read it the same way.
+        let dts = object_js::render_dts(&view).expect("declarations render");
+        assert!(
+            dts.contains("get plain(): Thing | undefined;") && dts.contains("  held: Thing;"),
+            "{dts}"
+        );
+        let rust = crate::object_api::render(&catalog, &namespaces[0]).expect("the typed API renders");
+        assert!(
+            rust.contains("pub fn plain(&self) -> go::Res<Option<Thing>>")
+                && rust.contains("pub fn held(&self) -> go::Res<Thing>"),
+            "{rust}"
+        );
+    }
+
+    /// The generated classes run against the stand-in for the native module: an object property that was never set reads `None`, and an
+    /// `always` one that the library answers with none is a `GnoblinError` that names it, not a `None` under a type that has none.
+    #[test]
+    fn an_always_property_the_library_answers_with_none_is_refused_where_it_is_read() {
+        let Some(python) = tool("python3", "GNOBLIN_PYTHON") else {
+            eprintln!("python3 is not installed: the check is skipped");
+            return;
+        };
+        let dir = tempfile::tempdir().expect("a directory");
+        let spec = SdkSpec::load(&workspace_root()).expect("the specification loads");
+        let files: Vec<(String, String)> = ObjectPyTarget
+            .generate(&spec)
+            .expect("the Python target renders")
+            .into_iter()
+            .map(|file| (file.path, file.text))
+            .collect();
+        write_all(dir.path(), &files);
+        let schema = tempfile::tempdir().expect("a directory");
+        let catalog = thing_catalog(
+            schema.path(),
+            "[[object.property]]\nname = \"plain\"\ntype = \"object:thing\"\nsince = \"0.1.0\"\n\n\
+             [[object.property]]\nname = \"held\"\ntype = \"object:thing\"\nsince = \"0.1.0\"\nalways = true\n",
+        );
+        let namespace = catalog.namespaces().remove(0);
+        let module = object_py::render(&ScriptView::new(&catalog, &namespace), false).expect("renders as Python");
+        let package = dir.path().join("python/gnoblin");
+        fs::write(package.join("__init__.py"), "").expect("the package");
+        fs::write(package.join("objects/held.py"), module).expect("the module");
+        let tests = workspace_root().join("crates/gnoblin-sdkgen/tests/python");
+        fs::copy(tests.join("fake_gnoblin_errors.py"), package.join("errors.py")).expect("the errors stand-in");
+        fs::copy(
+            tests.join("fake_gnoblin_objects.py"),
+            dir.path().join("python/_gnoblin_objects.py"),
+        )
+        .expect("the stand-in");
+        let output = Command::new(&python)
+            .arg(tests.join("check_always.py"))
+            .env("PYTHONPATH", dir.path().join("python"))
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .output()
+            .expect("python3 runs");
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// Every member of the root `gnoblin` of the catalog is a member of the stub class `GnoblinRoot`, which `from gnoblin import gnoblin`
+    /// extends: the list is the catalog's, not written by hand. A property the catalog says is `always` there reads as the object, and
+    /// `Gnoblin` is that class with `get`.
+    #[test]
+    fn every_member_of_the_root_is_in_the_stub_the_gnoblin_object_extends() {
+        let spec = SdkSpec::load(&workspace_root()).expect("the specification loads");
+        let namespaces = spec.objects.namespaces();
+        let namespace = namespaces
+            .iter()
+            .find(|namespace| namespace.as_str() == "gnoblin.model")
+            .expect("the model namespace");
+        let view = ScriptView::new(&spec.objects, namespace);
+        let stub = object_py::render(&view, true).expect("the stub renders");
+        let start = stub
+            .find("\nclass GnoblinRoot:")
+            .expect("the stub has the root's members");
+        let end = start
+            + stub[start..]
+                .find("\nclass Gnoblin(GnoblinRoot):")
+                .expect("Gnoblin extends them");
+        let members = &stub[start..end];
+        let class = &stub[end..];
+        assert!(
+            class.contains("def get(cls) -> Gnoblin: ...") && !members.contains("def get("),
+            "only the class has the constructor:\n{class}"
+        );
+        let root = view
+            .objects
+            .values()
+            .find(|object| object.name == "gnoblin" && object.kind == gnoblin_schema::ObjectKind::Service)
+            .expect("the root service");
+        let mut always = Vec::new();
+        for slot in crate::objects::slots_of(&spec.objects, &view.objects, root) {
+            match slot.member {
+                crate::objects::Member::Property(property) => {
+                    let ident = object_py::member_name(&property.name, &property.extras.export.py);
+                    let line = members
+                        .lines()
+                        .find(|line| line.trim_start().starts_with(&format!("def {ident}(self) -> ")))
+                        .unwrap_or_else(|| panic!("the root's property `{ident}` is in the stub:\n{members}"));
+                    if property.always {
+                        always.push(ident);
+                        assert!(
+                            !line.contains("| None"),
+                            "an `always` property is not none-able: {line}"
+                        );
+                    }
+                }
+                crate::objects::Member::Method(method) => {
+                    let ident = object_py::member_name(&method.name, &method.extras.export.py);
+                    assert!(
+                        members.contains(&format!("def {ident}(self")),
+                        "the root's method `{ident}` is in the stub:\n{members}"
+                    );
+                }
+                crate::objects::Member::Signal(_) => {}
+            }
+        }
+        for wanted in [
+            "clients",
+            "outputs",
+            "focus",
+            "session",
+            "runtime",
+            "process",
+            "idle",
+            "launches",
+            "input",
+            "dialogs",
+            "authentication",
+            "lock",
+            "timers",
+            "compositor",
+        ] {
+            assert!(
+                always.iter().any(|ident| ident == wanted),
+                "`{wanted}` is `always`: {always:?}"
+            );
+        }
+        assert!(
+            members.contains("def on(self, event: Literal[\"clients_changed\"]"),
+            "{members}"
+        );
+    }
+
     /// A catalog with a handle `thing` whose constructor names `id`, and `rest` more properties and types.
     fn thing_catalog(dir: &Path, rest: &str) -> Catalog {
         fs::write(

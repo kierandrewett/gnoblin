@@ -20,7 +20,7 @@
 //! script never undoes its own listeners; `Subscription.unsubscribe()` and `gnoblin.off(function)` are for changing one's mind while the
 //! shell runs. Callbacks run on the shell thread. An exception in one is logged with its traceback and the next event is delivered.
 
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use pyo3::exceptions::{PyAttributeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyCFunction, PyDict, PyList, PyString, PyTuple};
 
@@ -265,6 +265,10 @@ impl NamedEvent {
     }
 }
 
+/// What the root class of the object model has that is the class's own, not a member of the root a script reads: its constructor and
+/// the end of its life.
+const ROOT_ONLY_ON_THE_CLASS: [&str; 2] = ["get", "destroy"];
+
 /// The shell's handle on the compositor. Use the instance `gnoblin`, not the class.
 #[pyclass(dict, name = "Gnoblin", module = "gnoblin.api")]
 pub(crate) struct GnoblinObject;
@@ -282,6 +286,29 @@ impl GnoblinObject {
             slf.setattr(name, Bound::new(py, NamedEvent { name, nparams, kind })?)?;
         }
         Ok(())
+    }
+
+    // ---- the root of the object model -----------------------------------------------------------------------------
+
+    /// A member of the root of the object model that this object has none of its own for: `gnoblin.input`, `gnoblin.clients`,
+    /// `gnoblin.find_clients(...)`. The root is the generated class `Gnoblin` of `gnoblin.objects.model`, so what this object answers is
+    /// whatever that class has, as written from the schema, and the stub of this object extends the stub of those members. A name the
+    /// class does not have (or a private one) is the attribute error any other object gives.
+    fn __getattr__<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
+        let missing = |why: &str| {
+            PyAttributeError::new_err(format!("'gnoblin.api.Gnoblin' object has no attribute '{name}'{why}"))
+        };
+        if name.starts_with('_') || ROOT_ONLY_ON_THE_CLASS.contains(&name) {
+            return Err(missing(""));
+        }
+        let class = py
+            .import("gnoblin.objects.model")
+            .and_then(|module| module.getattr("Gnoblin"))
+            .map_err(|error| missing(&format!(" (the object model is not available: {error})")))?;
+        if !class.hasattr(name)? {
+            return Err(missing(""));
+        }
+        class.call_method0("get")?.getattr(name)
     }
 
     // ---- the tree -------------------------------------------------------------------------------------------------
