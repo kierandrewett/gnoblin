@@ -291,7 +291,6 @@ fn timed_seconds(rig: &Rig, mark: usize) -> Vec<(String, f64)> {
 }
 
 #[test]
-#[ignore = "vrnw: needs client.set and gnoblin.requestTransition (the timed writes of a window; neither is a member of the generated Client or Gnoblin)"]
 fn a_duration_of_250_is_a_quarter_of_a_second_on_the_wire_for_every_api_that_takes_one() {
     let mut rig = world(1, false, "new Layout()", "");
     exec(&mut rig, "g.c = gnoblin.clients.get('3');");
@@ -342,7 +341,6 @@ fn client_animate_is_gone_and_set_is_the_one_timed_write_of_a_client() {
 }
 
 #[test]
-#[ignore = "vrnw: needs client.set and gnoblin.requestTransition (the timed writes of a window; neither is a member of the generated Client or Gnoblin)"]
 fn a_duration_that_looks_like_seconds_is_not_read_as_seconds() {
     let mut rig = world(1, false, "new Layout()", "");
     exec(&mut rig, "g.c = gnoblin.clients.get('3');");

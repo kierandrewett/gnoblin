@@ -893,7 +893,6 @@ fn a_super_left_drag_moves_the_client_by_the_pointer_delta_and_a_release_keeps_i
 }
 
 #[test]
-#[ignore = "vrnw: needs client.floatingBounds"]
 fn a_released_drag_tells_the_layout_where_the_user_put_the_client() {
     let comp = world(false);
     let mut rig = rig(&comp, &entry(FLOATING_ENTRY));

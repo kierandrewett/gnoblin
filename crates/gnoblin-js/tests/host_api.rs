@@ -859,7 +859,6 @@ fn find_filters_windows_by_fields_and_by_predicate_in_list_order() {
 }
 
 #[test]
-#[ignore = "vrnw: needs gnoblin.find kind 'Workspace' (the kinds are Window and Output)"]
 fn find_finds_workspaces() {
     let (mut rig, _owner) = rig("import \"gnoblin-std\";\nexport {};");
     assert_eq!(rig.ts("gnoblin.find('Workspace').length > 0"), "true");

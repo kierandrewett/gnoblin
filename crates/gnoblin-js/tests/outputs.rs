@@ -509,7 +509,6 @@ fn a_window_on_a_second_output_goes_to_the_first_when_it_is_unplugged_and_comes_
 }
 
 #[test]
-#[ignore = "vrnw: needs client.moveToOutput"]
 fn a_window_is_moved_back_to_a_reconnected_output() {
     let mut rig = world(0, true, "new Fill()");
     rig.comp.external_set(SEAT, "screen", MirrorValue::Node(B));
@@ -531,7 +530,6 @@ fn a_window_is_moved_back_to_a_reconnected_output() {
 // ---- moving a window to another output or workspace ------------------------------------------------------------------
 
 #[test]
-#[ignore = "vrnw: needs client.moveToOutput"]
 fn moving_a_window_to_an_output_that_is_gone_is_rejected() {
     // Before: "moving a window to an output that is not a screen is rejected".
     let mut rig = world(1, true, "new Layout()");
@@ -549,7 +547,6 @@ fn moving_a_window_to_an_output_that_is_gone_is_rejected() {
 }
 
 #[test]
-#[ignore = "vrnw: needs client.moveToOutput"]
 fn moving_a_window_to_another_output_reshapes_it_into_that_outputs_work_area() {
     // Before: "moving a window to another output reshapes it into that output's work area".
     let mut rig = world(1, true, "new Layout()");
@@ -580,7 +577,6 @@ fn moving_a_window_to_another_output_reshapes_it_into_that_outputs_work_area() {
 }
 
 #[test]
-#[ignore = "vrnw: needs client.moveToOutput"]
 fn a_maximised_window_fills_the_new_output_when_it_moves() {
     // Before: "a maximised window fills the new output when it moves".
     let mut rig = world(1, true, "new Layout()");
@@ -619,7 +615,6 @@ fn a_fullscreen_window_does_not_move_to_another_workspace_or_output() {
 }
 
 #[test]
-#[ignore = "vrnw: needs client.moveToOutput"]
 fn a_fullscreen_window_does_not_move_to_another_output() {
     let mut rig = world(1, true, "new Layout()");
     exec(&mut rig, "gnoblin.clients.get('3').fullscreen = true");
@@ -775,7 +770,6 @@ fn a_dialog_does_not_move_to_another_workspace_on_its_own_but_goes_with_its_pare
 }
 
 #[test]
-#[ignore = "vrnw: needs client.moveToOutput"]
 fn a_dialog_follows_its_parent_to_another_output_and_keeps_its_place_in_it() {
     // Before: "a dialog follows its parent to another output".
     let mut rig = world(1, true, "new Layout()");

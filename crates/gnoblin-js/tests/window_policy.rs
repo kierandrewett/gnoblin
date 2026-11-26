@@ -491,7 +491,6 @@ fn a_short_swipe_with_reduced_motion_goes_back_at_once() {
 }
 
 #[test]
-#[ignore = "vrnw: needs client.set"]
 fn client_set_lands_at_once_under_reduced_motion_and_takes_its_time_otherwise() {
     // New: `Client.set` is where a script's own animation goes; the retired shell `node:to` took `motion(seconds)`; the duration is in milliseconds here.
     let mut rig = world(1, false, "new Layout()", "");

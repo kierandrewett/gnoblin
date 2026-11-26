@@ -847,7 +847,6 @@ fn snapping_tiles_a_window_to_an_edge_and_unsnapping_restores_its_floating_recta
 }
 
 #[test]
-#[ignore = "vrnw: needs ClientState.snapTo(maximised window) to keep the floating rectangle (unsnap gives 0,0,800,600, not 10,20,300,200)"]
 fn snapping_a_maximised_window_floats_it_first_and_unsnapping_restores_the_floating_rectangle() {
     // Before: "snapping a maximised window floats it first, and unsnapping restores the floating rectangle".
     let comp = world(vec![("edge_tiling", flag(true))]);

@@ -194,7 +194,6 @@ fn the_skip_does_not_outlive_a_change_it_could_not_see() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the layout pass to read again a flag a failed requestTransition staged: after the failure and a title change the workspace is not computed again (2 computes, 3 expected)"]
 fn a_flag_a_failed_transition_staged_is_read_again_once_the_staging_is_gone() {
     let mut rig = world_of(6, false, "");
     exec(&mut rig, "g.b = gnoblin.clients.get('4');");

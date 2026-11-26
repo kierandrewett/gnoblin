@@ -738,7 +738,6 @@ fn recipe(heading: &str) -> String {
 }
 
 #[test]
-#[ignore = "vrnw: needs docs/recipes/window-frame.md ported to the generated API: the test mounts the page's own code, which imports startDecorations and the old constructors"]
 fn the_recipe_with_the_buttons_on_the_left_mounts_and_works() {
     let mut rig = world(0, &recipe("A bar with the buttons on the left"));
     rig.comp.create_window(3, "term", "foot");
@@ -792,7 +791,6 @@ fn the_recipe_with_the_buttons_on_the_left_mounts_and_works() {
 }
 
 #[test]
-#[ignore = "vrnw: needs docs/recipes/window-frame.md ported to the generated API: the test mounts the page's own code, which imports startDecorations and the old constructors"]
 fn the_recipe_with_a_border_and_a_glow_and_no_titlebar_mounts_and_works() {
     let mut rig = world(0, &recipe("A border and a glow without a titlebar"));
     rig.comp.create_window(3, "term", "foot");

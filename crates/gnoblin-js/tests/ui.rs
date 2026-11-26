@@ -727,7 +727,6 @@ fn a_window_has_no_titlebar_unless_the_config_asks_for_one() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the close button's fade to end in a close call of the window (no call comes 260 ms after the press)"]
 fn the_close_button_of_a_decorated_window_closes_that_window() {
     let mut rig = rig("Decorations.get().start();");
     rig.comp.create_window(3, "term", "foot");
