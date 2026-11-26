@@ -76,12 +76,12 @@ impl RendererKind {
 
     /// The effect kinds the renderer draws, by [`gnoblin_render::Pass::name`].
     ///
-    /// GLES draws a blur, a shadow, a border and a shader. The software renderer draws a blur, a shadow (outer and
-    /// inset), a border and a background by computing the pixels on the CPU (`gnoblin-render-software`'s `layers`
-    /// module): the blur is the GLES kernel and grade, the shadows' falloff and the border's edge are the shaders' own
-    /// arithmetic. It leaves a `filter` undrawn, as it does a shader. The Vulkan renderer
-    /// does not draw the shipped effects yet: it rounds a layer's corners, the radius is not an effect, and it reports
-    /// blur, shadow and border as skipped.
+    /// GLES draws every kind: a blur, a shadow, an inset shadow, a border, a background, a filter and a shader. The
+    /// software renderer draws a blur, a shadow (outer and inset), a border and a background by computing the pixels on the
+    /// CPU (`gnoblin-render-software`'s `layers` module): the blur is the GLES kernel and grade, the shadows' falloff and
+    /// the border's edge are the shaders' own arithmetic. It leaves a `filter` undrawn, as it does a shader. The Vulkan
+    /// renderer does not draw the shipped effects yet: it rounds a layer's corners, the radius is not an effect, and it
+    /// reports blur, shadow and border as skipped.
     ///
     /// The `shader` kind (a shell's own pass, accepted by the tree while `compositor.user-shaders` is on) is drawn by
     /// the GLES and Vulkan renderers. The software renderer has no WGSL interpreter, so a node's shader pass is named in
@@ -89,7 +89,15 @@ impl RendererKind {
     #[must_use]
     pub const fn effect_kinds(self) -> &'static [&'static str] {
         match self {
-            Self::Gles => &["blur", "shadow", "border", "shader"],
+            Self::Gles => &[
+                "blur",
+                "shadow",
+                "inset-shadow",
+                "border",
+                "background",
+                "filter",
+                "shader",
+            ],
             Self::Software => &["blur", "shadow", "inset-shadow", "border", "background"],
             Self::Vulkan => &["shader"],
         }
@@ -579,8 +587,10 @@ mod tests {
     }
 
     #[test]
-    fn the_gles_renderer_lists_the_shader_kind_it_draws() {
-        assert!(RendererKind::Gles.effect_kinds().contains(&"shader"));
+    fn the_gles_renderer_lists_every_kind_it_draws() {
+        for kind in gnoblin_render::Pass::NAMES {
+            assert!(RendererKind::Gles.effect_kinds().contains(kind), "GLES draws {kind}");
+        }
     }
 
     #[cfg(not(feature = "vulkan"))]

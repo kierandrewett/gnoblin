@@ -49,9 +49,14 @@
 //! | solid   | [`shaders::SOLID`]     | the background, a solid layer, the cursor     |
 //! | surface | [`shaders::SURFACE`]   | a client buffer, tinted and corner-clipped    |
 //! | shadow  | [`shaders::SHADOW`]    | a [`Pass::Shadow`], behind its layer          |
-//! | blur    | [`shaders::BLUR`]      | one axis of a Gaussian over the backdrop      |
+//! | inset shadow | [`shaders::INSET_SHADOW`] | a [`Pass::Shadow`] with `inset`, inside its layer |
+//! | blur    | [`shaders::BLUR`]      | one axis of a Gaussian over the backdrop, or over a filtered layer's picture |
 //! | downsample | [`shaders::DOWNSAMPLE`] | a supersampled target, averaged to the mode |
 //! | shader  | a shell's source        | a [`Pass::Shader`], in place of the layer's pixels |
+//!
+//! A layer's effects (shadows, backdrop blur, background, inset shadows, filter and borders) are drawn in a fixed order by
+//! kind, whatever order they are listed in; [`effects`] has the order and the rules of the filter's picture and the
+//! blur's downscale and grain.
 //!
 //! # Where the pixels go
 //!
@@ -145,6 +150,7 @@ use smithay::backend::renderer::glow::GlowRenderer;
 use smithay::backend::renderer::{ImportMem, ImportMemWl};
 use smithay::utils::{Physical, Rectangle};
 
+use effects::Paint;
 use gnoblin_render::{Mat4, Pass, ShaderPass};
 use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 
@@ -153,6 +159,7 @@ use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::footprint::Footprint;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, Model, OutputFrame, Overlay, Surface, SurfaceSource, View};
 use gnoblin_render_frame::geometry::physical_rect;
+use gnoblin_render_frame::grade::Grade;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::image::READBACK_FORMAT;
 use gnoblin_render_frame::shader::uniforms::{Uniforms, UserBlock};
@@ -228,6 +235,7 @@ struct Passes {
     surface: Program,
     shadow: Program,
     border: Program,
+    inset_shadow: Program,
     blur: Program,
     /// The whole-output view pass, run only when the frame has a view or a matrix.
     view: Program,
@@ -938,6 +946,7 @@ impl Gles {
             bytes: Vec::new(),
             clip: Rect::new(0, 0, 0, 0),
             cursor_under,
+            canvas: None,
         };
         for rect in damage {
             painter.clip = *rect;
@@ -1125,6 +1134,8 @@ struct Painter<'a> {
     clip: Rect,
     /// The pixels under the cursor before it was drawn, kept for a capture without it.
     cursor_under: &'a mut Vec<u8>,
+    /// The picture of a filtered layer while its pieces are drawn into it, in place of the frame's target.
+    canvas: Option<Framebuffer>,
 }
 impl Painter<'_> {
     /// Fills the damage rectangle with the frame's background.
@@ -1215,7 +1226,7 @@ impl Painter<'_> {
         )
     }
 
-    /// Draws one layer's parts: its shadow, its blur group, then its own pixels.
+    /// Draws one layer's parts: its shadows, its blur group, then its own pixels, in the order `effects.rs` states.
     fn draw_parts(
         &mut self,
         parts: &LayerParts<'_>,
@@ -1239,97 +1250,74 @@ impl Painter<'_> {
         let flat = placement.clip.is_none();
         let shape = silhouette.filter(|_| flat).unwrap_or(quad);
         let rounded_to = silhouette.filter(|_| flat && radius > 0.0);
-        let mut grouped = false;
         let ready = if flat {
             self.ready_shaders(effects, backdrop.is_some())
         } else {
             Vec::new()
         };
-        for pass in effects.passes() {
-            match pass {
-                Pass::Shadow(_)
-                | Pass::Blur(_)
-                | Pass::Border(_)
-                | Pass::Background { .. }
-                | Pass::Filter(_)
-                | Pass::Shader(_)
-                    if !flat =>
-                {
-                    log::warn!(
-                        "unsupported-effect-on-3d: a shadow, blur, border or shader on a transformed layer is not drawn"
-                    );
-                }
-                Pass::Shadow(shadow) if !shadow.inset && shadow.opacity > 0.0 && shadow.color.a > 0.0 => {
-                    self.shadow(if shadow.frame { shape } else { quad }, radius, shadow)?;
-                }
-                Pass::Blur(blur) if blur.radius > 0.0 => {
-                    let blurred = self.blur(quad, *blur, grouped)?;
-                    grouped |= blurred;
-                }
-                // A border is a stroke over the layer's own pixels, so it waits until they are down. An inset shadow, a
-                // background and a filter are not drawn here yet: the renderer does not list them in `effect_kinds`, so the
-                // composer names them in the node's `skipped`.
-                Pass::Shadow(_) | Pass::Blur(_) | Pass::Border(_) | Pass::Background { .. } | Pass::Filter(_) => {}
-                // A shader draws in place of the layer's own pixels, below.
-                Pass::Shader(_) => {}
+        let filter = effects::filter_of(effects);
+        // A filter that blurs is drawn as a picture of the layer's pieces; a grade is put on each piece as it is drawn.
+        let picture = flat && filter.blur > 0.0;
+        let paint = Paint {
+            quad,
+            shape,
+            radius,
+            rounded_to,
+            colour,
+            texture,
+            src,
+            tint,
+            placement,
+            backdrop,
+            ready: &ready,
+            effects,
+            grade: if flat && !picture {
+                effects::grade_of(&filter)
+            } else {
+                Grade::IDENTITY
+            },
+        };
+        if !flat {
+            if !effects.passes().is_empty() {
+                log::warn!(
+                    "unsupported-effect-on-3d: a shadow, blur, border, background, filter or shader on a transformed layer is not drawn"
+                );
             }
+            return self.content(&paint, opacity, false);
+        }
+        if !picture {
+            self.shadows(&paint)?;
+        }
+        let mut grouped = false;
+        for pass in effects.passes() {
+            if let Pass::Blur(blur) = pass
+                && blur.radius > 0.0
+            {
+                grouped |= self.blur(quad, *blur, grouped)?;
+            }
+        }
+        if picture {
+            // The glass is drawn first, outside the picture, so the filter does not blur it.
+            if grouped {
+                self.enter_group()?;
+                self.fade_group(quad, opacity, radius, rounded_to)?;
+            }
+            return self.picture(&paint, &filter, opacity);
         }
         // A grouped layer is drawn at full opacity into its group, which then fades as one.
         let (group_opacity, fade) = if grouped { (1.0, Some(opacity)) } else { (opacity, None) };
-        let drawn = if ready.is_empty() {
-            if grouped {
-                self.enter_group()?;
-            }
-            let mut uniforms = match (colour, texture) {
-                (Some(colour), _) => {
-                    let mut uniforms = Uniforms::solid(quad, colour, tint, group_opacity);
-                    uniforms.corner = radius;
-                    uniforms
-                }
-                (None, _) => Uniforms::surface(quad, src, tint, group_opacity, radius),
-            };
-            if let Some(frame) = rounded_to {
-                uniforms.round_to(frame);
-            }
-            let Self {
-                device, passes, bytes, ..
-            } = self;
-            let program = if texture.is_some() {
-                &passes.surface
-            } else {
-                &passes.solid
-            };
-            program.pack(&uniforms, bytes);
-            device.draw(program, bytes, quad, texture, placement)
-        } else {
-            self.draw_shaded(
-                &ready,
-                &Shaded {
-                    quad,
-                    colour,
-                    texture,
-                    src,
-                    tint,
-                    opacity: group_opacity,
-                    radius,
-                    rounded_to,
-                    backdrop,
-                    grouped,
-                },
-            )
-        };
+        if grouped {
+            self.enter_group()?;
+        }
+        self.backgrounds(&paint, group_opacity)?;
+        self.inset_shadows(&paint, group_opacity)?;
+        let drawn = self.content(&paint, group_opacity, grouped);
         match (drawn, fade) {
             (Ok(()), Some(factor)) => self.fade_group(quad, factor, radius, rounded_to)?,
             (drawn, _) => drawn?,
         }
-        if flat {
-            for pass in effects.passes() {
-                if let Pass::Border(border) = pass {
-                    self.border(shape, radius, border, tint, opacity)?;
-                }
-            }
-        }
-        Ok(())
+        // A border is a stroke over everything else, outside the group the blur's corner clip cuts.
+        self.borders(&paint, opacity)
     }
 
     /// The shader passes of `effects` this frame can draw, in list order: each one's program is compiled the first time
@@ -1410,11 +1398,11 @@ impl Painter<'_> {
                 if node.grouped {
                     self.enter_group()?;
                 } else if !leased.is_empty() {
-                    // The pictures were drawn into other targets, so the frame's own is bound again.
-                    self.device.begin(self.target)?;
-                    self.device.scissor(Some(self.clip));
+                    // The pictures were drawn into other targets, so the canvas is bound again.
+                    self.rebind_canvas()?;
                 }
                 let mut uniforms = Uniforms::surface(node.quad, src, node.tint, node.opacity, node.radius);
+                uniforms.grade = node.grade.to_array();
                 if let Some(frame) = node.rounded_to {
                     uniforms.round_to(frame);
                 }
@@ -1530,184 +1518,6 @@ impl Painter<'_> {
         let uniforms = Uniforms::surface(quad, [0.0, 0.0, 1.0, 1.0], Color::WHITE, 1.0, 0.0);
         passes.surface.pack(&uniforms, bytes);
         device.draw(&passes.surface, bytes, quad, Some(texture), QuadPlacement::FLAT)
-    }
-
-    /// Draws a shadow behind a layer.
-    fn shadow(&mut self, dst: Rect, radius: f32, shadow: &gnoblin_render::Shadow) -> Result<(), RenderError> {
-        let Self {
-            device,
-            passes,
-            bytes,
-            scale,
-            ..
-        } = self;
-        let blur = (shadow.blur * scale.as_f64() as f32).clamp(1.0, MAX_RADIUS);
-        let inset = blur.round() as i32;
-        // The shader insets the quad by `blur` on each side to find the shadow's shape, so
-        // growing the quad by `spread` grows that shape by `spread` before it is blurred.
-        let spread = (shadow.spread * scale.as_f64() as f32).round() as i32;
-        let offset_x = (shadow.offset.x as f32 * scale.as_f64() as f32).round() as i32;
-        let offset_y = (shadow.offset.y as f32 * scale.as_f64() as f32).round() as i32;
-        let grow = inset + spread;
-        let quad = Rect::new(
-            dst.x + offset_x - grow,
-            dst.y + offset_y - grow,
-            (dst.width as i32 + 2 * grow).max(0) as u32,
-            (dst.height as i32 + 2 * grow).max(0) as u32,
-        );
-        let mut uniforms = Uniforms::solid(quad, shadow.color, Color::WHITE, shadow.opacity);
-        uniforms.corner = radius;
-        uniforms.params = [blur, blur, blur, 0.0];
-        passes.shadow.pack(&uniforms, bytes);
-        device.draw(&passes.shadow, bytes, quad, None, QuadPlacement::FLAT)
-    }
-
-    /// Draws a border: a ring along the edge of `shape`, the layer's rounded silhouette.
-    ///
-    /// The quad is `shape` grown by how far the ring reaches outside it, and one pixel more for the antialiased
-    /// fringe. The shader takes the ring as a band of signed distance from the shape's edge, so an outside
-    /// border is the band `offset..offset + width` and an inside one `-(offset + width)..-offset`. A border
-    /// of no width, or of no alpha, draws nothing. `opacity` is the layer's own, so a faded window fades its
-    /// border with it.
-    fn border(
-        &mut self,
-        shape: Rect,
-        radius: f32,
-        border: &gnoblin_render::Border,
-        tint: Color,
-        opacity: f32,
-    ) -> Result<(), RenderError> {
-        let Self {
-            device,
-            passes,
-            bytes,
-            scale,
-            ..
-        } = self;
-        let factor = scale.as_f64() as f32;
-        let width = border.width * factor;
-        if width <= 0.0 || border.color.a <= 0.0 {
-            return Ok(());
-        }
-        let offset = border.offset * factor;
-        let (near, far) = if border.inset {
-            (-(offset + width), -offset)
-        } else {
-            (offset, offset + width)
-        };
-        let reach = if border.inset { -offset } else { offset + width };
-        let grow = reach.max(0.0).ceil() as i32 + 1;
-        let quad = Rect::new(
-            shape.x - grow,
-            shape.y - grow,
-            shape.width + 2 * grow as u32,
-            shape.height + 2 * grow as u32,
-        );
-        let uniforms = Uniforms::border(quad, grow as f32, (near, far), border.color, tint, opacity, radius);
-        passes.border.pack(&uniforms, bytes);
-        device.draw(&passes.border, bytes, quad, None, QuadPlacement::FLAT)
-    }
-
-    /// Blurs the pixels behind a layer into the layer's group, and reports whether it did.
-    ///
-    /// The first blur of a layer copies the frame's backdrop into the group. A later blur reads
-    /// what the group already holds, so stacked blurs compound in order. The backdrop is what
-    /// was drawn before the layer, not what it covers.
-    ///
-    /// One pass is a horizontal sweep of the separable Gaussian in [`shaders::BLUR`] into the
-    /// second scratch target, then a vertical sweep back into the group. `blur.passes` such
-    /// passes run in turn, so each sweep reads what the one before wrote. The grade (brightness,
-    /// contrast, then the tint mixed over the result) belongs to the last vertical sweep only;
-    /// every other sweep carries the identity grade, so repeated passes do not compound it.
-    ///
-    /// `blur.downscale` is not honoured yet: the blur runs at full resolution.
-    ///
-    /// The copied region is the layer's rectangle grown by the kernel's reach, so the taps near
-    /// the layer's edge read blurred pixels rather than the scratch target's clearing colour.
-    /// Each pass spreads the taps by one reach, so the margin grows with the pass count; the
-    /// group keeps that whole region, so that ring is the only price of it.
-    fn blur(&mut self, dst: Rect, blur: gnoblin_render::BlurParams, grouped: bool) -> Result<bool, RenderError> {
-        let radius = (blur.radius * self.scale.as_f64() as f32).clamp(1.0, MAX_RADIUS);
-        let Some(rect) = dst.intersection(Rect::new(0, 0, self.physical.width, self.physical.height)) else {
-            return Ok(false);
-        };
-        // The blur runs at full resolution here, so `downscale` is not honoured yet. A blur is
-        // drawn every frame, so the notice is given once rather than per frame.
-        static DOWNSCALE_IGNORED: std::sync::Once = std::sync::Once::new();
-        if blur.downscale != 1.0 {
-            DOWNSCALE_IGNORED.call_once(|| {
-                log::warn!(
-                    "unsupported-effect: blur downscale is not honoured on GLES; the blur runs at full resolution"
-                );
-            });
-        }
-        let sweeps = blur.passes.clamp(1, gnoblin_render::MAX_BLUR_PASSES);
-        let reach = sweeps * ((radius / 3.0 * 4.0).ceil() as u32 + 1);
-        let region = Rect::new(
-            rect.x.saturating_sub(reach as i32),
-            rect.y.saturating_sub(reach as i32),
-            rect.width + 2 * reach,
-            rect.height + 2 * reach,
-        )
-        .intersection(Rect::new(0, 0, self.physical.width, self.physical.height))
-        .unwrap_or(rect);
-        self.ensure_scratch()?;
-        let Self {
-            device,
-            target,
-            scratch,
-            passes,
-            bytes,
-            physical,
-            background,
-            clip,
-            ..
-        } = self;
-        let Some([first, second]) = scratch.as_mut() else {
-            return Ok(false);
-        };
-        if !grouped {
-            // The scratch target starts as the frame's background everywhere the copy does not
-            // reach, so a blur that samples past the output repeats a colour the frame defined.
-            device.clear(first, *background);
-            device.copy(target, first, region)?;
-        }
-        let step = (radius / 3.0).max(0.5);
-        for sweep in 0..sweeps {
-            let last = sweep + 1 == sweeps;
-            // The horizontal sweep always carries the identity grade.
-            let mut uniforms =
-                Uniforms::surface(region, flipped_mapping(region, *physical), Color::TRANSPARENT, 1.0, 0.0);
-            uniforms.params = [step / physical.width as f32, 0.0, 0.0, 0.0];
-            device.begin(second)?;
-            device.scissor(Some(region));
-            passes.blur.pack(&uniforms, bytes);
-            device.draw(&passes.blur, bytes, region, Some(first.texture()), QuadPlacement::FLAT)?;
-            device.end()?;
-            // The vertical sweep writes back into the group over the same region, so the next
-            // pass reads a complete blur. Only the last sweep is scissored to the damage, which
-            // the frame expects, and only it carries the layer's grade.
-            let (tint, brightness, contrast) = if last {
-                (blur.tint, blur.brightness, blur.contrast)
-            } else {
-                (Color::TRANSPARENT, 1.0, 1.0)
-            };
-            let mut uniforms = Uniforms::surface(region, flipped_mapping(region, *physical), tint, 1.0, 0.0);
-            uniforms.params = [0.0, step / physical.height as f32, 0.0, 0.0];
-            uniforms.grade = [1.0, brightness, contrast, 0.0];
-            let write = if last {
-                region.intersection(*clip).unwrap_or(region)
-            } else {
-                region
-            };
-            device.begin(first)?;
-            device.scissor(Some(write));
-            passes.blur.pack(&uniforms, bytes);
-            device.draw(&passes.blur, bytes, region, Some(second.texture()), QuadPlacement::FLAT)?;
-        }
-        // Back to the damage scissor, which the rest of this rectangle's passes expect.
-        device.scissor(Some(*clip));
-        Ok(true)
     }
 
     /// Starts the layer's group: the layer's own pixels are drawn over the blur it holds.
@@ -1827,6 +1637,7 @@ impl Passes {
             surface: program::link(device, shaders::VERTEX, shaders::SURFACE)?,
             shadow: program::link(device, shaders::VERTEX, shaders::SHADOW)?,
             border: program::link(device, shaders::VERTEX, shaders::BORDER)?,
+            inset_shadow: program::link(device, shaders::VERTEX, shaders::INSET_SHADOW)?,
             blur: program::link(device, shaders::VERTEX, shaders::BLUR)?,
             view: program::link(device, shaders::VERTEX, shaders::VIEW)?,
             downsample: program::link(device, shaders::VERTEX, shaders::DOWNSAMPLE)?,
@@ -1847,6 +1658,8 @@ struct Shaded {
     radius: f32,
     rounded_to: Option<Rect>,
     backdrop: Option<Texture>,
+    /// The filter's grade, which the last pass puts on its result.
+    grade: Grade,
     /// Whether the layer is drawn into its blur group, which the last pass binds.
     grouped: bool,
 }
@@ -2058,12 +1871,15 @@ fn scan_out(device: &mut GlContext, picture: &Framebuffer, buffer: &Framebuffer)
 mod capture;
 mod dmabuf;
 mod downsample;
+mod effects;
 mod subtree;
 mod timing;
 mod view;
 
 #[cfg(test)]
 mod downsample_tests;
+#[cfg(test)]
+mod effect_tests;
 #[cfg(test)]
 mod grade_tests;
 #[cfg(test)]

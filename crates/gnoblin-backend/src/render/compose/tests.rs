@@ -4182,12 +4182,25 @@ fn an_inset_shadow_a_background_and_a_filter_are_skipped_by_a_renderer_that_does
         }
         last = Some(want);
     }
-    composer.set_effect_kinds(Pass::NAMES);
+    assert!(
+        ["inset-shadow", "background", "filter"]
+            .iter()
+            .all(|kind| RendererKind::Gles.effect_kinds().contains(kind)),
+        "GLES draws the three kinds"
+    );
+    composer.set_effect_kinds(RendererKind::Gles.effect_kinds());
     composer.publish_skipped_effects();
     assert_eq!(
         queued_skipped(&mut composer, node),
         Some(Vec::new()),
-        "a renderer that draws every kind skips nothing"
+        "GLES skips none of them, so the list the software renderer published is cleared"
+    );
+    composer.set_effect_kinds(Pass::NAMES);
+    composer.publish_skipped_effects();
+    assert_eq!(
+        queued_skipped(&mut composer, node),
+        None,
+        "a renderer that draws every kind skips nothing, as GLES already said"
     );
 }
 

@@ -218,20 +218,21 @@ whole.
 
 ## Properties
 
-| Property         | Accepts                                   | Default | Drawn                                 |
-| ---------------- | ----------------------------------------- | ------- | ------------------------------------- |
-| `opacity`        | a number from 0 to 1                      | 1       | by every renderer                     |
-| `shadows`        | a list of `Shadow`, at most 8             | none    | outer shadows: GLES and software      |
-| `backdropFilter` | a list of filters, at most 8              | none    | a blur: GLES                          |
-| `cornerRadius`   | a number of at least 0, or one per corner | 0       | one radius: GLES, software and Vulkan |
-| `borders`        | a list of `Border`, at most 8             | none    | GLES and software                     |
-| `filter`         | a list of filters, at most 8              | none    | shaders: GLES and Vulkan              |
-| `background`     | a colour or the empty text                | none    | software                              |
+| Property         | Accepts                                   | Default | Drawn                                           |
+| ---------------- | ----------------------------------------- | ------- | ----------------------------------------------- |
+| `opacity`        | a number from 0 to 1                      | 1       | by every renderer                               |
+| `shadows`        | a list of `Shadow`, at most 8             | none    | outer and inset shadows: GLES and software      |
+| `backdropFilter` | a list of filters, at most 8              | none    | a blur: GLES and software                       |
+| `cornerRadius`   | a number of at least 0, or one per corner | 0       | one radius: GLES, software and Vulkan           |
+| `borders`        | a list of `Border`, at most 8             | none    | GLES and software                               |
+| `filter`         | a list of filters, at most 8              | none    | shaders: GLES and Vulkan; blur and grades: GLES |
+| `background`     | a colour or the empty text                | none    | GLES and software                               |
 
 A colour is `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
 
 A style element the active renderer does not draw is still written to the window's node, and the node's `skipped` list
-names it. Only the software renderer draws a `background` or an inset shadow, and no renderer draws the blur and grades of `filter` yet. See
+names it. Only GLES draws the blur and grades of a `filter`; GLES and the software renderer draw a `background` and an
+inset shadow. See
 "What is drawn" below.
 
 ### Shadow
@@ -467,15 +468,15 @@ The tree has six effect kinds (blur, shadow, border, background, filter and shad
   effect blurs and grades everything the window paints, and its blur spills past the window's edge. A value over its
   limit is drawn as the limit and reported `not applied: style.filter: ...`.
 
-| Kind or property | GLES                   | Software               | Vulkan                 |
-| ---------------- | ---------------------- | ---------------------- | ---------------------- |
-| `corner_radius`  | yes                    | yes (anti-aliased)     | yes                    |
-| `shadow`         | yes                    | yes (smooth falloff)   | no, reported `skipped` |
-| `border`         | yes                    | yes (anti-aliased)     | no, reported `skipped` |
-| `blur`           | yes                    | yes (drawn on the CPU) | no, reported `skipped` |
-| `inset-shadow`   | no, reported `skipped` | yes                    | no, reported `skipped` |
-| `background`     | no, reported `skipped` | yes                    | no, reported `skipped` |
-| `filter`         | no, reported `skipped` | no, reported `skipped` | no, reported `skipped` |
+| Kind or property | GLES | Software               | Vulkan                 |
+| ---------------- | ---- | ---------------------- | ---------------------- |
+| `corner_radius`  | yes  | yes (anti-aliased)     | yes                    |
+| `shadow`         | yes  | yes (smooth falloff)   | no, reported `skipped` |
+| `border`         | yes  | yes (anti-aliased)     | no, reported `skipped` |
+| `blur`           | yes  | yes (drawn on the CPU) | no, reported `skipped` |
+| `inset-shadow`   | yes  | yes                    | no, reported `skipped` |
+| `background`     | yes  | yes                    | no, reported `skipped` |
+| `filter`         | yes  | no, reported `skipped` | no, reported `skipped` |
 
 Two decorated windows on the GLES renderer with `cornerRadius: 12`, a 2 pixel inset border and a shadow. The corners are
 cut from the frame, the titlebar included, the border runs over the titlebar's top edge and round the arc, and the shadow
@@ -499,8 +500,9 @@ as follows:
 
 `seat.effect_kinds` lists the kinds the renderer draws.
 
-Only the software renderer draws a background or an inset shadow, and no renderer draws a filter yet. A kind the active
-renderer does not draw is named in the node's `skipped` list.
+GLES draws all of these kinds and lists them in `seat.effect_kinds`. A renderer that does not draw one names it in the
+node's `skipped` list and leaves it out of `seat.effect_kinds`: the software renderer a `filter`, the Vulkan renderer all
+of `inset-shadow`, `background` and `filter` today.
 
 The style reports a `not applied` warning only for what a limit of the tree changes.
 

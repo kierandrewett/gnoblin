@@ -14,12 +14,13 @@ simpler effects and cannot run user shaders.
 | Rounded corners (window clip)                    | Drawn                         | Drawn     | Drawn, anti-aliased           |
 | Rounded corners (shadow shape)                   | Drawn                         | Not drawn | Drawn                         |
 | Outer shadow                                     | Drawn, with spread and colour | Not drawn | Drawn, with spread and colour |
-| Inset shadow                                     | Not drawn                     | Not drawn | Drawn                         |
+| Inset shadow                                     | Drawn                         | Not drawn | Drawn                         |
 | Borders (several, offset)                        | Drawn                         | Not drawn | Drawn, anti-aliased           |
 | Backdrop blur                                    | Drawn                         | Not drawn | Drawn                         |
 | Backdrop grades (saturate, brightness, contrast) | Drawn                         | Not drawn | Drawn                         |
-| Filter grades on the window                      | Not drawn                     | Not drawn | Not drawn                     |
-| Background                                       | Not drawn                     | Not drawn | Drawn                         |
+| Filter grades on the window                      | Drawn                         | Not drawn | Not drawn                     |
+| Filter blur on the window                        | Drawn, one layer              | Not drawn | Not drawn                     |
+| Background                                       | Drawn                         | Not drawn | Drawn                         |
 | Your own shader                                  | Drawn                         | Drawn     | Not drawn: no shader compiler |
 
 A few notes on the table:
@@ -27,9 +28,11 @@ A few notes on the table:
 - Rounded corners on a shader window are drawn by the shader wrapper on GLES and Vulkan, and not on software, which has
   no shader.
 - A grade on the backdrop takes effect only with a blur behind the window, and only GLES and the software renderer
-  draw that blur.
-- Filter grades on the window itself (`blur`, `saturate`, `brightness`, `contrast`) are stored and not drawn by any
-  renderer. Use a shader if you need them.
+  draw that blur. The blur honours `downscale`, and `saturation` and `noise` as well as brightness, contrast and tint.
+- Filter grades and the filter's blur on GLES apply to everything one layer paints: its shadows, background, content and
+  borders. A window drawn as several layers (a titlebar child over the content) grades the layer that carries the effect.
+  The filter's blur is drawn from a picture of that layer and spills past its edge. The software renderer does not draw
+  a `filter`; use a shader if you need it there.
 
 A property that no renderer draws is still stored and reported in the window's `computedStyle`, so a config that sets
 it keeps working when the renderer learns to draw it.

@@ -293,6 +293,7 @@ impl Gles {
             bytes: Vec::new(),
             clip: Rect::from_size(size),
             cursor_under: &mut cursor_under,
+            canvas: None,
         };
         for (eye, textures) in eyes.iter().zip(&textures) {
             painter.eye(eye, textures)?;
