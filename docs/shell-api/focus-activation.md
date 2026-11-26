@@ -3,9 +3,16 @@
 Focus policy decides which window gets the keyboard, and when it rises above the others. The shell keeps click to
 focus, focuses a window that opens, and raises a window when you click it.
 
-A file cannot change that policy. Focus mode, auto raise and the rest of the older `focus` settings have no object in the
+The library starts that policy itself when a file uses it to make a workspace, a display or a window frame, so a file
+needs no line for it.
+
+A file cannot change the policy's settings. Focus mode, auto raise and the rest of the older `focus` settings have no object in the
 API: see [Settings with no object](/js-settings). Read the order windows were focused with `gnoblin.focus.history()`, and the seat's current values with
 `gnoblin.input.primary.settings`.
+
+A file that decides focus itself calls `FocusPolicy.get().stop()` before it does, so that the two never answer one click.
+`FocusPolicy.get().start()` starts the stock policy again, and does nothing while it runs. A shell that is not a desktop of the
+library, one written on the core alone, has no focus policy: nothing moves its keyboard until it calls `client.focus()`.
 
 ## Give a window the focus
 

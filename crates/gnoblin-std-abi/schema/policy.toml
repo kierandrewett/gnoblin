@@ -3,7 +3,8 @@
 # drags the library runs itself.
 #
 # Each piece that watches the desktop is a service with a `start`, and does nothing before it: a shell that has its own policy never starts the
-# library's, so two policies never answer one request. The focus decisions are pure functions of the settings and one event, so they are static
+# library's, so two policies never answer one request. The focus policy is the exception: the library starts it when it becomes the generation's
+# desktop, because a shell that holds the tree decides every window's focus, and a shell with a focus policy of its own calls `stop`. The focus decisions are pure functions of the settings and one event, so they are static
 # functions of `focus_policy` that need no desktop; `focus_decision` is what the TypeScript library's `focusDecision` answers. A shell passes a
 # window to a member as the core's `Client`; the window a request or a grab tells the shell of is its node number as text. A binding is made, then installed on an input context of `gnoblin.model` (the
 # first seat's, when none is named), and it stays installed until it is uninstalled.
@@ -192,12 +193,14 @@ type = "callback:time_source"
 since = "0.2.0"
 
 # Starts the policy: a window that opens takes focus as the settings say, the pointer entering, moving over, leaving and pressing a window
-# focuses, raises and clears as the settings say, and the two timers run. A window the shell found already open is left alone.
+# focuses, raises and clears as the settings say, and the two timers run. A window the shell found already open is left alone. The library
+# has already started it when the shell uses the library as its desktop (it makes a workspace, a display or a window frame), and a second
+# `start` does nothing.
 [[object.method]]
 name = "start"
 since = "0.2.0"
 
-# Stops the policy and forgets what it waited for.
+# Stops the policy and forgets what it waited for: for a shell that has a focus policy of its own.
 [[object.method]]
 name = "stop"
 since = "0.2.0"

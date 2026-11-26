@@ -6,6 +6,8 @@
 //!   that appears; the library places each window the moment it joins a workspace, so no two windows open on the same spot;
 //! - a window that opens joins the workspace of the output that has the pointer (the library's own rule, which this shell does not
 //!   repeat: it only says so in the log);
+//! - a window takes the keyboard when it opens and when it is clicked, and a click raises it, with no line here: the library starts its focus
+//!   policy when a shell makes its workspaces (`FocusPolicy::stop` ends it for a shell with a policy of its own);
 //! - `<Super>Return` starts a terminal (`foot`);
 //! - `<Super>Right` and `<Super>Left` walk the workspaces on the output that shows the focused window.
 //!

@@ -7,7 +7,9 @@
 //! (`focus_mode`, `focus_new_windows`, `raise_on_click`, `auto_raise`, `auto_raise_delay`, `focus_change_on_pointer_rest`) and are read on
 //! every event; the seat's words for the modes translate: `click` is click, `hover` is sloppy and `hover-strict` is follow-mouse.
 //!
-//! Nothing here runs before `focus_policy.start`: a shell with a focus policy of its own never starts this one. The ids of an enum's values
+//! Nothing here runs before `focus_policy.start`. The library starts it when it becomes a generation's desktop (`events::open`), because a shell
+//! that holds the tree is the one that decides focus and a desktop with no focused window cannot receive a key; a shell with a focus policy of its
+//! own calls `focus_policy.stop`. The ids of an enum's values
 //! are their places in the catalog, counted from 1.
 
 use std::rc::Rc;
@@ -289,7 +291,7 @@ fn settings(ui: &Ui) -> Option<Settings> {
 }
 
 /// Starts the policy, once.
-fn start(ui: &Rc<Ui>) -> Res<()> {
+pub(super) fn start(ui: &Rc<Ui>) -> Res<()> {
     if ui.policy.borrow().focus.started {
         return Ok(());
     }

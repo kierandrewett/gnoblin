@@ -338,6 +338,23 @@ A shell that does not use the std prelude has none of them, and a call of one do
 shell's `readelf -d` names `libgnoblin-core.so.1` and no std library. Each member is read through the std library of the generation
 the core's object belongs to. `examples/37-native-std-root` is this.
 
+## Keyboard focus
+
+A shell on the core alone has no focus policy. The core moves the keyboard when a shell writes it (`Window::focus`), so
+`examples/01-minimal-core-shell` calls `window.focus()` for each window it places, and a click moves nothing.
+
+A shell that uses `gnoblin-std` to make workspaces, displays or a window frame gets the stock policy with no line of its own:
+
+- A new window and a click take the keyboard, and a click raises, as the seat's focus settings say. `examples/02-std-prelude`
+  is this.
+- A shell with a focus policy of its own stops the stock one first, so that the two never answer one click:
+
+```rust
+use gnoblin_std::objects::FocusPolicy;
+
+FocusPolicy::get(&objects)?.stop()?;
+```
+
 ## Make an object with options
 
 `new` takes the properties the catalog names for the constructor. `new_with` takes them and then an options struct named after the

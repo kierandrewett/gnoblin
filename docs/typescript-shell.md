@@ -305,6 +305,8 @@ was on this binding.
     - `workspace.clients.add(client)`
 - An id as text is a `TypeError`, and so is an object of another class. A member called with a window that has closed fails with
   `the client is gone`.
+- The library starts the stock `FocusPolicy` itself when a shell makes a workspace, a display or a window frame, so a click and a new
+  window take the keyboard with no line of the shell's. A shell with a focus policy of its own calls `FocusPolicy.get().stop()` first.
 - A window the workspace classes tell the shell of is the core's `Client` too: `members`, the `added` and `removed` events, and a layout's
   `children`, `focused` and `node`. It is the same object `gnoblin.clients.get(id)` gives. A window the frame, menu, policy and shell
   classes tell the shell of is still its id as text.

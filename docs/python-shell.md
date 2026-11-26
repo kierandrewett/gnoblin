@@ -316,6 +316,9 @@ The classes are **generated** from the catalog the library serves (`gnoblin-sdkg
 generator](sdk-generator.md)) and embedded in the runtime library. A class added to the catalog is a class here with no change to the
 runtime.
 
+The library starts the stock `FocusPolicy` itself when a shell makes a workspace, a display or a window frame, so a click and a new window take
+the keyboard with no line of the shell's. A shell with a focus policy of its own calls `FocusPolicy.get().stop()` first.
+
 ```python
 from gnoblin import gnoblin
 from gnoblin.objects.std import EntryModel, FocusEvent, FocusEventKind, FocusMode, FocusPolicy, FocusSettings

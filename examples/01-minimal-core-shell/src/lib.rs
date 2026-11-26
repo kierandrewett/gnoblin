@@ -4,6 +4,8 @@
 //!
 //! - every window gets a place the moment it opens (a cascade of 800 by 600 rectangles), including the ones that were open before
 //!   the shell started;
+//! - a window that opens takes the keyboard: the core moves the keyboard only when a shell asks, so with no line like this one no window ever
+//!   has it and `<Super>q` has nothing to close (click focus and raise on click are policy, which is `gnoblin-std`'s: see example 2);
 //! - `<Super>Return` starts a terminal (`foot`);
 //! - `<Super>q` closes the window that has the keyboard.
 //!
@@ -43,7 +45,14 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     for window in g.windows()? {
         place(&window);
     }
-    g.on_client_created(place)?;
+    g.on_client_created(move |window| {
+        place(window);
+        if let Err(error) = window.focus() {
+            window
+                .gnoblin()
+                .log(&format!("cannot focus window {}: {error}", window.id().0));
+        }
+    })?;
 
     g.bind("<Super>Return", move || {
         if let Err(error) = g.spawn("foot") {
