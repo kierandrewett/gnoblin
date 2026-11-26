@@ -42,6 +42,8 @@ pub(super) struct LayerNode {
     pub(super) source: Option<SurfaceSource>,
     /// The subsurfaces and popups of the surface, and their nodes.
     pub(super) tree: SurfaceTree,
+    /// What the surface's pixels are, and what the last commit changed in them.
+    pub(super) track: ContentTrack,
 }
 
 impl Composer {
@@ -78,6 +80,7 @@ impl Composer {
                 content: None,
                 source: None,
                 tree: SurfaceTree::default(),
+                track: ContentTrack::new(),
             },
         );
         Some(id)
@@ -201,20 +204,27 @@ impl Composer {
         })
     }
 
-    /// Records what a layer surface's client committed: the crop to draw and where its pixels come from, or `None` when the
-    /// surface has no buffer. The surface is drawn at its node's origin at the size the buffer has, so a client that has
-    /// not yet drawn at the size it was configured with shows what it last drew.
+    /// Records what a layer surface's client committed: the crop to draw, where its pixels come from and what the commit
+    /// damaged in them, or `None` when the surface has no buffer. The surface is drawn at its node's origin at the size the
+    /// buffer has, so a client that has not yet drawn at the size it was configured with shows what it last drew.
     ///
     /// A commit always damages the rectangle the surface covers: the client may have drawn into the same buffer, and nothing
     /// in the handle says whether its pixels changed. The node's draw extent is the buffer's rectangle, so a buffer that is
     /// not the size of the node's rectangle is damaged where it is drawn, and a surface that unmaps damages what it covered.
-    pub fn set_layer_content(&mut self, node: NodeId, content: Option<(Content, SurfaceSource)>) {
+    ///
+    /// The damage is Smithay's record of the surface's commits, which becomes the rectangles of the key the surface's layer
+    /// carries ([`gnoblin_render_frame::frame::ContentKey`]). `None` says the change is not known, and the layer is drawn
+    /// whole. Giving the same snapshot again with the same buffer is not a commit of new pixels.
+    pub fn set_layer_content(&mut self, node: NodeId, content: Option<(Content, SurfaceSource, Option<BufferDamage>)>) {
         let Some(layer) = self.layer_nodes.get_mut(&node) else {
             return;
         };
-        let extent = content.as_ref().map(|(content, _)| Rect::from_size(content.size));
+        let extent = content.as_ref().map(|(content, _, _)| Rect::from_size(content.size));
         (layer.content, layer.source) = match content {
-            Some((content, source)) => (Some(content), Some(source)),
+            Some((content, source, damage)) => {
+                layer.track.observe(&source, damage.as_ref(), true);
+                (Some(content), Some(source))
+            }
             None => (None, None),
         };
         let _ = self.scene.set_draw_extent(node, extent);
@@ -295,6 +305,7 @@ impl Composer {
                     corner_radius: transform.corner_radius,
                     silhouette: None,
                     effects,
+                    key: Some(layer.track.key()),
                 };
                 self.push_surface(&paint, node, drawn, frame, spatial);
             }

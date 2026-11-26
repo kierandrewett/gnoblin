@@ -498,6 +498,8 @@ impl State {
                 model: None,
                 // A capture must not read the lock screen's content either.
                 secure: true,
+                // The lock screen's pixels are drawn whole: they are untracked, so the layer has no key.
+                content: None,
             }));
         }
         // The compositor's own lock has no lock surface. What the shell drew for it (the canvases it parented under the

@@ -65,7 +65,9 @@ use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 
-use gnoblin_backend::render::compose::{BellFlash, Composer, Content, MainSeatPolicy, ScreenInfo, Setting, TreeOwner};
+use gnoblin_backend::render::compose::{
+    BellFlash, BufferDamage, Composer, Content, MainSeatPolicy, ScreenInfo, Setting, TreeOwner,
+};
 use gnoblin_backend::{Host, InputEvent, TouchPhase};
 use gnoblin_config::{Protocol, Protocols, TitlebarAction};
 use gnoblin_input::Activity;
@@ -2453,7 +2455,8 @@ impl State {
                 self.composer.set_window_content(window, Some(content));
                 // The scene holds the handle; Smithay keeps the object alive for as long as a
                 // frame can read it.
-                self.composer.set_window_buffer(window, Some(buffer));
+                let damage = committed_damage(surface);
+                self.composer.set_window_buffer(window, Some((buffer, damage)));
             }
             None => {
                 // An unmapped window fades its last picture out, or leaves at once when it has
@@ -3880,6 +3883,15 @@ pub(crate) fn committed_content(surface: &WlSurface) -> Option<(WlBuffer, Conten
         ))
     })
     .flatten()
+}
+
+/// What the surface's commits have damaged in its buffer, as Smithay's renderer state recorded them.
+///
+/// The composer asks the snapshot what changed since the last one it saw, which is how a renderer that keeps a texture
+/// uploads only the damaged rectangles. A surface that has no renderer state has none, and its pixels are then reported
+/// whole.
+pub(crate) fn committed_damage(surface: &WlSurface) -> BufferDamage {
+    with_renderer_surface_state(surface, |state| state.damage()).unwrap_or_else(BufferDamage::empty)
 }
 
 impl State {

@@ -618,6 +618,7 @@ fn the_shader_grade_matches_the_cpu_grade_within_one_level() {
             effects: chain(vec![filter_of(grade)]),
             model: None,
             secure: false,
+            content: None,
         };
         let mut surfaces = frame(Color::BLACK, Size::new(16, 16));
         surfaces.push_layer(Layer::Surface(layer));

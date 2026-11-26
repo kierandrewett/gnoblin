@@ -19,6 +19,8 @@ pub(super) struct CanvasPicture {
     /// renderer draws it over the node's logical rectangle.
     pub(super) scale: Scale,
     pub(super) image: Option<Arc<Image>>,
+    /// What the picture is, and that it was replaced each time the canvas was painted.
+    pub(super) track: ContentTrack,
 }
 
 impl Composer {
@@ -43,6 +45,12 @@ impl Composer {
                 continue;
             }
             let image = self.paint_canvas(canvas, size, scale);
+            // The picture is new pixels, under the key the canvas has had since it was made.
+            let mut track = self
+                .canvases
+                .get(&canvas)
+                .map_or_else(ContentTrack::new, |picture| picture.track.clone());
+            track.replaced();
             self.canvases.insert(
                 canvas,
                 CanvasPicture {
@@ -50,6 +58,7 @@ impl Composer {
                     size,
                     scale,
                     image,
+                    track,
                 },
             );
         }
@@ -214,6 +223,7 @@ impl Composer {
             effects: self.scene.effects(canvas).cloned().unwrap_or_else(Effects::new),
             model,
             secure: self.secure_scope.contains(&canvas),
+            content: self.canvases.get(&canvas).map(|picture| picture.track.key()),
         }));
     }
 }

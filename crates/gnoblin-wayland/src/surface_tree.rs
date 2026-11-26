@@ -47,7 +47,7 @@ use gnoblin_types::NodeId;
 
 use crate::State;
 use crate::popup::popup_origin;
-use crate::state::committed_content;
+use crate::state::{committed_content, committed_damage};
 use gnoblin_wayland_protocols::wp_alpha_modifier_v1::committed_factor;
 
 /// The surface trees that are to be built again before the next frame, and the surfaces that committed since the last
@@ -211,6 +211,7 @@ fn surfaces_of(root: &WlSurface, committed: &BTreeSet<u64>) -> Vec<TreeSurface> 
             content,
             source: SurfaceSource::of_buffer(buffer),
             damaged: committed.contains(&key),
+            buffer_damage: Some(committed_damage(surface)),
         });
         push_subsurfaces(surface, Some(key), committed, &mut surfaces);
     }
@@ -265,6 +266,7 @@ fn push_children(
             content,
             source: SurfaceSource::of_buffer(buffer),
             damaged: committed.contains(&key),
+            buffer_damage: Some(committed_damage(surface)),
         });
         push_children(painted, surface, Some(key), committed, out);
     }

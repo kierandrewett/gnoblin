@@ -97,7 +97,9 @@ use gnoblin_types::{Color, NodeId, OutputId, Point, PointF, Rect, RectF, Scale, 
 use gnoblin_wayland_types::decoration::{DecorationWanted, WindowDecoration};
 
 use gnoblin_render_frame::footprint::Footprint;
-use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, SecureTreatment, Solid, Surface, SurfaceSource};
+use gnoblin_render_frame::frame::{
+    ContentKey, Layer, Model, OutputFrame, SecureTreatment, Solid, Surface, SurfaceSource,
+};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm;
 use gnoblin_render_frame::view_scene::{ClipPlane, ViewEye, ViewOp, ViewScene, ViewTexture, size_fits};
@@ -109,6 +111,10 @@ use crate::log;
 
 mod canvases;
 use canvases::CanvasPicture;
+
+mod content;
+pub use content::BufferDamage;
+use content::ContentTrack;
 
 mod lock_ui;
 
@@ -306,10 +312,13 @@ pub struct TreeSurface {
     pub source: SurfaceSource,
     /// Whether the surface committed since the last list, so its pixels may have changed under the same buffer.
     pub damaged: bool,
+    /// What Smithay recorded of the surface's commits, so the composer can tell a renderer which rectangles of its
+    /// pixels changed. `None` when the caller has none: the change is then unknown, and drawn whole.
+    pub buffer_damage: Option<BufferDamage>,
 }
 
 /// A surface of a window's tree that has a scene node.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct TreeNode {
     node: NodeId,
     /// The parent surface the node was made under, so a surface that moves to another parent is made again.
@@ -319,6 +328,8 @@ struct TreeNode {
     published: [f64; 4],
     /// What the shell last asked of the node (`placement_override`, `stack`, `visible`).
     seen: surface_shell::ShellSeen,
+    /// What the surface's pixels are, and what the last commit changed in them.
+    track: ContentTrack,
 }
 
 /// What owns a surface tree: a window, whose toplevel surface is its root, or a layer-shell surface.
@@ -445,6 +456,10 @@ struct WindowNode {
     applied_extents: (Option<Rect>, Option<Rect>),
     /// The surfaces below the window's toplevel surface, and the nodes made for them.
     tree: SurfaceTree,
+    /// What the window's own surface's pixels are, and what the last commit changed in them.
+    track: ContentTrack,
+    /// The key of the picture the window keeps while it closes, which is one commit of a surface of its own.
+    snapshot_key: Option<Arc<ContentKey>>,
 }
 
 /// The window management policy the main seat publishes for the stock shell to read.
@@ -1138,6 +1153,8 @@ impl Composer {
                 hit_extent: None,
                 applied_extents: (None, None),
                 tree: SurfaceTree::default(),
+                track: ContentTrack::new(),
+                snapshot_key: None,
             },
         );
         self.order.push(window);
@@ -1712,6 +1729,7 @@ impl Composer {
         }
         if let Some(entry) = self.windows.get_mut(&window) {
             entry.closing = Some(closing);
+            entry.snapshot_key = Some(ContentTrack::snapshot_key());
         }
         let spec = TrackSpec {
             from: TrackStart::Current,
@@ -2604,20 +2622,36 @@ impl Composer {
         true
     }
 
-    /// Records the buffer a window's content is read from.
+    /// Records the buffer a window's content is read from, and what its commit damaged in it, or clears it.
     ///
     /// The scene does not look inside it, so it carries no damage of its own; the
-    /// commit that attached it went through [`Composer::set_window_content`].
-    pub fn set_window_buffer(&mut self, window: WindowId, buffer: Option<WlBuffer>) {
-        self.set_window_source(window, buffer.map(SurfaceSource::of_buffer));
+    /// commit that attached it went through [`Composer::set_window_content`]. The damage is Smithay's record of the
+    /// surface's commits, which becomes the rectangles of the key the window's layer carries
+    /// ([`gnoblin_render_frame::frame::ContentKey`]).
+    pub fn set_window_buffer(&mut self, window: WindowId, buffer: Option<(WlBuffer, BufferDamage)>) {
+        match buffer {
+            Some((buffer, damage)) => {
+                self.set_window_pixels(window, Some(SurfaceSource::of_buffer(buffer)), Some(&damage))
+            }
+            None => self.set_window_pixels(window, None, None),
+        }
     }
 
-    /// [`Composer::set_window_buffer`] for pixels that are not a client's live buffer.
+    /// [`Composer::set_window_buffer`] for pixels that are not a client's live buffer, or whose damage is not known:
+    /// what the layer's key says changed is the whole picture.
     pub fn set_window_source(&mut self, window: WindowId, source: Option<SurfaceSource>) {
+        self.set_window_pixels(window, source, None);
+    }
+
+    /// The body of the two above.
+    fn set_window_pixels(&mut self, window: WindowId, source: Option<SurfaceSource>, damage: Option<&BufferDamage>) {
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
         };
         let node = entry.node;
+        if let Some(source) = &source {
+            entry.track.observe(source, damage, true);
+        }
         entry.buffer = source;
         // A View that draws this window re-reads its pixels from the new buffer.
         if let Some(node) = node {
@@ -2727,10 +2761,15 @@ impl Composer {
                 placed.insert(surface.key, at);
                 let transform = Self::tree_transform(surface, at);
                 self.update_tree_node(existing.node, bounds, transform, surface);
+                existing
+                    .track
+                    .observe(&surface.source, surface.buffer_damage.as_ref(), surface.damaged);
             } else {
                 let transform = Self::tree_transform(surface, protocol_at);
                 if let Some(node) = self.create_tree_node(parent, bounds, transform, surface) {
                     placed.insert(surface.key, protocol_at);
+                    let mut track = ContentTrack::new();
+                    track.observe(&surface.source, surface.buffer_damage.as_ref(), true);
                     nodes.insert(
                         surface.key,
                         TreeNode {
@@ -2739,6 +2778,7 @@ impl Composer {
                             role: surface.role,
                             published: [f64::NAN; 4],
                             seen: surface_shell::ShellSeen::default(),
+                            track,
                         },
                     );
                 }
@@ -3209,6 +3249,7 @@ impl Composer {
                 // A capture of the output replaces the picture of a View that holds a secure node, so the output
                 // reveals nothing a View's own capture hides.
                 secure: !picture.secure.is_empty() || self.secure_scope.contains(&view),
+                content: picture.image.as_ref().map(|_| picture.track.key()),
             }));
         }
         // The top and overlay layers are above the windows, the shell's own nodes and the Views, and the popups of every
@@ -3675,14 +3716,14 @@ impl Composer {
         };
         self.push_children(&paint, node, true, false, frame, spatial);
         let own = match &entry.closing {
-            Some(closing) => Some((closing.source.clone(), closing.content)),
+            Some(closing) => Some((closing.source.clone(), closing.content, entry.snapshot_key.clone())),
             // A window whose client has committed content but no buffer has no pixels to draw.
             None => entry
                 .content
                 .zip(entry.buffer.clone())
-                .map(|(content, source)| (source, content)),
+                .map(|(content, source)| (source, content, Some(entry.track.key()))),
         };
-        if let Some((source, content)) = own {
+        if let Some((source, content, key)) = own {
             let (x, y) = entry.surface_offset;
             // The window's borders are drawn over its whole frame by a layer of their own (`push_ring`), so the
             // content's layer carries the rest of the chain. The content, and with it the corner radius, is
@@ -3702,6 +3743,7 @@ impl Composer {
                 corner_radius: radius,
                 silhouette,
                 effects,
+                key,
             };
             self.push_surface(&paint, node, drawn, frame, spatial);
         }
@@ -3776,6 +3818,11 @@ impl Composer {
         let drawn = Drawn {
             source: surface.source.clone(),
             content: surface.content,
+            key: paint
+                .tree
+                .nodes
+                .get(&surface.key)
+                .map(|tree_node| tree_node.track.key()),
             local: None,
             opacity: self.opacity_within(paint.node, node),
             corner_radius: 0.0,
@@ -3857,6 +3904,7 @@ impl Composer {
             effects: drawn.effects,
             model,
             secure: self.secure_scope.contains(&node),
+            content: drawn.key,
         }));
     }
 }
@@ -3903,6 +3951,8 @@ struct Drawn {
     /// The window's frame the corner radius rounds, when the layer is one part of a decorated window.
     silhouette: Option<Rect>,
     effects: Effects,
+    /// Names the pixels so a renderer can keep their texture; see [`ContentKey`].
+    key: Option<Arc<ContentKey>>,
 }
 
 /// What waits for its place in the paint order while windows are drawn.

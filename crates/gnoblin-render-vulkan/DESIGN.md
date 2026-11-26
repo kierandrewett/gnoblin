@@ -181,30 +181,36 @@ Smithay's own compositor skips `IN_FENCE_FD` on NVIDIA because commits fail ther
 
 ### 5.1 Shared memory with damage
 
-The frame does not say which part of a buffer changed, so both GPU renderers upload whole buffers every frame. Lane C3
-adds one field to `Surface`:
+The frame does not say which part of a buffer changed, so both GPU renderers would upload whole buffers every frame. Lane
+C3 added one field to `Surface`:
 
 ```rust
 /// Identifies the surface's current content so a renderer can keep its texture across frames.
 pub content: Option<ContentKey>,
 
 pub struct ContentKey {
-    pub surface: u64,           // stable per wl_surface (and per snapshot)
-    pub commit: u64,            // increases on every commit that attaches or damages
-    pub damage: Arc<[Rect]>,    // buffer-coordinate damage of that commit, since the previous one
+    pub surface: u64,                  // unique per surface, per snapshot and per canvas, for the whole process
+    pub commit: u64,                   // increases by one on every commit that changes the pixels
+    pub damage: Option<Arc<[Rect]>>,   // buffer-coordinate damage of that commit; None when it is not known
 }
 ```
+
+The composer sets the key on every layer it draws from a client buffer, a closing window's snapshot, a canvas picture
+and a View's CPU picture (`compose/content.rs`).
+
+The damage is Smithay's record of the surface's commits, handed to the composer with the buffer. An unchanged commit
+raises nothing, and a new buffer with no damage recorded is `None`: unknown, which is not the same as an empty list.
 
 The texture cache is keyed by `surface`, as wlroots does, because surface damage is relative to the surface's previous
 content and not to the buffer's. The rules:
 
 - Same `commit` as cached: no upload.
 - Next `commit`, same size: upload the damage rectangles only, through the staging ring.
-- Gap in commits, a new size or no key: upload the whole buffer.
+- Gap in commits, a new size, `damage` of `None` or no key: upload the whole buffer.
 - A surface not drawn for 120 frames, or destroyed, gives its texture back through the retire queue.
 
-A snapshot (closing window) is keyed by its `Arc<Image>` pointer and uploaded once. The cache is per device, so a
-window spanning two outputs is uploaded once.
+A snapshot (closing window) has a surface id of its own, made when the fade starts, and one commit. The cache is per
+device, so a window spanning two outputs is uploaded once.
 
 Formats: the session's `wl_shm` advertises `argb8888` and `xrgb8888` only (`crates/protocols/wl-shm/src/lib.rs:39`). The
 renderer keeps `B8G8R8A8_UNORM` and uses an image view swizzle `A = ONE` for `xrgb8888` instead of a separate pipeline.

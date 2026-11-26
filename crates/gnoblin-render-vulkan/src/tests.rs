@@ -97,6 +97,7 @@ fn surface(buffer: &ShmClient, index: usize, src: RectF, dst: Rect, opacity: f32
         effects: Effects::new(),
         model: None,
         secure: false,
+        content: None,
     })
 }
 

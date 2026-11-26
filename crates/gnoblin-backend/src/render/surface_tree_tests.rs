@@ -55,6 +55,7 @@ fn tree_surface(
         content: content_of(size),
         source: flat(colour, size),
         damaged: false,
+        buffer_damage: None,
     }
 }
 

@@ -504,6 +504,7 @@ fn a_filter_blur_fades_with_the_layer() {
             effects: chain(filtered(2.0)),
             model: None,
             secure: false,
+            content: None,
         })
     };
     let image = render(

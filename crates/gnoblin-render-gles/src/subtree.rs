@@ -498,6 +498,7 @@ mod tests {
             effects: gnoblin_render::Effects::new(),
             model: Some(model(projection, at)),
             secure: false,
+            content: None,
         }))
     }
 
@@ -549,6 +550,7 @@ mod tests {
             effects: gnoblin_render::Effects::new(),
             model: None,
             secure: false,
+            content: None,
         }));
         frame
     }

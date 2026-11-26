@@ -204,6 +204,33 @@ impl SurfaceSource {
     }
 }
 
+/// Names a surface's current pixels so a renderer can keep a texture of them across frames.
+///
+/// A frame carries no history, so without a key a renderer uploads every client buffer whole, every frame it is drawn.
+/// The composer sets one on each layer whose pixels it tracks (a client's buffer, a snapshot of a closing window, a
+/// canvas picture), and a renderer that caches textures keys the cache by [`ContentKey::surface`]:
+///
+/// - the same `commit` as the texture holds: nothing to upload;
+/// - the commit after it, at the same size, with `damage` listed: upload those rectangles only;
+/// - any other commit, a new size, or `damage` of `None`: upload the whole buffer.
+///
+/// The key is of the surface and not of its buffer, because damage is relative to the surface's previous content. A client
+/// that swaps between two buffers damages only what changed, so the texture keeps what the damage did not touch.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContentKey {
+    /// Identifies the surface for as long as it lives. Unique among the surfaces of the process, so a surface that is
+    /// destroyed never shares a key with a later one.
+    pub surface: u64,
+    /// Increases by one each time the surface's pixels change: a commit that attaches or damages, a closing window's
+    /// snapshot (which never changes again), a canvas repainted. A renderer that sees a jump of more than one did not
+    /// draw the commits between, and uploads the whole buffer.
+    pub commit: u64,
+    /// What this commit changed, in the buffer's own pixels, since the previous commit. `None` when that is not known:
+    /// the surface's first commit, a change of buffer with no damage recorded, or damage older than the client tracks.
+    /// An empty list is a commit that changed no pixels.
+    pub damage: Option<Arc<[Rect]>>,
+}
+
 /// A client buffer on the output.
 #[derive(Clone, Debug)]
 pub struct Surface {
@@ -246,6 +273,10 @@ pub struct Surface {
     pub model: Option<Model>,
     /// Whether a capture replaces this layer; the display still shows it.
     pub secure: bool,
+    /// Names the pixels of `source` so a renderer can keep its texture between frames; see [`ContentKey`]. `None` for a
+    /// source nobody tracks (a View's capture mask, a layer a test builds), which a renderer uploads whole when it draws.
+    /// The key is shared, so a layer clones a pointer and the composer makes a key when the pixels change.
+    pub content: Option<Arc<ContentKey>>,
 }
 
 /// A solid rectangle on the output.

@@ -59,6 +59,8 @@ pub(super) struct ViewPicture {
     /// The nodes of the source subtree a capture may not show: each node marked secure, and everything below it.
     pub(super) secure: BTreeSet<NodeId>,
     pub(super) drawn_at_ms: u64,
+    /// What the CPU picture is, replaced each time the View is drawn, so a renderer that caches it knows when to upload.
+    pub(super) track: ContentTrack,
 }
 
 /// What [`Composer::draw_view`] made of a View: its picture on the CPU, the capture's picture when a node is secure,
@@ -148,6 +150,8 @@ impl ViewEmit<'_> {
             effects: Effects::new(),
             model: Some(model),
             secure: false,
+            // A View's private scene is drawn by the renderer that owns it, and its layers are not cached by key.
+            content: None,
         }))
     }
 }
@@ -343,6 +347,11 @@ impl Composer {
             }
             self.view_revision = self.view_revision.saturating_add(1);
             let drawn = self.draw_view(view, size, &secure, self.view_revision, reader);
+            let mut track = self
+                .views
+                .get(&view)
+                .map_or_else(ContentTrack::new, |held| held.track.clone());
+            track.replaced();
             self.views.insert(
                 view,
                 ViewPicture {
@@ -352,6 +361,7 @@ impl Composer {
                     scene: drawn.scene,
                     secure,
                     drawn_at_ms: self.view_clock_ms,
+                    track,
                 },
             );
             if let Some(bounds) = self.scene.absolute_bounds(view) {

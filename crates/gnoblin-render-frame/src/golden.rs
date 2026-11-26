@@ -99,6 +99,7 @@ fn window_at(dst: Rect, effects: Effects, tint: Color, opacity: f32) -> Layer {
         effects,
         model: None,
         secure: false,
+        content: None,
     })
 }
 

@@ -1023,6 +1023,7 @@ mod tests {
             effects: Effects::new(),
             model: None,
             secure: false,
+            content: None,
         })
     }
 
@@ -1074,6 +1075,7 @@ mod tests {
             effects: Effects::new(),
             model: None,
             secure: false,
+            content: None,
         };
         let mut software = Software::new(Size::new(2, 2)).expect("a software renderer");
         assert_eq!(software.snapshot(&surface).expect("a snapshot"), image);
@@ -1104,6 +1106,7 @@ mod tests {
             effects: Effects::new(),
             model: None,
             secure: false,
+            content: None,
         }));
         let mut software = Software::new(Size::new(4, 4)).expect("a software renderer");
         software.draw(&frame, Scale::integral(2)).expect("drawn");

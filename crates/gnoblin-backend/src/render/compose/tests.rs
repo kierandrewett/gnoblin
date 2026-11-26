@@ -1,8 +1,11 @@
 use gnoblin_types::{Point, WindowId};
+use smithay::backend::renderer::utils::DamageBag;
+use smithay::utils::{Buffer as BufferCoord, Rectangle};
 
 use super::motion::{FLASH_MS, FLASH_PEAK};
 use super::*;
 use gnoblin_render::Actor;
+use gnoblin_wayland_types::layer::{LayerBand, LayerNodeInfo};
 
 fn content() -> Content {
     Content {
@@ -5153,4 +5156,219 @@ fn damage_near_a_blurred_layer_becomes_the_whole_layer() {
         !damage.iter().any(|rect| glass_rect.intersects(*rect)),
         "a change out of the blur's reach leaves the layer alone: {damage:?}"
     );
+}
+
+// What a layer's content key says: which surface, which commit and what the commit changed.
+
+/// A rectangle of a buffer, as Smithay records damage.
+fn buffer_rect(x: i32, y: i32, width: i32, height: i32) -> Rectangle<i32, BufferCoord> {
+    Rectangle::new((x, y).into(), (width, height).into())
+}
+
+/// The key of every surface layer the next frame for `output` carries, bottom first. A layer with no key is `None`.
+fn keys_of(composer: &mut Composer, output: OutputId) -> Vec<Option<Arc<ContentKey>>> {
+    composer.damage_output(output);
+    composer.begin_frame();
+    let mut frame = OutputFrame::new();
+    composer.compose(output, &mut frame);
+    composer.end_frame();
+    frame
+        .layers()
+        .iter()
+        .filter_map(|layer| match layer {
+            Layer::Surface(surface) => Some(surface.content.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A window that has committed `content()` and the pixels `source`, drawn at once.
+fn window_with(composer: &mut Composer, id: u64, source: &SurfaceSource, damage: Option<&BufferDamage>) -> WindowId {
+    let window = WindowId::new(id);
+    composer.insert_window(window, Rect::new(20 * id as i32, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    composer.set_window_pixels(window, Some(source.clone()), damage);
+    window
+}
+
+#[test]
+fn every_surface_layer_of_a_window_has_a_key() {
+    let (mut composer, output) = screen();
+    let source = SurfaceSource::Snapshot(picture());
+    window_with(&mut composer, 1, &source, None);
+    let keys = keys_of(&mut composer, output);
+    assert_eq!(keys.len(), 1, "one window, one surface layer");
+    assert!(keys[0].is_some(), "the window's layer has a key");
+}
+
+#[test]
+fn a_commit_with_damage_carries_it_in_the_layers_key() {
+    let (mut composer, output) = screen();
+    let source = SurfaceSource::Snapshot(picture());
+    let mut bag: DamageBag<i32, BufferCoord> = DamageBag::new(4);
+    bag.add([buffer_rect(0, 0, 40, 50)]);
+    let window = window_with(&mut composer, 1, &source, Some(&bag.snapshot()));
+    let first = keys_of(&mut composer, output)[0].clone().expect("a key");
+    assert_eq!(first.commit, 1);
+    assert_eq!(
+        first.damage, None,
+        "the first commit's damage is not known: the buffer is uploaded whole"
+    );
+
+    // The client damages two rectangles and commits again.
+    bag.add([buffer_rect(2, 3, 5, 6), buffer_rect(10, 20, 4, 4)]);
+    composer.set_window_pixels(window, Some(source.clone()), Some(&bag.snapshot()));
+    let second = keys_of(&mut composer, output)[0].clone().expect("a key");
+    assert_eq!(second.surface, first.surface, "the surface is the same one");
+    assert_eq!(second.commit, 2, "a commit raises the counter by one");
+    assert_eq!(
+        second.damage.as_deref(),
+        Some(&[Rect::new(2, 3, 5, 6), Rect::new(10, 20, 4, 4)][..]),
+        "and carries what it damaged, in the buffer's own pixels"
+    );
+
+    // Folding the same snapshot in again is not a commit.
+    composer.set_window_pixels(window, Some(source), Some(&bag.snapshot()));
+    assert_eq!(
+        keys_of(&mut composer, output)[0].as_ref(),
+        Some(&second),
+        "a snapshot already seen changes nothing: a renderer draws the texture it has"
+    );
+}
+
+#[test]
+fn a_new_buffer_without_recorded_damage_is_reported_whole() {
+    let (mut composer, output) = screen();
+    let first_buffer = SurfaceSource::Snapshot(picture());
+    let mut bag: DamageBag<i32, BufferCoord> = DamageBag::new(4);
+    bag.add([buffer_rect(0, 0, 40, 50)]);
+    let window = window_with(&mut composer, 1, &first_buffer, Some(&bag.snapshot()));
+    keys_of(&mut composer, output);
+    // A new buffer arrives and the bag holds nothing new: nothing says what changed, so everything did.
+    composer.set_window_pixels(window, Some(SurfaceSource::Snapshot(picture())), Some(&bag.snapshot()));
+    let key = keys_of(&mut composer, output)[0].clone().expect("a key");
+    assert_eq!(key.commit, 2);
+    assert_eq!(key.damage, None, "unknown, which is not the same as an empty list");
+    // A caller with no snapshot at all says the same.
+    composer.set_window_source(window, Some(first_buffer));
+    let key = keys_of(&mut composer, output)[0].clone().expect("a key");
+    assert_eq!((key.commit, key.damage.clone()), (3, None));
+}
+
+#[test]
+fn two_windows_have_two_surfaces_and_a_snapshot_keeps_its_own() {
+    let (mut composer, output) = screen();
+    let source = SurfaceSource::Snapshot(picture());
+    window_with(&mut composer, 1, &source, None);
+    window_with(&mut composer, 2, &source, None);
+    let keys = keys_of(&mut composer, output);
+    let surfaces: Vec<u64> = keys.iter().map(|key| key.as_ref().expect("a key").surface).collect();
+    assert_eq!(surfaces.len(), 2);
+    assert_ne!(
+        surfaces[0], surfaces[1],
+        "two windows are two surfaces, even over the same picture"
+    );
+    assert_ne!(
+        ContentTrack::snapshot_key().surface,
+        ContentTrack::snapshot_key().surface,
+        "no two snapshots share a surface id"
+    );
+}
+
+#[test]
+fn a_closing_windows_snapshot_has_a_stable_key() {
+    let (mut composer, output) = screen();
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    composer.set_window_source(window, Some(SurfaceSource::Snapshot(picture())));
+    let live = keys_of(&mut composer, output)[0].clone().expect("a key");
+    composer.advance_motion(MOTION_MS);
+    composer.close_with_snapshot(
+        window,
+        Some(Closing {
+            source: SurfaceSource::Snapshot(picture()),
+            content: content(),
+            on_end: CloseEnd::Remove,
+        }),
+    );
+    let first = keys_of(&mut composer, output)[0]
+        .clone()
+        .expect("a closing window's picture has a key");
+    composer.advance_motion(30);
+    let later = keys_of(&mut composer, output)[0].clone().expect("a key");
+    assert_eq!(
+        later, first,
+        "the picture of a fade is one commit of one surface, however long the fade runs"
+    );
+    assert_ne!(
+        first.surface, live.surface,
+        "it is not the surface the window drew from while it was live"
+    );
+    assert_eq!(first.damage, None);
+}
+
+#[test]
+fn a_subsurface_commit_raises_the_commit_of_its_own_key_only() {
+    let (mut composer, output) = screen();
+    let source = SurfaceSource::Snapshot(picture());
+    let window = window_with(&mut composer, 1, &source, None);
+    let popup = |damaged: bool, source: &SurfaceSource| TreeSurface {
+        key: 7,
+        parent: None,
+        role: TreeSurfaceRole::Popup,
+        behind: false,
+        offset: Point::new(5, 5),
+        alpha: 1.0,
+        content: content(),
+        source: source.clone(),
+        damaged,
+        buffer_damage: None,
+    };
+    let menu = SurfaceSource::Snapshot(picture());
+    composer.set_window_surfaces(window, vec![popup(true, &menu)]);
+    let keys = keys_of(&mut composer, output);
+    assert_eq!(keys.len(), 2, "the window and its popup");
+    let (window_key, first) = (keys[0].clone().expect("a key"), keys[1].clone().expect("a key"));
+    assert_ne!(window_key.surface, first.surface, "a popup is a surface of its own");
+    assert_eq!(first.commit, 1);
+
+    // The list is built again with nothing committed: the popup's key does not move.
+    composer.set_window_surfaces(window, vec![popup(false, &menu)]);
+    assert_eq!(keys_of(&mut composer, output)[1].as_ref(), Some(&first));
+
+    // The popup commits: its key moves, and the window's does not.
+    composer.set_window_surfaces(window, vec![popup(true, &menu)]);
+    let keys = keys_of(&mut composer, output);
+    assert_eq!(
+        keys[1].as_ref().map(|key| (key.surface, key.commit)),
+        Some((first.surface, 2))
+    );
+    assert_eq!(keys[0].as_ref(), Some(&window_key));
+}
+
+#[test]
+fn a_layer_surfaces_layer_has_a_key_that_follows_its_commits() {
+    let (mut composer, output) = screen();
+    let info = LayerNodeInfo {
+        namespace: "bar".to_owned(),
+        layer: LayerBand::Top,
+        anchor: vec!["top".to_owned()],
+        margin: [0.0; 4],
+        requested: [0.0, 30.0],
+        zone: 30.0,
+        mapped: true,
+    };
+    let node = composer.add_layer_node(&info).expect("a node");
+    composer.update_layer_node(node, &info, Rect::new(0, 0, 40, 50), false);
+    let source = SurfaceSource::Snapshot(picture());
+    let mut bag: DamageBag<i32, BufferCoord> = DamageBag::new(4);
+    bag.add([buffer_rect(0, 0, 40, 50)]);
+    composer.set_layer_content(node, Some((content(), source.clone(), Some(bag.snapshot()))));
+    let first = keys_of(&mut composer, output)[0].clone().expect("a key");
+    bag.add([buffer_rect(1, 1, 3, 3)]);
+    composer.set_layer_content(node, Some((content(), source, Some(bag.snapshot()))));
+    let second = keys_of(&mut composer, output)[0].clone().expect("a key");
+    assert_eq!((second.surface, second.commit), (first.surface, first.commit + 1));
+    assert_eq!(second.damage.as_deref(), Some(&[Rect::new(1, 1, 3, 3)][..]));
 }

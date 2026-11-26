@@ -984,6 +984,7 @@ mod tests {
             effects: chain(effects),
             model: None,
             secure: false,
+            content: None,
         };
         let mut frame = frame_of(Color::WHITE, Vec::new());
         frame.push_layer(Layer::Surface(surface));
@@ -1161,6 +1162,7 @@ mod tests {
             effects: chain(vec![Pass::Blur(BlurParams::default())]),
             model: None,
             secure: false,
+            content: None,
         };
         frame.push_layer(Layer::Surface(surface));
         let mut software = Software::new(SIZE).expect("a software renderer");

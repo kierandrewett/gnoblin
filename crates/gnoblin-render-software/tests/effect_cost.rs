@@ -67,6 +67,7 @@ fn window(effects: Effects, opacity: f32) -> Layer {
         effects,
         model: None,
         secure: false,
+        content: None,
     })
 }
 

@@ -1207,6 +1207,7 @@ fn a_dmabuf_the_driver_refuses_is_skipped() {
         effects: Effects::default(),
         model: None,
         secure: false,
+        content: None,
     }));
     renderer
         .draw(&frame, Scale::IDENTITY)

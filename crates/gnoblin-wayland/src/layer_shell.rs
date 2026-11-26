@@ -253,8 +253,10 @@ impl State {
                 .update_layer_node(node, &self.layers.entries[index].info, rect, shell.is_some());
             // What the client last committed is what the composer draws, at the rectangle it was just given.
             if refresh {
-                let content = crate::state::committed_content(surface.wl_surface())
-                    .map(|(buffer, content)| (content, SurfaceSource::of_buffer(buffer)));
+                let content = crate::state::committed_content(surface.wl_surface()).map(|(buffer, content)| {
+                    let damage = crate::state::committed_damage(surface.wl_surface());
+                    (content, SurfaceSource::of_buffer(buffer), Some(damage))
+                });
                 self.composer.set_layer_content(node, content);
             }
         }
