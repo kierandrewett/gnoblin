@@ -7,7 +7,7 @@ const globals = require("globals");
 const ts = require("typescript-eslint");
 
 export default ts.config(
-    { ignores: ["build/", ".svelte-kit/", "node_modules/", "static/"] },
+    { ignores: ["build/", ".svelte-kit/", ".generated/", "node_modules/", "static/"] },
     js.configs.recommended,
     ...ts.configs.recommended,
     ...svelte.configs.recommended,

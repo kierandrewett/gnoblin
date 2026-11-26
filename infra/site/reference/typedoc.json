@@ -1,0 +1,26 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Gnoblin TypeScript SDK",
+  "readme": "./typescript/README.md",
+  "tsconfig": "../.generated/sdk/share/gnoblin/types/tsconfig.docs.json",
+  "entryPoints": [
+    "../.generated/sdk/share/gnoblin/types/gnoblin-core/index.ts",
+    "../.generated/sdk/share/gnoblin/types/gnoblin-std/index.ts"
+  ],
+  "out": "../.generated/api/typescript",
+  "hideGenerator": true,
+  "disableSources": true,
+  "searchInComments": true,
+  "navigationLinks": {
+    "Guide": "/docs/typescript-shell",
+    "All SDKs": "/docs/reference",
+    "Python": "/reference/python/",
+    "Rust": "/reference/rust/"
+  },
+  "treatValidationWarningsAsErrors": true,
+  "validation": {
+    "notExported": false,
+    "invalidLink": true,
+    "notDocumented": false
+  }
+}

@@ -5,7 +5,9 @@
 // 2. Writes small redirect pages for the old URLs. The VitePress site served docs pages at the root (/config,
 //    /install-fedora); they now live under /docs/. Older moved pages keep pointing at their new place too.
 // 3. Builds the Pagefind search index into build/pagefind/ from the docs pages (data-pagefind-body).
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+// 4. Copies the reference of the three SDKs (.generated/api, written by scripts/reference.mjs) to build/reference/<language>/. Each is the
+//    native HTML of that language's reference tool, served at /reference/typescript/, /reference/python/ and /reference/rust/.
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as pagefind from "pagefind";
@@ -13,6 +15,8 @@ import * as pagefind from "pagefind";
 const site = fileURLToPath(new URL("..", import.meta.url));
 const docs = path.resolve(site, "../../docs");
 const out = path.join(site, "build");
+const api = path.join(site, ".generated/api");
+const LANGUAGES = ["typescript", "python", "rust"];
 
 function walk(dir) {
     return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
@@ -166,6 +170,15 @@ for (const file of readdirSync(path.join(out, "pagefind"))) {
     if (/^pagefind-(component-ui|modular-ui|ui|highlight)\./.test(file)) rmSync(path.join(out, "pagefind", file));
 }
 
+// 4. The reference of each SDK. A language that is missing fails the build: the three are equal entries of the site.
+for (const language of LANGUAGES) {
+    const from = path.join(api, language);
+    if (!existsSync(path.join(from, "index.html"))) {
+        throw new Error(`The ${language} reference is missing (${from}). Run \`yarn reference\` first.`);
+    }
+    cpSync(from, path.join(out, "reference", language), { recursive: true });
+}
+
 console.log(
-    `postbuild: copied ${copied} files from docs/, wrote ${redirects} redirects, indexed ${added.page_count} pages`,
+    `postbuild: copied ${copied} files from docs/, wrote ${redirects} redirects, indexed ${added.page_count} pages, copied the reference of ${LANGUAGES.join(", ")}`,
 );

@@ -315,11 +315,8 @@ function rehypeGnoblin(ctx: RenderContext) {
                 const source = hastToString(code).replace(/\n$/, "");
                 const known = (LANGS as readonly string[]).includes(lang);
                 if (lang && !known && lang !== "text") ctx.errors.push(`${ctx.file}: no highlighting for "${lang}"`);
-                // `plain` after the language keeps the label and leaves the code uncoloured. The generated API reference uses it:
-                // its pages hold thousands of lines, and colouring them costs minutes of build time and megabytes of page.
-                const plain = (code.data as { meta?: string } | undefined)?.meta === "plain";
                 const highlighted = ctx.highlighter.codeToHast(source, {
-                    lang: known && !plain ? lang : "text",
+                    lang: known ? lang : "text",
                     theme: "gnoblin",
                 });
                 const pre = highlighted.children[0] as Element;
@@ -331,13 +328,7 @@ function rehypeGnoblin(ctx: RenderContext) {
                     ]),
                 ]);
                 const preOut = el("pre", { tabIndex: 0, translate: "no" }, pre.children);
-                // A plain block is reference text: out of the search index, where its generic names (`K`, `T`) answer queries that
-                // no page is about.
-                parent.children[index] = el(
-                    "div",
-                    { className: ["code"], dataLang: lang, ...(plain ? { dataPagefindIgnore: "" } : {}) },
-                    [head, preOut],
-                );
+                parent.children[index] = el("div", { className: ["code"], dataLang: lang }, [head, preOut]);
                 return "skip";
             }
 

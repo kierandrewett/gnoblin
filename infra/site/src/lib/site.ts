@@ -15,7 +15,7 @@ export const PROJECT_LINKS = [
     { label: "Releases", href: `${REPO}/releases` },
 ];
 
-export type SiteArea = "docs" | "install" | "configure" | "shells" | "develop";
+export type SiteArea = "docs" | "install" | "configure" | "shells" | "develop" | "reference";
 
 export const SITE_NAV: { label: string; href: string; area: SiteArea }[] = [
     { label: "Docs", href: docsHref(""), area: "docs" },
@@ -23,6 +23,7 @@ export const SITE_NAV: { label: string; href: string; area: SiteArea }[] = [
     { label: "Configure", href: docsHref("config"), area: "configure" },
     { label: "Shells", href: docsHref("bring-your-own-shell"), area: "shells" },
     { label: "Develop", href: docsHref("shell-integration"), area: "develop" },
+    { label: "Reference", href: docsHref("reference"), area: "reference" },
 ];
 
 export interface System {

@@ -8,7 +8,7 @@
     "node": ">=22.17"
   },
   "scripts": {
-    "dev": "node scripts/reference.mjs --if-missing && vite dev",
+    "dev": "vite dev",
     "reference": "node scripts/reference.mjs",
     "examples": "node scripts/examples.mjs",
     "build": "node scripts/reference.mjs && node scripts/examples.mjs && vite build && node scripts/postbuild.mjs",
@@ -51,6 +51,7 @@
     "svelte": "^5.57.3",
     "svelte-check": "^4.7.7",
     "tslib": "^2.9.1",
+    "typedoc": "0.28.20",
     "typescript": "~6.0.0",
     "typescript-eslint": "^8.72.1",
     "unified": "^11.0.5",

@@ -30,6 +30,7 @@
         if (route === "/install") return "install";
         if (route === "/bingux") return "shells";
         if (!docsPage) return null;
+        if (docsPage.slug === "reference") return "reference";
         return docsPage.section ? AREA_OF_SECTION[docsPage.section] : "docs";
     });
 </script>

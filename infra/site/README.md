@@ -11,20 +11,20 @@ Use Node 22.17 or later and Yarn through Corepack:
 corepack enable
 cd infra/site
 yarn install --immutable
-yarn dev        # development server with live reload; search needs a build
+yarn dev        # development server with live reload; search and the API reference need a build
 yarn build      # writes the static site to build/
 yarn preview    # serves build/ like the Cloudflare Worker does, at http://localhost:4173
 ```
 
 `yarn build` runs four steps:
 
-1. `scripts/reference.mjs` writes the API reference pages with `cargo xtask docs-reference` (see below).
+1. `scripts/reference.mjs` makes the API reference of the three SDKs: TypeDoc, Sphinx and rustdoc (see below).
 2. `scripts/examples.mjs` checks the examples of every `::: tabs` group with `cargo xtask docs-examples`.
 3. `vite build` builds the site.
-4. `scripts/postbuild.mjs` copies files from `docs/` that are not pages, writes redirect pages for old URLs and builds the
-   Pagefind search index into `build/pagefind/`.
+4. `scripts/postbuild.mjs` copies files from `docs/` that are not pages, writes redirect pages for old URLs, builds the
+   Pagefind search index into `build/pagefind/` and copies the API reference to `build/reference/`.
 
-Steps 1 and 2 need the Rust toolchain of the repository. `yarn dev` runs step 1 when the reference pages are missing.
+Steps 1 and 2 need the Rust toolchain of the repository, and step 1 needs Python 3.11 or later too (see below).
 
 ## Checks
 
@@ -59,8 +59,11 @@ The pages are read at build time from the repository's `docs/` folder. Nothing i
   written in `markdown.ts`, and `src/lib/actions/lang-tabs.ts` selects a language for every group on the page and keeps the
   choice. The grammar is also read by `xtask/src/docs_tabs.rs`; change both together. The authoring rules are in
   `docs/documentation-site.md`.
-- The API reference (`/docs/reference/...`) is not in `docs/`. `cargo xtask docs-reference` writes it into
-  `.generated/docs` (ignored by Git) and `docs.ts` reads that folder beside `docs/`. Its sidebar entries are in `nav.ts`.
+- The API reference is not made by this app. `docs/reference/index.md` is the page that leads to it, and its sidebar entries in
+  `nav.ts` are links (`href`) to `/reference/typescript/`, `/reference/python/` and `/reference/rust/`. Each is the native HTML
+  of that language's tool, written by `scripts/reference.mjs` into `.generated/api` (ignored by Git) and copied to `build/reference/` by
+  `scripts/postbuild.mjs`. `reference/` holds the tools' own configuration: `typedoc.json`, the Sphinx `python/conf.py` with
+  its pinned `requirements.txt`, and the rustdoc `rust/header.html`. `docs/documentation-site.md` has the details.
 - `src/routes/docs/[...slug]/` renders each page at `/docs/<path>`: `docs/install-fedora.md` is
   `/docs/install-fedora` and `docs/recipes/index.md` is `/docs/recipes`.
 - Files in `docs/public/` are served at the site root and `docs/images/` at `/docs/images/`.

@@ -6,9 +6,9 @@ import { docsHref, NAV_ORDER, UNLISTED, type NavEntry } from "../nav.ts";
 import { renderMarkdown } from "./markdown.ts";
 
 export const DOCS_DIR = __DOCS_DIR__;
-/** The pages `cargo xtask docs-reference` writes (the API reference); `yarn build` runs it first. They sit beside the pages of
- *  docs/ in the page tree and are never committed. */
-export const GENERATED_DIR = __GENERATED_DIR__;
+/** The reference of each SDK, written by `scripts/reference.mjs` and copied by `scripts/postbuild.mjs` to /reference/<language>/. It is
+ *  not a docs page; a link to it from a page is checked against this list. */
+export const REFERENCE_LANGUAGES = ["typescript", "python", "rust"];
 
 function walk(root: string, dir: string): string[] {
     if (!existsSync(dir)) return [];
@@ -19,13 +19,6 @@ function walk(root: string, dir: string): string[] {
     });
 }
 
-/** Where a page's file is: docs/, or the generated pages. */
-function sourcePath(file: string): string {
-    return generatedFiles.has(file) ? path.join(GENERATED_DIR, file) : path.join(DOCS_DIR, file);
-}
-
-const generatedFiles = new Set<string>();
-
 let pages: Map<string, string> | undefined;
 /** slug -> file under docs/ ("" -> index.md). */
 export function docsPages(): Map<string, string> {
@@ -33,18 +26,8 @@ export function docsPages(): Map<string, string> {
     // index.md is the folder's page: "index.md" -> "", "recipes/index.md" -> "recipes".
     const slugOf = (file: string) => file.replace(/\.md$/, "").replace(/(^|\/)index$/, "");
     pages = new Map(walk(DOCS_DIR, DOCS_DIR).map((file) => [slugOf(file), file]));
-    for (const file of walk(GENERATED_DIR, GENERATED_DIR)) {
-        const slug = slugOf(file);
-        if (pages.has(slug)) throw new Error(`docs/${file} and the generated page ${file} are both at /docs/${slug}`);
-        generatedFiles.add(file);
-        pages.set(slug, file);
-    }
     checkSidebar(pages);
     return pages;
-}
-
-function sourceName(file: string): string {
-    return generatedFiles.has(file) ? `the generated page ${file}` : `docs/${file}`;
 }
 
 /** Every page must be in the sidebar (src/lib/nav.ts) or in UNLISTED, and every sidebar entry must exist. */
@@ -52,17 +35,10 @@ function checkSidebar(all: Map<string, string>) {
     const listed = new Set([...NAV_ORDER.map((e) => e.slug), ...UNLISTED]);
     const problems: string[] = [];
     for (const [slug, file] of all) {
-        if (!listed.has(slug))
-            problems.push(`${sourceName(file)} is not in the sidebar (src/lib/nav.ts NAV) or UNLISTED`);
+        if (!listed.has(slug)) problems.push(`docs/${file} is not in the sidebar (src/lib/nav.ts NAV) or UNLISTED`);
     }
     for (const slug of listed) {
-        if (!all.has(slug)) {
-            const generated = slug === "reference" || slug.startsWith("reference/");
-            problems.push(
-                `src/lib/nav.ts lists "${slug}", but there is no such page` +
-                    (generated ? " (the API reference is written by `yarn reference`)" : " in docs/"),
-            );
-        }
+        if (!all.has(slug)) problems.push(`src/lib/nav.ts lists "${slug}", but there is no such page in docs/`);
     }
     const seen = new Set<string>();
     for (const { slug } of NAV_ORDER) {
@@ -90,6 +66,12 @@ export function resolveDocsLink(target: string, fromFile: string): string | null
         .replace(/^\.$/, "");
     if (docsPages().has(slug)) return docsHref(slug) + hash;
 
+    // The reference of an SDK is a site of its own beside the docs: /reference/typescript/, /reference/python/, /reference/rust/.
+    const [reference, language] = rel.split("/");
+    if (reference === "reference" && language !== undefined && REFERENCE_LANGUAGES.includes(language)) {
+        return `/${rel}${hash}`;
+    }
+
     // Files other than pages: docs/public is served at the site root, anything else under /docs/.
     const clean = rel.replace(/\/$/, "");
     const isFile = (p: string) => existsSync(p) && statSync(p).isFile();
@@ -108,7 +90,7 @@ export function loadDocsPage(slug: string): Promise<DocsPage> | null {
     let page = rendered.get(slug);
     if (!page) {
         page = (async () => {
-            const source = readFileSync(sourcePath(file), "utf8");
+            const source = readFileSync(path.join(DOCS_DIR, file), "utf8");
             const md = await renderMarkdown(source, { file, docsDir: DOCS_DIR, resolveLink: resolveDocsLink });
             const at = NAV_ORDER.findIndex((e) => e.slug === slug);
             const entry = NAV_ORDER[at];
@@ -116,7 +98,6 @@ export function loadDocsPage(slug: string): Promise<DocsPage> | null {
             return {
                 slug,
                 file,
-                generated: generatedFiles.has(file),
                 ...md,
                 trail: entry ? entry.trail : [],
                 section: entry ? entry.section.id : null,

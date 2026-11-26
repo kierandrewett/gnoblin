@@ -5,3 +5,5 @@ node_modules/
 build/
 test-results/
 .generated/
+# Written by sphinx-autoapi next to its conf.py while the Python reference builds.
+reference/python/autoapi/

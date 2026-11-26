@@ -68,6 +68,9 @@
                     <a href={docsHref(item.slug)} aria-current={item.slug === current ? "page" : undefined}
                         >{item.label}</a
                     >
+                {:else if item.href !== undefined}
+                    <!-- Outside the SvelteKit app (the generated reference): a full page load. -->
+                    <a href={item.href} rel="external">{item.label}</a>
                 {/if}
             </li>
         {/each}

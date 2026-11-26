@@ -49,12 +49,12 @@
             {@html doc.body}
         </div>
         <div data-pagefind-ignore>
-            {#if !doc.generated}<EditLink file={doc.file} />{/if}
+            <EditLink file={doc.file} />
             <Pager prev={doc.prev} next={doc.next} />
         </div>
     </article>
     <div class="toc-col" data-pagefind-ignore>
-        <OnThisPage headings={doc.headings} file={doc.file} generated={doc.generated} />
+        <OnThisPage headings={doc.headings} file={doc.file} />
     </div>
 </div>
 

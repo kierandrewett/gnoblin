@@ -32,9 +32,9 @@ const PAGES = [
     "/docs/bridge/connection",
     "/docs/install-arch",
     "/docs/guides/replace-built-in-dialogs",
-    // Language tabs, and a page of the generated API reference.
+    // Language tabs, and the page that leads to the API reference of the three SDKs.
     "/docs/shell-api/idle",
-    "/docs/reference/typescript/core",
+    "/docs/reference",
     "/this-page-does-not-exist",
 ];
 const VIEWPORTS = {
@@ -122,6 +122,43 @@ for (const [vpName, viewport] of Object.entries(VIEWPORTS)) {
         }
         await context.close();
     }
+}
+
+// The API reference of each SDK is the native HTML of its tool, copied beside the pages of the site. Each opens at its stable URL,
+// loads everything it names, and has the way back to the docs and to the other two languages.
+const REFERENCES = [
+    { url: "/reference/typescript/", links: ["/reference/python/", "/reference/rust/"] },
+    { url: "/reference/python/", links: ["/reference/typescript/", "/reference/rust/"] },
+    { url: "/reference/rust/gnoblin_core/index.html", links: ["/reference/typescript/", "/reference/python/"] },
+];
+{
+    const page = await browser.newPage({ viewport: VIEWPORTS.desktop });
+    for (const { url, links } of REFERENCES) {
+        const problems = [];
+        page.removeAllListeners();
+        page.on("pageerror", (err) => problems.push(`page error: ${err.message}`));
+        page.on("requestfailed", (req) => problems.push(`request failed: ${req.url()}`));
+        page.on("response", (res) => {
+            if (res.status() >= 400) problems.push(`${res.status()}: ${res.url()}`);
+        });
+        await page.goto(base + url, { waitUntil: "networkidle" });
+        const hrefs = await page.evaluate(() =>
+            [...document.querySelectorAll("a[href]")].map((a) => a.getAttribute("href")),
+        );
+        for (const href of ["/docs/reference", ...links]) {
+            if (!hrefs.includes(href)) problems.push(`no link to ${href}`);
+        }
+        const title = await page.title();
+        if (!/gnoblin/i.test(title)) problems.push(`title is "${title}"`);
+        for (const p of problems) failures.push(`${url}: ${p}`);
+    }
+    // The sidebar of a docs page names the three, and each opens.
+    await page.goto(`${base}/docs/reference`, { waitUntil: "networkidle" });
+    for (const language of ["TypeScript", "Python", "Rust"]) {
+        const link = page.locator(`nav.sidenav a[rel="external"]`, { hasText: language });
+        if (!(await link.count())) failures.push(`/docs/reference: the sidebar has no ${language} reference link`);
+    }
+    await page.close();
 }
 
 // Search. From the home page and from a docs page, at desktop and phone sizes, light and dark: open the dialog, type,

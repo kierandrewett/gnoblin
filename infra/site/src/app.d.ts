@@ -6,8 +6,6 @@ declare global {
     const __BUILT_AT__: string;
     /** Absolute path of the repository's docs folder, set in vite.config.ts. */
     const __DOCS_DIR__: string;
-    /** Absolute path of the pages `cargo xtask docs-reference` writes (the API reference), set in vite.config.ts. */
-    const __GENERATED_DIR__: string;
 }
 
 export {};

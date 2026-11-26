@@ -4,7 +4,7 @@
     import { REPO } from "#lib/site.ts";
     import Icon from "../ui/Icon.svelte";
 
-    let { headings, file, generated = false }: { headings: Heading[]; file: string; generated?: boolean } = $props();
+    let { headings, file }: { headings: Heading[]; file: string } = $props();
 
     let active = $state("");
 
@@ -53,9 +53,7 @@
         </ul>
     {/if}
     <div class="acts">
-        {#if !generated}
-            <a href="{REPO}/edit/main/docs/{file}"><Icon name="edit" size={15} />Edit this page</a>
-        {/if}
+        <a href="{REPO}/edit/main/docs/{file}"><Icon name="edit" size={15} />Edit this page</a>
         <a href="{REPO}/issues/new"><Icon name="arrow-out" size={15} />Report a problem</a>
     </div>
 </aside>

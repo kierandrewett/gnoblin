@@ -7,6 +7,9 @@
 export interface NavItem {
     label: string;
     slug?: string;
+    /** A page that is not a docs page: a link to the generated reference of one language, which sits beside the site's pages
+     *  (`/reference/typescript/`). It has no place in the previous and next links. */
+    href?: string;
     items?: NavItem[];
 }
 
@@ -172,27 +175,9 @@ export const NAV: NavSection[] = [
                 label: "API reference",
                 slug: "reference",
                 items: [
-                    {
-                        label: "TypeScript",
-                        items: [
-                            { label: "Core", slug: "reference/typescript/core" },
-                            { label: "Std", slug: "reference/typescript/std" },
-                        ],
-                    },
-                    {
-                        label: "Python",
-                        items: [
-                            { label: "Core", slug: "reference/python/core" },
-                            { label: "Std", slug: "reference/python/std" },
-                        ],
-                    },
-                    {
-                        label: "Rust",
-                        items: [
-                            { label: "Core", slug: "reference/rust/core" },
-                            { label: "Std", slug: "reference/rust/std" },
-                        ],
-                    },
+                    { label: "TypeScript", href: "/reference/typescript/" },
+                    { label: "Python", href: "/reference/python/" },
+                    { label: "Rust", href: "/reference/rust/" },
                 ],
             },
             {
