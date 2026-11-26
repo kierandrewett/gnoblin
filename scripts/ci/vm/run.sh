@@ -36,9 +36,7 @@ cache=${CI_VM_CACHE:-$HOME/.cache/gnoblin-ci-vm}
 mkdir -p "$cache" "$out/run"
 
 # Known bugs, as `check-name|bead`. A check listed here may fail; if it passes, the run fails until the entry goes.
-EXPECTED_FAILURES=(
-    "xterm-size|gnoblin-99fu"
-)
+EXPECTED_FAILURES=()
 
 case "$distro" in
     fedora-43)
