@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use gnoblin_js::{JsRoleConfig, JsShell, JsShellConfig};
+use gnoblin_js::{JsConfigCommit, JsConfigLink, JsLinkError, JsRoleConfig, JsShell, JsShellConfig};
 use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 use tempfile::TempDir;
@@ -62,6 +62,30 @@ pub fn honest_role_config(root: impl Into<PathBuf>) -> JsRoleConfig {
     config.shell.entry_budget = HONEST_BUDGET;
     config.shell.frame_budget = HONEST_BUDGET * 2;
     config
+}
+
+/// The configuration document the compositor holds for a shell: it takes every commit and holds the last, as the compositor
+/// does, so a script that writes a document setting (a device's `sensitivity`) is not reported for having nowhere to commit
+/// it. A shell that holds one reads the document's revision on every frame it runs, as the runtime role's does.
+#[derive(Default)]
+pub struct AcceptingDocument(Vec<u8>);
+
+impl JsConfigLink for AcceptingDocument {
+    fn current(&mut self) -> Result<Option<Vec<u8>>, JsLinkError> {
+        Ok((!self.0.is_empty()).then(|| self.0.clone()))
+    }
+
+    fn commit(&mut self, document: &[u8]) -> Result<JsConfigCommit, JsLinkError> {
+        self.0 = document.to_vec();
+        Ok(JsConfigCommit {
+            revision: 1,
+            notices: Vec::new(),
+        })
+    }
+
+    fn reject(&mut self, _message: &str) -> Result<(), JsLinkError> {
+        Ok(())
+    }
 }
 
 // ---- change gating ------------------------------------------------------------------------------------------------
@@ -182,6 +206,18 @@ pub fn rig_configured(
     setup: impl FnOnce(&FakeCompositor),
     configure: impl FnOnce(&mut JsShellConfig),
 ) -> Rig {
+    rig_prepared(imports, init_body, setup, configure, |_| {})
+}
+
+/// Like [`rig_configured`], with `prepare` run on the shell after it boots and before its entry loads: a link handed to the shell,
+/// as the runtime role hands it the connection for the configuration document.
+pub fn rig_prepared(
+    imports: &str,
+    init_body: &str,
+    setup: impl FnOnce(&FakeCompositor),
+    configure: impl FnOnce(&mut JsShellConfig),
+    prepare: impl FnOnce(&mut JsShell),
+) -> Rig {
     let comp = FakeCompositor::new();
     setup(&comp);
     let dir = tempfile::tempdir().expect("a temp dir");
@@ -191,6 +227,7 @@ pub fn rig_configured(
     configure(&mut config);
     // Every rig runs over a core with the std library loaded: the stock layouts are the library's.
     let (mut shell, core) = native::shell_over_core(&comp, Arc::new(clock.clone()), config);
+    prepare(&mut shell);
     let load_diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     Rig {
         shell,
