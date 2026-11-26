@@ -387,9 +387,14 @@ fn example_17_a_std_shell_without_the_library_fails_naming_it() {
         stdout.contains("load_failed") && stdout.contains(STD_FILE),
         "the failure names the library the shell needs: {stdout}\n{stderr}"
     );
+    // The host checks for the library before the dynamic loader does, so the reason is its own: where it looked and what to do.
+    let searched = stage.without_std.display().to_string();
     assert!(
-        stdout.contains("cannot open shared object file"),
-        "and says why, in the loader's words: {stdout}"
+        stdout.contains("is not installed")
+            && stdout.contains(&searched)
+            && stdout.contains("dynamic loader's search path")
+            && stdout.contains("Install gnoblin-std"),
+        "and says why: where it looked and how to install it: {stdout}"
     );
 }
 
