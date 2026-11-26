@@ -7,7 +7,7 @@
 //
 // The wrapper clamps that colour to a valid premultiplied one (alpha 0 to 1, each channel no
 // larger than alpha), so a shader cannot add light the blend has no name for, then applies the
-// layer's tint, opacity and rounded corners as the surface pass does. A shader therefore cannot
+// layer's filter grade, tint, opacity and rounded corners as the surface pass does. A shader therefore cannot
 // draw outside the layer's silhouette.
 fn shade(local: vec2<f32>) -> vec4<f32> {
     let node = textureSampleLevel(gnoblin_tex, gnoblin_sampler, gnoblin_uv(local), 0.0);
@@ -18,7 +18,13 @@ fn shade(local: vec2<f32>) -> vec4<f32> {
     let shaded = effect(node, local, p, gnoblin_user.clock.x);
     let alpha = clamp(shaded.a, 0.0, 1.0);
     let colour = clamp(shaded.rgb, vec3<f32>(0.0), vec3<f32>(alpha));
-    let premultiplied = vec4<f32>(colour, alpha) * gnoblin.tint * gnoblin.opacity;
+    // The layer's filter grade comes after the shader, as it does after the layer's own pixels: the grade is of the
+    // straight colour, so a graded pass unpremultiplies and premultiplies again, and an identity grade skips that.
+    var graded = vec4<f32>(colour, alpha);
+    if any(gnoblin.grade.xyz != vec3<f32>(1.0)) && alpha > 0.0 {
+        graded = vec4<f32>(gnoblin_grade(colour / alpha) * alpha, alpha);
+    }
+    let premultiplied = graded * gnoblin.tint * gnoblin.opacity;
     let coverage = gnoblin_corner(local);
     return vec4<f32>(premultiplied.rgb * coverage, premultiplied.a * coverage);
 }
