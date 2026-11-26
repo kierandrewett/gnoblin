@@ -12,7 +12,7 @@ use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_core_impl::host::{self, AttachMode, TreeLinkProvider};
-use gnoblin_js::JsShell;
+use gnoblin_js::{JsRole, JsShell, ReloadReport};
 use gnoblin_runtime_js::embed::Embedded;
 use gnoblin_shell_host::supervisor::Clock;
 use gnoblin_std_dyn::StdLib;
@@ -108,6 +108,21 @@ impl CoreRig {
         self.embedded.link()
     }
 
+    /// Gives the core the compositor's owner socket for what it reaches beside the tree, as the compositor's edge does for a shell in
+    /// process: the verbs of the `gnoblin` namespace and the dialog slot (dialogs and authentication of a script).
+    pub fn reach(&self, socket: &std::path::Path) {
+        host::set_verb_link_provider(Box::new(gnoblin_core_impl::verbs::OwnerSocket::at(
+            socket.to_path_buf(),
+        )));
+        host::set_slot_link_provider(Arc::new(gnoblin_core_impl::slots::OwnerSlots::at(socket.to_path_buf())));
+    }
+
+    /// `__gnoblinObjects`, the object protocol the generated classes of `gnoblin-core` and `gnoblin-std` are written over, for every
+    /// generation of the shell.
+    pub fn object_native(&self) -> gnoblin_js::JsNative {
+        self.embedded.object_native()
+    }
+
     /// `__gnoblinStd`, for every generation of the shell.
     pub fn std_native(&self) -> gnoblin_js::JsNative {
         self.embedded.std_native()
@@ -116,6 +131,27 @@ impl CoreRig {
     /// The core's half of a frame: what the library announces and runs, and what it writes.
     pub fn dispatch(&self, shell: &JsShell) -> i32 {
         self.embedded.dispatch(shell)
+    }
+
+    /// Reloads `role` as the runtime's host does for a role built with `external_reload`: the new script is evaluated for a staged
+    /// generation of the core. When it took, the old generation's shutdown hooks run (with the shell as the way they enter), the
+    /// staged generation takes over (the old claims are released and the new ones sent behind them), and the old one is closed. Else
+    /// the staged generation is dropped and the old one serves on.
+    pub fn reload(&mut self, role: &mut JsRole) -> ReloadReport {
+        let staged = host::stage_generation("js-role", gnoblin_core_abi::LANG_TS);
+        self.embedded.belong_to(staged);
+        let report = role.reload_now();
+        if report.ok {
+            let old = std::mem::replace(&mut self.ctx, staged);
+            self.embedded.serve(staged);
+            self.embedded.enter(role.shell_mut(), || host::end_generation(old));
+            host::take_over(staged).expect("the staged generation takes over");
+            host::close_generation(old);
+        } else {
+            self.embedded.belong_to(self.ctx);
+            host::close_generation(staged);
+        }
+        report
     }
 }
 
