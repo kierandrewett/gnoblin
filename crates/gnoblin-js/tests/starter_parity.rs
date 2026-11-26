@@ -229,15 +229,16 @@ fn the_starter_is_a_short_readable_ascii_file() {
     assert!(STARTER_CONFIG.lines().all(|line| line.len() <= 120));
 }
 
-/// The recipe page shows the starter in full, and a block pasted by hand cannot drift from the file unseen.
+/// The recipe page shows the starter in full, and a block pasted by hand cannot drift from the file unseen. The page
+/// shows it as a `::: tabs` group, so the first `typescript` fence is the TypeScript file.
 #[test]
 fn the_recipe_page_shows_the_starter_file_as_it_is() {
     let page = include_str!("../../../docs/recipes/complete-starter-config.md");
-    let fence = "```ts\n";
-    let body = &page[page.find(fence).expect("the recipe has a ts block") + fence.len()..];
+    let fence = "```typescript\n";
+    let body = &page[page.find(fence).expect("the recipe has a typescript block") + fence.len()..];
     let shown = &body[..body.find("\n```\n").expect("the block closes") + 1];
     assert_eq!(
         shown, STARTER_CONFIG,
-        "paste shells/default/shell.ts into the first ts block of docs/recipes/complete-starter-config.md"
+        "paste shells/default/shell.ts into the first typescript block of docs/recipes/complete-starter-config.md"
     );
 }

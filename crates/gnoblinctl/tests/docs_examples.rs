@@ -46,7 +46,7 @@ fn examples(file: &'static str, source: &str) -> Vec<Example> {
     let mut shell_fence = false;
     for (index, raw) in source.lines().enumerate() {
         let line = index + 1;
-        if let Some(language) = fence_language(raw) {
+        if let Some((language, _)) = fence(raw) {
             if in_fence {
                 in_fence = false;
                 shell_fence = false;
@@ -77,14 +77,15 @@ fn examples(file: &'static str, source: &str) -> Vec<Example> {
     found
 }
 
-/// The language of a code fence line, or `None` when the line is not a fence.
-fn fence_language(raw: &str) -> Option<&str> {
-    let trimmed = raw.trim();
-    let rest = trimmed.strip_prefix("```")?;
-    if rest.contains(char::is_whitespace) || rest.contains('`') {
+/// The language and the options of a code fence line, such as `typescript` and `skip="reason"`, or `None` when the line
+/// is not a fence. A fence marker takes no backtick after it, so a line of inline code that starts with three is prose.
+fn fence(raw: &str) -> Option<(&str, &str)> {
+    let rest = raw.trim().strip_prefix("```")?;
+    if rest.contains('`') {
         return None;
     }
-    Some(rest)
+    let (language, options) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+    Some((language, options.trim()))
 }
 
 /// The line without a leading shell prompt, the way the docs write it.
@@ -341,7 +342,10 @@ fn markdown_files(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) {
     }
 }
 
-/// The body of every `ts` fence of a page, with the line the fence opens on.
+/// The body of every plain `typescript` fence of a page, with the line the fence opens on. The pages show each example
+/// as a `::: tabs` group of `typescript`, `python` and `rust` fences, so the other languages are passed over. A fence
+/// with options is not a shell file this test can check on its own: `skip="reason"` keeps an example on the page and
+/// out of the checks, and `client` marks a program that runs outside the shell.
 fn ts_fences(source: &str) -> Vec<(usize, String)> {
     let mut fences = Vec::new();
     let mut opened_at = 0usize;
@@ -349,7 +353,7 @@ fn ts_fences(source: &str) -> Vec<(usize, String)> {
     let mut is_ts = false;
     let mut body = String::new();
     for (index, raw) in source.lines().enumerate() {
-        if let Some(language) = fence_language(raw) {
+        if let Some((language, options)) = fence(raw) {
             if in_fence {
                 if is_ts {
                     fences.push((opened_at, std::mem::take(&mut body)));
@@ -358,7 +362,7 @@ fn ts_fences(source: &str) -> Vec<(usize, String)> {
                 is_ts = false;
             } else {
                 in_fence = true;
-                is_ts = language == "ts";
+                is_ts = language == "typescript" && options.is_empty();
                 opened_at = index + 1;
                 body.clear();
             }
@@ -382,9 +386,10 @@ fn is_whole_file(sample: &str) -> bool {
     first.starts_with("import ") || first.starts_with("export ")
 }
 
-/// Every complete `ts` sample of the config docs is a file `gnoblinctl check` accepts: it runs in the dry-run host, the
-/// shell's own library over an inert tree, so a name the shell does not export, a refused value and a throw are all
-/// failures. A sample whose first line is `// name.ts` is a file that the next complete sample of the page imports.
+/// Every complete `typescript` sample of the config docs is a file `gnoblinctl check` accepts: it runs in the dry-run
+/// host, the shell's own library over an inert tree, so a name the shell does not export, a refused value and a throw
+/// are all failures. A sample whose first line is `// name.ts` is a file that the next complete sample of the page
+/// imports.
 #[test]
 fn every_complete_typescript_sample_in_the_config_docs_checks() {
     let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../"));

@@ -724,15 +724,16 @@ fn a_node_in_an_outlet_follows_the_window_through_a_binding_without_the_script_r
 
 // ---- the three worked examples of docs/recipes/window-frame.md ----------------------------------------------------------
 
-/// The code of the first `ts` block under `## heading` of the recipes page. The tests mount the page's own code, so an
-/// example in the docs that stops working fails here.
+/// The code of the first `typescript` block under `## heading` of the recipes page, the TypeScript tab of its tab
+/// group. The tests mount the page's own code, so an example in the docs that stops working fails here.
 fn recipe(heading: &str) -> String {
     let page = include_str!("../../../docs/recipes/window-frame.md");
+    let fence = "```typescript\n";
     let at = page
         .find(&format!("## {heading}\n"))
         .unwrap_or_else(|| panic!("the page has the heading {heading}"));
     let rest = &page[at..];
-    let open = rest.find("```ts\n").expect("a code block under the heading") + "```ts\n".len();
+    let open = rest.find(fence).expect("a code block under the heading") + fence.len();
     let close = rest[open..].find("```").expect("the block ends");
     rest[open..open + close].to_owned()
 }
