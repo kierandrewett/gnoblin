@@ -823,19 +823,19 @@ fn a_placed_layer_is_drawn_only_inside_the_damage_and_over_the_flat_layers() {
 fn a_placed_pipeline_is_made_when_first_drawn_with_and_once() {
     let size = Size::new(16, 16);
     let Some(mut vulkan) = renderer(size) else { return };
-    let none = || vulkan.gpu().extras.as_ref().map_or(0, Extras::made);
+    let none = || vulkan.gpu().extras.as_ref().map_or(0, DepthExtras::made);
     assert_eq!(none(), 0, "a device that has drawn nothing has made none");
     let placed = || spatial_solid(Rect::new(0, 0, 16, 16), colour(255, 0, 0, 255), Mat4::IDENTITY, true);
     vulkan
         .draw(&layered_frame(Color::BLACK, size, vec![placed()]), Scale::IDENTITY)
         .expect("drawn");
-    let made = vulkan.gpu().extras.as_ref().map_or(0, Extras::made);
+    let made = vulkan.gpu().extras.as_ref().map_or(0, DepthExtras::made);
     assert_eq!(made, 1, "an opaque solid makes the one pipeline it draws with");
     vulkan
         .draw(&layered_frame(Color::BLACK, size, vec![placed()]), Scale::IDENTITY)
         .expect("drawn again");
     assert_eq!(
-        vulkan.gpu().extras.as_ref().map_or(0, Extras::made),
+        vulkan.gpu().extras.as_ref().map_or(0, DepthExtras::made),
         made,
         "and the next frame makes no more"
     );

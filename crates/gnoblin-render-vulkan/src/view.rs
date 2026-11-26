@@ -31,7 +31,7 @@ pub(super) const VIEW_BYTES: usize = 128;
 
 /// The uniform block of the view pass, packed as the shader reads it.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct ViewUniforms {
+pub(super) struct ViewBlock {
     /// The view's centre x, centre y, zoom and an unused slot.
     centre: [f32; 4],
     /// The output's width and height in physical pixels, then two unused slots.
@@ -44,7 +44,7 @@ pub(super) struct ViewUniforms {
     flags: [f32; 4],
 }
 
-impl ViewUniforms {
+impl ViewBlock {
     /// The block for a view and matrix over an output of `size` physical pixels, read from a top-down source.
     ///
     /// A missing view centres on the output at zoom one, which maps every pixel to itself; a missing matrix sets the flag to
@@ -287,7 +287,7 @@ mod tests {
 
     #[test]
     fn the_block_is_the_declared_size_and_flags_a_top_down_source() {
-        let bytes = ViewUniforms::new(View::new(2.0, 10.0, 20.0), None, Size::new(64, 48)).bytes();
+        let bytes = ViewBlock::new(View::new(2.0, 10.0, 20.0), None, Size::new(64, 48)).bytes();
         assert_eq!(bytes.len(), VIEW_BYTES);
         let values = floats(&bytes);
         assert_eq!(values[..3], [10.0, 20.0, 2.0], "centre and zoom");

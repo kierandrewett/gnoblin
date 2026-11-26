@@ -101,14 +101,14 @@ fn ten_windows(commit: u64) -> OutputFrame {
 }
 
 /// A timeline semaphore the test owns, which a submission waits on until it is signalled: a GPU that is slow.
-struct Gate {
+struct SlowGpuGate {
     device: ash::Device,
     semaphore: vk::Semaphore,
     opened: Arc<AtomicBool>,
 }
 
 #[allow(unsafe_code)]
-impl Gate {
+impl SlowGpuGate {
     /// Closes a gate in front of the next submission of `vulkan`.
     fn close(vulkan: &Vulkan) -> Self {
         let context = &vulkan.device.context;
@@ -155,7 +155,7 @@ impl Gate {
 }
 
 #[allow(unsafe_code)]
-impl Drop for Gate {
+impl Drop for SlowGpuGate {
     fn drop(&mut self) {
         // A test that failed with the gate shut must not leave the device waiting on it.
         self.open();
@@ -651,7 +651,7 @@ fn a_frame_returns_before_the_gpu_finishes() {
     vulkan.capture(false).expect("everything so far has finished");
     assert_eq!(vulkan.stats().frames_in_flight, 0);
     // The GPU is held back: the next frame is submitted and cannot start.
-    let gate = Gate::close(&vulkan);
+    let gate = SlowGpuGate::close(&vulkan);
     let started = Instant::now();
     vulkan
         .draw(&frame, Scale::IDENTITY)
@@ -696,7 +696,7 @@ fn a_capture_waits_for_the_gpu() {
     ))]);
     vulkan.draw(&frame, Scale::IDENTITY).expect("a warm-up frame");
     vulkan.capture(false).expect("everything so far has finished");
-    let gate = Gate::close(&vulkan);
+    let gate = SlowGpuGate::close(&vulkan);
     vulkan
         .draw(&frame, Scale::IDENTITY)
         .expect("a frame the GPU has not started");
@@ -724,7 +724,7 @@ fn a_texture_is_destroyed_only_after_its_last_frame_retires() {
     )]);
     vulkan.draw(&small, Scale::IDENTITY).expect("warm-up");
     vulkan.capture(false).expect("everything so far has finished");
-    let gate = Gate::close(&vulkan);
+    let gate = SlowGpuGate::close(&vulkan);
     vulkan
         .draw(&small, Scale::IDENTITY)
         .expect("the frame that uses the texture");
@@ -760,7 +760,7 @@ fn a_texture_is_destroyed_only_after_its_last_frame_retires() {
 #[test]
 #[allow(unsafe_code)]
 fn synchronization_validation_reports_a_race() {
-    use crate::sync::FrameSlot;
+    use crate::sync::InFlightFrame;
     let Some(vulkan) = renderer(SIZE) else { return };
     if !vulkan.validation_enabled() {
         println!("skipping: the validation layer is not installed or this is not a debug build");
@@ -769,7 +769,7 @@ fn synchronization_validation_reports_a_race() {
     let context = &vulkan.device.context;
     let buffer =
         crate::memory::VkBuffer::new(context, 256, vk::BufferUsageFlags::TRANSFER_DST, false).expect("a buffer");
-    let mut slot = FrameSlot::new(context).expect("a slot");
+    let mut slot = InFlightFrame::new(context).expect("a slot");
     slot.begin().expect("a recording");
     // Two writes to one range with nothing between them: a write-after-write hazard.
     // (the misuse follows)

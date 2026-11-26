@@ -7,7 +7,7 @@
 //! A device has one timeline semaphore. Every submission signals the next value, so a value stands for "this frame and every
 //! frame before it have finished". Three things follow:
 //!
-//! - **`draw` does not wait.** It records into the output's next [`FrameSlot`], submits and returns. Only a frame that must
+//! - **`draw` does not wait.** It records into the output's next [`InFlightFrame`], submits and returns. Only a frame that must
 //!   read back what it drew (a capture) waits, and only for its own value.
 //! - **A slot is reused when its value has passed.** An output has two slots, so at most two of its frames are in flight; the
 //!   one that has to be waited for is the older, and in a steady session it finished long ago.
@@ -20,7 +20,7 @@
 //!
 //! # Failure modes
 //!
-//! 1. **A slot's buffers are overwritten while the GPU reads them.** A slot is waited for ([`FrameSlot::begin`]) before
+//! 1. **A slot's buffers are overwritten while the GPU reads them.** A slot is waited for ([`InFlightFrame::begin`]) before
 //!    anything of it is written: `tests::a_frame_returns_before_the_gpu_finishes`.
 //! 2. **An object is destroyed under a frame that reads it.** It goes to the retire queue with the value of the last frame
 //!    that used it: `tests::a_texture_is_destroyed_only_after_its_last_frame_retires`.
@@ -157,7 +157,7 @@ fn make_query(context: &VkContext) -> Option<TimestampQuery> {
 }
 
 /// One frame's worth of resources: the command buffer, the descriptor sets and the host-visible buffers a frame writes.
-pub(super) struct FrameSlot {
+pub(super) struct InFlightFrame {
     context: Rc<VkContext>,
     pool: vk::CommandPool,
     pub(super) cmd: vk::CommandBuffer,
@@ -173,7 +173,7 @@ pub(super) struct FrameSlot {
     pub(super) value: u64,
 }
 
-impl FrameSlot {
+impl InFlightFrame {
     pub(super) fn new(context: &Rc<VkContext>) -> Result<Self, vk::Result> {
         let device = &context.device;
         let pool_info = vk::CommandPoolCreateInfo::default()
@@ -335,7 +335,7 @@ impl FrameSlot {
     /// slot starts with, and the next frame that needs more grows it again. The buffer the slot just submitted a frame with
     /// is returned for the caller to retire with that frame's value: the GPU may still be reading it.
     ///
-    /// [`FrameSlot::ensure`] only grows, so without this one large frame (a window opened at a huge size, an output
+    /// [`InFlightFrame::ensure`] only grows, so without this one large frame (a window opened at a huge size, an output
     /// supersampled and then not) keeps its host-visible memory for the life of the renderer. A buffer that cannot be
     /// replaced is kept: a trim that fails costs memory, never a frame.
     pub(super) fn trim(&mut self, staging_retain: usize) -> Option<VkBuffer> {
@@ -347,7 +347,7 @@ impl FrameSlot {
     }
 }
 
-impl Drop for FrameSlot {
+impl Drop for InFlightFrame {
     fn drop(&mut self) {
         // SAFETY: the owner waited for the slot's last frame; destroying the pool frees its command buffer.
         unsafe {
@@ -374,7 +374,7 @@ impl Drop for PoolGuard {
 
 /// The slots of one output, used in turn.
 pub(super) struct FrameRing {
-    slots: [FrameSlot; FRAMES_IN_FLIGHT],
+    slots: [InFlightFrame; FRAMES_IN_FLIGHT],
     /// The slot the next frame records into.
     next: usize,
 }
@@ -382,7 +382,7 @@ pub(super) struct FrameRing {
 impl FrameRing {
     pub(super) fn new(context: &Rc<VkContext>) -> Result<Self, vk::Result> {
         Ok(Self {
-            slots: [FrameSlot::new(context)?, FrameSlot::new(context)?],
+            slots: [InFlightFrame::new(context)?, InFlightFrame::new(context)?],
             next: 0,
         })
     }
@@ -395,18 +395,18 @@ impl FrameRing {
     }
 
     /// A slot.
-    pub(super) fn slot(&self, index: usize) -> &FrameSlot {
+    pub(super) fn slot(&self, index: usize) -> &InFlightFrame {
         &self.slots[index]
     }
 
     /// A slot, to record into.
-    pub(super) fn slot_mut(&mut self, index: usize) -> &mut FrameSlot {
+    pub(super) fn slot_mut(&mut self, index: usize) -> &mut InFlightFrame {
         &mut self.slots[index]
     }
 
     /// The host-visible bytes every slot holds.
     pub(super) fn bytes(&self) -> u64 {
-        self.slots.iter().map(FrameSlot::bytes).fold(0, u64::saturating_add)
+        self.slots.iter().map(InFlightFrame::bytes).fold(0, u64::saturating_add)
     }
 
     /// The value of the newest frame any slot has submitted: what the output waits for before it is destroyed.

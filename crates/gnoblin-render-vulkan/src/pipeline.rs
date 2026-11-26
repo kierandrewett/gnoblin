@@ -365,7 +365,7 @@ impl Pipelines {
 
 /// The depth and stencil state of a pipeline drawn into a render pass that has a depth-stencil attachment.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Depth {
+pub(super) struct DepthState {
     /// Whether a fragment is tested against the depth buffer.
     pub test: bool,
     /// Whether a fragment that passes writes its depth.
@@ -379,15 +379,15 @@ pub(super) struct Depth {
 /// What a pipeline differs in from the shipped ones: the render pass it draws in, whether it blends and writes colour, and the
 /// depth and stencil state.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Variant {
+pub(super) struct PipelineVariant {
     pub render_pass: vk::RenderPass,
     pub blend: bool,
     pub write_colour: bool,
     /// `Some` when `render_pass` has a depth-stencil attachment.
-    pub depth: Option<Depth>,
+    pub depth: Option<DepthState>,
 }
 
-impl Variant {
+impl PipelineVariant {
     /// The shipped state: premultiplied blending into `render_pass`, which has only colour.
     pub(super) fn colour(render_pass: vk::RenderPass) -> Self {
         Self {
@@ -418,7 +418,7 @@ pub(super) struct GraphicsContext {
 impl GraphicsContext {
     /// One pipeline for each of `fragments`; see [`Pipelines::graphics`].
     pub(super) fn build(&self, fragments: &[vk::ShaderModule]) -> Result<Vec<vk::Pipeline>, VulkanError> {
-        self.build_with(fragments, &Variant::colour(self.render_pass))
+        self.build_with(fragments, &PipelineVariant::colour(self.render_pass))
     }
 
     /// One pipeline for each of `fragments` in the state `variant` says: another render pass, no blending, a depth or stencil
@@ -426,7 +426,7 @@ impl GraphicsContext {
     pub(super) fn build_with(
         &self,
         fragments: &[vk::ShaderModule],
-        variant: &Variant,
+        variant: &PipelineVariant,
     ) -> Result<Vec<vk::Pipeline>, VulkanError> {
         let device = &self.device;
         let entry = c"gnoblin_entry";

@@ -14,7 +14,7 @@
 //!
 //! # What is counted
 //!
-//! [`Counters`] hold what [`Stats`](crate::Stats) reports. They are `Cell`s: the renderer is single-threaded, and the
+//! [`RenderCounters`] hold what [`Stats`](crate::Stats) reports. They are `Cell`s: the renderer is single-threaded, and the
 //! shader worker thread touches only the pipelines.
 //!
 //! # Failure modes
@@ -46,7 +46,7 @@ const HOST_BLOCK: u64 = 16 << 20;
 
 /// What the renderer counts, for [`Stats`](crate::Stats) and for the tests that assert a frame did nothing.
 #[derive(Default)]
-pub(super) struct Counters {
+pub(super) struct RenderCounters {
     /// Queue submissions.
     pub submits: Cell<u64>,
     /// Bytes copied into the staging buffers for textures.
@@ -63,7 +63,7 @@ pub(super) struct Counters {
     pub images_destroyed: Cell<u64>,
 }
 
-impl Counters {
+impl RenderCounters {
     /// Adds `by` to a counter.
     pub(super) fn add(counter: &Cell<u64>, by: u64) {
         counter.set(counter.get().saturating_add(by));
@@ -74,7 +74,7 @@ impl Counters {
 pub(super) struct Memory {
     /// `None` once the device is going away.
     allocator: RefCell<Option<Allocator>>,
-    pub(super) counters: Counters,
+    pub(super) counters: RenderCounters,
 }
 
 impl Memory {
@@ -95,7 +95,7 @@ impl Memory {
         .map_err(|_| VulkanError::driver("gpu-allocator", vk::Result::ERROR_INITIALIZATION_FAILED))?;
         Ok(Self {
             allocator: RefCell::new(Some(allocator)),
-            counters: Counters::default(),
+            counters: RenderCounters::default(),
         })
     }
 
@@ -128,9 +128,9 @@ impl Memory {
                 _ => vk::Result::ERROR_UNKNOWN,
             })?;
         if allocator.capacity() > before {
-            Counters::add(&self.counters.device_allocations, 1);
+            RenderCounters::add(&self.counters.device_allocations, 1);
         }
-        Counters::add(&self.counters.allocated, allocation.size());
+        RenderCounters::add(&self.counters.allocated, allocation.size());
         Ok(allocation)
     }
 
@@ -413,7 +413,7 @@ impl VkImage {
         };
         match view {
             Ok(view) => {
-                Counters::add(&context.memory.counters.images_created, 1);
+                RenderCounters::add(&context.memory.counters.images_created, 1);
                 Ok(Self {
                     context: Rc::clone(context),
                     raw,
@@ -475,7 +475,7 @@ impl Drop for VkImage {
         if let Some(allocation) = self.allocation.take() {
             self.context.memory.free(allocation);
         }
-        Counters::add(&self.context.memory.counters.images_destroyed, 1);
+        RenderCounters::add(&self.context.memory.counters.images_destroyed, 1);
     }
 }
 

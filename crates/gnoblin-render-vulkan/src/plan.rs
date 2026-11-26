@@ -272,7 +272,7 @@ pub(super) fn plan_into(
                     if quad.is_empty() {
                         continue;
                     }
-                    let parts = Parts::new(
+                    let parts = EffectParts::new(
                         quad,
                         solid.corner_radius,
                         solid.silhouette,
@@ -318,7 +318,7 @@ pub(super) fn plan_into(
                     if quad.is_empty() {
                         continue;
                     }
-                    let parts = Parts::new(
+                    let parts = EffectParts::new(
                         quad,
                         surface.corner_radius,
                         surface.silhouette,
@@ -671,7 +671,7 @@ impl Draws {
 const MAX_RADIUS: f32 = 4096.0;
 
 /// One flat layer's geometry and paint, in physical pixels, as its effects read it.
-struct Parts<'a> {
+struct EffectParts<'a> {
     /// The rectangle the layer covers.
     quad: Rect,
     /// The corner radius.
@@ -690,7 +690,7 @@ struct Parts<'a> {
     factor: f32,
 }
 
-impl<'a> Parts<'a> {
+impl<'a> EffectParts<'a> {
     fn new(
         quad: Rect,
         corner_radius: f32,
@@ -759,7 +759,7 @@ fn tinted(colour: Color, tint: Color) -> Color {
 /// The layer's backdrop blur and filter blur are not drawn here.
 impl Draws {
     /// The effects that sit under the layer's content.
-    fn under(&mut self, built: &mut FramePlan, damage: Rect, parts: &Parts<'_>) {
+    fn under(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>) {
         for pass in parts.effects.passes() {
             if let Pass::Shadow(shadow) = pass
                 && !shadow.inset
@@ -786,7 +786,7 @@ impl Draws {
     }
 
     /// The effects that sit over the layer's content.
-    fn over(&mut self, built: &mut FramePlan, damage: Rect, parts: &Parts<'_>) {
+    fn over(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>) {
         for pass in parts.effects.passes() {
             if let Pass::Border(border) = pass {
                 self.border(built, damage, parts, border);
@@ -799,7 +799,7 @@ impl Draws {
     ///
     /// The offset and the spread are whole pixels, as the GLES renderer rounds them, and the shader finds the shape by
     /// shrinking the quad by the blur it was grown by.
-    fn shadow(&mut self, built: &mut FramePlan, damage: Rect, parts: &Parts<'_>, shadow: &Shadow) {
+    fn shadow(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>, shadow: &Shadow) {
         let factor = parts.factor;
         let blur = (shadow.blur * factor).clamp(1.0, MAX_RADIUS);
         let grow = blur.round() as i32 + (shadow.spread * factor).round() as i32;
@@ -822,7 +822,7 @@ impl Draws {
     }
 
     /// The background: one colour filling the layer, rounded like its content.
-    fn background(&mut self, built: &mut FramePlan, damage: Rect, parts: &Parts<'_>, color: Color) {
+    fn background(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>, color: Color) {
         if color.a <= 0.0 || !parts.quad.intersects(damage) {
             return;
         }
@@ -835,7 +835,7 @@ impl Draws {
     }
 
     /// An inset shadow, inside the layer's shape and clipped to the layer's rectangle.
-    fn inset_shadow(&mut self, built: &mut FramePlan, damage: Rect, parts: &Parts<'_>, shadow: &Shadow) {
+    fn inset_shadow(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>, shadow: &Shadow) {
         let Some(visible) = parts.quad.intersection(damage) else {
             return;
         };
@@ -857,7 +857,7 @@ impl Draws {
     /// A border: the band between `offset` and `offset + width` of signed distance from the shape's edge, outside it or,
     /// for an inset one, inside it. The quad is the shape grown by how far the ring reaches, and a pixel more for the
     /// antialiased fringe.
-    fn border(&mut self, built: &mut FramePlan, damage: Rect, parts: &Parts<'_>, border: &Border) {
+    fn border(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>, border: &Border) {
         let width = border.width * parts.factor;
         if width <= 0.0 || border.color.a <= 0.0 {
             return;
@@ -1075,7 +1075,10 @@ mod tests {
             planned.models_end, 1,
             "the placed layer is the one draw before the overlay"
         );
-        assert_eq!(planned.draws[0].variant.class, super::super::spatial::Class::Opaque);
+        assert_eq!(
+            planned.draws[0].variant.class,
+            super::super::spatial::DepthClass::Opaque
+        );
         assert_eq!(planned.instances[18], 1.0, "its quad is flagged as projected");
     }
 

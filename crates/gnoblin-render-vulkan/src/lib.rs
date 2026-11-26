@@ -139,7 +139,7 @@
 //!     and the picture a frame samples stays the display's: `tests::views::a_capture_reads_the_scenes_redacted_eyes`.
 //! 16. **A device has no depth-stencil format.** A layer with a model is not drawn and `unsupported-3d` is logged once; no
 //!     View is drawn (its layer is skipped, as in 14); the view pass and the downsample are not drawn either, because their
-//!     pipelines are made with the depth pass's (`Extras`). Every device the renderer has been run on has `D24S8` or `D32S8`.
+//!     pipelines are made with the depth pass's (`DepthExtras`). Every device the renderer has been run on has `D24S8` or `D32S8`.
 //!
 //! # Byte order
 //!
@@ -189,7 +189,7 @@ use context::VkContext;
 use frame::{RenderTarget, Saved};
 use memory::{VkBuffer, VkImage};
 use pipeline::{Compiled, Pipelines, ShaderPipelines, ShaderSources};
-use spatial::{DepthTarget, Extras};
+use spatial::{DepthExtras, DepthTarget};
 use subtree::ViewStore;
 use sync::{FrameRing, MIN_BUFFER, RetireQueue};
 use textures::TextureCache;
@@ -251,7 +251,7 @@ pub struct VulkanDevice {
     pipelines: Pipelines,
     /// The depth-stencil pass and the pipelines of 3D layers, Views and the whole-target passes; `None` on a device with no
     /// depth-stencil format to draw into.
-    extras: Option<Extras>,
+    extras: Option<DepthExtras>,
     /// The unit quad every draw scales to its rectangle.
     quad: VkBuffer,
     /// Set when the device was lost; every output on it returns [`RenderError::Lost`].
@@ -294,7 +294,7 @@ impl VulkanDevice {
         let bytes: Vec<u8> = corners.iter().flat_map(|value| value.to_ne_bytes()).collect();
         quad.write(0, &bytes);
         let extras = match context.depth_format {
-            Some(format) => Some(Extras::new(&context, format)?),
+            Some(format) => Some(DepthExtras::new(&context, format)?),
             None => None,
         };
         Ok(Rc::new(Self {

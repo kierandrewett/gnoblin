@@ -42,7 +42,7 @@ use ash::ext::{debug_utils, validation_features};
 use ash::{Device, Entry, Instance, vk};
 
 use super::error::VulkanError;
-use super::memory::{Counters, Memory};
+use super::memory::{Memory, RenderCounters};
 use super::pipeline::PipelineCacheLocation;
 use super::sync::Timeline;
 
@@ -402,7 +402,7 @@ impl VkContext {
         // state and everything it uses stays alive until the value is reached.
         unsafe { self.device.queue_submit(self.queue, &[submit], vk::Fence::null()) }?;
         self.timeline.record(value);
-        Counters::add(&self.memory.counters.submits, 1);
+        RenderCounters::add(&self.memory.counters.submits, 1);
         Ok(value)
     }
 

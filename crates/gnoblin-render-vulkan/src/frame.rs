@@ -1,7 +1,7 @@
 #![allow(unsafe_code)]
 //! Recording a frame, submitting it and reading the target back.
 //!
-//! A frame is recorded into one [`FrameSlot`](super::sync::FrameSlot) of the output, submitted once, and not waited for:
+//! A frame is recorded into one [`InFlightFrame`](super::sync::InFlightFrame) of the output, submitted once, and not waited for:
 //! `draw` returns when the frame is on the queue. The output has two slots, so a second frame can be recorded while the
 //! first runs, and the slot a frame needs is waited for only when its previous frame has not finished, which in a steady
 //! session it has. What a frame in flight reads is kept alive until the timeline passes its value (`sync.rs`).
@@ -64,10 +64,10 @@ use super::plan::{
     ChainStep, DrawBatch, FramePlan, PassKind, PlanTarget, PlannedDraw, ShaderUse, Shaders, TextureSizes, TextureSlot,
     UNIFORM_STRIDE, chain, damage_of, overlay_of, plan, plan_into, quad_of,
 };
-use super::spatial::{Base, Class, DepthTarget, Replace};
-use super::subtree::{Outcome, SceneTextures, ViewRequest, plan_scene, scene_surfaces, scene_views};
-use super::sync::{FrameSlot, STAMP_QUERIES, TimestampQuery};
-use super::textures::{Frame, Prepared, Source, Wanted, colour_layers, write_texture_set};
+use super::spatial::{DepthClass, DepthTarget, QuadBase, Replace};
+use super::subtree::{EnsureOutcome, SceneTextures, ViewRequest, plan_scene, scene_surfaces, scene_views};
+use super::sync::{InFlightFrame, STAMP_QUERIES, TimestampQuery};
+use super::textures::{CacheFrame, Prepared, TextureSource, Wanted, colour_layers, write_texture_set};
 use super::view::{self, WholePass};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::{BackdropInput, Layer, OutputFrame, Surface, SurfaceSource};
@@ -243,7 +243,7 @@ enum Job {
 }
 
 /// The view pass of a frame: the scratch image the finished output is copied into and the pass that draws it back.
-struct Filter {
+struct ViewPass {
     image: vk::Image,
     view: vk::ImageView,
     pipeline: vk::Pipeline,
@@ -262,7 +262,7 @@ struct FrameRecording<'a> {
     /// The pictures of the Views the frame samples, by View.
     views: Vec<(u64, vk::ImageView)>,
     /// The view pass, when the frame has a magnifier or colour matrix that changes a pixel.
-    filter: Option<Filter>,
+    filter: Option<ViewPass>,
     /// The framebuffer over the output's target and its depth-stencil image, when the frame has layers a matrix places and
     /// the device can draw them.
     models: Option<vk::Framebuffer>,
@@ -272,14 +272,14 @@ struct FrameRecording<'a> {
 
 /// What a render pass draws into.
 #[derive(Clone, Copy)]
-struct Target {
+struct PassTarget {
     framebuffer: vk::Framebuffer,
     size: Size,
-    /// Whether the framebuffer has a depth-stencil image, which makes the pass [`Extras::render_pass`].
+    /// Whether the framebuffer has a depth-stencil image, which makes the pass [`DepthExtras::render_pass`].
     depth: bool,
 }
 
-impl Target {
+impl PassTarget {
     /// A target with colour only.
     fn plain(framebuffer: vk::Framebuffer, size: Size) -> Self {
         Self {
@@ -344,7 +344,7 @@ struct FrameObjects {
 
 impl Vulkan {
     /// The slot the frame being recorded uses.
-    pub(super) fn slot(&self) -> &FrameSlot {
+    pub(super) fn slot(&self) -> &InFlightFrame {
         self.ring.slot(self.active)
     }
 
@@ -483,8 +483,8 @@ impl Vulkan {
                 store.retire_except(&alive, &mut retire);
             }
             for request in requests {
-                if store.ensure(*request, &device.context, device.extras.as_ref(), value, &mut retire) == Outcome::Draw
-                {
+                let outcome = store.ensure(*request, &device.context, device.extras.as_ref(), value, &mut retire);
+                if outcome == EnsureOutcome::Draw {
                     drawn.push((request.scene.id(), request.capture));
                     fresh.push(*request);
                 }
@@ -532,7 +532,7 @@ impl Vulkan {
         }
         let prepared = device.textures.borrow_mut().prepare(
             wanted,
-            &mut Frame {
+            &mut CacheFrame {
                 context: &device.context,
                 pipelines: &device.pipelines,
                 slot: self.ring.slot_mut(self.active),
@@ -684,7 +684,7 @@ impl Vulkan {
 
     /// The view pass of a frame with a magnifier or a colour matrix: its block and quad joined to `batch`, and the scratch
     /// image and pipeline it draws with. `None`, logged, when the device cannot make them: the frame is drawn unfiltered.
-    fn make_filter(&mut self, frame: &OutputFrame, batch: &mut DrawBatch) -> Option<Filter> {
+    fn make_filter(&mut self, frame: &OutputFrame, batch: &mut DrawBatch) -> Option<ViewPass> {
         let device = Rc::clone(&self.device);
         let extras = device.extras.as_ref()?;
         let pipeline = match extras.replacing(&device.pipelines, Replace::View) {
@@ -716,8 +716,8 @@ impl Vulkan {
             }
         }
         let scratch = self.scratch.as_ref()?;
-        let block = view::ViewUniforms::new(frame.view(), frame.colour_matrix(), self.physical).bytes();
-        Some(Filter {
+        let block = view::ViewBlock::new(frame.view(), frame.colour_matrix(), self.physical).bytes();
+        Some(ViewPass {
             image: scratch.raw(),
             view: scratch.view(),
             pipeline,
@@ -909,19 +909,19 @@ impl Vulkan {
         let context = Rc::clone(&self.device.context);
         let instance_bytes: Vec<u8> = batch.instances.iter().flat_map(|value| value.to_ne_bytes()).collect();
         let slot = self.ring.slot_mut(self.active);
-        FrameSlot::ensure(
+        InFlightFrame::ensure(
             &context,
             &mut slot.uniforms,
             batch.uniforms.len().max(UNIFORM_STRIDE),
             vk::BufferUsageFlags::UNIFORM_BUFFER,
         )?;
-        FrameSlot::ensure(
+        InFlightFrame::ensure(
             &context,
             &mut slot.user_uniforms,
             batch.user.len().max(UNIFORM_STRIDE),
             vk::BufferUsageFlags::UNIFORM_BUFFER,
         )?;
-        FrameSlot::ensure(
+        InFlightFrame::ensure(
             &context,
             &mut slot.instances,
             instance_bytes.len().max(16),
@@ -1047,7 +1047,7 @@ impl Vulkan {
                     }];
                     self.to_drawn(*colour);
                     self.pass(
-                        Target {
+                        PassTarget {
                             framebuffer: *framebuffer,
                             size: *size,
                             depth: true,
@@ -1081,7 +1081,7 @@ impl Vulkan {
                     ];
                     self.to_drawn(target.image.raw());
                     self.pass(
-                        Target::plain(target.framebuffer, size),
+                        PassTarget::plain(target.framebuffer, size),
                         &clears,
                         &plan.draws[..plan.layers_end],
                         &bindings,
@@ -1100,7 +1100,7 @@ impl Vulkan {
                     }];
                     self.to_drawn(target.image.raw());
                     self.pass(
-                        Target::plain(target.framebuffer, size),
+                        PassTarget::plain(target.framebuffer, size),
                         &clears,
                         &step.plan.draws,
                         &bindings,
@@ -1116,7 +1116,7 @@ impl Vulkan {
                 colour: background,
                 rects: &planned.damage,
             }];
-            let target = Target::plain(self.target.framebuffer, self.physical);
+            let target = PassTarget::plain(self.target.framebuffer, self.physical);
             self.pass(
                 target,
                 &main,
@@ -1129,7 +1129,7 @@ impl Vulkan {
             {
                 // The layers a matrix places are tested against a depth buffer cleared for this pass, over what the flat
                 // layers drew.
-                let placed = Target {
+                let placed = PassTarget {
                     framebuffer,
                     size: self.physical,
                     depth: true,
@@ -1353,12 +1353,12 @@ impl Vulkan {
 
     /// Records one render pass into `target`: the clears, then the draws.
     ///
-    /// A target with a depth-stencil image runs [`Extras::render_pass`], which clears depth to one and stencil to zero, and its
+    /// A target with a depth-stencil image runs [`DepthExtras::render_pass`], which clears depth to one and stencil to zero, and its
     /// draws use the pipeline of their pass kind and class; a draw of a shell's shader has none there and is skipped. A draw
     /// that names a viewport (a View's eye) sets it, and a draw with a stencil class sets its reference.
     fn pass(
         &self,
-        target: Target,
+        target: PassTarget,
         clears: &[Clear<'_>],
         draws: &[PlannedDraw],
         bindings: &Bindings<'_>,
@@ -1432,7 +1432,11 @@ impl Vulkan {
             let mut bound = None;
             let mut eye = false;
             for draw in draws {
-                let class = if target.depth { draw.variant.class } else { Class::Flat };
+                let class = if target.depth {
+                    draw.variant.class
+                } else {
+                    DepthClass::Flat
+                };
                 if bound != Some((draw.kind, class)) {
                     let pipeline = match (draw.kind, extras.filter(|_| target.depth)) {
                         (PassKind::Solid, None) => pipelines.solid,
@@ -1440,8 +1444,8 @@ impl Vulkan {
                         (PassKind::Shadow, None) => pipelines.shadow,
                         (PassKind::InsetShadow, None) => pipelines.inset_shadow,
                         (PassKind::Border, None) => pipelines.border,
-                        (PassKind::Solid, Some(extras)) => extras.placed(pipelines, Base::Solid, class),
-                        (PassKind::Surface, Some(extras)) => extras.placed(pipelines, Base::Surface, class),
+                        (PassKind::Solid, Some(extras)) => extras.placed(pipelines, QuadBase::Solid, class),
+                        (PassKind::Surface, Some(extras)) => extras.placed(pipelines, QuadBase::Surface, class),
                         // A shadow, an inset shadow and a border are not drawn on a placed layer, as on GLES.
                         (PassKind::Shadow | PassKind::InsetShadow | PassKind::Border, Some(_)) => continue,
                         (PassKind::User(key), None) => match bindings.pipelines.iter().find(|(held, _)| *held == key) {
@@ -1694,7 +1698,7 @@ fn wanted<'a>(frame: &'a OutputFrame, shaders: &Shaders) -> Vec<Wanted<'a>> {
                     let pixel = premultiplied(solid.colour).map(|value| (value * 255.0).round() as u8);
                     found.push(Wanted {
                         slot: TextureSlot::Layer(index),
-                        source: Source::Pixel(pixel),
+                        source: TextureSource::Pixel(pixel),
                         key: None,
                     });
                 }
@@ -1714,14 +1718,14 @@ fn wanted<'a>(frame: &'a OutputFrame, shaders: &Shaders) -> Vec<Wanted<'a>> {
     if let Some(overlay) = overlay_of(frame) {
         found.push(Wanted {
             slot: TextureSlot::Overlay,
-            source: Source::Bitmap(overlay.image()),
+            source: TextureSource::Bitmap(overlay.image()),
             key: None,
         });
     }
     if let Some(cursor) = frame.cursor() {
         found.push(Wanted {
             slot: TextureSlot::Cursor,
-            source: Source::Bitmap(cursor.image()),
+            source: TextureSource::Bitmap(cursor.image()),
             key: None,
         });
     }
@@ -1729,13 +1733,13 @@ fn wanted<'a>(frame: &'a OutputFrame, shaders: &Shaders) -> Vec<Wanted<'a>> {
 }
 
 /// What a surface layer's texture is made from, or `None` for a View's, which the renderer drew itself.
-pub(super) fn surface_source(surface: &Surface) -> Option<Source<'_>> {
+pub(super) fn surface_source(surface: &Surface) -> Option<TextureSource<'_>> {
     match &surface.source {
-        SurfaceSource::Buffer(buffer) => Some(Source::Shm(buffer)),
+        SurfaceSource::Buffer(buffer) => Some(TextureSource::Shm(buffer)),
         // A snapshot is premultiplied pixels already, the same as the overlay bitmap.
-        SurfaceSource::Snapshot(image) => Some(Source::Bitmap(image)),
+        SurfaceSource::Snapshot(image) => Some(TextureSource::Bitmap(image)),
         // A linear dmabuf is mapped and read (`dmabuf.rs`); one the renderer cannot read is skipped when its shape is asked.
-        SurfaceSource::Dmabuf(dmabuf) => Some(Source::Dmabuf(dmabuf)),
+        SurfaceSource::Dmabuf(dmabuf) => Some(TextureSource::Dmabuf(dmabuf)),
         SurfaceSource::View(_) => None,
     }
 }

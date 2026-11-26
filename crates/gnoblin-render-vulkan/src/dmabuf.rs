@@ -29,7 +29,7 @@ use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::dmabuf::{DmabufMappingMode, DmabufSyncFlags};
 use smithay::backend::allocator::{Buffer, Modifier};
 
-use super::formats::{Layout, blue_first, layout};
+use super::formats::{FormatLayout, blue_first, layout};
 
 /// Why a dmabuf cannot be read or written.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -68,7 +68,7 @@ impl std::error::Error for DmabufError {}
 pub(super) struct Linear {
     pub width: u32,
     pub height: u32,
-    pub layout: Layout,
+    pub layout: FormatLayout,
     pub stride: usize,
     pub inverted: bool,
 }

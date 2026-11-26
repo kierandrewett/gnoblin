@@ -54,7 +54,7 @@ use super::frame::Resting;
 use super::memory::VkImage;
 use super::plan::{Draws, FramePlan, PassKind, PlanTarget, TextureSlot, quad_of, texture_mapping};
 use super::spatial::{
-    DepthTarget, DrawVariant, Extras, MAX_CLIP_DEPTH, Placed, layer_dst, layer_model, place, screen_matrix,
+    DepthExtras, DepthTarget, DrawVariant, MAX_CLIP_DEPTH, Placed, layer_dst, layer_model, place, screen_matrix,
 };
 use super::sync::RetireQueue;
 use crate::log;
@@ -69,14 +69,14 @@ pub(super) struct ViewRequest<'a> {
 }
 
 /// What the store holds of one picture: its two images.
-struct Picture {
+struct PictureImages {
     // The framebuffer is destroyed before the images it is over.
     depth: DepthTarget,
     colour: VkImage,
 }
 
-impl Picture {
-    fn new(context: &Rc<VkContext>, extras: &Extras, size: Size) -> Result<Self, vk::Result> {
+impl PictureImages {
+    fn new(context: &Rc<VkContext>, extras: &DepthExtras, size: Size) -> Result<Self, vk::Result> {
         let colour = VkImage::new(
             context,
             size.width,
@@ -94,10 +94,10 @@ impl Picture {
     }
 }
 
-enum Slot {
+enum ViewSlot {
     /// The picture, drawn at `revision`, last used by the frame that signals `used`.
     Ready {
-        picture: Box<Picture>,
+        picture: Box<PictureImages>,
         revision: u64,
         used: u64,
     },
@@ -107,7 +107,7 @@ enum Slot {
 
 /// What [`ViewStore::ensure`] decided for a request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Outcome {
+pub(super) enum EnsureOutcome {
     /// The picture holds the scene's revision already.
     Current,
     /// The picture is to be drawn by the frame being recorded.
@@ -127,7 +127,7 @@ pub(super) struct PictureHandles {
 /// The pictures of the Views a device has drawn, by View and whether the picture is the capture variant.
 #[derive(Default)]
 pub(super) struct ViewStore {
-    slots: HashMap<(u64, bool), Slot>,
+    slots: HashMap<(u64, bool), ViewSlot>,
     /// How many scenes were drawn, which a test reads to prove an unchanged View costs nothing.
     drawn: u64,
 }
@@ -142,7 +142,7 @@ impl ViewStore {
     pub(super) fn len(&self) -> usize {
         self.slots
             .values()
-            .filter(|slot| matches!(slot, Slot::Ready { .. }))
+            .filter(|slot| matches!(slot, ViewSlot::Ready { .. }))
             .count()
     }
 
@@ -151,8 +151,10 @@ impl ViewStore {
         self.slots
             .values()
             .filter_map(|slot| match slot {
-                Slot::Ready { picture, .. } => Some(picture.colour.bytes().saturating_add(picture.depth.depth.bytes())),
-                Slot::Refused { .. } => None,
+                ViewSlot::Ready { picture, .. } => {
+                    Some(picture.colour.bytes().saturating_add(picture.depth.depth.bytes()))
+                }
+                ViewSlot::Refused { .. } => None,
             })
             .fold(0, u64::saturating_add)
     }
@@ -160,10 +162,10 @@ impl ViewStore {
     /// The view and size of a View's display picture, when the store holds one.
     pub(super) fn sampled(&self, id: u64) -> Option<(vk::ImageView, (u32, u32))> {
         match self.slots.get(&(id, false))? {
-            Slot::Ready { picture, .. } => {
+            ViewSlot::Ready { picture, .. } => {
                 Some((picture.colour.view(), (picture.colour.width(), picture.colour.height())))
             }
-            Slot::Refused { .. } => None,
+            ViewSlot::Refused { .. } => None,
         }
     }
 
@@ -176,18 +178,18 @@ impl ViewStore {
     /// The handles to draw into a picture, or to read it.
     pub(super) fn handles(&self, key: (u64, bool)) -> Option<PictureHandles> {
         match self.slots.get(&key)? {
-            Slot::Ready { picture, .. } => Some(PictureHandles {
+            ViewSlot::Ready { picture, .. } => Some(PictureHandles {
                 colour: picture.colour.raw(),
                 framebuffer: picture.depth.framebuffer,
                 size: picture.size(),
             }),
-            Slot::Refused { .. } => None,
+            ViewSlot::Refused { .. } => None,
         }
     }
 
     /// Notes that the frame signalling `value` samples the display picture of `id`.
     pub(super) fn touch(&mut self, id: u64, value: u64) {
-        if let Some(Slot::Ready { used, .. }) = self.slots.get_mut(&(id, false)) {
+        if let Some(ViewSlot::Ready { used, .. }) = self.slots.get_mut(&(id, false)) {
             *used = (*used).max(value);
         }
     }
@@ -210,7 +212,7 @@ impl ViewStore {
 
     fn remove(&mut self, keys: &[(u64, bool)], retire: &mut RetireQueue) {
         for key in keys {
-            if let Some(Slot::Ready { picture, used, .. }) = self.slots.remove(key) {
+            if let Some(ViewSlot::Ready { picture, used, .. }) = self.slots.remove(key) {
                 retire.push(used, picture);
             }
         }
@@ -223,30 +225,30 @@ impl ViewStore {
         &mut self,
         request: ViewRequest<'_>,
         context: &Rc<VkContext>,
-        extras: Option<&Extras>,
+        extras: Option<&DepthExtras>,
         value: u64,
         retire: &mut RetireQueue,
-    ) -> Outcome {
+    ) -> EnsureOutcome {
         let scene = request.scene;
         let key = (scene.id(), request.capture);
         match self.slots.get_mut(&key) {
-            Some(Slot::Ready {
+            Some(ViewSlot::Ready {
                 picture,
                 revision,
                 used,
             }) if *revision == scene.revision() && picture.size() == scene.size() => {
                 *used = (*used).max(value);
-                return Outcome::Current;
+                return EnsureOutcome::Current;
             }
-            Some(Slot::Refused { revision, size }) if *revision == scene.revision() && *size == scene.size() => {
-                return Outcome::Refused;
+            Some(ViewSlot::Refused { revision, size }) if *revision == scene.revision() && *size == scene.size() => {
+                return EnsureOutcome::Refused;
             }
             _ => {}
         }
         // A picture of the wrong size is replaced, not resized: its pixels are of another picture.
         let kept = match self.slots.remove(&key) {
-            Some(Slot::Ready { picture, used, .. }) if picture.size() == scene.size() => Some((picture, used)),
-            Some(Slot::Ready { picture, used, .. }) => {
+            Some(ViewSlot::Ready { picture, used, .. }) if picture.size() == scene.size() => Some((picture, used)),
+            Some(ViewSlot::Ready { picture, used, .. }) => {
                 retire.push(used, picture);
                 None
             }
@@ -255,7 +257,7 @@ impl ViewStore {
         let made = match (kept, extras) {
             (Some((picture, used)), _) => Ok((picture, used)),
             (None, Some(extras)) if size_fits(scene.size()) => {
-                Picture::new(context, extras, scene.size()).map(|picture| (Box::new(picture), 0))
+                PictureImages::new(context, extras, scene.size()).map(|picture| (Box::new(picture), 0))
             }
             (None, Some(_)) => Err(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY),
             (None, None) => Err(vk::Result::ERROR_FORMAT_NOT_SUPPORTED),
@@ -265,13 +267,13 @@ impl ViewStore {
                 self.drawn = self.drawn.saturating_add(1);
                 self.slots.insert(
                     key,
-                    Slot::Ready {
+                    ViewSlot::Ready {
                         picture,
                         revision: scene.revision(),
                         used: used.max(value),
                     },
                 );
-                Outcome::Draw
+                EnsureOutcome::Draw
             }
             Err(result) => {
                 log::warn!(
@@ -284,12 +286,12 @@ impl ViewStore {
                 );
                 self.slots.insert(
                     key,
-                    Slot::Refused {
+                    ViewSlot::Refused {
                         revision: scene.revision(),
                         size: scene.size(),
                     },
                 );
-                Outcome::Refused
+                EnsureOutcome::Refused
             }
         }
     }

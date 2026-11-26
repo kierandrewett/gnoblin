@@ -42,10 +42,10 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 
 use super::context::{SHM_FORMAT, TARGET_FORMAT, VkContext};
 use super::dmabuf;
-use super::memory::{Counters, VkImage};
+use super::memory::{RenderCounters, VkImage};
 use super::pipeline::{LongSet, Pipelines};
 use super::plan::TextureSlot;
-use super::sync::{FrameSlot, RetireQueue};
+use super::sync::{InFlightFrame, RetireQueue};
 use crate::log;
 
 /// The alignment of a texture's bytes inside the staging buffer. A buffer-to-image copy needs a multiple of the texel size.
@@ -58,7 +58,7 @@ pub(super) const IDLE_FRAMES: u64 = 120;
 const MAX_DAMAGE_RECTS: usize = 32;
 
 /// What a texture is made from.
-pub(super) enum Source<'a> {
+pub(super) enum TextureSource<'a> {
     /// A `wl_shm` buffer, read from the client's pool.
     Shm(&'a WlBuffer),
     /// A bitmap of premultiplied `r, g, b, a` pixels: a snapshot, the overlay, the cursor.
@@ -71,7 +71,7 @@ pub(super) enum Source<'a> {
 
 /// How a source is laid out as a texture.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Shape {
+struct TextureShape {
     width: u32,
     height: u32,
     format: vk::Format,
@@ -79,13 +79,13 @@ struct Shape {
     opaque: bool,
 }
 
-impl Source<'_> {
+impl TextureSource<'_> {
     /// The texture the source makes, from its metadata alone.
-    fn shape(&self) -> Result<Shape, String> {
+    fn shape(&self) -> Result<TextureShape, String> {
         Ok(match self {
             Self::Shm(buffer) => {
                 let shape = shm::shape(buffer).map_err(|error| error.to_string())?;
-                Shape {
+                TextureShape {
                     width: shape.width,
                     height: shape.height,
                     format: SHM_FORMAT,
@@ -94,14 +94,14 @@ impl Source<'_> {
             }
             Self::Bitmap(image) => {
                 let size = image.size();
-                Shape {
+                TextureShape {
                     width: size.width,
                     height: size.height,
                     format: TARGET_FORMAT,
                     opaque: false,
                 }
             }
-            Self::Pixel(_) => Shape {
+            Self::Pixel(_) => TextureShape {
                 width: 1,
                 height: 1,
                 format: TARGET_FORMAT,
@@ -109,7 +109,7 @@ impl Source<'_> {
             },
             Self::Dmabuf(dmabuf) => {
                 let linear = dmabuf::linear(dmabuf).map_err(|error| error.to_string())?;
-                Shape {
+                TextureShape {
                     width: linear.width,
                     height: linear.height,
                     format: linear.layout.format,
@@ -168,12 +168,12 @@ impl Source<'_> {
 /// A texture a frame draws: where it goes, what it is made of and which surface it is, when it has one.
 pub(super) struct Wanted<'a> {
     pub slot: TextureSlot,
-    pub source: Source<'a>,
+    pub source: TextureSource<'a>,
     pub key: Option<&'a ContentKey>,
 }
 
 /// What a texture takes from the buffer this frame.
-enum Decision {
+enum TextureDecision {
     /// The texture is as the surface is.
     Current,
     /// The image the cache holds takes these rectangles.
@@ -210,17 +210,17 @@ pub(super) struct Prepared {
 }
 
 /// What the cache needs of the frame being recorded.
-pub(super) struct Frame<'a> {
+pub(super) struct CacheFrame<'a> {
     pub context: &'a Rc<VkContext>,
     pub pipelines: &'a Pipelines,
-    pub slot: &'a mut FrameSlot,
+    pub slot: &'a mut InFlightFrame,
     pub retire: &'a mut RetireQueue,
     /// The timeline value the frame will signal: the last use of every texture it touches.
     pub value: u64,
 }
 
 /// A texture the cache holds.
-struct Cached {
+struct CachedTexture {
     image: VkImage,
     set: LongSet,
     opaque: bool,
@@ -230,8 +230,8 @@ struct Cached {
     used_value: u64,
 }
 
-impl Cached {
-    fn matches(&self, shape: &Shape) -> bool {
+impl CachedTexture {
+    fn matches(&self, shape: &TextureShape) -> bool {
         self.image.width() == shape.width
             && self.image.height() == shape.height
             && self.image.format() == shape.format
@@ -242,7 +242,7 @@ impl Cached {
 /// The textures of a device, by the surface they show.
 #[derive(Default)]
 pub(super) struct TextureCache {
-    entries: HashMap<u64, Cached>,
+    entries: HashMap<u64, CachedTexture>,
     /// The number of frames prepared: the clock the idle textures are given back by.
     frame: u64,
 }
@@ -290,18 +290,18 @@ impl TextureCache {
     }
 
     /// What a texture takes from its buffer, or `None` when its layer cannot be drawn.
-    fn decide(&self, wanted: &Wanted<'_>) -> Option<(Decision, Shape)> {
+    fn decide(&self, wanted: &Wanted<'_>) -> Option<(TextureDecision, TextureShape)> {
         let entry = wanted.key.and_then(|key| self.entries.get(&key.surface));
         if let (Some(key), Some(entry)) = (wanted.key, entry)
             && entry.commit == key.commit
         {
-            let shape = Shape {
+            let shape = TextureShape {
                 width: entry.image.width(),
                 height: entry.image.height(),
                 format: entry.image.format(),
                 opaque: entry.opaque,
             };
-            return Some((Decision::Current, shape));
+            return Some((TextureDecision::Current, shape));
         }
         let shape = match wanted.source.shape() {
             Ok(shape) => shape,
@@ -311,13 +311,13 @@ impl TextureCache {
             }
         };
         let Some(key) = wanted.key else {
-            return Some((Decision::Transient, shape));
+            return Some((TextureDecision::Transient, shape));
         };
         let Some(entry) = entry else {
-            return Some((Decision::Replace, shape));
+            return Some((TextureDecision::Replace, shape));
         };
         if !entry.matches(&shape) {
-            return Some((Decision::Replace, shape));
+            return Some((TextureDecision::Replace, shape));
         }
         if key.commit == entry.commit + 1
             && !wanted.source.inverted()
@@ -326,17 +326,17 @@ impl TextureCache {
             let rects = disjoint(damage, shape.width, shape.height);
             if rects.is_empty() {
                 // A commit that changed no pixel: the image is current, and the cache learns the commit.
-                return Some((Decision::Current, shape));
+                return Some((TextureDecision::Current, shape));
             }
             let area: u64 = rects
                 .iter()
                 .map(|rect| u64::from(rect.width) * u64::from(rect.height))
                 .sum();
             if rects.len() <= MAX_DAMAGE_RECTS && area * 2 < u64::from(shape.width) * u64::from(shape.height) {
-                return Some((Decision::Update(rects), shape));
+                return Some((TextureDecision::Update(rects), shape));
             }
         }
-        Some((Decision::Whole, shape))
+        Some((TextureDecision::Whole, shape))
     }
 
     /// Makes every texture of a frame ready: finds or makes its image, copies what changed into the frame's staging buffer
@@ -345,10 +345,14 @@ impl TextureCache {
     /// # Errors
     ///
     /// The driver's result, when the staging buffer cannot grow.
-    pub(super) fn prepare(&mut self, wanted: Vec<Wanted<'_>>, frame: &mut Frame<'_>) -> Result<Prepared, vk::Result> {
+    pub(super) fn prepare(
+        &mut self,
+        wanted: Vec<Wanted<'_>>,
+        frame: &mut CacheFrame<'_>,
+    ) -> Result<Prepared, vk::Result> {
         self.frame += 1;
         self.evict(frame.retire);
-        let decisions: Vec<(Wanted<'_>, Decision, Shape)> = wanted
+        let decisions: Vec<(Wanted<'_>, TextureDecision, TextureShape)> = wanted
             .into_iter()
             .filter_map(|wanted| {
                 let (decision, shape) = self.decide(&wanted)?;
@@ -358,17 +362,17 @@ impl TextureCache {
         let staging: usize = decisions
             .iter()
             .map(|(_, decision, shape)| match decision {
-                Decision::Current => 0,
-                Decision::Update(rects) => rects
+                TextureDecision::Current => 0,
+                TextureDecision::Update(rects) => rects
                     .iter()
                     .map(|rect| (rect.width as usize * rect.height as usize * 4).next_multiple_of(STAGING_ALIGN))
                     .sum(),
-                Decision::Whole | Decision::Replace | Decision::Transient => {
+                TextureDecision::Whole | TextureDecision::Replace | TextureDecision::Transient => {
                     (shape.width as usize * shape.height as usize * 4).next_multiple_of(STAGING_ALIGN)
                 }
             })
             .sum();
-        FrameSlot::ensure(
+        InFlightFrame::ensure(
             frame.context,
             &mut frame.slot.staging,
             staging,
@@ -387,16 +391,16 @@ impl TextureCache {
     fn apply(
         &mut self,
         wanted: &Wanted<'_>,
-        decision: &Decision,
-        shape: &Shape,
+        decision: &TextureDecision,
+        shape: &TextureShape,
         offset: usize,
-        frame: &mut Frame<'_>,
+        frame: &mut CacheFrame<'_>,
         prepared: &mut Prepared,
     ) -> usize {
         let size = (shape.width, shape.height);
         let whole = Rect::new(0, 0, shape.width, shape.height);
         match decision {
-            Decision::Current => {
+            TextureDecision::Current => {
                 let (Some(key), Some(entry)) = (
                     wanted.key,
                     wanted.key.and_then(|key| self.entries.get_mut(&key.surface)),
@@ -407,7 +411,7 @@ impl TextureCache {
                 self.touch(key.surface, wanted.slot, frame, prepared);
                 0
             }
-            Decision::Update(rects) => {
+            TextureDecision::Update(rects) => {
                 let Some(key) = wanted.key else { return 0 };
                 let mut used = 0;
                 let mut regions = Vec::with_capacity(rects.len());
@@ -431,12 +435,12 @@ impl TextureCache {
                     fresh: false,
                     regions,
                 });
-                Counters::add(&frame.context.memory.counters.uploaded, used as u64);
-                Counters::add(&frame.context.memory.counters.uploads, 1);
+                RenderCounters::add(&frame.context.memory.counters.uploaded, used as u64);
+                RenderCounters::add(&frame.context.memory.counters.uploads, 1);
                 self.touch(key.surface, wanted.slot, frame, prepared);
                 used
             }
-            Decision::Whole => {
+            TextureDecision::Whole => {
                 let Some(key) = wanted.key else { return 0 };
                 let bytes = shape.width as usize * shape.height as usize * 4;
                 let Some(out) = frame.slot.staging.as_mut_slice(offset, bytes) else {
@@ -454,12 +458,12 @@ impl TextureCache {
                     fresh: false,
                     regions: vec![region(&whole, offset)],
                 });
-                Counters::add(&frame.context.memory.counters.uploaded, bytes as u64);
-                Counters::add(&frame.context.memory.counters.uploads, 1);
+                RenderCounters::add(&frame.context.memory.counters.uploaded, bytes as u64);
+                RenderCounters::add(&frame.context.memory.counters.uploads, 1);
                 self.touch(key.surface, wanted.slot, frame, prepared);
                 bytes.next_multiple_of(STAGING_ALIGN)
             }
-            Decision::Replace | Decision::Transient => {
+            TextureDecision::Replace | TextureDecision::Transient => {
                 let bytes = shape.width as usize * shape.height as usize * 4;
                 let Some(out) = frame.slot.staging.as_mut_slice(offset, bytes) else {
                     return 0;
@@ -501,7 +505,7 @@ impl TextureCache {
                     frame.pipelines.linear
                 };
                 match (decision, wanted.key) {
-                    (Decision::Replace, Some(key)) => {
+                    (TextureDecision::Replace, Some(key)) => {
                         let set = match frame.pipelines.long_sets.allocate(frame.pipelines.texture_layout) {
                             Ok(set) => set,
                             Err(result) => {
@@ -519,7 +523,7 @@ impl TextureCache {
                         }
                         self.entries.insert(
                             key.surface,
-                            Cached {
+                            CachedTexture {
                                 image,
                                 set,
                                 opaque: shape.opaque,
@@ -549,15 +553,15 @@ impl TextureCache {
                     }
                 }
                 prepared.copies.push(copy);
-                Counters::add(&frame.context.memory.counters.uploaded, bytes as u64);
-                Counters::add(&frame.context.memory.counters.uploads, 1);
+                RenderCounters::add(&frame.context.memory.counters.uploaded, bytes as u64);
+                RenderCounters::add(&frame.context.memory.counters.uploads, 1);
                 bytes.next_multiple_of(STAGING_ALIGN)
             }
         }
     }
 
     /// Records that this frame draws the texture of `surface`.
-    fn touch(&mut self, surface: u64, slot: TextureSlot, frame: &Frame<'_>, prepared: &mut Prepared) {
+    fn touch(&mut self, surface: u64, slot: TextureSlot, frame: &CacheFrame<'_>, prepared: &mut Prepared) {
         let Some(entry) = self.entries.get_mut(&surface) else {
             return;
         };

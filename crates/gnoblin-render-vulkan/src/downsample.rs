@@ -27,14 +27,14 @@ pub(super) const DOWNSAMPLE_BYTES: usize = 32;
 
 /// The uniform block of the downsample pass, packed as the shader reads it.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct DownsampleUniforms {
+pub(super) struct DownsampleBlock {
     /// The target's width and height, then the source's.
     sizes: [f32; 4],
     /// The source pixels per target pixel across and down, both zero for a bilinear sample, then `1` for a top-down source.
     taps: [f32; 4],
 }
 
-impl DownsampleUniforms {
+impl DownsampleBlock {
     /// The block for averaging a `source` surface down to `shown`.
     pub(super) fn new(source: Size, shown: Size) -> Self {
         let taps = Image::box_ratio(source, shown).map_or([0.0, 0.0, 1.0, 0.0], |(across, down)| {
@@ -116,11 +116,7 @@ impl Vulkan {
             }
         }
         let mut batch = DrawBatch::default();
-        let pass = push_block(
-            &mut batch,
-            &DownsampleUniforms::new(self.physical, shown).bytes(),
-            shown,
-        );
+        let pass = push_block(&mut batch, &DownsampleBlock::new(self.physical, shown).bytes(), shown);
         self.active = self.ring.acquire();
         self.ring.slot_mut(self.active).begin()?;
         self.upload_batch(&batch)?;
@@ -156,7 +152,7 @@ mod tests {
 
     #[test]
     fn a_whole_ratio_packs_its_taps_and_the_block_is_the_declared_size() {
-        let bytes = DownsampleUniforms::new(Size::new(3840, 2160), Size::new(1920, 1080)).bytes();
+        let bytes = DownsampleBlock::new(Size::new(3840, 2160), Size::new(1920, 1080)).bytes();
         assert_eq!(bytes.len(), DOWNSAMPLE_BYTES);
         assert_eq!(
             floats(&bytes),
@@ -167,7 +163,7 @@ mod tests {
 
     #[test]
     fn a_ratio_that_is_not_whole_has_no_taps_so_the_shader_samples_bilinearly() {
-        let bytes = DownsampleUniforms::new(Size::new(2880, 1620), Size::new(1920, 1080)).bytes();
+        let bytes = DownsampleBlock::new(Size::new(2880, 1620), Size::new(1920, 1080)).bytes();
         assert_eq!(floats(&bytes)[4..], [0.0, 0.0, 1.0, 0.0]);
     }
 }

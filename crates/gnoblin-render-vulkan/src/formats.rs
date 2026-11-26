@@ -25,7 +25,7 @@ use super::context::{SHM_FORMAT, TARGET_FORMAT};
 
 /// How a fourcc's pixels sit in memory, as a texture.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct Layout {
+pub(super) struct FormatLayout {
     /// The Vulkan format whose bytes are the fourcc's.
     pub format: vk::Format,
     /// Whether the fourth byte is padding, read as one.
@@ -33,31 +33,31 @@ pub(super) struct Layout {
 }
 
 /// What the renderer imports and exports: four 32-bit layouts, which are what clients, `wl_shm` and the screen copy use.
-const OFFERED: [(Fourcc, Layout); 4] = [
+const OFFERED: [(Fourcc, FormatLayout); 4] = [
     (
         Fourcc::Argb8888,
-        Layout {
+        FormatLayout {
             format: SHM_FORMAT,
             opaque: false,
         },
     ),
     (
         Fourcc::Xrgb8888,
-        Layout {
+        FormatLayout {
             format: SHM_FORMAT,
             opaque: true,
         },
     ),
     (
         Fourcc::Abgr8888,
-        Layout {
+        FormatLayout {
             format: TARGET_FORMAT,
             opaque: false,
         },
     ),
     (
         Fourcc::Xbgr8888,
-        Layout {
+        FormatLayout {
             format: TARGET_FORMAT,
             opaque: true,
         },
@@ -65,7 +65,7 @@ const OFFERED: [(Fourcc, Layout); 4] = [
 ];
 
 /// The layout of `fourcc`, when the renderer offers it.
-pub(super) fn layout(fourcc: Fourcc) -> Option<Layout> {
+pub(super) fn layout(fourcc: Fourcc) -> Option<FormatLayout> {
     OFFERED
         .iter()
         .find(|(offered, _)| *offered == fourcc)

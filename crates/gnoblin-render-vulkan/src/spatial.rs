@@ -10,7 +10,7 @@
 //!
 //! One render pass has a colour attachment that is kept (`LOAD`, as the plain pass does) and a depth-stencil attachment that
 //! is cleared at the start of the pass and not kept: depth `1`, stencil `0`. Its pipelines are made on first use, one per
-//! pass kind (`solid`, `surface`) and [`Class`]:
+//! pass kind (`solid`, `surface`) and [`DepthClass`]:
 //!
 //! | Class         | Depth test       | Stencil                                            | Colour |
 //! | ------------- | ---------------- | -------------------------------------------------- | ------ |
@@ -45,7 +45,7 @@ use gnoblin_types::{Rect, Scale, Size};
 use super::context::{TARGET_FORMAT, VkContext};
 use super::error::VulkanError;
 use super::memory::VkImage;
-use super::pipeline::{Depth, Pipelines, Variant, module};
+use super::pipeline::{DepthState, PipelineVariant, Pipelines, module};
 use super::plan::{Draws, FramePlan, PassKind, TextureSizes, quad_of, slot_of, texture_mapping};
 use super::shader::{StageKind, compile};
 
@@ -54,7 +54,7 @@ pub(super) const MAX_CLIP_DEPTH: u8 = 254;
 
 /// How a placed quad takes part in the depth and stencil tests: which pipeline draws it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub(super) enum Class {
+pub(super) enum DepthClass {
     /// No test: painter's order.
     #[default]
     Flat,
@@ -73,7 +73,7 @@ pub(super) enum Class {
 /// A draw's class and, for a stencil class, the reference the stencil is compared with.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) struct DrawVariant {
-    pub class: Class,
+    pub class: DepthClass,
     pub reference: u8,
 }
 
@@ -84,7 +84,7 @@ impl DrawVariant {
             Self::default()
         } else {
             Self {
-                class: Class::Test,
+                class: DepthClass::Test,
                 reference: depth,
             }
         }
@@ -93,7 +93,7 @@ impl DrawVariant {
     /// The rectangle of the clip that makes the chain `depth` deep.
     pub(super) fn push(depth: u8) -> Self {
         Self {
-            class: Class::Push,
+            class: DepthClass::Push,
             reference: depth - 1,
         }
     }
@@ -101,14 +101,14 @@ impl DrawVariant {
     /// The rectangle of the clip that ends a chain `depth` deep.
     pub(super) fn pop(depth: u8) -> Self {
         Self {
-            class: Class::Pop,
+            class: DepthClass::Pop,
             reference: depth,
         }
     }
 
     /// Whether the pipeline reads a stencil reference.
     pub(super) fn stenciled(self) -> bool {
-        matches!(self.class, Class::Test | Class::Push | Class::Pop)
+        matches!(self.class, DepthClass::Test | DepthClass::Push | DepthClass::Pop)
     }
 }
 
@@ -126,7 +126,7 @@ pub(super) struct Placed {
 
 /// The two shipped fragment stages a placed quad can use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(super) enum Base {
+pub(super) enum QuadBase {
     Solid,
     Surface,
 }
@@ -141,15 +141,15 @@ pub(super) enum Replace {
 }
 
 /// The depth-stencil render pass and the pipelines made for it and for the whole-target passes.
-pub(super) struct Extras {
+pub(super) struct DepthExtras {
     context: Rc<VkContext>,
     pub(super) render_pass: vk::RenderPass,
     pub(super) format: vk::Format,
-    placed: RefCell<HashMap<(Base, Class), vk::Pipeline>>,
+    placed: RefCell<HashMap<(QuadBase, DepthClass), vk::Pipeline>>,
     replace: RefCell<HashMap<u8, vk::Pipeline>>,
 }
 
-impl Extras {
+impl DepthExtras {
     /// The render pass for `format`, which the device has chosen.
     ///
     /// # Errors
@@ -233,7 +233,7 @@ impl Extras {
 
     /// The pipeline of `base` in `class`, made when first asked for, or null when the stage does not compile or the driver
     /// refuses the pipeline: that is logged once and the draws that need it are left out.
-    pub(super) fn placed(&self, pipelines: &Pipelines, base: Base, class: Class) -> vk::Pipeline {
+    pub(super) fn placed(&self, pipelines: &Pipelines, base: QuadBase, class: DepthClass) -> vk::Pipeline {
         if let Some(pipeline) = self.placed.borrow().get(&(base, class)) {
             return *pipeline;
         }
@@ -248,53 +248,58 @@ impl Extras {
         pipeline
     }
 
-    fn placed_pipeline(&self, pipelines: &Pipelines, base: Base, class: Class) -> Result<vk::Pipeline, VulkanError> {
+    fn placed_pipeline(
+        &self,
+        pipelines: &Pipelines,
+        base: QuadBase,
+        class: DepthClass,
+    ) -> Result<vk::Pipeline, VulkanError> {
         let (name, source) = match base {
-            Base::Solid => ("solid", SOLID),
-            Base::Surface => ("surface", SURFACE),
+            QuadBase::Solid => ("solid", SOLID),
+            QuadBase::Surface => ("surface", SURFACE),
         };
         let depth = match class {
-            Class::Flat => Depth {
+            DepthClass::Flat => DepthState {
                 test: false,
                 write: false,
                 compare: vk::CompareOp::ALWAYS,
                 stencil: None,
             },
-            Class::Opaque => Depth {
+            DepthClass::Opaque => DepthState {
                 test: true,
                 write: true,
                 compare: vk::CompareOp::LESS,
                 stencil: None,
             },
-            Class::Transparent => Depth {
+            DepthClass::Transparent => DepthState {
                 test: true,
                 write: false,
                 compare: vk::CompareOp::LESS_OR_EQUAL,
                 stencil: None,
             },
-            Class::Test => Depth {
+            DepthClass::Test => DepthState {
                 test: false,
                 write: false,
                 compare: vk::CompareOp::ALWAYS,
                 stencil: Some(vk::StencilOp::KEEP),
             },
-            Class::Push => Depth {
+            DepthClass::Push => DepthState {
                 test: false,
                 write: false,
                 compare: vk::CompareOp::ALWAYS,
                 stencil: Some(vk::StencilOp::INCREMENT_AND_CLAMP),
             },
-            Class::Pop => Depth {
+            DepthClass::Pop => DepthState {
                 test: false,
                 write: false,
                 compare: vk::CompareOp::ALWAYS,
                 stencil: Some(vk::StencilOp::DECREMENT_AND_CLAMP),
             },
         };
-        let variant = Variant {
+        let variant = PipelineVariant {
             render_pass: self.render_pass,
             blend: true,
-            write_colour: !matches!(class, Class::Push | Class::Pop),
+            write_colour: !matches!(class, DepthClass::Push | DepthClass::Pop),
             depth: Some(depth),
         };
         self.build(pipelines, name, source, &variant)
@@ -304,7 +309,7 @@ impl Extras {
     ///
     /// # Errors
     ///
-    /// As [`Extras::placed`].
+    /// As [`DepthExtras::placed`].
     pub(super) fn replacing(&self, pipelines: &Pipelines, which: Replace) -> Result<vk::Pipeline, VulkanError> {
         let key = which as u8;
         if let Some(pipeline) = self.replace.borrow().get(&key) {
@@ -315,9 +320,9 @@ impl Extras {
             Replace::View => ("view", VIEW),
             Replace::Downsample => ("downsample", DOWNSAMPLE),
         };
-        let variant = Variant {
+        let variant = PipelineVariant {
             blend: false,
-            ..Variant::colour(pipelines.render_pass)
+            ..PipelineVariant::colour(pipelines.render_pass)
         };
         let pipeline = self.build(pipelines, name, source, &variant)?;
         self.replace.borrow_mut().insert(key, pipeline);
@@ -329,7 +334,7 @@ impl Extras {
         pipelines: &Pipelines,
         name: &'static str,
         source: &str,
-        variant: &Variant,
+        variant: &PipelineVariant,
     ) -> Result<vk::Pipeline, VulkanError> {
         let words = compile(name, source, StageKind::Fragment)?;
         let fragment = module(&self.context, name, &words)?;
@@ -346,7 +351,7 @@ impl Extras {
     }
 }
 
-impl Drop for Extras {
+impl Drop for DepthExtras {
     fn drop(&mut self) {
         let device = &self.context.device;
         // SAFETY: the device waited for the queue before anything below it was dropped, and every handle was made on it.
@@ -359,7 +364,7 @@ impl Drop for Extras {
     }
 }
 
-/// A depth-stencil image and the framebuffer over it and a colour image: what a pass of [`Extras::render_pass`] draws into.
+/// A depth-stencil image and the framebuffer over it and a colour image: what a pass of [`DepthExtras::render_pass`] draws into.
 pub(super) struct DepthTarget {
     context: Rc<VkContext>,
     pub(super) depth: VkImage,
@@ -372,7 +377,7 @@ impl DepthTarget {
     /// # Errors
     ///
     /// The driver's result.
-    pub(super) fn over(context: &Rc<VkContext>, extras: &Extras, colour: &VkImage) -> Result<Self, vk::Result> {
+    pub(super) fn over(context: &Rc<VkContext>, extras: &DepthExtras, colour: &VkImage) -> Result<Self, vk::Result> {
         let depth = VkImage::depth_stencil(context, colour.width(), colour.height(), extras.format)?;
         let views = [colour.view(), depth.view()];
         let info = vk::FramebufferCreateInfo::default()
@@ -475,9 +480,9 @@ pub(super) fn placements(layers: &[Layer], physical: Size, scale: Scale) -> Vec<
         };
         let (columns, depth) = place(&screen, model, layer_dst(layer));
         let (class, bucket) = if model.opaque {
-            (Class::Opaque, &mut opaque)
+            (DepthClass::Opaque, &mut opaque)
         } else {
-            (Class::Transparent, &mut transparent)
+            (DepthClass::Transparent, &mut transparent)
         };
         bucket.push((
             index,
