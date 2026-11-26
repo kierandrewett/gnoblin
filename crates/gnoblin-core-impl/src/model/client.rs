@@ -124,29 +124,28 @@ fn triple_rw<'a>(class: Class<'a>, name: &'static str, key: &'static str) -> Cla
         })
 }
 
-/// Puts the window on top of every other: under the root, last. A fullscreen sibling keeps the top.
+/// Puts the window on top of every other: under the root, last. A fullscreen sibling keeps the top. A window the compositor mapped without
+/// a parent stacks after everything under the root, so the windows the tree stacks are given the root first.
 fn raise(state: &ClientState) -> Res<()> {
     let target = format!("Client#{}.raise()", state.node);
     if !state.alive {
         return Err(Fail::new(abi::E_NO_SUCH_NODE, format!("{target}: the client is gone")));
     }
     let fullscreen = state.read("fullscreen").flag();
-    let others: Vec<u64> = nodes_of("window")
-        .into_iter()
-        .filter(|node| *node != state.node)
-        .collect();
     session::with(|session| {
         let tree = session.tree().map_err(detached)?;
         let root = tree.root();
-        if tree.children_of(root).and_then(|children| children.last().copied()) != Some(state.node) {
+        if values::stacked_windows(tree).last() != Some(&state.node) {
+            values::adopt_windows(tree, state.node).map_err(|error| write_fail(&target, &error))?;
             tree.insert(state.node, root, -1)
                 .map_err(|error| write_fail(&target, &error))?;
         }
         if !fullscreen {
-            for node in others {
-                let over = tree
-                    .get(node, "fullscreen")
-                    .is_some_and(|value| matches!(value, MirrorValue::Bool(true)));
+            for node in values::stacked_windows(tree) {
+                let over = node != state.node
+                    && tree
+                        .get(node, "fullscreen")
+                        .is_some_and(|value| matches!(value, MirrorValue::Bool(true)));
                 if over {
                     tree.insert(node, root, -1)
                         .map_err(|error| write_fail(&target, &error))?;
@@ -157,7 +156,8 @@ fn raise(state: &ClientState) -> Res<()> {
     })
 }
 
-/// Puts the window under every other: under the root, first.
+/// Puts the window under every other: under the root, first. The windows the compositor mapped without a parent are given the root first,
+/// as they stack after everything under it.
 fn lower(state: &ClientState) -> Res<()> {
     let target = format!("Client#{}.lower()", state.node);
     if !state.alive {
@@ -166,7 +166,8 @@ fn lower(state: &ClientState) -> Res<()> {
     session::with(|session| {
         let tree = session.tree().map_err(detached)?;
         let root = tree.root();
-        if tree.children_of(root).and_then(|children| children.first().copied()) != Some(state.node) {
+        if values::stacked_windows(tree).first() != Some(&state.node) {
+            values::adopt_windows(tree, state.node).map_err(|error| write_fail(&target, &error))?;
             tree.insert(state.node, root, 0)
                 .map_err(|error| write_fail(&target, &error))?;
         }
