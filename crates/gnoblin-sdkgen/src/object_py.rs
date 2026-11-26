@@ -10,7 +10,10 @@ use std::collections::BTreeSet;
 use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type};
 
 use super::object_script::{ScriptView, quote};
-use super::objects::{ClassMember, Member, augments_of, check_foreign, ctor_properties, finds_of, slots_of};
+use super::objects::{
+    ClassMember, Member, augment_finds, augments_of, check_assign, check_foreign, ctor_properties, finds_of,
+    is_augment_setter, slots_of,
+};
 use super::text::{CodeWriter, pascal, python_ident, snake};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family, py_field};
 
@@ -260,8 +263,20 @@ def ref_to(value: Any, cls: type, what: str) -> Any:
     return ref(value)
 
 
+_extra_finders: dict[type, dict[str, tuple[str, type]]] = {}
+
+
+def augment_find(target: type, kind: str, method: str, query: type) -> None:
+    """Adds the kind `kind` to the `find` of the core class `target`: its objects are listed by the method `method`, which a library above added, filtered by the record class `query`. A kind the class has of its own is never replaced."""
+    _extra_finders.setdefault(target, {})[kind] = (method, query)
+
+
 def find(service: Any, label: str, finders: dict[str, tuple[str, type]], kind: Any, filter: Any = None) -> list[Any]:
     """`find(kind, filter)` of a service: the objects of one kind that match `filter`: a query, a dict of field values, or a function that keeps an object when it returns a true value."""
+    extra: dict[str, tuple[str, type]] = {}
+    for cls in reversed(type(service).__mro__):
+        extra.update(_extra_finders.get(cls, {}))
+    finders = {**extra, **finders}
     entry = finders.get(kind) if isinstance(kind, str) else None
     if entry is None:
         raise TypeError(f"{label}.find: no kind {kind!r}; the kinds that work are {', '.join(finders)}")
@@ -350,10 +365,14 @@ def _augmentable(target: type, name: str) -> None:
     _augmented.add((target, name))
 
 
-def augment_property(target: type, name: str, read: Callable[[Any], Any]) -> None:
-    """Adds the read-only property `name` to the core class `target`, which reads `read(obj)` for the object it is read on."""
+def augment_property(
+    target: type, name: str, read: Callable[[Any], Any], write: Callable[[Any, Any], None] | None = None
+) -> None:
+    """Adds the property `name` to the core class `target`, which reads `read(obj)` for the object it is read on. With `write`, an
+    assignment calls `write(obj, value)`; without it the property is read-only."""
     _augmentable(target, name)
-    setattr(target, name, property(lambda self: read(self)))
+    setter = None if write is None else lambda self, value: write(self, value)
+    setattr(target, name, property(lambda self: read(self), setter))
 
 
 def augment_method(target: type, name: str, run: Callable[..., Any]) -> None:
@@ -365,6 +384,23 @@ def augment_method(target: type, name: str, run: Callable[..., Any]) -> None:
 
     method.__name__ = name
     setattr(target, name, method)
+
+
+def assign(obj: Any, label: str, props: Any, options: Any, request: Callable[[Callable[[], None], Any], Any]) -> Any:
+    """`set(props, options)` of an object: writes each property `props` names in one transition, which `request(work, options)` commits.
+    Every key must be a writable property of the object, or nothing is written."""
+    if not isinstance(props, dict):
+        raise TypeError(f"{label}.set: expects a dict of properties")
+    for key in props:
+        found = getattr(type(obj), key, None) if isinstance(key, str) else None
+        if not isinstance(found, property) or found.fset is None:
+            raise TypeError(f"{label}.set: {key} is not a writable property")
+
+    def work() -> None:
+        for key, value in props.items():
+            setattr(obj, key, value)
+
+    return request(work, options)
 "#;
 
 fn class_name(object: &ObjectType) -> String {
@@ -1155,6 +1191,11 @@ impl<'a> Py<'a> {
             claim("find")?;
             self.find_source(c, object, &finds)?;
         }
+        if has_instance_members && object.assign {
+            claim("set")?;
+            check_assign(object, None, self.view.objects.values().copied())?;
+            self.assign_source(c, &format!("self, {}", quote(&name)))?;
+        }
         if self.stub && has_instance_members {
             self.on_stubs(c, &events);
         }
@@ -1165,6 +1206,37 @@ impl<'a> Py<'a> {
             c.blank();
         }
         Ok(())
+    }
+
+    /// `set(props, options)` of a class: in a stub its signature, in a module the call of `_B.assign` for the receiver and label `given`
+    /// (`self, "Workspace"`).
+    fn assign_source(&self, c: &mut CodeWriter, given: &str) -> Result<(), String> {
+        let options = self.ty(&Type::ObjectRef("transition_options".to_owned()), true)?;
+        let transition = self.ty(&Type::ObjectRef("transition".to_owned()), false)?;
+        if self.stub {
+            c.line(format!(
+                "def set(self, props: dict[str, Any], options: {options} | None = None) -> {transition}: ..."
+            ));
+            return Ok(());
+        }
+        c.line("def set(self, props, options=None):");
+        c.indent();
+        c.line("\"\"\"Writes each property `props` names in one transition. Without `options` the change is not animated.\"\"\"");
+        c.line(format!(
+            "return _B.assign({given}, props, options, {})",
+            self.assign_request()?
+        ));
+        c.dedent();
+        Ok(())
+    }
+
+    /// What commits a `set`: the root's `request_transition`, which the namespace adds to the core's `Gnoblin` ([`check_assign`]), not
+    /// animated without options.
+    fn assign_request(&self) -> Result<String, String> {
+        let options = class_name(self.view.class("transition_options")?);
+        Ok(format!(
+            "lambda work, opts: _core.Gnoblin.get().request_transition(work, opts if opts is not None else {options}(duration=0))"
+        ))
     }
 
     /// `find(kind, filter)` of a service: in a module the call of `_B.find` with the kinds the catalog gives the service, in a stub one
@@ -1524,7 +1596,7 @@ impl Py<'_> {
     /// What installs the members of the class `class`, which holds an augment, on the class `target` of the core's module: each is read or
     /// called through the service of this library, made for the generation that is running when the member is used, so a member binds to
     /// the library of the generation and never to one that has retired.
-    fn augment_source(&self, c: &mut CodeWriter, class: &ObjectType, target: &ObjectType) {
+    fn augment_source(&self, c: &mut CodeWriter, class: &ObjectType, target: &ObjectType) -> Result<(), String> {
         let name = class_name(class);
         let core = format!("_core.{}", class_name(target));
         c.line(format!(
@@ -1541,12 +1613,26 @@ impl Py<'_> {
         }
         let getters = class.augment_getters.as_deref();
         for method in &class.methods {
+            // A property's setter is installed with its getter, not as a method of its own.
+            if is_augment_setter(class, &method.name) {
+                continue;
+            }
             let ident = member_name(&method.name, &method.extras.export.py);
             let line = match getters {
-                Some(getters) if getters.contains(&method.name) => format!(
-                    "_B.augment_property({core}, {}, lambda obj: {name}.get().{ident}(obj))",
-                    quote(&ident)
-                ),
+                Some(getters) if getters.contains(&method.name) => {
+                    let write = if class.augment_setters.contains(&method.name) {
+                        format!(
+                            ", lambda obj, value: {name}.get().{}(obj, value)",
+                            member_name(&format!("set_{}", method.name), &None)
+                        )
+                    } else {
+                        String::new()
+                    };
+                    format!(
+                        "_B.augment_property({core}, {}, lambda obj: {name}.get().{ident}(obj){write})",
+                        quote(&ident)
+                    )
+                }
                 Some(_) => format!(
                     "_B.augment_method({core}, {}, lambda obj, *args, **kwargs: {name}.get().{ident}(obj, *args, **kwargs))",
                     quote(&ident)
@@ -1558,7 +1644,32 @@ impl Py<'_> {
             };
             c.line(line);
         }
+        // A finder the augment declares (`find = "Kind"`) is a kind of the core class's `find`.
+        for (kind, method) in augment_finds(class) {
+            let Some(Type::ObjectRef(query)) = method.params.first().map(|param| &param.ty) else {
+                return Err(format!(
+                    "`{}`: the finder of `{kind}` takes no filter record",
+                    class.name
+                ));
+            };
+            c.line(format!(
+                "_B.augment_find({core}, {}, {}, {})",
+                quote(kind),
+                quote(&member_name(&method.name, &method.extras.export.py)),
+                class_name(self.view.class(query)?)
+            ));
+        }
+        // `set(props, options)` of the core class, over its own writable properties and those the augment adds.
+        if class.assign {
+            check_assign(class, Some(target), self.view.objects.values().copied())?;
+            c.line(format!(
+                "_B.augment_method({core}, \"set\", lambda obj, props, options=None: _B.assign(obj, {}, props, options, {}))",
+                quote(&class_name(target)),
+                self.assign_request()?
+            ));
+        }
         c.blank();
+        Ok(())
     }
 }
 
@@ -1630,7 +1741,7 @@ pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String
     }
     if !stub {
         for (class, target) in augments_of(view.catalog, &view.objects)? {
-            py.augment_source(&mut c, class, target);
+            py.augment_source(&mut c, class, target)?;
         }
     }
     Ok(c.finish())

@@ -11,7 +11,8 @@ use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, Object
 
 use super::object_script::{ScriptView, quote};
 use super::objects::{
-    ClassMember, Member, augments_of, check_foreign, ctor_properties, finds_of, options_type_name, slots_of,
+    ClassMember, Member, assign_fields, augment_finds, augments_of, check_assign, check_foreign, ctor_properties,
+    finds_of, is_augment_setter, options_type_name, slots_of,
 };
 use super::text::{CodeWriter, camel, pascal, snake, ts_ident};
 use super::values::{self, Absent, CarrySlot, ValueClass, absent, is_family, js_field};
@@ -345,14 +346,23 @@ function augmentable(target, name) {
   }
 }
 
-/** Adds the read-only property `name` to the core class `target`, which reads `read(object)` for the object it is read on. */
-export function augmentGet(target, name, read) {
+/**
+ * Adds the property `name` to the core class `target`, which reads `read(object)` for the object it is read on. With `write`, an
+ * assignment calls `write(object, value)`; without it the property is read-only.
+ */
+export function augmentGet(target, name, read, write) {
   augmentable(target, name);
   const get = function () {
     return read(this);
   };
   augmented.add(get);
-  Object.defineProperty(target.prototype, name, { configurable: true, enumerable: false, get });
+  const set =
+    write === undefined
+      ? undefined
+      : function (value) {
+          write(this, value);
+        };
+  Object.defineProperty(target.prototype, name, { configurable: true, enumerable: false, get, set });
 }
 
 /** Adds the method `name` to the core class `target`, which calls `run(object, ...args)` for the object it is called on. */
@@ -363,6 +373,51 @@ export function augmentCall(target, name, run) {
   };
   augmented.add(value);
   Object.defineProperty(target.prototype, name, { configurable: true, enumerable: false, writable: true, value });
+}
+
+/**
+ * `set(props, options)` of an object: writes each property `props` names in one transition, which `request(work, options)` commits.
+ * Every key must be a writable property of the object, or nothing is written. Without `options` the change is not animated.
+ */
+export function assign(self, label, props, options, request) {
+  if (props === null || typeof props !== "object" || Array.isArray(props)) {
+    throw new TypeError(`${label}.set: expects an object of properties`);
+  }
+  for (const key of Object.keys(props)) {
+    let found;
+    for (let at = self; at !== null && found === undefined; at = Object.getPrototypeOf(at)) {
+      found = Object.getOwnPropertyDescriptor(at, key);
+    }
+    if (found === undefined || typeof found.set !== "function") {
+      throw new TypeError(`${label}.set: ${key} is not a writable property`);
+    }
+  }
+  return request(() => {
+    for (const [key, value] of Object.entries(props)) {
+      self[key] = value;
+    }
+  }, options ?? { duration: 0 });
+}
+
+/** Where a service class keeps the kinds its `find` knows: `[method, () => QueryClass]` by kind name. */
+export const FINDERS = Symbol("finders");
+
+/** The kinds libraries above added to a class's `find`, so loading a library again replaces its own and refuses another's. */
+const augmentedKinds = new WeakSet();
+
+/** Adds the kind `kind` to the `find` of the core class `target`: its objects are listed by the method `method`, which a library above
+ * added, filtered by the record class `query()` returns. */
+export function augmentFind(target, kind, method, query) {
+  const table = target[FINDERS];
+  if (table === undefined) {
+    throw new TypeError(`${target.name} has no find: a library cannot add the kind "${kind}" to it`);
+  }
+  if (Object.hasOwn(table, kind) && !augmentedKinds.has(table[kind])) {
+    throw new TypeError(`${target.name}.find has a kind "${kind}" of its own: a library cannot add one of the same name`);
+  }
+  const entry = [method, query];
+  augmentedKinds.add(entry);
+  table[kind] = entry;
 }
 "#;
 
@@ -423,6 +478,10 @@ fn class_name(object: &ObjectType) -> String {
 fn member_name(name: &str, export: &Option<String>) -> String {
     export.clone().unwrap_or_else(|| camel(name))
 }
+
+/// What commits a `set(props, options)`: the root's `requestTransition`, which the namespace that declares `assign` adds to the core's
+/// `Gnoblin` ([`check_assign`]).
+const ASSIGN_REQUEST: &str = "(work, options) => Core.Gnoblin.get().requestTransition(work, options)";
 
 fn param_name(field: &Field) -> String {
     ts_ident(&camel(&field.name))
@@ -1097,6 +1156,20 @@ impl<'a> Js<'a> {
                     "}",
                 );
             }
+            if object.assign {
+                check_assign(object, None, self.view.objects.values().copied())?;
+                c.line("/** Writes each property `props` names in one transition. Without `options` the change is not animated. */");
+                c.block(
+                    "set(props, options) {",
+                    |c| {
+                        c.line(format!(
+                            "return B.assign(this, {}, props, options, {ASSIGN_REQUEST});",
+                            quote(&name)
+                        ))
+                    },
+                    "}",
+                );
+            }
             c.line("/** Ends the object and its children, whoever else holds it. */");
             c.block(
                 "destroy() {",
@@ -1107,6 +1180,10 @@ impl<'a> Js<'a> {
         c.dedent();
         c.line("}");
         c.line(format!("B.register(NS, {}, {name});", quote(&object.name)));
+        if has_instance_members && !finds.is_empty() {
+            // A library above may add a kind to this `find` (`B.augmentFind`).
+            c.line(format!("{name}[B.FINDERS] = finders_{snake_name};"));
+        }
         c.blank();
         Ok(())
     }
@@ -1403,7 +1480,7 @@ pub(super) fn render_js(view: &ScriptView<'_>) -> Result<String, String> {
         c.line(format!("export const gnoblin = {}.get();", class_name(object)));
     }
     for (class, target) in augments_of(view.catalog, &view.objects)? {
-        js.augment_source(&mut c, class, target);
+        js.augment_source(&mut c, class, target)?;
     }
     Ok(c.finish())
 }
@@ -1413,7 +1490,7 @@ impl Js<'_> {
     /// called through the service of this library, made for the generation that is running when the member is used, so a member binds to
     /// the library of the generation and never to one that has retired. A member of a `receiver = true` augment hands the service the
     /// object it is used on.
-    fn augment_source(&self, c: &mut CodeWriter, class: &ObjectType, target: &ObjectType) {
+    fn augment_source(&self, c: &mut CodeWriter, class: &ObjectType, target: &ObjectType) -> Result<(), String> {
         let name = class_name(class);
         let core = format!("Core.{}", class_name(target));
         c.line(format!(
@@ -1430,11 +1507,23 @@ impl Js<'_> {
         }
         let getters = class.augment_getters.as_deref();
         for method in &class.methods {
+            // A property's setter is installed with its getter, not as a method of its own.
+            if is_augment_setter(class, &method.name) {
+                continue;
+            }
             let ident = member_name(&method.name, &method.extras.export.js);
             let line = match getters {
                 Some(getters) if getters.contains(&method.name) => {
+                    let write = if class.augment_setters.contains(&method.name) {
+                        format!(
+                            ", (self, value) => {name}.get().{}(self, value)",
+                            member_name(&format!("set_{}", method.name), &None)
+                        )
+                    } else {
+                        String::new()
+                    };
                     format!(
-                        "B.augmentGet({core}, {}, (self) => {name}.get().{ident}(self));",
+                        "B.augmentGet({core}, {}, (self) => {name}.get().{ident}(self){write});",
                         quote(&ident)
                     )
                 }
@@ -1449,7 +1538,31 @@ impl Js<'_> {
             };
             c.line(line);
         }
+        // A finder the augment declares (`find = "Kind"`) is a kind of the core class's `find`.
+        for (kind, method) in augment_finds(class) {
+            let Some(Type::ObjectRef(query)) = method.params.first().map(|param| &param.ty) else {
+                return Err(format!(
+                    "`{}`: the finder of `{kind}` takes no filter record",
+                    class.name
+                ));
+            };
+            c.line(format!(
+                "B.augmentFind({core}, {}, {}, () => {});",
+                quote(kind),
+                quote(&member_name(&method.name, &method.extras.export.js)),
+                class_name(self.view.class(query)?)
+            ));
+        }
+        // `set(props, options)` of the core class, over its own writable properties and those the augment adds.
+        if class.assign {
+            check_assign(class, Some(target), self.view.objects.values().copied())?;
+            c.line(format!(
+                "B.augmentCall({core}, \"set\", (self, props, options) => B.assign(self, {}, props, options, {ASSIGN_REQUEST}));",
+                quote(&class_name(target))
+            ));
+        }
         c.blank();
+        Ok(())
     }
 
     /// The declarations of those members, merged into the core's class of the same name.
@@ -1469,6 +1582,9 @@ impl Js<'_> {
         }
         let getters = class.augment_getters.as_deref();
         for method in &class.methods {
+            if is_augment_setter(class, &method.name) {
+                continue;
+            }
             let ident = member_name(&method.name, &method.extras.export.js);
             let returns = match &method.returns {
                 Some(ty) if method.optional => self.ts_read(ty)?,
@@ -1482,10 +1598,54 @@ impl Js<'_> {
                 &method.params[..]
             };
             if getters.is_some_and(|getters| getters.contains(&method.name)) {
-                c.line(format!("readonly {ident}: {returns};"));
+                if class.augment_setters.contains(&method.name) {
+                    // A write takes what a parameter of the type takes, which for a record is the plain object of its fields.
+                    let ty = method
+                        .returns
+                        .as_ref()
+                        .ok_or_else(|| format!("`{}`: the getter `{}` returns nothing", class.name, method.name))?;
+                    let input = self.ts(ty, true)?;
+                    let input = if method.optional {
+                        format!("{input} | null | undefined")
+                    } else {
+                        input
+                    };
+                    c.line(format!("get {ident}(): {returns};"));
+                    c.line(format!("set {ident}(value: {input});"));
+                } else {
+                    c.line(format!("readonly {ident}: {returns};"));
+                }
             } else {
                 c.line(format!("{ident}({}): {returns};", self.params_dts(params)?));
             }
+        }
+        for (kind, method) in augment_finds(class) {
+            let Some(Type::List(inner)) = &method.returns else {
+                return Err(format!(
+                    "`{}`: the finder of `{kind}` does not return a list",
+                    class.name
+                ));
+            };
+            let found = self.ts(inner, false)?;
+            let query = self.ts(&method.params[0].ty, true)?;
+            c.line(format!(
+                "find(kind: {}, filter?: {query} | ((found: {found}) => unknown)): {found}[];",
+                quote(kind)
+            ));
+        }
+        if class.assign {
+            let mut names: Vec<String> = assign_fields(class, Some(target))
+                .iter()
+                .map(|property| member_name(&property.name, &property.extras.export.js))
+                .collect();
+            names.extend(
+                class
+                    .methods
+                    .iter()
+                    .filter(|method| class.augment_setters.contains(&method.name))
+                    .map(|method| member_name(&method.name, &method.extras.export.js)),
+            );
+            self.assign_dts(c, &class_name(target), &names)?;
         }
         c.dedent();
         c.line("}");
@@ -1499,6 +1659,22 @@ impl Js<'_> {
 // ---- the declarations ------------------------------------------------------------------------------------------------------
 
 impl Js<'_> {
+    /// The declaration of `set(props, options)` on the class `class`, which takes the writable properties `names`.
+    fn assign_dts(&self, c: &mut CodeWriter, class: &str, names: &[String]) -> Result<(), String> {
+        let picked = if names.is_empty() {
+            "never".to_owned()
+        } else {
+            names.iter().map(|name| quote(name)).collect::<Vec<_>>().join(" | ")
+        };
+        let options = self.ts(&Type::ObjectRef("transition_options".to_owned()), true)?;
+        let transition = self.ts(&Type::ObjectRef("transition".to_owned()), false)?;
+        c.line("/** Writes each property `props` names in one transition. Without `options` the change is not animated. */");
+        c.line(format!(
+            "set(props: Partial<Pick<{class}, {picked}>>, options?: {options}): {transition};"
+        ));
+        Ok(())
+    }
+
     /// The TypeScript type of `ty`. `input` is the form a parameter takes: a record may leave its defaulted fields out.
     fn ts(&self, ty: &Type, input: bool) -> Result<String, String> {
         Ok(match ty {
@@ -1838,6 +2014,13 @@ impl Js<'_> {
             }
             if !finds.is_empty() {
                 c.line("find(kind: string, filter?: Record<string, unknown> | ((found: never) => unknown)): object[];");
+            }
+            if object.assign {
+                let names: Vec<String> = assign_fields(object, None)
+                    .iter()
+                    .map(|property| member_name(&property.name, &property.extras.export.js))
+                    .collect();
+                self.assign_dts(c, &name, &names)?;
             }
             c.line("destroy(): void;");
         }

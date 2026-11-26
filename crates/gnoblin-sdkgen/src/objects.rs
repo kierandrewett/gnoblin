@@ -130,13 +130,76 @@ pub(super) fn foreign_base<'a>(catalog: &'a Catalog, object: &ObjectType) -> Opt
     Some((home, members))
 }
 
-/// The kinds a service's `find` knows and the method that lists each, in the order the catalog declares them.
+/// The kinds a service's `find` knows and the method that lists each, in the order the catalog declares them. A class that holds an
+/// augment has no `find` of its own: its kinds are added to the `find` of the core class it extends ([`augment_finds`]).
 pub(super) fn finds_of(object: &ObjectType) -> Vec<(&str, &gnoblin_schema::Method)> {
+    if object.augment_of.is_some() {
+        return Vec::new();
+    }
+    augment_finds(object)
+}
+
+/// The kinds `object`'s methods list with `find = "Kind"`, whatever the class: for a class that holds an augment, the kinds it adds to
+/// the core class's `find`.
+pub(super) fn augment_finds(object: &ObjectType) -> Vec<(&str, &gnoblin_schema::Method)> {
     object
         .methods
         .iter()
         .filter_map(|method| method.extras.find.as_deref().map(|kind| (kind, method)))
         .collect()
+}
+
+/// Whether `method` of a class that holds a receiver augment is the setter `set_<name>` of one of its writable properties, which a script
+/// generator installs as that property's setter and not as a method.
+pub(super) fn is_augment_setter(object: &ObjectType, method: &str) -> bool {
+    method
+        .strip_prefix("set_")
+        .is_some_and(|property| object.augment_setters.iter().any(|name| name == property))
+}
+
+/// The checks a class with `assign = true` needs: no member of the class (or of the core class an augment extends) is named `set`, and
+/// `set(props, options)` commits through the root's `request_transition`, which an augment of the core's `gnoblin` in the same namespace
+/// must add.
+pub(super) fn check_assign<'a>(
+    object: &ObjectType,
+    target: Option<&ObjectType>,
+    mut objects: impl Iterator<Item = &'a ObjectType>,
+) -> Result<(), String> {
+    let named_set = |class: &ObjectType| {
+        class.properties.iter().any(|property| property.name == "set")
+            || class.methods.iter().any(|method| method.name == "set")
+    };
+    if named_set(object) || target.is_some_and(named_set) {
+        return Err(format!(
+            "`{}` has `assign = true` and a member named `set`, which `assign` adds",
+            object.name
+        ));
+    }
+    let requests = objects.any(|other| {
+        other.augment_of.as_deref() == Some("gnoblin")
+            && other.methods.iter().any(|method| method.name == "request_transition")
+    });
+    if requests {
+        Ok(())
+    } else {
+        Err(format!(
+            "`{}` has `assign = true`, and its namespace adds no `request_transition` to the core's `gnoblin`",
+            object.name
+        ))
+    }
+}
+
+/// The writable properties `set(props, options)` of `object` takes: the object's own, and for the class that holds an augment, its
+/// target's. A receiver augment's own writable properties are not properties of its class: they are its `augment_setters`.
+pub(super) fn assign_fields<'a>(
+    object: &'a ObjectType,
+    target: Option<&'a ObjectType>,
+) -> Vec<&'a gnoblin_schema::Property> {
+    let own = object.properties.iter().filter(|property| !property.readonly);
+    let extended = target
+        .into_iter()
+        .flat_map(|target| target.properties.iter().filter(|property| !property.readonly));
+    own.chain(extended).collect()
 }
 
 /// The classes of `objects` that hold the members of an augment, each with the class of the core's catalog it extends, in the order of their
