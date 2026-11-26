@@ -14,12 +14,12 @@ simpler effects and cannot run user shaders.
 | Rounded corners (window clip)                    | Drawn                         | Drawn     | Drawn, anti-aliased           |
 | Rounded corners (shadow shape)                   | Drawn                         | Not drawn | Drawn                         |
 | Outer shadow                                     | Drawn, with spread and colour | Not drawn | Drawn, with spread and colour |
-| Inset shadow                                     | Not drawn                     | Not drawn | Not drawn                     |
+| Inset shadow                                     | Not drawn                     | Not drawn | Drawn                         |
 | Borders (several, offset)                        | Drawn                         | Not drawn | Drawn, anti-aliased           |
 | Backdrop blur                                    | Drawn                         | Not drawn | Drawn                         |
 | Backdrop grades (saturate, brightness, contrast) | Drawn                         | Not drawn | Drawn                         |
 | Filter grades on the window                      | Not drawn                     | Not drawn | Not drawn                     |
-| Background                                       | Not drawn                     | Not drawn | Not drawn                     |
+| Background                                       | Not drawn                     | Not drawn | Drawn                         |
 | Your own shader                                  | Drawn                         | Drawn     | Not drawn: no shader compiler |
 
 A few notes on the table:
