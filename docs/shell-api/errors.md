@@ -127,6 +127,20 @@ The `target` is `Class#id.member`, such as `Client#7.close`, where `id` is the o
 constructor or an object with no readable `id` gives `Class.member`, such as `InputContext.new`. The message begins with the
 target.
 
+### Member names in a refusal
+
+A refusal names the member it refused, in the spelling of the language that made the call. The library words it with the schema's
+name (`compositor_settings.user_shaders`), and each generated SDK writes the member as its own class spells it:
+
+- TypeScript: `` `CompositorSettings.userShaders` must be a boolean, got text ``, with the camelCase member and the parameter or the
+  record field the refusal names (`` `DwindleLayout.splitRatio`: `amount` ``).
+- Python: `` `CompositorSettings.user_shaders` must be a boolean, got text ``, with the attribute the Python class has, so a member
+  that is a keyword reads `from_`.
+- Rust: the schema's name stays, as `Fail` carries it, and the compositor's log words it the same way.
+
+The target of a failure (`Keyboard#1.repeatRate` in TypeScript, `Keyboard#1.repeat_rate` in Python and Rust) and the words after it
+follow the same spelling. A name the generated class does not know is left as the library wrote it.
+
 ### A shell that read the old failure
 
 Five things about a failed call of an object of the library read differently from before the codes. A shell written for the old reading changes as follows.

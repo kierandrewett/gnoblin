@@ -259,9 +259,9 @@ fn a_bad_device_setting_throws_where_it_is_written_and_leaves_the_setting() {
         [
             "TypeError: Mouse#2.sensitivity: must be a number from -1 to 1, got 2",
             "TypeError: \"custom\" is not a value of acceleration_profile (default, flat, adaptive)",
-            "TypeError: Keyboard#1.repeat_rate: must be a number of repeats per second from 0.1 to 1000, got 0",
-            "TypeError: `keyboard.repeat_delay` must be an unsigned integer, got a number",
-            "TypeError: `mouse.natural_scroll` must be a boolean, got text",
+            "TypeError: Keyboard#1.repeatRate: must be a number of repeats per second from 0.1 to 1000, got 0",
+            "TypeError: `Keyboard.repeatDelay` must be an unsigned integer, got a number",
+            "TypeError: `Mouse.naturalScroll` must be a boolean, got text",
             "GnoblinError(unsupported): Mouse#2.enabled: the compositor cannot disable one device; make it binding-only to keep its keys from clients",
             "TypeError: expected an object the library made",
         ]
@@ -361,7 +361,7 @@ fn contexts_add_and_remove_refuse_what_cannot_work() {
             r#"GnoblinError(already_exists): InputManager.addContext: gnoblin.input.contexts.add: a context named "one" is already there"#,
             r#"TypeError: gnoblin.input.contexts.add: a context name is one non-empty line, got """#,
             "TypeError: expected an object the library made",
-            "TypeError: `input_context.name` must be text, got an integer",
+            "TypeError: `InputContext.name` must be text, got an integer",
             r#"GnoblinError(denied): InputManager.removeContext: gnoblin.input.contexts.remove: "seat0" is a seat the compositor reports; only contexts a script added can be removed"#,
             r#"GnoblinError(invalid_state): InputContext#loose.pointer: InputContext "loose".pointer: add the context to the input manager first"#,
             "TypeError: Keyboard#1.context: assign a context that is in the input manager's contexts",

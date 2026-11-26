@@ -5,7 +5,7 @@
 //! is its name, a handle is a class instance and a closure is a function. The three that need a mark when they go in (a record, an enum
 //! value, an object) are wrapped by `B.rec`, `B.enm` and `B.ref`, which is the only place the encoding is known.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type};
 
@@ -117,19 +117,65 @@ function identity(self) {
   }
 }
 
+// The library words a refusal with the names of the catalog: a member is `class.member` and a parameter or a field of a record is its
+// own name, all in snake_case. A script spells them as the generated class does, so the call site that knows both (its `spell` table,
+// `[class, { member: [spelling, { name: spelling }] }]`) writes the script's spelling in their place.
+const LABEL =
+  /`([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)`((?:\[\d+\]|\.[a-z][a-z0-9_]*)*)(?:: `([a-z][a-z0-9_]*)`((?:\[\d+\]|\.[a-z][a-z0-9_]*)*))?/g;
+const TARGET = /^([A-Za-z0-9_]+)(#[^.:\s]*)?\.([a-z][a-z0-9_]*)(?=:|\()/;
+
+/** What `map` holds under `key` as its own entry, or none. */
+function own(map, key) {
+  return map !== undefined && Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
+}
+
+/** `path` (`.field` and `[index]` steps) with each field spelled as `names` spells it. */
+function respellPath(path, names) {
+  return path.replace(/\.([a-z][a-z0-9_]*)/g, (_, field) => `.${own(names, field) ?? field}`);
+}
+
+/**
+ * `message` with the catalog's names of the members of the class `spell` describes written as the class `className` spells them: the
+ * label of the member (`class.member`, then a record's fields or a list's indexes, then the parameter a refusal names) and the target
+ * a library puts first in its own words (`Class#id.member:`). A name `spell` does not know is left as it is.
+ */
+function respell(message, className, spell) {
+  const [schema, members] = spell;
+  const labelled = message.replace(LABEL, (whole, owner, name, path, parameter, parameterPath) => {
+    const entry = owner === schema ? own(members, name) : undefined;
+    if (entry === undefined) {
+      return whole;
+    }
+    const [spelling, names] = entry;
+    const label = `\`${className}.${spelling}\`${respellPath(path, names)}`;
+    return parameter === undefined ? label : `${label}: \`${own(names, parameter) ?? parameter}\`${respellPath(parameterPath, names)}`;
+  });
+  return labelled.replace(TARGET, (whole, owner, id, name) => {
+    const entry = owner === className ? own(members, name) : undefined;
+    return entry === undefined ? whole : `${owner}${id ?? ""}.${entry[0]}`;
+  });
+}
+
 /**
  * The error to throw for what a call of `member` of `className` threw. The native layer throws an `Error` with the library's words, its
  * `code` as text and the `abi` integer for a failure that has a code; the call site, which knows the class, the object and the member,
  * makes it a `GnoblinError` with the target `Class#id.member` (`Class.member` when there is no object or it has no id). Anything else
- * is returned as it is: a `TypeError` for a bad argument, or an error the script's own code threw.
+ * is returned as it is: a `TypeError` for a bad argument, or an error the script's own code threw. Whichever it is, the names of the
+ * catalog in its words are written as the class spells them when the call site gives its `spell` table.
  */
-export function raise(error, self, className, member) {
+export function raise(error, self, className, member, spell) {
   if (!(error instanceof Error) || typeof error.code !== "string" || typeof error.abi !== "number") {
+    if (spell !== undefined && (error instanceof TypeError || error instanceof RangeError)) {
+      const message = respell(error.message, className, spell);
+      if (message !== error.message) {
+        error.message = message;
+      }
+    }
     return error;
   }
   const id = identity(self);
   const target = id === undefined ? `${className}.${member}` : `${className}#${id}.${member}`;
-  let message = error.message;
+  let message = spell === undefined ? error.message : respell(error.message, className, spell);
   for (const lead of [`${target}: `, `${target}(): `]) {
     if (message.startsWith(lead)) {
       message = message.slice(lead.length);
@@ -320,8 +366,8 @@ export function listen(self, namespace, ids, events, event, handler, className) 
   return new Listener(namespace, registration);
 }
 
-/** Writes the property `name` of `self`, an object of `className`, over a time. */
-export function setTimed(self, member, value, timing, className, name) {
+/** Writes the property `name` of `self`, an object of `className`, over a time. `spell` is the table of the class (`raise`). */
+export function setTimed(self, member, value, timing, className, name, spell) {
   try {
     native.setTimed(self[HANDLE], member, value, {
       seconds: need(timing?.seconds, "timing.seconds"),
@@ -330,7 +376,7 @@ export function setTimed(self, member, value, timing, className, name) {
       samples: timing.samples ?? [],
     });
   } catch (error) {
-    throw raise(error, self, className, name);
+    throw raise(error, self, className, name, spell);
   }
 }
 
@@ -489,16 +535,25 @@ fn param_name(field: &Field) -> String {
 
 /// The statements `body` writes, inside a `try` whose `catch` throws what `B.raise` makes of the failure: a `GnoblinError` naming the
 /// member of `class` and the object `object` (`this`, or `undefined` for a call that has none), or the error itself when it is not a
-/// failure of the library (a `TypeError` for a bad argument).
-fn guarded(c: &mut CodeWriter, class: &str, member: &str, object: &str, body: impl FnOnce(&mut CodeWriter)) {
+/// failure of the library (a `TypeError` for a bad argument). `spell` is the table of the class (`spell_<class>`, [`Js::spell_source`]) that
+/// lets `B.raise` write the names the library's words carry as the script spells them.
+fn guarded(
+    c: &mut CodeWriter,
+    class: &str,
+    member: &str,
+    object: &str,
+    spell: Option<&str>,
+    body: impl FnOnce(&mut CodeWriter),
+) {
     c.line("try {");
     c.indent();
     body(c);
     c.dedent();
     c.line("} catch (error) {");
     c.indent();
+    let spell = spell.map(|table| format!(", {table}")).unwrap_or_default();
     c.line(format!(
-        "throw B.raise(error, {object}, {}, {});",
+        "throw B.raise(error, {object}, {}, {}{spell});",
         quote(class),
         quote(member)
     ));
@@ -1013,6 +1068,77 @@ impl<'a> Js<'a> {
         Ok((names.join(", "), encoded))
     }
 
+    /// The names a script spells differently from the catalog, for a failure of a call to say them as the script wrote them.
+    ///
+    /// The library words a refusal with the catalog's names (`class.member`, and the parameter or field it refuses), which are snake_case,
+    /// and the script's are camelCase. The class has a table of its own members, `spell_<class>`, that `B.raise` reads: the class and
+    /// each member of its own with the spelling the class gives it, and the parameters and the record fields the member takes, where
+    /// they are spelled otherwise. The members of a base class that another library serves are worded by that library.
+    fn spell_source(&self, c: &mut CodeWriter, object: &ObjectType, slots: &[ClassMember<'_>]) -> Result<(), String> {
+        let mut members = Vec::new();
+        for slot in slots.iter().filter(|slot| !slot.foreign) {
+            let mut names = BTreeMap::new();
+            let (name, spelling) = match &slot.member {
+                Member::Property(property) => {
+                    self.spelt_fields(&property.ty, &mut names, &mut BTreeSet::new())?;
+                    (&property.name, member_name(&property.name, &property.extras.export.js))
+                }
+                Member::Method(method) => {
+                    for param in &method.params {
+                        names.insert(param.name.clone(), param_name(param));
+                        self.spelt_fields(&param.ty, &mut names, &mut BTreeSet::new())?;
+                    }
+                    (&method.name, member_name(&method.name, &method.extras.export.js))
+                }
+                Member::Signal(_) => continue,
+            };
+            names.retain(|name, spelling| name != spelling.as_str());
+            let names = if names.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    ", {{ {} }}",
+                    names
+                        .iter()
+                        .map(|(name, spelling)| format!("{}: {}", quote(name), quote(spelling)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            };
+            members.push(format!("{}: [{}{names}]", quote(name), quote(&spelling)));
+        }
+        c.line(format!(
+            "const spell_{} = [{}, {{ {} }}];",
+            snake(&object.name),
+            quote(&object.name),
+            members.join(", ")
+        ));
+        Ok(())
+    }
+
+    /// The fields of the records a value of `ty` holds, with the name a script gives each (`names` maps the catalog's name to it).
+    fn spelt_fields(
+        &self,
+        ty: &Type,
+        names: &mut BTreeMap<String, String>,
+        seen: &mut BTreeSet<String>,
+    ) -> Result<(), String> {
+        match ty {
+            Type::List(inner) => self.spelt_fields(inner, names, seen),
+            Type::ObjectRef(name) if !name.contains('.') => {
+                let class = self.view.class(name)?;
+                if class.kind == ObjectKind::Record && seen.insert(class.name.clone()) {
+                    for field in &class.properties {
+                        names.insert(field.name.clone(), js_field(field));
+                        self.spelt_fields(&field.ty, names, seen)?;
+                    }
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
     fn handle_source(&self, c: &mut CodeWriter, object: &'a ObjectType) -> Result<(), String> {
         let name = class_name(object);
         let snake_name = snake(&object.name);
@@ -1022,6 +1148,7 @@ impl<'a> Js<'a> {
         }
         let lookups = Self::lookups(&slots);
         self.ids_source(c, object, &lookups);
+        self.spell_source(c, object, &slots)?;
         let events = Self::events(&slots);
         if !events.is_empty() {
             c.line(format!("const events_{snake_name} = {{"));
@@ -1173,7 +1300,11 @@ impl<'a> Js<'a> {
             c.line("/** Ends the object and its children, whoever else holds it. */");
             c.block(
                 "destroy() {",
-                |c| guarded(c, &name, "destroy", "this", |c| c.line("N.destroy(this[B.HANDLE]);")),
+                |c| {
+                    guarded(c, &name, "destroy", "this", None, |c| {
+                        c.line("N.destroy(this[B.HANDLE]);")
+                    })
+                },
                 "}",
             );
         }
@@ -1196,13 +1327,14 @@ impl<'a> Js<'a> {
         lookups: &[MemberLookup],
     ) -> Result<(), String> {
         let snake_name = snake(&object.name);
+        let spell = format!("spell_{snake_name}");
         if object.kind == ObjectKind::Service {
             c.line("/** The service. */");
             c.block(
                 "static get() {",
                 |c| {
                     c.line(format!("const i = ids_{snake_name}();"));
-                    guarded(c, &class_name(object), "get", "undefined", |c| {
+                    guarded(c, &class_name(object), "get", "undefined", None, |c| {
                         c.line(format!(
                             "return B.adopt(Object.create({}.prototype), N.create(NS, i[0], []));",
                             class_name(object)
@@ -1259,7 +1391,7 @@ impl<'a> Js<'a> {
             format!("constructor({}) {{", params.join(", ")),
             |c| {
                 c.line(&lines[0]);
-                guarded(c, &class_name(object), "new", "undefined", |c| {
+                guarded(c, &class_name(object), "new", "undefined", Some(&spell), |c| {
                     for line in &lines[1..] {
                         c.line(line);
                     }
@@ -1280,6 +1412,7 @@ impl<'a> Js<'a> {
         claim: &mut impl FnMut(&str, bool) -> Result<(), String>,
     ) -> Result<(), String> {
         let ident = member_name(&property.name, &property.extras.export.js);
+        let spell = format!("spell_{snake_name}");
         let at = Self::at(lookups, 'p', &property.name);
         let ids = format!("ids_{snake_name}()[{at}]");
         if !matches!(property.ty, Type::Callback(_)) {
@@ -1288,7 +1421,11 @@ impl<'a> Js<'a> {
             c.line(format!("/** The property `{}`. */", property.name));
             c.block(
                 format!("get {ident}() {{"),
-                |c| guarded(c, class, &ident, "this", |c| c.line(format!("return {read};"))),
+                |c| {
+                    guarded(c, class, &ident, "this", Some(&spell), |c| {
+                        c.line(format!("return {read};"))
+                    })
+                },
                 "}",
             );
         } else {
@@ -1299,7 +1436,7 @@ impl<'a> Js<'a> {
             c.block(
                 format!("set {ident}(value) {{"),
                 |c| {
-                    guarded(c, class, &ident, "this", |c| {
+                    guarded(c, class, &ident, "this", Some(&spell), |c| {
                         c.line(format!("N.set(this[B.HANDLE], {ids}, {write});"))
                     })
                 },
@@ -1313,7 +1450,7 @@ impl<'a> Js<'a> {
                     format!("{timed}(value, timing) {{"),
                     |c| {
                         c.line(format!(
-                            "B.setTimed(this, {ids}, {write}, timing, {}, {});",
+                            "B.setTimed(this, {ids}, {write}, timing, {}, {}, {spell});",
                             quote(class),
                             quote(&timed)
                         ))
@@ -1335,6 +1472,7 @@ impl<'a> Js<'a> {
         claim: &mut impl FnMut(&str, bool) -> Result<(), String>,
     ) -> Result<(), String> {
         let ident = member_name(&method.name, &method.extras.export.js);
+        let spell = format!("spell_{snake_name}");
         claim(&ident, method.function)?;
         let (params, args) = self.params_source(&method.params)?;
         let at = Self::at(lookups, 'm', &method.name);
@@ -1361,6 +1499,7 @@ impl<'a> Js<'a> {
                     class,
                     &ident,
                     if method.function { "undefined" } else { "this" },
+                    Some(&spell),
                     |c| c.line(body),
                 );
             },
@@ -1416,7 +1555,7 @@ impl<'a> Js<'a> {
             };
             arms.push(format!("if (member === i[{at}]) return {answer};"));
         }
-        guarded(c, &name, "implement", "undefined", |c| {
+        guarded(c, &name, "implement", "undefined", None, |c| {
             c.line("return N.implement(NS, i[0], implemented, (member, args) => {");
             c.indent();
             for arm in &arms {

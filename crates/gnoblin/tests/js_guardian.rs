@@ -395,8 +395,8 @@ fn config_reload_commits_the_new_document_and_a_refused_file_leaves_the_accepted
     assert!(out.starts_with("reloaded: revision 2"), "{out}");
     assert_eq!(shaders_of(&committed(&session).1), &serde_json::json!(true));
 
-    // A value the setter refuses fails the reload with the property named (by its schema name, as every refusal of the object
-    // server names a member: `compositor_settings.user_shaders`), and revision 2 stays in force.
+    // A value the setter refuses fails the reload with the property named as the shell wrote it (`gnoblin.compositor.userShaders`), not by
+    // its schema name (`compositor_settings.user_shaders`), and revision 2 stays in force.
     write_init(
         &session.config_dir(),
         &init_with("gnoblin.compositor.userShaders = \"huge\";"),
@@ -404,7 +404,7 @@ fn config_reload_commits_the_new_document_and_a_refused_file_leaves_the_accepted
     let (code, _, err) = session.ctl(&["config", "reload"]);
     assert_eq!(code, 1, "{err}");
     assert!(
-        err.contains("compositor_settings.user_shaders"),
+        err.contains("CompositorSettings.userShaders"),
         "the refusal names the property: {err}"
     );
     let (revision, document) = committed(&session);

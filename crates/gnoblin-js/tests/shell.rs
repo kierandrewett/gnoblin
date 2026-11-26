@@ -315,7 +315,7 @@ fn a_write_of_a_value_that_is_not_a_finite_number_names_the_member() {
     assert_eq!(rig.eval(&error("NaN")), "TypeError:Client#3.x: must be a finite number");
     assert_eq!(
         rig.eval(&error("'1'")),
-        "TypeError:`client.x` must be a number, got text"
+        "TypeError:`Client.x` must be a number, got text"
     );
     assert_eq!(
         rig.eval(&error("Infinity")),

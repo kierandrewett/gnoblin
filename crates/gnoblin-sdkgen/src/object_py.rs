@@ -5,7 +5,7 @@
 //! catalog's order, and hands one back as a `tuple`), an enum is an `IntEnum`, a handle is an instance of a generated class and a closure is
 //! a callable. One renderer writes the module and its stub: the stub is the same text with every body `...`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type};
 
@@ -59,6 +59,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import functools
+import re
 import weakref
 from typing import Any, Callable
 
@@ -84,13 +85,54 @@ def _identity(obj: Any) -> str | None:
         _naming = False
 
 
-def _named(error: GnoblinError, obj: Any, class_name: str, member: str) -> GnoblinError:
-    """`error` with the target `Class#id.member` (`Class.member` when there is no object or it has no id), and the message that begins with it."""
+# The library words a refusal with the names of the catalog: a member is `class.member` and a parameter or a field of a record is its
+# own name. A script spells them as the generated class does, so the member that knows both (its `spell` table,
+# `(class, {member: (spelling, {name: spelling})})`) writes the script's spelling in their place.
+_LABEL = re.compile(
+    r"`([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)`((?:\[\d+\]|\.[a-z][a-z0-9_]*)*)(?:: `([a-z][a-z0-9_]*)`((?:\[\d+\]|\.[a-z][a-z0-9_]*)*))?"
+)
+_TARGET = re.compile(r"^([A-Za-z0-9_]+)(#[^.:\s]*)?\.([a-z][a-z0-9_]*)(?=:|\()")
+_STEP = re.compile(r"\.([a-z][a-z0-9_]*)")
+
+
+def _respell(message: str, class_name: str, spell: tuple[str, dict[str, Any]]) -> str:
+    """`message` with the catalog's names of the members of the class `spell` describes written as the class `class_name` spells them: the
+    label of the member (`class.member`, then a record's fields or a list's indexes, then the parameter a refusal names) and the target a
+    library puts first in its own words (`Class#id.member:`). A name `spell` does not know is left as it is."""
+    schema, members = spell
+
+    def path(steps: str, names: dict[str, str]) -> str:
+        return _STEP.sub(lambda step: "." + names.get(step.group(1), step.group(1)), steps)
+
+    def label(found: re.Match[str]) -> str:
+        owner, name, steps, parameter, parameter_steps = found.groups()
+        entry = members.get(name) if owner == schema else None
+        if entry is None:
+            return found.group(0)
+        spelling, names = entry
+        text = f"`{class_name}.{spelling}`{path(steps, names)}"
+        if parameter is not None:
+            text += f": `{names.get(parameter, parameter)}`{path(parameter_steps, names)}"
+        return text
+
+    def target(found: re.Match[str]) -> str:
+        owner, ident, name = found.groups()
+        entry = members.get(name) if owner == class_name else None
+        return found.group(0) if entry is None else f"{owner}{ident or ''}.{entry[0]}"
+
+    return _TARGET.sub(target, _LABEL.sub(label, message), count=1)
+
+
+def _named(
+    error: GnoblinError, obj: Any, class_name: str, member: str, spell: tuple[str, dict[str, Any]] | None = None
+) -> GnoblinError:
+    """`error` with the target `Class#id.member` (`Class.member` when there is no object or it has no id), and the message that begins with it.
+    The names of the catalog in its words are written as the class spells them when the member gives its `spell` table."""
     if getattr(error, "target", None) is not None:
         return error
     ident = _identity(obj)
     target = f"{class_name}.{member}" if ident is None else f"{class_name}#{ident}.{member}"
-    words = str(error)
+    words = str(error) if spell is None else _respell(str(error), class_name, spell)
     for lead in (f"{target}: ", f"{target}(): "):
         if words.startswith(lead):
             words = words[len(lead) :]
@@ -100,9 +142,12 @@ def _named(error: GnoblinError, obj: Any, class_name: str, member: str) -> Gnobl
     return error
 
 
-def named(class_name: str | None, member: str, static: bool = False) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+def named(
+    class_name: str | None, member: str, static: bool = False, spell: tuple[str, dict[str, Any]] | None = None
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Makes a failure of the library in the decorated member a `GnoblinError` that names `class_name` (the class of the object when it is
-    none), the object and `member`. A bad argument is a `TypeError`, and is left as it is."""
+    none), the object and `member`. A bad argument is a `TypeError`, and is left as it is but for the names of the catalog in its words, which
+    are written as the class spells them when the member gives its `spell` table."""
 
     def wrap(fn: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(fn)
@@ -111,7 +156,12 @@ def named(class_name: str | None, member: str, static: bool = False) -> Callable
                 return fn(*args, **kwargs)
             except GnoblinError as error:
                 obj = None if static or not args else args[0]
-                raise _named(error, obj, class_name or type(obj).__name__, member) from None
+                raise _named(error, obj, class_name or type(obj).__name__, member, spell) from None
+            except TypeError as error:
+                if spell is not None and error.args and isinstance(error.args[0], str):
+                    obj = None if static or not args else args[0]
+                    error.args = (_respell(error.args[0], class_name or type(obj).__name__, spell), *error.args[1:])
+                raise
 
         return run
 
@@ -621,11 +671,13 @@ impl<'a> Py<'a> {
     }
 
     /// The decorator that makes a failure of the library in the member that follows a `GnoblinError` naming `class` and `member`. A stub
-    /// has none. `bare` is for a member that has no object (a function, a constructor).
-    fn named(&self, c: &mut CodeWriter, class: &str, member: &str, bare: bool) {
+    /// has none. `bare` is for a member that has no object (a function, a constructor). `spell` is the table of the class
+    /// (`_spell_<class>`, [`Py::spell_source`]) that writes the names the library's words carry as the script spells them.
+    fn named(&self, c: &mut CodeWriter, class: &str, member: &str, bare: bool, spell: Option<&str>) {
         if !self.stub {
             let tail = if bare { ", True" } else { "" };
-            c.line(format!("@_B.named({class:?}, {member:?}{tail})"));
+            let spell = spell.map(|table| format!(", spell={table}")).unwrap_or_default();
+            c.line(format!("@_B.named({class:?}, {member:?}{tail}{spell})"));
         }
     }
 
@@ -1040,6 +1092,68 @@ impl<'a> Py<'a> {
         ));
     }
 
+    /// The names a script spells differently from the catalog, for a failure of a call to say them as the script wrote them: the class's
+    /// table `_spell_<class>` has the class, each member of its own with the spelling the class gives it, and the parameters and the
+    /// record fields the member takes, where they are spelled otherwise (`_B.named` reads it). The members of a base class that another
+    /// library serves are worded by that library.
+    fn spell_source(&self, c: &mut CodeWriter, object: &ObjectType, slots: &[ClassMember<'_>]) -> Result<(), String> {
+        let mut members = Vec::new();
+        for slot in slots.iter().filter(|slot| !slot.foreign) {
+            let mut names = BTreeMap::new();
+            let (name, spelling) = match &slot.member {
+                Member::Property(property) => {
+                    self.spelt_fields(&property.ty, &mut names, &mut BTreeSet::new())?;
+                    (&property.name, member_name(&property.name, &property.extras.export.py))
+                }
+                Member::Method(method) => {
+                    for param in &method.params {
+                        names.insert(param.name.clone(), param_name(param));
+                        self.spelt_fields(&param.ty, &mut names, &mut BTreeSet::new())?;
+                    }
+                    (&method.name, member_name(&method.name, &method.extras.export.py))
+                }
+                Member::Signal(_) => continue,
+            };
+            names.retain(|name, spelling| name != spelling.as_str());
+            let names = names
+                .iter()
+                .map(|(name, spelling)| format!("{}: {}", quote(name), quote(spelling)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            members.push(format!("{}: ({}, {{{names}}})", quote(name), quote(&spelling)));
+        }
+        c.line(format!(
+            "_spell_{} = ({}, {{{}}})",
+            snake(&object.name),
+            quote(&object.name),
+            members.join(", ")
+        ));
+        Ok(())
+    }
+
+    /// The fields of the records a value of `ty` holds, with the name a script gives each (`names` maps the catalog's name to it).
+    fn spelt_fields(
+        &self,
+        ty: &Type,
+        names: &mut BTreeMap<String, String>,
+        seen: &mut BTreeSet<String>,
+    ) -> Result<(), String> {
+        match ty {
+            Type::List(inner) => self.spelt_fields(inner, names, seen),
+            Type::ObjectRef(name) if !name.contains('.') => {
+                let class = self.view.class(name)?;
+                if class.kind == ObjectKind::Record && seen.insert(class.name.clone()) {
+                    for field in &class.properties {
+                        names.insert(field.name.clone(), py_field(field));
+                        self.spelt_fields(&field.ty, names, seen)?;
+                    }
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
     fn params(&self, fields: &[Field]) -> Result<(String, Vec<String>), String> {
         let mut params = Vec::new();
         let mut args = Vec::new();
@@ -1070,6 +1184,7 @@ impl<'a> Py<'a> {
         let lookups = Self::lookups(&slots);
         if !self.stub {
             self.ids_source(c, object, &lookups);
+            self.spell_source(c, object, &slots)?;
         }
         let mut events: Vec<ScriptEvent> = Vec::new();
         for slot in &slots {
@@ -1320,7 +1435,7 @@ impl<'a> Py<'a> {
         let snake_name = snake(&object.name);
         if object.kind == ObjectKind::Service {
             c.line("@classmethod");
-            self.named(c, &class_name(object), "get", true);
+            self.named(c, &class_name(object), "get", true, None);
             self.def(
                 c,
                 &format!("def get(cls) -> {}", class_name(object)),
@@ -1365,7 +1480,13 @@ impl<'a> Py<'a> {
             }
             lines.push("_B.Object.__init__(self, _NS.create(i[0], inits))".to_owned());
         }
-        self.named(c, &class_name(object), "new", true);
+        self.named(
+            c,
+            &class_name(object),
+            "new",
+            true,
+            Some(&format!("_spell_{snake_name}")),
+        );
         self.def(
             c,
             &format!("def __init__({}) -> None", params.join(", ")),
@@ -1389,6 +1510,7 @@ impl<'a> Py<'a> {
         claim: &mut impl FnMut(&str) -> Result<(), String>,
     ) -> Result<(), String> {
         let ident = member_name(&property.name, &property.extras.export.py);
+        let spell = format!("_spell_{snake_name}");
         claim(&ident)?;
         let at = Self::at(lookups, 'p', &property.name);
         let ids = format!("_ids_{snake_name}()[{at}]");
@@ -1399,7 +1521,7 @@ impl<'a> Py<'a> {
             if self.stub {
                 c.line(format!("{ident}: {write_ty}"));
             } else {
-                self.named(c, class, &ident, false);
+                self.named(c, class, &ident, false, Some(&spell));
                 c.line(format!("def _set_{ident}(self, value):"));
                 c.line(format!("    self._h.set({ids}, {})", self.enc(&property.ty, "value")?));
                 c.line(format!("{ident} = builtins.property(fset=_set_{ident})"));
@@ -1408,7 +1530,7 @@ impl<'a> Py<'a> {
         }
         let read = self.ty_read(&property.ty, property.optional)?;
         c.line("@builtins.property");
-        self.named(c, class, &ident, false);
+        self.named(c, class, &ident, false, Some(&spell));
         self.def(
             c,
             &format!("def {ident}(self) -> {read}"),
@@ -1420,7 +1542,7 @@ impl<'a> Py<'a> {
         );
         if !property.readonly {
             c.line(format!("@{ident}.setter"));
-            self.named(c, class, &ident, false);
+            self.named(c, class, &ident, false, Some(&spell));
             self.def(
                 c,
                 &format!("def {ident}(self, value: {write_ty}) -> None"),
@@ -1430,7 +1552,7 @@ impl<'a> Py<'a> {
             if property.animated {
                 let timed = format!("set_{ident}_timed");
                 claim(&timed)?;
-                self.named(c, class, &timed, false);
+                self.named(c, class, &timed, false, Some(&spell));
                 self.def(
                     c,
                     &format!("def {timed}(self, value: {write_ty}, timing: Timing) -> None"),
@@ -1455,6 +1577,7 @@ impl<'a> Py<'a> {
         claim: &mut impl FnMut(&str) -> Result<(), String>,
     ) -> Result<(), String> {
         let ident = member_name(&method.name, &method.extras.export.py);
+        let spell = format!("_spell_{snake_name}");
         claim(&ident)?;
         let (params, args) = self.params(&method.params)?;
         let at = Self::at(lookups, 'm', &method.name);
@@ -1480,7 +1603,7 @@ impl<'a> Py<'a> {
         let body = [format!("i = _ids_{snake_name}()"), result];
         if method.function {
             c.line("@staticmethod");
-            self.named(c, class, &ident, true);
+            self.named(c, class, &ident, true, Some(&spell));
             self.def(c, &format!("def {ident}({params}) -> {returns}"), &doc, &body);
         } else {
             let params = if params.is_empty() {
@@ -1488,7 +1611,7 @@ impl<'a> Py<'a> {
             } else {
                 format!("self, {params}")
             };
-            self.named(c, class, &ident, false);
+            self.named(c, class, &ident, false, Some(&spell));
             self.def(c, &format!("def {ident}({params}) -> {returns}"), &doc, &body);
         }
         Ok(())
@@ -1552,7 +1675,7 @@ impl<'a> Py<'a> {
         if self.stub {
             return Ok(());
         }
-        self.named(c, &name, "implement", true);
+        self.named(c, &name, "implement", true, None);
         c.line(format!("def _implement_{snake_name}(obj):"));
         c.indent();
         c.line(format!("i = _ids_{snake_name}()"));

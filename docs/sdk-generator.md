@@ -241,6 +241,12 @@ A failed call raises the language's own error:
 - Python: the same members are decorated to raise `gnoblin.errors.GnoblinError`, with `code` and `target` set.
 - Rust: a generated member returns `Res<T>`, and its `Fail` carries `code()`, `reason()` and `target()`.
 
+A refusal words the member as the language spells it ([Member names in a refusal](shell-api/errors.md#member-names-in-a-refusal)):
+
+- TypeScript: `Class.memberName`, from the table `spell_<class>` that `B.raise` reads.
+- Python: `Class.member_name`, from the table `_spell_<class>` that `_B.named` reads.
+- Rust: the schema's `member_name`, unchanged.
+
 | Catalog type | TypeScript (`gnoblin-std/generated/objects`)                   | Python (`gnoblin.objects.std`)                       |
 | ------------ | -------------------------------------------------------------- | ---------------------------------------------------- |
 | enum         | a string-literal union (`"click" \| "sloppy"`)                 | an `IntEnum`; a name is accepted where one is read   |

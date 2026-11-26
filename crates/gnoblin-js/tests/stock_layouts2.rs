@@ -449,7 +449,7 @@ fn scroll_to_pins_the_view_until_the_focused_node_changes_as_before() {
             "0,0,0,500",
             "TypeError: strip.scroll_to.offset must be a finite number, got NaN",
             "TypeError: strip.scroll_to.offset must be a finite number, got inf",
-            "TypeError: `strip_layout.scroll_to`: `offset` must be a number, got text",
+            "TypeError: `StripLayout.scrollTo`: `offset` must be a number, got text",
         ])
     );
 }

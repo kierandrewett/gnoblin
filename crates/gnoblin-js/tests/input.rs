@@ -731,7 +731,7 @@ fn binding_only_is_given_up_by_assigning_false_and_by_the_shell_going() {
     assert_eq!(rig.eval("String(input.releaseBindingOnly('Macro Pad'))"), "false");
     assert_eq!(
         rig.eval("try { pad.bindingOnly = 1; 'set' } catch (e) { e.message }"),
-        "`keyboard.binding_only` must be a boolean, got an integer"
+        "`Keyboard.bindingOnly` must be a boolean, got an integer"
     );
 }
 

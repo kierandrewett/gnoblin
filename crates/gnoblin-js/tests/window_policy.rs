@@ -655,7 +655,7 @@ fn workspace_walk_moves_the_focus_along_the_workspaces_windows() {
     assert_eq!(focus(&rig), 3, "past the first window the focus stays");
     assert_eq!(
         rig.eval("try { ws.walk(1.5); 'walked' } catch (e) { e.message }"),
-        "`workspace.walk`: `step` must be an integer, got a number"
+        "`Workspace.walk`: `step` must be an integer, got a number"
     );
 }
 

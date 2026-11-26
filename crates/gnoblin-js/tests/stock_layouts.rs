@@ -318,7 +318,7 @@ fn grid_with_a_fixed_column_count_is_derived_from_the_auto_algorithm() {
             "0,0,1000,266 0,266,1000,267 0,533,1000,267",
             "0,0,500,400 500,0,500,400 0,400,500,400",
             "TypeError: grid.columns must be a whole number of at least 0, got -1",
-            "TypeError: `grid_layout.columns` must be an integer, got a number",
+            "TypeError: `GridLayout.columns` must be an integer, got a number",
         ])
     );
 }

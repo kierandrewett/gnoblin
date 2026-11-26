@@ -1378,6 +1378,200 @@ print("ok")
         );
     }
 
+    /// Each generated class carries the spelling of its members, which `B.raise` and `_B.named` read to word a refusal as the script wrote
+    /// the member: the class and each member of its own, with the parameters and the record fields spelled otherwise.
+    #[test]
+    fn the_generated_classes_carry_the_spelling_of_their_members() {
+        let files = rendered_files();
+        let text = |path: &str| {
+            files
+                .iter()
+                .find(|(file, _)| file == path)
+                .unwrap_or_else(|| panic!("{path} is rendered"))
+                .1
+                .as_str()
+        };
+        let js = text("probe/objects.js");
+        for wanted in [
+            "const spell_probe = [\"probe\", { ",
+            "\"last_colour\": [\"lastColour\"]",
+            "\"on_tick\": [\"onTick\"]",
+            "\"length_of\": [\"lengthOf\"]",
+            "B.raise(error, this, \"Probe\", \"lastColour\", spell_probe)",
+            "B.raise(error, undefined, \"Probe\", \"new\", spell_probe)",
+            "B.raise(error, undefined, \"Probe\", \"clamp\", spell_probe)",
+        ] {
+            assert!(js.contains(wanted), "the JavaScript lacks `{wanted}`");
+        }
+        let py = text("probe/probe.py");
+        for wanted in [
+            "_spell_probe = (\"probe\", {",
+            "\"last_colour\": (\"last_colour\", {})",
+            "\"reach\": (\"reach\", {\"from\": \"from_\"})",
+            "@_B.named(\"Probe\", \"reach\", spell=_spell_probe)",
+            "@_B.named(\"Probe\", \"new\", True, spell=_spell_probe)",
+        ] {
+            assert!(py.contains(wanted), "the Python lacks `{wanted}`");
+        }
+        assert!(
+            !text("probe/probe.pyi").contains("_spell_"),
+            "a stub has no spelling table"
+        );
+    }
+
+    /// `B.raise` of the JavaScript runtime words a refusal as the script wrote the member: the label (`class.member`), the record field or
+    /// the parameter after it, and the target a library puts first in its own words. A name the table lacks, another class and an error
+    /// that is not a refusal are left as they are. Skipped where there is no `node`.
+    #[test]
+    fn the_javascript_raise_writes_the_names_as_the_script_spells_them() {
+        let Some(node) = tool("node", "GNOBLIN_NODE") else {
+            eprintln!("node is not installed: the check is skipped");
+            return;
+        };
+        let dir = tempfile::tempdir().expect("a directory");
+        let files = rendered_files();
+        let base = files
+            .iter()
+            .find(|(file, _)| file == "js/native/gnoblin-core/generated/object_base.js")
+            .expect("the base is rendered");
+        fs::write(dir.path().join("object_base.mjs"), &base.1).expect("the base");
+        fs::write(
+            dir.path().join("check.mjs"),
+            r##"
+globalThis.__gnoblinObjects = {};
+const B = await import("./object_base.mjs");
+const spell = ["keyboard", {
+  binding_only: ["bindingOnly"],
+  repeat_rate: ["repeatRate"],
+  split_ratio: ["splitRatio", { max_size: "maxSize" }],
+}];
+const eq = (what, got, want) => {
+  if (got !== want) throw new Error(`${what}: got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+};
+const bad = (message, make = TypeError, member = "bindingOnly") => B.raise(new make(message), undefined, "Keyboard", member, spell);
+eq("a property", bad("`keyboard.binding_only` must be a boolean, got an integer").message, "`Keyboard.bindingOnly` must be a boolean, got an integer");
+eq("a parameter", bad("`keyboard.split_ratio`: `max_size` must be a number, got text").message, "`Keyboard.splitRatio`: `maxSize` must be a number, got text");
+eq("a field of an element", bad("`keyboard.split_ratio`[2].max_size must be a number").message, "`Keyboard.splitRatio`[2].maxSize must be a number");
+eq("a range", bad("`keyboard.repeat_rate` must be above 0", RangeError).message, "`Keyboard.repeatRate` must be above 0");
+eq("the target of the library", bad("Keyboard#1.repeat_rate: must be a number, got 0").message, "Keyboard#1.repeatRate: must be a number, got 0");
+eq("a member the table lacks", bad("`keyboard.nothing` must be a boolean").message, "`keyboard.nothing` must be a boolean");
+eq("another class", bad("`mouse.binding_only` must be a boolean").message, "`mouse.binding_only` must be a boolean");
+eq("a member of the prototype", bad("`keyboard.constructor` must be a boolean").message, "`keyboard.constructor` must be a boolean");
+eq("words of the script", bad("dwindle.split_ratio.amount must be a finite number").message, "dwindle.split_ratio.amount must be a finite number");
+const own = new Error("not ours");
+eq("an error that is no refusal", B.raise(own, undefined, "Keyboard", "bindingOnly", spell), own);
+const refused = new Error("Keyboard#1.repeat_rate: nothing `keyboard.binding_only` is read-only");
+refused.code = "read_only";
+refused.abi = -9;
+const raised = B.raise(refused, { id: 1 }, "Keyboard", "repeatRate", spell);
+eq("the target of a coded failure", raised.target, "Keyboard#1.repeatRate");
+eq("the words of a coded failure", raised.message, "Keyboard#1.repeatRate: nothing `Keyboard.bindingOnly` is read-only");
+eq("no table", B.raise(new TypeError("`keyboard.binding_only` is bad"), undefined, "Keyboard", "bindingOnly").message, "`keyboard.binding_only` is bad");
+console.log("ok");
+"##,
+        )
+        .expect("the check");
+        let ran = Command::new(&node)
+            .arg(dir.path().join("check.mjs"))
+            .output()
+            .expect("node runs");
+        assert!(
+            ran.status.success() && String::from_utf8_lossy(&ran.stdout).trim() == "ok",
+            "{}{}",
+            String::from_utf8_lossy(&ran.stdout),
+            String::from_utf8_lossy(&ran.stderr)
+        );
+    }
+
+    /// `_B.named` of the Python runtime, as `B.raise` is: a refusal is worded with the attribute the class gives the member (`from_` for the
+    /// member `from`), a library's failure and a bad argument alike. Skipped where there is no `python3`.
+    #[test]
+    fn the_python_named_writes_the_names_as_the_script_spells_them() {
+        let Some(python) = tool("python3", "GNOBLIN_PYTHON") else {
+            eprintln!("python3 is not installed: the check is skipped");
+            return;
+        };
+        let dir = tempfile::tempdir().expect("a directory");
+        let files = rendered_files();
+        let base = files
+            .iter()
+            .find(|(file, _)| file == "python/gnoblin/objects/_base.py")
+            .expect("the base is rendered");
+        let package = dir.path().join("gnoblin/objects");
+        fs::create_dir_all(&package).expect("a package");
+        fs::write(dir.path().join("gnoblin/__init__.py"), "").expect("the package");
+        fs::copy(
+            workspace_root().join("crates/gnoblin-sdkgen/tests/python/fake_gnoblin_errors.py"),
+            dir.path().join("gnoblin/errors.py"),
+        )
+        .expect("the errors stand-in");
+        fs::write(package.join("__init__.py"), "").expect("the package");
+        fs::write(package.join("_base.py"), &base.1).expect("the base");
+        fs::write(dir.path().join("_gnoblin_objects.py"), "").expect("the native stand-in");
+        fs::write(
+            dir.path().join("check.py"),
+            r#"
+from gnoblin.errors import GnoblinError
+from gnoblin.objects import _base as B
+
+spell = ("probe", {"reach": ("reach", {"from": "from_", "max_size": "max_size"}), "last_colour": ("last_colour", {})})
+
+
+class Probe:
+    id = 3
+
+    @B.named("Probe", "reach", spell=spell)
+    def bad_argument(self, message):
+        raise TypeError(message)
+
+    @B.named("Probe", "reach", spell=spell)
+    def refusal(self, message):
+        raise GnoblinError(message)
+
+    @B.named("Probe", "reach")
+    def untabled(self, message):
+        raise TypeError(message)
+
+
+def words(run, message, kind):
+    try:
+        run(message)
+    except kind as error:
+        return str(error), getattr(error, "target", None)
+    raise AssertionError(f"{message}: nothing was raised")
+
+
+probe = Probe()
+assert words(probe.bad_argument, "`probe.reach`: `from` must be an object, got text", TypeError) == (
+    "`Probe.reach`: `from_` must be an object, got text",
+    None,
+), "a parameter"
+assert words(probe.bad_argument, "`probe.reach`[1].from must be text", TypeError)[0] == "`Probe.reach`[1].from_ must be text", "a field"
+assert words(probe.bad_argument, "`probe.nothing` must be text", TypeError)[0] == "`probe.nothing` must be text", "a member the table lacks"
+assert words(probe.bad_argument, "`other.reach` must be text", TypeError)[0] == "`other.reach` must be text", "another class"
+assert words(probe.untabled, "`probe.reach` must be text", TypeError)[0] == "`probe.reach` must be text", "no table"
+assert words(probe.refusal, "Probe#3.reach: nope `probe.last_colour` is read-only", GnoblinError) == (
+    "Probe#3.reach: nope `Probe.last_colour` is read-only",
+    "Probe#3.reach",
+), "a failure of the library"
+print("ok")
+"#,
+        )
+        .expect("the check");
+        let ran = Command::new(&python)
+            .arg(dir.path().join("check.py"))
+            .env("PYTHONPATH", dir.path())
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .output()
+            .expect("python3 runs");
+        assert!(
+            ran.status.success() && String::from_utf8_lossy(&ran.stdout).trim() == "ok",
+            "{}{}",
+            String::from_utf8_lossy(&ran.stdout),
+            String::from_utf8_lossy(&ran.stderr)
+        );
+    }
+
     /// The classes of the catalog `gnoblin.std` serves take the core's `Client` where the TypeScript library took a window: the members
     /// that take a client from the shell say so in every language, and none of them takes the node number as text any more.
     #[test]
