@@ -358,9 +358,14 @@ pub(crate) fn failing_module(name: &str, error: &JsTsError) -> String {
 
 /// The module the engine imports into a generation on the native library to read the document the core's input manager declares (the
 /// device settings the script wrote). It installs `__gnoblinDocument` and nothing else.
+///
+/// It keeps the input manager it reads. A frame reads the revision, and a manager made for each read is a script object that is dropped
+/// as soon as the read ends, so the engine queues the cleanup of its reference as a promise job; a job left at the end of a frame is a
+/// frame due at once (`FrameGate::plan_next_frame`), and that frame read the revision again, so a shell that held the document ran a
+/// frame on every turn.
 pub(crate) const DOCUMENT_MODULE: &str = "gnoblin-core/generated/document";
 
-const DOCUMENT_SOURCE: &str = "import { InputManager } from \"gnoblin-core/generated/objects\";\nglobalThis.__gnoblinDocument = {\n  revision: () => InputManager.get().documentRevision,\n  text: () => InputManager.get().document,\n};\n";
+const DOCUMENT_SOURCE: &str = "import { InputManager } from \"gnoblin-core/generated/objects\";\nlet manager;\nglobalThis.__gnoblinDocument = {\n  revision: () => (manager ??= InputManager.get()).documentRevision,\n  text: () => (manager ??= InputManager.get()).document,\n};\n";
 
 /// The package entry `gnoblin-core` on the native library: the core's object classes, and the global `gnoblin` a shell reads without an
 /// import. A generation on the native library imports it before the shell, so the global is always there.

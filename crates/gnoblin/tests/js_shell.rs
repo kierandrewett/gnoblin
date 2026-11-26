@@ -6283,7 +6283,6 @@ fn tick_until_quiet(role: &mut Held, quiet_for: Duration) {
 const REST: Duration = Duration::from_millis(600);
 
 #[test]
-#[ignore = "vrnw: needs a quiet shell over the real links: ticked as the loop ticks it, frames run on every turn (frame_stats run 54744, idle 0, next_wake Some(0ns)) and never go quiet"]
 fn a_stock_shell_over_the_real_links_does_no_work_when_nothing_happens() {
     let session = Session::start();
     let mut mapper = Mapper::connect(&session.wayland());
@@ -6316,7 +6315,6 @@ fn a_stock_shell_over_the_real_links_does_no_work_when_nothing_happens() {
 /// announced when a value differs, and a session that does nothing holds the same numbers, so after the first
 /// publication a quiet shell runs no frame and the tree's serial stands still.
 #[test]
-#[ignore = "vrnw: needs a quiet shell over the real links: ticked as the loop ticks it, frames run on every turn (frame_stats run 76535, idle 0, next_wake Some(0ns)) and never go quiet"]
 fn a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens() {
     let production = gnoblin_wayland::Config::default().gpu_memory_period;
     assert!(
@@ -6398,7 +6396,6 @@ fn a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happe
 }
 
 #[test]
-#[ignore = "vrnw: needs a quiet shell over the real links: ticked as the loop ticks it, frames run on every turn (frame_stats run 63927, idle 0, next_wake Some(0ns)) and never go quiet"]
 fn a_quiet_turn_over_the_real_links_does_not_wait_for_bytes() {
     // A link is read only when the kernel says it has bytes, so a quiet
     // turn is a few system calls. The proof is the fastest of many turns and not their mean: a wait that is built in
@@ -6426,7 +6423,6 @@ fn a_quiet_turn_over_the_real_links_does_not_wait_for_bytes() {
 }
 
 #[test]
-#[ignore = "vrnw: needs a quiet shell over the real links: ticked as the loop ticks it, frames run on every turn (frame_stats run 71460, idle 0, next_wake Some(0ns)) and never go quiet"]
 fn a_wait_for_input_ends_at_its_deadline_when_quiet_and_when_the_compositor_sends_something() {
     let session = Session::start();
     let mut mapper = Mapper::connect(&session.wayland());

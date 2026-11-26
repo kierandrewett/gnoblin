@@ -124,12 +124,28 @@ const STOCK: &str = "import * as libCore from \"gnoblin-core\"; import * as libS
     const { gnoblin: _runtime, ...exported } = lib;\n\
     Object.assign(globalThis, exported);\n";
 
-/// The stock shell over three decorated windows.
-fn stock() -> Rig {
-    let mut rig = rig_setup(STOCK, STARTER_CONFIG, |comp| populate(comp, 3, false));
+/// The frames a rig runs on boot, and nothing they say.
+fn settled(mut rig: Rig) -> Rig {
     let diagnostics = rig.settle();
     assert!(diagnostics.is_empty(), "{diagnostics:?} {:?}", rig.load_diagnostics);
     rig
+}
+
+/// The stock shell over three decorated windows.
+fn stock() -> Rig {
+    settled(rig_setup(STOCK, STARTER_CONFIG, |comp| populate(comp, 3, false)))
+}
+
+/// The stock shell as the runtime role runs it: its shell holds the connection for the configuration document, which a frame
+/// reads to see whether a script wrote a device setting.
+fn stock_with_document() -> Rig {
+    settled(rig_prepared(
+        STOCK,
+        STARTER_CONFIG,
+        |comp| populate(comp, 3, false),
+        |_| {},
+        |shell| shell.set_config_link(Box::new(AcceptingDocument::default())),
+    ))
 }
 
 fn names(rig: &mut Rig, expression: &str) -> BTreeSet<String> {
@@ -326,10 +342,9 @@ fn rest(rig: &mut Rig) {
     panic!("the shell never came to rest: {:?}", rig.shell.next_wake());
 }
 
-#[test]
-fn the_stock_shell_rests_when_nothing_happens() {
-    // Titlebars on every window, the window menu, the not-responding alert and the stock keys are all running.
-    let mut rig = stock();
+/// Rests `rig`, and proves that it then asks for nothing and does nothing, however long it is left.
+#[track_caller]
+fn assert_rests(mut rig: Rig) {
     rest(&mut rig);
     assert_eq!(
         rig.shell.next_wake(),
@@ -348,6 +363,21 @@ fn the_stock_shell_rests_when_nothing_happens() {
     // Even a long time on its own does not make it do anything.
     rig.advance(3_600_000);
     assert!(!rig.next_frame_runs(), "an hour passing woke a frame");
+}
+
+#[test]
+fn the_stock_shell_rests_when_nothing_happens() {
+    // Titlebars on every window, the window menu, the not-responding alert and the stock keys are all running.
+    assert_rests(stock());
+}
+
+/// The turn does not leave work for itself: a frame of a shell that holds the configuration document reads the document's revision
+/// (`commit_document_changes`), and that read must leave nothing behind that asks for another frame. It did: each read made a script
+/// object for the input manager and dropped it, the engine queued the cleanup of that object as a promise job, and a job left at the
+/// end of a frame is a frame due at once (`plan_next_frame`), so the shell ran a frame on every turn for as long as it lived.
+#[test]
+fn the_stock_shell_that_holds_the_configuration_document_rests_when_nothing_happens() {
+    assert_rests(stock_with_document());
 }
 
 // ---- the clock widget ---------------------------------------------------------------------------------------------
