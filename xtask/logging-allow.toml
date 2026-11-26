@@ -32,3 +32,11 @@ reason = "the dry run of a shell module answers on standard output: the verdict 
 [[allow]]
 path = "crates/gnoblin-sdkgen/src/lib.rs"
 reason = "`emit_for_build` is the body of a build script: the `cargo:` directives it prints on stdout are how a build script talks to cargo, and a failure's one line on stderr is what cargo shows. It runs before any log pipeline exists"
+
+[[allow]]
+path = "crates/gnoblin-render-frame/src/golden.rs"
+reason = "the shared golden check of the renderer crates' tests: a renderer that cannot draw on this machine (no device) says so on the test's own stdout, which the test runner shows, so a skip is loud and never silent"
+
+[[allow]]
+path = "crates/gnoblin-render-vulkan/src/tests"
+reason = "the Vulkan renderer's device tests live in files of a `tests` directory, which the checker does not recognise as test-only; a test that needs a Vulkan device or a udmabuf says so on the test's own stdout, which the test runner shows, so a skip is loud and never silent"
