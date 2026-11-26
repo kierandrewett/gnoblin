@@ -48,9 +48,9 @@ logs the application of each window that takes the keyboard:
 ::: tabs
 
 ```typescript
-import type { Client } from "gnoblin-core";
+import { gnoblin } from "gnoblin-core/generated/objects";
 
-gnoblin.clients.on("focusChanged", (client: Client, focused: boolean) => {
+gnoblin.clients.on("focusChanged", (client, focused) => {
     if (focused) {
         gnoblin.spawn(["logger", "-t", "focus", client.appId]);
     }

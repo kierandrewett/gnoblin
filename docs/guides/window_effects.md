@@ -48,13 +48,11 @@ gnoblin.clients.where({ appId: "foot" }).style.opacity = 0.92;
 ```
 
 ```python
-from gnoblin import gnoblin as session
-from gnoblin.objects.model import ClientQuery
-from gnoblin.objects.std import ClientStyle, Shadow
+from gnoblin.objects.std import ClientStyle, Shadow, StyleQuery
 
 style = ClientStyle.of_clients()
 style.shadows = [Shadow(x=0, y=8, blur=24, color="#00000066")]
-session.clients.where(ClientQuery(app_id="foot")).style.opacity = 0.92
+ClientStyle.of_clients().where(StyleQuery(app_id="foot")).opacity = 0.92
 ```
 
 ```rust
@@ -89,11 +87,9 @@ gnoblin.clients.where({ appId: "foot" }).style.backdropFilter = [{ blur: 24 }, {
 ```
 
 ```python
-from gnoblin import gnoblin as session
-from gnoblin.objects.model import ClientQuery
-from gnoblin.objects.std import BlurFilter, SaturateFilter
+from gnoblin.objects.std import BlurFilter, ClientStyle, SaturateFilter, StyleQuery
 
-style = session.clients.where(ClientQuery(app_id="foot")).style
+style = ClientStyle.of_clients().where(StyleQuery(app_id="foot"))
 style.backdrop_filter = [BlurFilter(radius=24.0), SaturateFilter(amount=1.35)]
 ```
 

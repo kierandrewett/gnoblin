@@ -59,6 +59,8 @@ in [Rust shell](rust-shell.md#create-the-project), then put the Rust file in `li
 ::: tabs
 
 ```typescript
+import { gnoblin } from "gnoblin-core/generated/objects";
+
 const GAP = 10;
 
 // Gives every window an equal column of the first output, in the order the windows opened.
@@ -219,7 +221,8 @@ Then use the library's workspaces and layouts instead of placing windows yoursel
 ::: tabs
 
 ```typescript
-import { MasterStackLayout, Workspace } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { MasterStackLayout, Workspace } from "gnoblin-std/generated/objects";
 
 // One workspace; every window that opens joins it and the library tiles it.
 gnoblin.workspaces.add(
@@ -237,12 +240,12 @@ gnoblin.input.primary.bind("Super+Return", () => {
 
 ```python
 from gnoblin.objects.model import BindingEvent, Gnoblin
-from gnoblin.objects.std import Gaps, MasterStackLayout, Workspace
+from gnoblin.objects.std import Gaps, MasterStackLayout, Workspace, Workspaces
 
 gnoblin = Gnoblin.get()
 
 # One workspace; every window that opens joins it and the library tiles it.
-gnoblin.workspaces.add(
+Workspaces.get().add(
     Workspace(
         "main",
         name="Main",

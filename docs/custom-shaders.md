@@ -22,21 +22,29 @@ Switch it off in the shell, with the other settings of the compositor itself. Th
 ::: tabs
 
 ```typescript
+import { gnoblin } from "gnoblin-core/generated/objects";
+
 gnoblin.compositor.userShaders = false;
 ```
 
 ```python
-from gnoblin import gnoblin
+from gnoblin.objects.model import Gnoblin
 
-gnoblin.compositor.user_shaders = False
+Gnoblin.get().compositor.user_shaders = False
 ```
 
 ```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
 use gnoblin_core::objects::ModelRoot;
 
-let model = ModelRoot::get(&g.objects()?)?;
-if let Some(compositor) = model.compositor()? {
-    compositor.set_user_shaders(false)?;
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    if let Some(compositor) = model.compositor()? {
+        compositor.set_user_shaders(false)?;
+    }
+    Ok(())
 }
 ```
 
@@ -64,7 +72,8 @@ The three shell languages set the same filter on a window's style. Each tab defi
 ::: tabs
 
 ```typescript
-import { ShaderFilter } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { ShaderFilter } from "gnoblin-std/generated/objects";
 
 const tint = `
 fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {
@@ -77,7 +86,7 @@ gnoblin.clients.style.filter = [new ShaderFilter({ source: tint, params: [1.0, 0
 ```
 
 ```python
-from gnoblin.std import ClientStyle, ShaderFilter
+from gnoblin.objects.std import ClientStyle, ShaderFilter
 
 TINT = """
 fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {
@@ -91,6 +100,7 @@ ClientStyle.of_clients().filter = [ShaderFilter(source=TINT, params=[1.0, 0.55, 
 
 ```rust
 use gnoblin_std::objects::{ClientStyle, Filter, ShaderFilter};
+use gnoblin_std::prelude::*;
 
 const TINT: &str = r#"
 fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {
@@ -99,10 +109,14 @@ fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {
 }
 "#;
 
-let objects = g.std()?.objects()?;
-let mut tint = ShaderFilter::new(TINT.to_string());
-tint.params = vec![1.0, 0.55, 0.2, 0.25];
-ClientStyle::of_clients(&objects)?.set_filter(&[Filter::Shader(tint)])?;
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+    let mut tint = ShaderFilter::new(TINT.to_string());
+    tint.params = vec![1.0, 0.55, 0.2, 0.25];
+    ClientStyle::of_clients(&objects)?.set_filter(&[Filter::Shader(tint)])?;
+    Ok(())
+}
 ```
 
 :::

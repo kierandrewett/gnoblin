@@ -6,21 +6,17 @@ Set the opacity of windows that do not have the keyboard. Put the script in the 
 ::: tabs
 
 ```typescript
-import { ClientCollectionListener } from "gnoblin-core";
-import type { Client } from "gnoblin-core";
+import { gnoblin } from "gnoblin-core/generated/objects";
 
-class DimUnfocused extends ClientCollectionListener {
-    onFocusChanged(client: Client, focused: boolean) {
+gnoblin.clients.addListener({
+    onFocusChanged(client, focused) {
         client.opacity = focused ? 1 : 0.95;
-    }
-}
-
-gnoblin.clients.addListener(new DimUnfocused());
+    },
+});
 ```
 
 ```python
-from gnoblin import gnoblin
-from gnoblin.objects.model import Client, ClientCollectionListener
+from gnoblin.objects.model import Client, ClientCollectionListener, Gnoblin
 
 
 class DimUnfocused(ClientCollectionListener):
@@ -28,7 +24,7 @@ class DimUnfocused(ClientCollectionListener):
         client.opacity = 1.0 if focused else 0.95
 
 
-gnoblin.clients.add_listener(DimUnfocused())
+Gnoblin.get().clients.add_listener(DimUnfocused())
 ```
 
 ```rust
@@ -78,27 +74,24 @@ To fade the change instead of cutting it, run the assignment inside a transition
 ::: tabs
 
 ```typescript
-import { ClientCollectionListener } from "gnoblin-core";
-import type { Client } from "gnoblin-core";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import type {} from "gnoblin-std/generated/objects";
 
-class FadeUnfocused extends ClientCollectionListener {
-    onFocusChanged(client: Client, focused: boolean) {
+gnoblin.clients.addListener({
+    onFocusChanged(client, focused) {
         gnoblin.requestTransition(
             () => {
                 client.opacity = focused ? 1 : 0.95;
             },
             { duration: 180 },
         );
-    }
-}
-
-gnoblin.clients.addListener(new FadeUnfocused());
+    },
+});
 ```
 
 ```python
-from gnoblin import gnoblin
-from gnoblin.objects.model import Client, ClientCollectionListener
-from gnoblin.objects.std import TransitionOptions
+from gnoblin.objects.model import Client, ClientCollectionListener, Gnoblin
+from gnoblin.objects.std import GnoblinAugment, TransitionOptions
 
 
 class FadeUnfocused(ClientCollectionListener):
@@ -106,10 +99,10 @@ class FadeUnfocused(ClientCollectionListener):
         def set_opacity() -> None:
             client.opacity = 1.0 if focused else 0.95
 
-        gnoblin.request_transition(set_opacity, TransitionOptions(duration=180))
+        GnoblinAugment.get().request_transition(set_opacity, TransitionOptions(duration=180))
 
 
-gnoblin.clients.add_listener(FadeUnfocused())
+Gnoblin.get().clients.add_listener(FadeUnfocused())
 ```
 
 ```rust
@@ -122,7 +115,7 @@ use gnoblin_std::objects::{Easing, TransitionOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.objects()?;
     let model = Rc::new(ModelRoot::get(&objects)?);
     let Some(clients) = model.clients()? else {
@@ -148,9 +141,12 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
                 autoplay: true,
             };
             transitioner.request_transition(
-                move || client.set_opacity(if focused { 1.0 } else { 0.95 }),
+                move || {
+                    client.set_opacity(if focused { 1.0 } else { 0.95 })?;
+                    Ok(())
+                },
                 Some(&options),
-                None::<fn() -> gnoblin::Result<()>>,
+                Some(|| Ok(())),
             )?;
             Ok(())
         })),
