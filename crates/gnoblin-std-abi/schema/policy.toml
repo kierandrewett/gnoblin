@@ -184,7 +184,8 @@ type = "double"
 since = "0.2.0"
 readonly = true
 
-# The clock the two timers (a rest that focuses, a delayed raise) run by, in milliseconds. Left out, the toolkit's.
+# The clock the two timers (a rest that focuses, a delayed raise) run by, in milliseconds. Left out, the core's (`timers.now`), the clock the toolkit's
+# wake timer runs by.
 [[object.property]]
 name = "now"
 type = "callback:time_source"
