@@ -359,7 +359,7 @@ pub const CASES: [Case; 10] = [
             assert_ne!(rgb(image, 8, 7), fill, "but the corner is cut by the radius");
             assert_ne!(rgb(image, 23, 15), fill, "at every corner");
             assert_eq!(
-                rgb(image, 7, 10),
+                rgb(image, 7, 11),
                 bytes(green()),
                 "the border runs along the straight edge"
             );
