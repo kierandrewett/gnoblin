@@ -1,22 +1,23 @@
 #![allow(unsafe_code)]
-//! The Vulkan instance, the device the renderer draws on, the validation layer and the
-//! memory the renderer's buffers and images live in.
+//! The Vulkan instance, the device the renderer draws on, the validation layer, and the one queue and timeline every frame
+//! of every output on the device is submitted to.
 //!
-//! This file and its siblings `pipeline.rs` and `frame.rs` are the `unsafe` shim of the
-//! Vulkan renderer: `ash` is a raw binding, so every call into the loader or a driver is
+//! This file and its siblings `memory.rs`, `pipeline.rs`, `sync.rs`, `textures.rs` and `frame.rs` are the `unsafe` shim of
+//! the Vulkan renderer: `ash` is a raw binding, so every call into the loader or a driver is
 //! `unsafe`. The rules the blocks rely on are the same everywhere:
 //!
 //! - a handle is created from a live [`VkContext`] and destroyed by the `Drop` of the
 //!   wrapper that owns it, while that wrapper still holds an `Rc` to the context, so the
 //!   device outlives everything made on it;
-//! - the renderer drives one queue from one thread and waits for a frame's fence before
-//!   it touches anything the frame used, so no handle is in use when it is destroyed;
+//! - the renderer drives one queue from one thread. A frame signals the next value of the context's timeline semaphore, and
+//!   nothing a frame used is touched or destroyed until the timeline has reached its value ([`VkContext::wait`], or the
+//!   retire queue of `sync.rs`);
 //! - a structure handed to the driver borrows only data that outlives the call.
 //!
 //! # Device choice
 //!
-//! Every physical device the loader lists is looked at. A device is acceptable when it has a
-//! graphics queue and supports the two formats the renderer uses (an `R8G8B8A8_UNORM` target
+//! Every physical device the loader lists is looked at. A device is acceptable when it speaks Vulkan 1.2 with timeline
+//! semaphores, has a graphics queue and supports the two formats the renderer uses (an `R8G8B8A8_UNORM` target
 //! it can blend into and copy from, and a `B8G8R8A8_UNORM` texture it can sample and copy
 //! into). Among those, a discrete GPU is preferred over an integrated one, then a virtual
 //! one, then a CPU implementation such as lavapipe, which is accepted rather than refused:
@@ -27,19 +28,23 @@
 //! `VK_LAYER_KHRONOS_validation` is enabled in debug builds when it is installed
 //! ([`Validation::Auto`]), and a debug messenger collects what it reports so a test can
 //! fail on it. Errors of any type and validation warnings are collected; the rest is noise.
-//! A release build, or a machine without the layer, runs without it.
+//! [`Validation::Synchronized`] adds the layer's synchronisation checks, which is where races between frames in flight
+//! show. A release build, or a machine without the layer, runs without it.
 
 #[cfg(test)]
 use std::cell::Cell;
 use std::ffi::{CStr, c_char, c_void};
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
-use ash::ext::debug_utils;
+use ash::ext::{debug_utils, validation_features};
 use ash::{Device, Entry, Instance, vk};
 
 use super::error::VulkanError;
+use super::memory::{Counters, Memory};
+use super::pipeline::PipelineCacheLocation;
+use super::sync::Timeline;
 
 use crate::log;
 
@@ -53,6 +58,9 @@ pub(super) const TARGET_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 
 /// The format of a client's `argb8888` or `xrgb8888` buffer on a little-endian machine.
 pub(super) const SHM_FORMAT: vk::Format = vk::Format::B8G8R8A8_UNORM;
+
+/// How long a wait for the GPU may take before the device is treated as lost.
+pub(super) const WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How the renderer finds the Vulkan loader.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -80,15 +88,19 @@ pub enum Validation {
     /// On in debug builds when the layer is installed, off otherwise.
     #[default]
     Auto,
+    /// As [`Validation::Auto`], and with the layer's synchronisation validation, which checks every barrier of a frame
+    /// against the frames in flight beside it. The tests ask for it. It costs a good deal of CPU time, so a session does
+    /// not.
+    Synchronized,
     /// Never.
     Off,
 }
 
 /// How a renderer is created.
 ///
-/// The default is what the compositor uses. The other values exist for the two things a
-/// test has to provoke on purpose: a machine with no loader and a machine with no
-/// acceptable device.
+/// The default is what the compositor uses. The other values exist for the things a
+/// test has to provoke on purpose: a machine with no loader, a machine with no
+/// acceptable device, and a cache file that is not there.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct VulkanOptions {
     /// Where the loader comes from.
@@ -97,6 +109,8 @@ pub struct VulkanOptions {
     pub device: DeviceChoice,
     /// Whether to enable the validation layer.
     pub validation: Validation,
+    /// Where the driver's pipeline cache is kept between runs.
+    pub pipeline_cache: PipelineCacheLocation,
 }
 
 /// What kind of device the renderer is drawing on.
@@ -149,7 +163,7 @@ pub struct DeviceInfo {
 /// Failures a test injects into the driver calls the renderer makes.
 ///
 /// A real out-of-memory or a lost device cannot be provoked on a software driver, so the
-/// two calls where it matters consult these cells. They exist only in test builds.
+/// calls where it matters consult these cells. They exist only in test builds.
 #[cfg(test)]
 #[derive(Default)]
 pub(super) struct Faults {
@@ -161,10 +175,13 @@ pub(super) struct Faults {
     pub pipeline: Cell<Option<vk::Result>>,
     /// Make the next shader build wait this long on its worker before it starts, as a slow driver would.
     pub build_delay: Cell<Option<std::time::Duration>>,
+    /// Make the next submission wait for a timeline semaphore the test holds to reach a value, as a slow GPU would: the
+    /// frame is submitted and does not run until the test signals it.
+    pub gate: Cell<Option<(vk::Semaphore, u64)>>,
 }
 
 /// The loader, instance and logical device, with the memory properties and limits the
-/// renderer reads.
+/// renderer reads, the allocator, and the timeline every submission signals.
 pub(super) struct VkContext {
     // Kept alive because the instance's function pointers live in the loaded library.
     _entry: Entry,
@@ -173,17 +190,30 @@ pub(super) struct VkContext {
     pub(super) device: Device,
     pub(super) queue: vk::Queue,
     pub(super) family: u32,
-    memory: vk::PhysicalDeviceMemoryProperties,
     pub(super) limits: vk::PhysicalDeviceLimits,
     /// How many bits of a timestamp the queue writes: 0 when it writes none.
     pub(super) timestamp_bits: u32,
     pub(super) info: DeviceInfo,
+    /// What identifies the device's pipeline cache: vendor, device and the driver's UUID.
+    pub(super) cache_identity: CacheIdentity,
     /// What the validation layer reported, see [`Validation`].
     pub(super) messages: Arc<Mutex<Vec<String>>>,
     /// Whether the validation layer is on.
     pub(super) validating: bool,
+    /// The allocator every buffer and image is made from, and the counters it keeps.
+    pub(super) memory: Memory,
+    /// Counts the frames submitted and says which have finished.
+    pub(super) timeline: Timeline,
     #[cfg(test)]
     pub(super) faults: Faults,
+}
+
+/// What a pipeline cache blob is for: it is refused by any other device or driver.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct CacheIdentity {
+    pub vendor: u32,
+    pub device: u32,
+    pub uuid: [u8; vk::UUID_SIZE],
 }
 
 /// The debug messenger and the sink it writes into.
@@ -198,10 +228,13 @@ impl Drop for VkContext {
     fn drop(&mut self) {
         // SAFETY: every resource made on the device holds an `Rc` to this context, so none
         // is alive here; waiting for the queue first covers work that was still in flight
-        // when the renderer was dropped. The messenger is destroyed before the instance
-        // that owns it, and its sink is released after, once the layer cannot call it.
+        // when the renderer was dropped. The allocator frees its blocks while the device is
+        // there to take them, and the timeline goes before the device that made it. The messenger is destroyed before the
+        // instance that owns it, and its sink is released after, once the layer cannot call it.
         unsafe {
             let _ = self.device.device_wait_idle();
+            self.memory.shutdown();
+            self.timeline.destroy(&self.device);
             self.device.destroy_device(None);
             if let Some(messenger) = self.messenger.take() {
                 messenger.loader.destroy_debug_utils_messenger(messenger.handle, None);
@@ -261,14 +294,15 @@ impl VkContext {
         let messages = Arc::new(Mutex::new(Vec::new()));
         let wants_validation = match options.validation {
             Validation::Off => false,
-            Validation::Auto => cfg!(debug_assertions) && validation_layer_present(&entry),
+            Validation::Auto | Validation::Synchronized => cfg!(debug_assertions) && validation_layer_present(&entry),
         };
-        let (instance, messenger) = match create_instance(&entry, wants_validation, &messages) {
+        let synchronized = wants_validation && options.validation == Validation::Synchronized;
+        let (instance, messenger) = match create_instance(&entry, wants_validation, synchronized, &messages) {
             Ok(created) => created,
             Err(error @ VulkanError::Driver { .. }) if wants_validation => {
                 // A layer that is listed but cannot load must not take the renderer down.
                 log::warn!(area = "render", %error, "the Vulkan validation layer could not be enabled");
-                create_instance(&entry, false, &messages)?
+                create_instance(&entry, false, false, &messages)?
             }
             Err(error) => return Err(error),
         };
@@ -292,45 +326,9 @@ impl VkContext {
         }
     }
 
-    /// The index of a memory type allowed by `bits` with all of `required`, preferring one
-    /// that also has `preferred`.
-    fn memory_type(
-        &self,
-        bits: u32,
-        required: vk::MemoryPropertyFlags,
-        preferred: vk::MemoryPropertyFlags,
-    ) -> Option<u32> {
-        let types = &self.memory.memory_types[..self.memory.memory_type_count as usize];
-        let find = |wanted: vk::MemoryPropertyFlags| {
-            types
-                .iter()
-                .enumerate()
-                .find(|(index, kind)| bits & (1 << index) != 0 && kind.property_flags.contains(wanted))
-                .map(|(index, _)| index as u32)
-        };
-        find(required | preferred).or_else(|| find(required))
-    }
-
-    /// Allocates device memory for `requirements`.
-    fn allocate(
-        &self,
-        requirements: vk::MemoryRequirements,
-        required: vk::MemoryPropertyFlags,
-        preferred: vk::MemoryPropertyFlags,
-    ) -> Result<vk::DeviceMemory, vk::Result> {
-        let index = self
-            .memory_type(requirements.memory_type_bits, required, preferred)
-            .ok_or(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY)?;
-        let info = vk::MemoryAllocateInfo::default()
-            .allocation_size(requirements.size)
-            .memory_type_index(index);
-        // SAFETY: `info` names a memory type of this device and a size the driver reported.
-        unsafe { self.device.allocate_memory(&info, None) }
-    }
-
     /// The failure a test asked for on the next texture allocation, if it is due.
     #[cfg(test)]
-    fn texture_fault(&self) -> Option<vk::Result> {
+    pub(super) fn texture_fault(&self) -> Option<vk::Result> {
         let (skip, result) = self.faults.texture_allocation.get()?;
         if skip == 0 {
             self.faults.texture_allocation.set(None);
@@ -339,6 +337,71 @@ impl VkContext {
             self.faults.texture_allocation.set(Some((skip - 1, result)));
             None
         }
+    }
+
+    /// Submits one command buffer and returns the timeline value it signals when it has finished.
+    ///
+    /// Nothing waits: the caller keeps what the buffer uses alive until [`VkContext::completed`] reaches the value, and
+    /// waits for it ([`VkContext::wait`]) only when it must read what the buffer wrote.
+    ///
+    /// # Errors
+    ///
+    /// The driver's result: a lost device, or out of memory.
+    pub(super) fn submit(&self, cmd: vk::CommandBuffer) -> Result<u64, vk::Result> {
+        #[cfg(test)]
+        if let Some(result) = self.faults.submit.take() {
+            return Err(result);
+        }
+        let value = self.timeline.submitted() + 1;
+        let buffers = [cmd];
+        let signals = [self.timeline.semaphore()];
+        let signal_values = [value];
+        #[cfg(test)]
+        let gate = self.faults.gate.take();
+        #[cfg(not(test))]
+        let gate: Option<(vk::Semaphore, u64)> = None;
+        let waits: Vec<vk::Semaphore> = gate.iter().map(|(semaphore, _)| *semaphore).collect();
+        let wait_values: Vec<u64> = gate.iter().map(|(_, value)| *value).collect();
+        let stages = vec![vk::PipelineStageFlags::ALL_COMMANDS; waits.len()];
+        let mut timeline = vk::TimelineSemaphoreSubmitInfo::default()
+            .wait_semaphore_values(&wait_values)
+            .signal_semaphore_values(&signal_values);
+        let submit = vk::SubmitInfo::default()
+            .command_buffers(&buffers)
+            .wait_semaphores(&waits)
+            .wait_dst_stage_mask(&stages)
+            .signal_semaphores(&signals)
+            .push_next(&mut timeline);
+        // SAFETY: the queue belongs to this device and is used from this thread only; the buffer is in the executable
+        // state and everything it uses stays alive until the value is reached.
+        unsafe { self.device.queue_submit(self.queue, &[submit], vk::Fence::null()) }?;
+        self.timeline.record(value);
+        Counters::add(&self.memory.counters.submits, 1);
+        Ok(value)
+    }
+
+    /// Waits until the timeline has reached `value`, which is a frame's: a value of 0 is none.
+    ///
+    /// # Errors
+    ///
+    /// `TIMEOUT` after [`WAIT_TIMEOUT`], which the caller treats as a lost device, and the driver's result otherwise.
+    pub(super) fn wait(&self, value: u64) -> Result<(), vk::Result> {
+        if value == 0 || self.completed() >= value {
+            return Ok(());
+        }
+        let semaphores = [self.timeline.semaphore()];
+        let values = [value];
+        let info = vk::SemaphoreWaitInfo::default().semaphores(&semaphores).values(&values);
+        let nanoseconds = u64::try_from(WAIT_TIMEOUT.as_nanos()).unwrap_or(u64::MAX);
+        // SAFETY: the semaphore is this context's timeline, and `value` is one it was asked to signal.
+        unsafe { self.device.wait_semaphores(&info, nanoseconds) }
+    }
+
+    /// The highest timeline value the GPU has reached: every frame up to it has finished. A device that cannot say is
+    /// taken to have finished nothing.
+    pub(super) fn completed(&self) -> u64 {
+        // SAFETY: a plain query of this context's timeline.
+        unsafe { self.device.get_semaphore_counter_value(self.timeline.semaphore()) }.unwrap_or(0)
     }
 
     /// Waits until the device has finished everything submitted to it.
@@ -364,17 +427,22 @@ fn validation_layer_present(entry: &Entry) -> bool {
     })
 }
 
-/// Creates the instance, with the validation layer and a messenger when `validation`.
+/// Creates the instance, with the validation layer and a messenger when `validation`, and its synchronisation checks when
+/// `synchronized`.
 fn create_instance(
     entry: &Entry,
     validation: bool,
+    synchronized: bool,
     messages: &Arc<Mutex<Vec<String>>>,
 ) -> Result<(Instance, Option<Messenger>), VulkanError> {
     let application = vk::ApplicationInfo::default()
         .application_name(c"gnoblin")
-        .api_version(vk::API_VERSION_1_1);
+        .api_version(vk::API_VERSION_1_2);
     let layers: [*const c_char; 1] = [VALIDATION_LAYER.as_ptr()];
-    let extensions: [*const c_char; 1] = [debug_utils::NAME.as_ptr()];
+    let mut extensions: Vec<*const c_char> = vec![debug_utils::NAME.as_ptr()];
+    if synchronized {
+        extensions.push(validation_features::NAME.as_ptr());
+    }
     let sink = Arc::into_raw(Arc::clone(messages));
     let mut messenger_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
         .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING)
@@ -385,12 +453,17 @@ fn create_instance(
         )
         .pfn_user_callback(Some(collect))
         .user_data(sink as *mut c_void);
+    let enabled_features = [vk::ValidationFeatureEnableEXT::SYNCHRONIZATION_VALIDATION];
+    let mut features = vk::ValidationFeaturesEXT::default().enabled_validation_features(&enabled_features);
     let mut info = vk::InstanceCreateInfo::default().application_info(&application);
     if validation {
         info = info
             .enabled_layer_names(&layers)
             .enabled_extension_names(&extensions)
             .push_next(&mut messenger_info);
+        if synchronized {
+            info = info.push_next(&mut features);
+        }
     }
     // SAFETY: `info` and everything it points to live until the call returns.
     let created = unsafe { entry.create_instance(&info, None) };
@@ -428,6 +501,7 @@ struct Candidate {
     family: u32,
     timestamp_bits: u32,
     info: DeviceInfo,
+    cache_identity: CacheIdentity,
 }
 
 /// The error, the loader, the instance and the messenger when the device cannot be created, so
@@ -452,7 +526,10 @@ fn build(
     let queues = [vk::DeviceQueueCreateInfo::default()
         .queue_family_index(candidate.family)
         .queue_priorities(&priorities)];
-    let info = vk::DeviceCreateInfo::default().queue_create_infos(&queues);
+    let mut features = vk::PhysicalDeviceVulkan12Features::default().timeline_semaphore(true);
+    let info = vk::DeviceCreateInfo::default()
+        .queue_create_infos(&queues)
+        .push_next(&mut features);
     // SAFETY: the physical device came from this instance and `info` outlives the call.
     let device = match unsafe { instance.create_device(candidate.device, &info, None) } {
         Ok(device) => device,
@@ -463,12 +540,19 @@ fn build(
     };
     // SAFETY: the family was requested in `queues`, which asked for one queue.
     let queue = unsafe { device.get_device_queue(candidate.family, 0) };
-    // SAFETY: plain property queries of a physical device of this instance.
-    let (memory, properties) = unsafe {
-        (
-            instance.get_physical_device_memory_properties(candidate.device),
-            instance.get_physical_device_properties(candidate.device),
-        )
+    // SAFETY: a plain property query of a physical device of this instance.
+    let properties = unsafe { instance.get_physical_device_properties(candidate.device) };
+    let made = Memory::new(&instance, &device, candidate.device).and_then(|memory| {
+        let timeline = Timeline::new(&device).map_err(|result| VulkanError::driver("vkCreateSemaphore", result));
+        timeline.map(|timeline| (memory, timeline))
+    });
+    let (memory, timeline) = match made {
+        Ok(made) => made,
+        Err(error) => {
+            // SAFETY: nothing was submitted to the device.
+            unsafe { device.destroy_device(None) };
+            return Err(Box::new((error, entry, instance, messenger)));
+        }
     };
     Ok(VkContext {
         _entry: entry,
@@ -477,12 +561,14 @@ fn build(
         device,
         queue,
         family: candidate.family,
-        memory,
         limits: properties.limits,
         timestamp_bits: candidate.timestamp_bits,
         info: candidate.info,
+        cache_identity: candidate.cache_identity,
         messages,
         validating,
+        memory,
+        timeline,
         #[cfg(test)]
         faults: Faults::default(),
     })
@@ -519,6 +605,18 @@ fn choose(instance: &Instance, choice: &DeviceChoice) -> Result<Candidate, Vulka
             refusals.push(format!("{name}: does not match `{wanted}`"));
             continue;
         }
+        if properties.api_version < vk::API_VERSION_1_2 {
+            refusals.push(format!(
+                "{name}: speaks Vulkan {}.{}, and the renderer needs 1.2 for timeline semaphores",
+                vk::api_version_major(properties.api_version),
+                vk::api_version_minor(properties.api_version)
+            ));
+            continue;
+        }
+        if !timeline_semaphores(instance, device) {
+            refusals.push(format!("{name}: has no timeline semaphores"));
+            continue;
+        }
         let Some(family) = families
             .iter()
             .position(|family| family.queue_flags.contains(vk::QueueFlags::GRAPHICS))
@@ -542,6 +640,11 @@ fn choose(instance: &Instance, choice: &DeviceChoice) -> Result<Candidate, Vulka
                 name,
                 kind: GpuKind::from_vulkan(properties.device_type),
             },
+            cache_identity: CacheIdentity {
+                vendor: properties.vendor_id,
+                device: properties.device_id,
+                uuid: properties.pipeline_cache_uuid,
+            },
         });
     }
     accepted
@@ -550,6 +653,15 @@ fn choose(instance: &Instance, choice: &DeviceChoice) -> Result<Candidate, Vulka
         .ok_or_else(|| VulkanError::NoDevice {
             reason: refusals.join("; "),
         })
+}
+
+/// Whether the device can wait on and signal a timeline semaphore.
+fn timeline_semaphores(instance: &Instance, device: vk::PhysicalDevice) -> bool {
+    let mut timeline = vk::PhysicalDeviceVulkan12Features::default();
+    let mut features = vk::PhysicalDeviceFeatures2::default().push_next(&mut timeline);
+    // SAFETY: a plain query of a device this instance listed, which speaks Vulkan 1.2.
+    unsafe { instance.get_physical_device_features2(device, &mut features) };
+    timeline.timeline_semaphore == vk::TRUE
 }
 
 /// Whether the device can use the formats the renderer needs.
@@ -579,287 +691,4 @@ fn formats_supported(instance: &Instance, device: vk::PhysicalDevice) -> Result<
         }
     }
     Ok(())
-}
-
-/// A buffer in host-visible, coherent memory, mapped for as long as it lives.
-pub(super) struct VkBuffer {
-    context: Rc<VkContext>,
-    raw: vk::Buffer,
-    memory: vk::DeviceMemory,
-    size: usize,
-    mapped: *mut u8,
-}
-
-impl VkBuffer {
-    /// A buffer of at least `size` bytes.
-    ///
-    /// `cached` prefers host-cached memory, which makes the CPU reading a readback faster.
-    ///
-    /// # Errors
-    ///
-    /// The driver's result, which is an out-of-memory one when the memory is not there.
-    pub(super) fn new(
-        context: &Rc<VkContext>,
-        size: usize,
-        usage: vk::BufferUsageFlags,
-        cached: bool,
-    ) -> Result<Self, vk::Result> {
-        let size = size.max(16);
-        let info = vk::BufferCreateInfo::default()
-            .size(size as u64)
-            .usage(usage)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-        let device = &context.device;
-        // SAFETY: `info` is a valid, exclusive buffer description.
-        let raw = unsafe { device.create_buffer(&info, None) }?;
-        // SAFETY: `raw` was just created on this device.
-        let requirements = unsafe { device.get_buffer_memory_requirements(raw) };
-        let preferred = if cached {
-            vk::MemoryPropertyFlags::HOST_CACHED
-        } else {
-            vk::MemoryPropertyFlags::empty()
-        };
-        let memory = match context.allocate(
-            requirements,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-            preferred,
-        ) {
-            Ok(memory) => memory,
-            Err(result) => {
-                // SAFETY: the buffer is unused.
-                unsafe { device.destroy_buffer(raw, None) };
-                return Err(result);
-            }
-        };
-        // SAFETY: `memory` is host-visible, at least as large as the buffer, and is bound once.
-        let mapped = unsafe {
-            device
-                .bind_buffer_memory(raw, memory, 0)
-                .and_then(|()| device.map_memory(memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty()))
-        };
-        match mapped {
-            Ok(pointer) => Ok(Self {
-                context: Rc::clone(context),
-                raw,
-                memory,
-                size,
-                mapped: pointer.cast(),
-            }),
-            Err(result) => {
-                // SAFETY: neither handle is in use.
-                unsafe {
-                    device.destroy_buffer(raw, None);
-                    device.free_memory(memory, None);
-                }
-                Err(result)
-            }
-        }
-    }
-
-    /// The buffer handle.
-    pub(super) fn raw(&self) -> vk::Buffer {
-        self.raw
-    }
-
-    /// The buffer's size in bytes.
-    pub(super) fn size(&self) -> usize {
-        self.size
-    }
-
-    /// Copies `bytes` to `offset`. Returns false, writing nothing, when they do not fit.
-    pub(super) fn write(&mut self, offset: usize, bytes: &[u8]) -> bool {
-        let Some(end) = offset.checked_add(bytes.len()).filter(|end| *end <= self.size) else {
-            return false;
-        };
-        debug_assert!(end <= self.size);
-        // SAFETY: `mapped` points at `size` bytes of mapped memory that live as long as `self`,
-        // the range was bounds-checked above and `bytes` is a distinct host allocation.
-        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.mapped.add(offset), bytes.len()) };
-        true
-    }
-
-    /// The bytes from `offset`, for the CPU to fill before the frame that reads them is recorded.
-    ///
-    /// [`None`] when they do not fit.
-    pub(super) fn as_mut_slice(&mut self, offset: usize, length: usize) -> Option<&mut [u8]> {
-        let end = offset.checked_add(length).filter(|end| *end <= self.size)?;
-        debug_assert!(end <= self.size);
-        // SAFETY: in range by the check above; the mapping lives as long as `self` and no
-        // submitted work reads this buffer while the renderer holds `&mut self` between frames.
-        Some(unsafe { std::slice::from_raw_parts_mut(self.mapped.add(offset), length) })
-    }
-
-    /// The bytes from `offset`, which the device has finished writing.
-    ///
-    /// The caller has waited for the fence of the work that wrote them.
-    pub(super) fn read(&self, offset: usize, length: usize) -> Option<&[u8]> {
-        let end = offset.checked_add(length).filter(|end| *end <= self.size)?;
-        debug_assert!(end <= self.size);
-        // SAFETY: in range by the check above, and the memory is coherent and idle: no
-        // submitted work writes it while the renderer holds `&self` between frames.
-        Some(unsafe { std::slice::from_raw_parts(self.mapped.add(offset), length) })
-    }
-}
-
-impl Drop for VkBuffer {
-    fn drop(&mut self) {
-        // SAFETY: the owner waited for the frame that used the buffer; the context outlives it.
-        unsafe {
-            self.context.device.unmap_memory(self.memory);
-            self.context.device.destroy_buffer(self.raw, None);
-            self.context.device.free_memory(self.memory, None);
-        }
-    }
-}
-
-/// A 2D image with a view, in device-local memory.
-pub(super) struct VkImage {
-    context: Rc<VkContext>,
-    raw: vk::Image,
-    view: vk::ImageView,
-    memory: vk::DeviceMemory,
-    width: u32,
-    height: u32,
-}
-
-impl VkImage {
-    /// An optimal-tiling image of `width` by `height` pixels.
-    ///
-    /// `opaque` reads the fourth channel as one, for a format whose fourth byte is padding.
-    ///
-    /// # Errors
-    ///
-    /// The driver's result. An image larger than the device allows is refused with an
-    /// out-of-memory result, which is what it amounts to.
-    pub(super) fn new(
-        context: &Rc<VkContext>,
-        width: u32,
-        height: u32,
-        format: vk::Format,
-        usage: vk::ImageUsageFlags,
-        opaque: bool,
-    ) -> Result<Self, vk::Result> {
-        #[cfg(test)]
-        if let Some(result) = context.texture_fault() {
-            return Err(result);
-        }
-        let largest = context.limits.max_image_dimension2_d;
-        if width == 0 || height == 0 || width > largest || height > largest {
-            return Err(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY);
-        }
-        let info = vk::ImageCreateInfo::default()
-            .image_type(vk::ImageType::TYPE_2D)
-            .format(format)
-            .extent(vk::Extent3D {
-                width,
-                height,
-                depth: 1,
-            })
-            .mip_levels(1)
-            .array_layers(1)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .tiling(vk::ImageTiling::OPTIMAL)
-            .usage(usage)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .initial_layout(vk::ImageLayout::UNDEFINED);
-        let device = &context.device;
-        // SAFETY: `info` is a valid 2D image description within the device's limits.
-        let raw = unsafe { device.create_image(&info, None) }?;
-        // SAFETY: `raw` was just created on this device.
-        let requirements = unsafe { device.get_image_memory_requirements(raw) };
-        let memory = match context.allocate(
-            requirements,
-            vk::MemoryPropertyFlags::empty(),
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        ) {
-            Ok(memory) => memory,
-            Err(result) => {
-                // SAFETY: the image is unused.
-                unsafe { device.destroy_image(raw, None) };
-                return Err(result);
-            }
-        };
-        let alpha = if opaque {
-            vk::ComponentSwizzle::ONE
-        } else {
-            vk::ComponentSwizzle::IDENTITY
-        };
-        let view_info = vk::ImageViewCreateInfo::default()
-            .image(raw)
-            .view_type(vk::ImageViewType::TYPE_2D)
-            .format(format)
-            .components(vk::ComponentMapping {
-                r: vk::ComponentSwizzle::IDENTITY,
-                g: vk::ComponentSwizzle::IDENTITY,
-                b: vk::ComponentSwizzle::IDENTITY,
-                a: alpha,
-            })
-            .subresource_range(colour_range());
-        // SAFETY: the memory is bound once, before the view is made over the image.
-        let view = unsafe {
-            device
-                .bind_image_memory(raw, memory, 0)
-                .and_then(|()| device.create_image_view(&view_info, None))
-        };
-        match view {
-            Ok(view) => Ok(Self {
-                context: Rc::clone(context),
-                raw,
-                view,
-                memory,
-                width,
-                height,
-            }),
-            Err(result) => {
-                // SAFETY: neither handle is in use.
-                unsafe {
-                    device.destroy_image(raw, None);
-                    device.free_memory(memory, None);
-                }
-                Err(result)
-            }
-        }
-    }
-
-    /// The image handle.
-    pub(super) fn raw(&self) -> vk::Image {
-        self.raw
-    }
-
-    /// The image view over the whole image.
-    pub(super) fn view(&self) -> vk::ImageView {
-        self.view
-    }
-
-    /// Width in pixels.
-    pub(super) fn width(&self) -> u32 {
-        self.width
-    }
-
-    /// Height in pixels.
-    pub(super) fn height(&self) -> u32 {
-        self.height
-    }
-}
-
-impl Drop for VkImage {
-    fn drop(&mut self) {
-        // SAFETY: the owner waited for the frame that used the image; the context outlives it.
-        unsafe {
-            self.context.device.destroy_image_view(self.view, None);
-            self.context.device.destroy_image(self.raw, None);
-            self.context.device.free_memory(self.memory, None);
-        }
-    }
-}
-
-/// The subresource range of a single-mip, single-layer colour image.
-pub(super) fn colour_range() -> vk::ImageSubresourceRange {
-    vk::ImageSubresourceRange {
-        aspect_mask: vk::ImageAspectFlags::COLOR,
-        base_mip_level: 0,
-        level_count: 1,
-        base_array_layer: 0,
-        layer_count: 1,
-    }
 }

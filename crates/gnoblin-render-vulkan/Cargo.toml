@@ -21,6 +21,8 @@ all = { level = "deny", priority = -1 }
 [dependencies]
 # The Vulkan bindings. Every call is `unsafe`; the loader is opened with `dlopen`.
 ash.workspace = true
+# Sub-allocates the images and buffers of every frame out of a few large device allocations (`memory.rs`).
+gpu-allocator.workspace = true
 # The client-buffer pixels are read through Smithay's `wl_shm` mapping.
 smithay.workspace = true
 # Outputs, colours and sizes are stated in the shared primitives.

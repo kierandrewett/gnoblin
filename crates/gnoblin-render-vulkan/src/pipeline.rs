@@ -10,6 +10,21 @@
 //! A shell's own shader pass is another kind of pipeline, one per source (`ShaderPipelines`): the same vertex stage, state and
 //! layout, with a fragment module compiled from the validated WGSL when a frame first draws the source.
 //!
+//! # The pipeline cache
+//!
+//! The driver's cache of compiled pipelines is kept in a file under `$XDG_CACHE_HOME/gnoblin/vulkan/`, named by the device's
+//! cache UUID, so a restart does not compile every pipeline again. The file is the driver's blob behind a header of ours
+//! (a magic, a format version, the blob's length and its CRC32), and the blob's own header is checked against the device's
+//! vendor, device and UUID. A file that fails any check is deleted and ignored. It is written to a temporary file and renamed,
+//! when the device is dropped and after every [`PIPELINES_PER_SAVE`] pipelines the shader worker builds. It is never larger
+//! than [`MAX_CACHE_BYTES`].
+//!
+//! # Descriptor sets
+//!
+//! A frame's own sets (the uniform set, a backdrop's, a transient texture's) come from the frame slot's arena
+//! ([`DescriptorArena`]), which is reset when the slot's frame has finished. A cached texture owns one set for as long as it
+//! lives ([`TextureSets`], pools that free individual sets), so a steady frame writes no texture descriptors.
+//!
 //! # Bindings
 //!
 //! | Set | Binding | What                                              | Stage    |
@@ -31,11 +46,18 @@
 //! rectangle, the viewport and the optional projection, 22 floats at the locations the
 //! vertex stage declares (see `plan.rs`).
 
+use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::thread::JoinHandle;
+use std::time::Duration;
 
 use ash::vk;
 
-use super::context::{TARGET_FORMAT, VkContext};
+use super::context::{CacheIdentity, TARGET_FORMAT, VkContext};
 use super::error::VulkanError;
 use super::shader::{StageKind, compile, compile_user};
 use crate::log;
@@ -44,9 +66,6 @@ use gnoblin_render::ShaderPass;
 use gnoblin_render_frame::redraw::RedrawSignal;
 use gnoblin_render_frame::shader::uniforms::USER_BLOCK_BYTES;
 use gnoblin_render_frame::shader::{SHADER_CACHE_ENTRIES, ShaderCache};
-use std::sync::mpsc::{Receiver, Sender};
-use std::thread::JoinHandle;
-use std::time::Duration;
 
 // The shipped pipelines are made when the renderer starts; a shell's are built later on a worker thread.
 
@@ -143,6 +162,14 @@ pub(super) struct Pipelines {
     pub(super) nearest: vk::Sampler,
     /// The driver's cache of compiled pipelines, null when it could not be made.
     cache: vk::PipelineCache,
+    /// Where the cache is kept between runs, when it is.
+    cache_file: Option<PathBuf>,
+    /// Whether the cache was read from the file this run.
+    cache_loaded: bool,
+    /// How many pipelines have been built since the device was made.
+    built: Arc<AtomicU64>,
+    /// The sets of the textures the texture cache keeps, which live as long as their image.
+    pub(super) long_sets: Rc<TextureSets>,
 }
 
 impl Pipelines {
@@ -152,7 +179,11 @@ impl Pipelines {
     ///
     /// [`VulkanError::Shader`] when the driver refuses a module, and [`VulkanError::Driver`]
     /// for any other refused creation.
-    pub(super) fn new(context: &Rc<VkContext>, compiled: &Compiled) -> Result<Self, VulkanError> {
+    pub(super) fn new(
+        context: &Rc<VkContext>,
+        compiled: &Compiled,
+        location: &PipelineCacheLocation,
+    ) -> Result<Self, VulkanError> {
         let mut made = Self {
             context: Rc::clone(context),
             render_pass: vk::RenderPass::null(),
@@ -168,6 +199,10 @@ impl Pipelines {
             linear: vk::Sampler::null(),
             nearest: vk::Sampler::null(),
             cache: vk::PipelineCache::null(),
+            cache_file: location.file(&context.cache_identity),
+            cache_loaded: false,
+            built: Arc::new(AtomicU64::new(0)),
+            long_sets: Rc::new(TextureSets::new(context)),
         };
         made.vertex = module(context, "vertex", &compiled.vertex)?;
         let modules = ShaderModules::new(context, compiled)?;
@@ -216,11 +251,19 @@ impl Pipelines {
         // SAFETY: every structure above outlives the call, and the references name attachment 0.
         self.render_pass = unsafe { device.create_render_pass(&pass_info, None) }
             .map_err(|result| VulkanError::driver("vkCreateRenderPass", result))?;
-        // An in-memory cache for every pipeline, so a source the shader cache evicted and a frame draws again is not
-        // compiled by the driver from nothing. A driver that cannot make one costs the cache and not the renderer.
-        // SAFETY: a plain cache with no initial data.
-        self.cache = unsafe { device.create_pipeline_cache(&vk::PipelineCacheCreateInfo::default(), None) }
-            .unwrap_or_else(|_| vk::PipelineCache::null());
+        // The driver's cache of compiled pipelines, kept in a file between runs so a source the shader cache evicted, or the
+        // next start of the compositor, is not compiled by the driver from nothing. A cache that cannot be read or made
+        // costs the cache and not the renderer.
+        let initial = self
+            .cache_file
+            .as_deref()
+            .and_then(|path| load_cache(path, &self.context.cache_identity));
+        self.cache_loaded = initial.is_some();
+        let data = initial.unwrap_or_default();
+        // SAFETY: `data` is a blob this device's driver wrote, whose header was checked against the device, or empty.
+        self.cache =
+            unsafe { device.create_pipeline_cache(&vk::PipelineCacheCreateInfo::default().initial_data(&data), None) }
+                .unwrap_or_else(|_| vk::PipelineCache::null());
 
         // Group 0 holds two dynamic uniform blocks: the shared one every pass reads, and the one a shell's shader pass adds
         // (`user_block.wgsl`). Every draw gives an offset for both, so a shipped pass points the second at a block it never reads.
@@ -298,7 +341,25 @@ impl Pipelines {
             layout: self.layout,
             render_pass: self.render_pass,
             cache: self.cache,
+            cache_file: self.cache_file.clone(),
+            built: Arc::clone(&self.built),
         }
+    }
+
+    /// Writes the driver's cache to its file, when it is kept. The caller is the only thread that uses the cache: the
+    /// shader worker has been joined, or this is the worker.
+    pub(super) fn save_cache(&self) {
+        self.graphics_context().save_cache();
+    }
+
+    /// Whether the driver's cache was read from a file this run.
+    pub(super) fn cache_loaded(&self) -> bool {
+        self.cache_loaded
+    }
+
+    /// How many pipelines have been built since the device was made.
+    pub(super) fn built(&self) -> u64 {
+        self.built.load(Ordering::Relaxed)
     }
 }
 
@@ -312,6 +373,10 @@ pub(super) struct GraphicsContext {
     layout: vk::PipelineLayout,
     render_pass: vk::RenderPass,
     cache: vk::PipelineCache,
+    /// Where the cache is written, when it is kept between runs.
+    cache_file: Option<PathBuf>,
+    /// How many pipelines have been built: the shipped ones and the shell's.
+    built: Arc<AtomicU64>,
 }
 
 impl GraphicsContext {
@@ -409,6 +474,9 @@ impl GraphicsContext {
             .collect();
         // SAFETY: every state structure above outlives the call and matches the render pass.
         let made = unsafe { device.create_graphics_pipelines(self.cache, &infos, None) };
+        if let Ok(pipelines) = &made {
+            self.built.fetch_add(pipelines.len() as u64, Ordering::Relaxed);
+        }
         match made {
             Ok(pipelines) => Ok(pipelines),
             Err((partial, result)) => {
@@ -439,6 +507,9 @@ fn sampler(device: &ash::Device, filter: vk::Filter) -> Result<vk::Sampler, Vulk
 
 impl Drop for Pipelines {
     fn drop(&mut self) {
+        if self.cache != vk::PipelineCache::null() {
+            self.save_cache();
+        }
         let device = &self.context.device;
         // SAFETY: the renderer waited for its last frame, and every handle is null or was made on
         // this device. Destroying a null handle is a no-op.
@@ -678,13 +749,15 @@ fn work(
     ctx: &GraphicsContext,
     requests: &Receiver<BuildRequest>,
     results: &Sender<BuildResult>,
-    redraw: &RedrawSignal,
+    listeners: &Mutex<Vec<RedrawSignal>>,
 ) {
+    let mut since_saved = 0_u32;
     while let Ok(request) = requests.recv() {
         if !request.delay.is_zero() {
             std::thread::sleep(request.delay);
         }
         let outcome = build(ctx, &request.source, request.fail);
+        let built = outcome.is_ok();
         if let Err(failed) = results.send(BuildResult {
             key: request.key,
             outcome,
@@ -696,7 +769,16 @@ fn work(
             }
             return;
         }
-        redraw.request();
+        // The cache is the worker's to read while it runs, so this is where it is written out: after a run of builds, not
+        // for each one.
+        since_saved += u32::from(built);
+        if since_saved >= PIPELINES_PER_SAVE {
+            since_saved = 0;
+            ctx.save_cache();
+        }
+        for signal in listeners.lock().unwrap_or_else(PoisonError::into_inner).iter() {
+            signal.request();
+        }
     }
 }
 
@@ -713,9 +795,9 @@ fn work(
 ///
 /// # When a pipeline is destroyed
 ///
-/// A frame is recorded into one command buffer and the renderer waits for its fence before `draw` returns, so a pipeline is
-/// in use only between recording and that wait. Pipelines the cache evicts are retired and destroyed by
-/// [`ShaderPipelines::release_retired`] once the frame has finished. A lost device, or dropping the renderer, closes the worker's
+/// A frame is submitted and not waited for, so a pipeline is in use from its recording until the frame's timeline value is
+/// reached. Pipelines the cache evicts are taken by [`ShaderPipelines::take_retired`] and destroyed through the retire queue
+/// once the last frame that may have drawn with them has finished. A lost device, or dropping the device, closes the worker's
 /// queue and joins it before anything is destroyed, so the worker never touches a device that is gone, then
 /// [`ShaderPipelines::drain`] destroys what was built (the cache and the results nobody read).
 pub(super) struct ShaderPipelines {
@@ -727,7 +809,8 @@ pub(super) struct ShaderPipelines {
     /// The distinct sources this frame has asked about.
     touched: Vec<ShaderKey>,
     worker: Option<Worker>,
-    redraw: RedrawSignal,
+    /// The signal of every output on the device: the worker asks each for another frame, as any of them may draw the node.
+    listeners: Arc<Mutex<Vec<RedrawSignal>>>,
     /// What the worker builds with: handles of the device, copied from the shipped pipelines.
     graphics: GraphicsContext,
 }
@@ -741,14 +824,17 @@ impl ShaderPipelines {
             pending: Vec::new(),
             touched: Vec::new(),
             worker: None,
-            redraw: RedrawSignal::new(),
+            listeners: Arc::new(Mutex::new(Vec::new())),
             graphics: pipelines.graphics_context(),
         }
     }
 
-    /// The signal the worker asks for another frame on.
-    pub(super) fn redraw_signal(&self) -> RedrawSignal {
-        self.redraw.clone()
+    /// Makes `signal` one the worker asks for another frame on, when a pipeline it built is ready.
+    pub(super) fn listen(&self, signal: RedrawSignal) {
+        self.listeners
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(signal);
     }
 
     /// Starts a frame: takes what the worker has finished into the cache, and forgets what the last frame asked about.
@@ -828,10 +914,10 @@ impl ShaderPipelines {
         let (requests, request_queue) = std::sync::mpsc::channel();
         let (result_queue, results) = std::sync::mpsc::channel();
         let graphics = self.graphics.clone();
-        let redraw = self.redraw.clone();
+        let listeners = Arc::clone(&self.listeners);
         let thread = std::thread::Builder::new()
             .name("gnoblin-shader".to_owned())
-            .spawn(move || work(&graphics, &request_queue, &result_queue, &redraw))
+            .spawn(move || work(&graphics, &request_queue, &result_queue, &listeners))
             .map_err(|error| log::warn!(area = "render", %error, "the shader worker could not start"))
             .ok()?;
         Some(Worker {
@@ -859,12 +945,10 @@ impl ShaderPipelines {
         self.cache.contains(key)
     }
 
-    /// Destroys the pipelines the cache evicted. The caller has waited for the frame that may have used them.
-    pub(super) fn release_retired(&mut self) {
-        for pipeline in self.retired.drain(..) {
-            // SAFETY: the frame that recorded a draw with it has finished.
-            unsafe { self.context.device.destroy_pipeline(pipeline, None) };
-        }
+    /// Takes the pipelines the cache evicted, for the caller to retire with the value of the last frame submitted: a frame in
+    /// flight may still draw with one.
+    pub(super) fn take_retired(&mut self) -> Vec<vk::Pipeline> {
+        std::mem::take(&mut self.retired)
     }
 
     /// Destroys every pipeline, for a renderer that lost its device or is going away. Stops the worker and waits for it and
@@ -889,7 +973,10 @@ impl ShaderPipelines {
         }
         self.pending.clear();
         self.context.wait_idle();
-        self.release_retired();
+        for pipeline in self.retired.drain(..) {
+            // SAFETY: the queue is idle, so no command buffer uses the pipeline.
+            unsafe { self.context.device.destroy_pipeline(pipeline, None) };
+        }
         for (_, held) in self.cache.drain() {
             if let Ok(held) = held {
                 // SAFETY: the queue is idle, so no command buffer uses the pipeline.
@@ -902,5 +989,320 @@ impl ShaderPipelines {
 impl Drop for ShaderPipelines {
     fn drop(&mut self) {
         self.drain();
+    }
+}
+
+/// A pipeline the shader cache evicted, kept until the last frame that may draw with it has finished.
+pub(super) struct RetiredPipeline {
+    context: Rc<VkContext>,
+    pipeline: vk::Pipeline,
+}
+
+impl RetiredPipeline {
+    pub(super) fn new(context: &Rc<VkContext>, pipeline: vk::Pipeline) -> Self {
+        Self {
+            context: Rc::clone(context),
+            pipeline,
+        }
+    }
+}
+
+impl Drop for RetiredPipeline {
+    fn drop(&mut self) {
+        // SAFETY: the retire queue held it until the timeline passed the last frame that drew with it.
+        unsafe { self.context.device.destroy_pipeline(self.pipeline, None) };
+    }
+}
+
+/// Descriptor sets that live as long as the texture they bind, from pools that free single sets.
+///
+/// A frame's own sets come from an arena that is reset wholesale, which is right for sets that last one frame. A cached
+/// texture's last until its surface goes, so each is allocated once and freed with its texture, and a steady frame writes
+/// none.
+pub(super) struct TextureSets {
+    context: Rc<VkContext>,
+    /// Each pool, and how many of its sets are in use.
+    pools: RefCell<Vec<(vk::DescriptorPool, u32)>>,
+}
+
+impl TextureSets {
+    fn new(context: &Rc<VkContext>) -> Self {
+        Self {
+            context: Rc::clone(context),
+            pools: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// A set of `layout`, which goes back to its pool when the [`LongSet`] is dropped.
+    ///
+    /// # Errors
+    ///
+    /// The driver's result.
+    pub(super) fn allocate(self: &Rc<Self>, layout: vk::DescriptorSetLayout) -> Result<LongSet, vk::Result> {
+        let layouts = [layout];
+        let device = &self.context.device;
+        let mut pools = self.pools.borrow_mut();
+        loop {
+            for (index, (pool, used)) in pools.iter_mut().enumerate() {
+                if *used >= POOL_SETS {
+                    continue;
+                }
+                let info = vk::DescriptorSetAllocateInfo::default()
+                    .descriptor_pool(*pool)
+                    .set_layouts(&layouts);
+                // SAFETY: the pool and layout belong to this device.
+                match unsafe { device.allocate_descriptor_sets(&info) } {
+                    Ok(sets) => {
+                        *used += 1;
+                        return Ok(LongSet {
+                            owner: Rc::clone(self),
+                            pool: index,
+                            set: sets[0],
+                        });
+                    }
+                    Err(vk::Result::ERROR_OUT_OF_POOL_MEMORY | vk::Result::ERROR_FRAGMENTED_POOL) => continue,
+                    Err(result) => return Err(result),
+                }
+            }
+            let sizes = [
+                vk::DescriptorPoolSize::default()
+                    .ty(vk::DescriptorType::SAMPLED_IMAGE)
+                    .descriptor_count(POOL_SETS),
+                vk::DescriptorPoolSize::default()
+                    .ty(vk::DescriptorType::SAMPLER)
+                    .descriptor_count(POOL_SETS),
+            ];
+            let info = vk::DescriptorPoolCreateInfo::default()
+                .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
+                .max_sets(POOL_SETS)
+                .pool_sizes(&sizes);
+            // SAFETY: `info` is a valid description.
+            let pool = unsafe { device.create_descriptor_pool(&info, None) }?;
+            pools.push((pool, 0));
+        }
+    }
+
+    fn free(&self, pool: usize, set: vk::DescriptorSet) {
+        let mut pools = self.pools.borrow_mut();
+        if let Some((handle, used)) = pools.get_mut(pool) {
+            // SAFETY: the texture the set belonged to has been retired, so no frame in flight uses it.
+            let _ = unsafe { self.context.device.free_descriptor_sets(*handle, &[set]) };
+            *used = used.saturating_sub(1);
+        }
+    }
+
+    /// How many sets are in use.
+    #[cfg(test)]
+    pub(super) fn in_use(&self) -> u32 {
+        self.pools.borrow().iter().map(|(_, used)| *used).sum()
+    }
+}
+
+impl Drop for TextureSets {
+    fn drop(&mut self) {
+        for (pool, _) in self.pools.borrow().iter() {
+            // SAFETY: every set is freed with the texture it belonged to, and the device is idle or the textures retired.
+            unsafe { self.context.device.destroy_descriptor_pool(*pool, None) };
+        }
+    }
+}
+
+/// A descriptor set owned by a cached texture.
+pub(super) struct LongSet {
+    owner: Rc<TextureSets>,
+    pool: usize,
+    pub(super) set: vk::DescriptorSet,
+}
+
+impl Drop for LongSet {
+    fn drop(&mut self) {
+        self.owner.free(self.pool, self.set);
+    }
+}
+
+/// How many pipelines the shader worker builds between writes of the cache file.
+pub(super) const PIPELINES_PER_SAVE: u32 = 16;
+
+/// The largest cache file that is written, in bytes. A cache that has grown past it is not kept.
+pub(super) const MAX_CACHE_BYTES: usize = 32 << 20;
+
+/// The magic that starts a cache file.
+const CACHE_MAGIC: [u8; 4] = *b"GNVC";
+
+/// The format of the file's own header, raised when it changes.
+const CACHE_VERSION: u32 = 1;
+
+/// The bytes of the file's header: magic, version, length of the driver's blob and its CRC32.
+const CACHE_HEADER: usize = 20;
+
+/// The bytes of the header the Vulkan specification puts first in every pipeline cache blob: its size, version, vendor,
+/// device and the 16 bytes of the cache UUID.
+const BLOB_HEADER: usize = 32;
+
+/// Where the driver's pipeline cache is kept between runs.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum PipelineCacheLocation {
+    /// `$XDG_CACHE_HOME/gnoblin/vulkan/`, or `~/.cache/gnoblin/vulkan/` without it, in a file named by the cache UUID of the
+    /// device. With neither variable set, the cache is not kept.
+    #[default]
+    Default,
+    /// Not kept: every run compiles its pipelines from nothing.
+    Off,
+    /// In this directory, which a test makes.
+    Directory(PathBuf),
+}
+
+impl PipelineCacheLocation {
+    /// The file for a device, or `None` when the cache is not kept.
+    pub(super) fn file(&self, identity: &CacheIdentity) -> Option<PathBuf> {
+        let directory = match self {
+            Self::Off => return None,
+            Self::Directory(directory) => directory.clone(),
+            Self::Default => default_directory()?,
+        };
+        let uuid: String = identity.uuid.iter().map(|byte| format!("{byte:02x}")).collect();
+        Some(directory.join(format!("{uuid}.bin")))
+    }
+}
+
+/// The directory of [`PipelineCacheLocation::Default`].
+fn default_directory() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .filter(|value| !value.is_empty())
+                .map(|home| PathBuf::from(home).join(".cache"))
+        })?;
+    Some(base.join("gnoblin").join("vulkan"))
+}
+
+/// The table the CRC32 is computed from.
+static CRC_TABLE: LazyLock<[u32; 256]> = LazyLock::new(|| {
+    let mut table = [0_u32; 256];
+    for (index, slot) in table.iter_mut().enumerate() {
+        let mut value = index as u32;
+        for _ in 0..8 {
+            value = if value & 1 == 1 {
+                0xEDB8_8320 ^ (value >> 1)
+            } else {
+                value >> 1
+            };
+        }
+        *slot = value;
+    }
+    table
+});
+
+/// The CRC32 (IEEE) of `bytes`.
+fn crc32(bytes: &[u8]) -> u32 {
+    !bytes.iter().fold(!0_u32, |crc, byte| {
+        CRC_TABLE[((crc ^ u32::from(*byte)) & 0xFF) as usize] ^ (crc >> 8)
+    })
+}
+
+/// The file for a driver's blob: our header, then the blob.
+pub(super) fn encode_cache(blob: &[u8]) -> Vec<u8> {
+    let mut file = Vec::with_capacity(CACHE_HEADER + blob.len());
+    file.extend_from_slice(&CACHE_MAGIC);
+    file.extend_from_slice(&CACHE_VERSION.to_le_bytes());
+    file.extend_from_slice(&(blob.len() as u64).to_le_bytes());
+    file.extend_from_slice(&crc32(blob).to_le_bytes());
+    file.extend_from_slice(blob);
+    file
+}
+
+/// The driver's blob in a cache file, when the file is ours, whole, intact and of this device.
+///
+/// # Errors
+///
+/// Why the file is refused.
+pub(super) fn decode_cache<'a>(file: &'a [u8], identity: &CacheIdentity) -> Result<&'a [u8], &'static str> {
+    if file.len() > MAX_CACHE_BYTES {
+        return Err("it is larger than the cache may be");
+    }
+    let header = file.get(..CACHE_HEADER).ok_or("it is shorter than its header")?;
+    if header[..4] != CACHE_MAGIC {
+        return Err("it is not a Gnoblin cache");
+    }
+    let word = |from: usize| u32::from_le_bytes([header[from], header[from + 1], header[from + 2], header[from + 3]]);
+    if word(4) != CACHE_VERSION {
+        return Err("it is of another format version");
+    }
+    let length = u64::from_le_bytes([
+        header[8], header[9], header[10], header[11], header[12], header[13], header[14], header[15],
+    ]);
+    let blob = &file[CACHE_HEADER..];
+    if length != blob.len() as u64 {
+        return Err("its length is not the one it says");
+    }
+    if crc32(blob) != word(16) {
+        return Err("its checksum does not match");
+    }
+    let blob_word = |from: usize| u32::from_le_bytes([blob[from], blob[from + 1], blob[from + 2], blob[from + 3]]);
+    if blob.len() < BLOB_HEADER || blob_word(4) != 1 {
+        return Err("the driver's blob has no header of version one");
+    }
+    if blob_word(8) != identity.vendor || blob_word(12) != identity.device || blob[16..32] != identity.uuid {
+        return Err("it was made by another device or driver");
+    }
+    Ok(blob)
+}
+
+/// The driver's blob kept in `path`, or `None` when there is no file or it is refused. A refused file is deleted, so the next
+/// write replaces it.
+fn load_cache(path: &Path, identity: &CacheIdentity) -> Option<Vec<u8>> {
+    let file = match std::fs::read(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(error) => {
+            log::warn!(area = "render", path = %path.display(), %error, "the pipeline cache file could not be read");
+            return None;
+        }
+    };
+    match decode_cache(&file, identity) {
+        Ok(blob) => Some(blob.to_vec()),
+        Err(reason) => {
+            log::warn!(area = "render", path = %path.display(), reason, "the pipeline cache file is ignored and deleted");
+            let _ = std::fs::remove_file(path);
+            None
+        }
+    }
+}
+
+/// Writes `blob` to `path` through a temporary file and a rename, so a reader never sees half a file.
+fn save_cache_file(path: &Path, blob: &[u8]) -> std::io::Result<()> {
+    if blob.len() + CACHE_HEADER > MAX_CACHE_BYTES {
+        return Err(std::io::Error::other("the cache is larger than the cache file may be"));
+    }
+    if let Some(directory) = path.parent() {
+        std::fs::create_dir_all(directory)?;
+    }
+    let mut temporary = path.as_os_str().to_owned();
+    temporary.push(format!(".{}.tmp", std::process::id()));
+    let temporary = PathBuf::from(temporary);
+    let written = std::fs::write(&temporary, encode_cache(blob)).and_then(|()| std::fs::rename(&temporary, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    written
+}
+
+impl GraphicsContext {
+    /// Writes the driver's cache to its file, when it is kept. The cache is externally synchronised: this is called by the
+    /// shader worker between builds, or by the thread that owns the device after the worker has been joined.
+    pub(super) fn save_cache(&self) {
+        let Some(path) = &self.cache_file else { return };
+        if self.cache == vk::PipelineCache::null() {
+            return;
+        }
+        // SAFETY: no other thread uses the cache while this runs, by the contract above.
+        let Ok(blob) = (unsafe { self.device.get_pipeline_cache_data(self.cache) }) else {
+            return;
+        };
+        if let Err(error) = save_cache_file(path, &blob) {
+            log::warn!(area = "render", path = %path.display(), %error, "the pipeline cache could not be written");
+        }
     }
 }

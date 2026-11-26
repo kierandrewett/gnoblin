@@ -49,7 +49,7 @@ fn with_passes(mut layer: Layer, passes: &[Pass]) -> Layer {
 fn settle(vulkan: &mut Vulkan, frame: &OutputFrame, scale: Scale) {
     for _ in 0..4000 {
         vulkan.draw(frame, scale).expect("the frame");
-        if vulkan.shaders.pending() == 0 {
+        if vulkan.device.shaders.borrow().pending() == 0 {
             return;
         }
         frame.shader_timings().take();
@@ -339,7 +339,7 @@ fn a_source_that_does_not_compile_leaves_its_layer_drawn_and_is_reported() {
     // The refusal is kept, so the next frame names it again without compiling.
     draw(&mut vulkan, &frame);
     assert_eq!(frame.shader_timings().take().refused.len(), 1);
-    assert_eq!(vulkan.shaders.len(), 1);
+    assert_eq!(vulkan.device.shaders.borrow().len(), 1);
     clean(&vulkan);
 }
 
@@ -372,6 +372,7 @@ fn a_pipeline_the_driver_refuses_is_reported_and_the_layer_is_drawn_without_it()
         &[pass(SWAP, &[])],
     ));
     vulkan
+        .device
         .context
         .faults
         .pipeline
@@ -408,9 +409,15 @@ fn the_pipelines_are_kept_by_source_and_never_more_than_64() {
     let Some(mut vulkan) = renderer(SIZE) else { return };
     let (frame, keys) = many_sources(70);
     draw(&mut vulkan, &frame);
-    assert_eq!(vulkan.shaders.len(), 64, "the cache is bounded");
-    assert!(vulkan.shaders.contains(keys[0]), "a source the frame used stays");
-    assert!(!vulkan.shaders.contains(keys[69]), "the extra was never built");
+    assert_eq!(vulkan.device.shaders.borrow().len(), 64, "the cache is bounded");
+    assert!(
+        vulkan.device.shaders.borrow().contains(keys[0]),
+        "a source the frame used stays"
+    );
+    assert!(
+        !vulkan.device.shaders.borrow().contains(keys[69]),
+        "the extra was never built"
+    );
     clean(&vulkan);
 }
 
@@ -424,10 +431,19 @@ fn a_lost_device_drains_the_pipelines() {
         &[pass(SWAP, &[])],
     ));
     draw(&mut vulkan, &frame);
-    assert_eq!(vulkan.shaders.len(), 1);
-    vulkan.context.faults.submit.set(Some(vk::Result::ERROR_DEVICE_LOST));
+    assert_eq!(vulkan.device.shaders.borrow().len(), 1);
+    vulkan
+        .device
+        .context
+        .faults
+        .submit
+        .set(Some(vk::Result::ERROR_DEVICE_LOST));
     assert_eq!(vulkan.draw(&frame, Scale::IDENTITY), Err(RenderError::Lost));
-    assert_eq!(vulkan.shaders.len(), 0, "a lost device drops every pipeline");
+    assert_eq!(
+        vulkan.device.shaders.borrow().len(),
+        0,
+        "a lost device drops every pipeline"
+    );
     assert!(vulkan.is_lost());
 }
 
@@ -559,7 +575,12 @@ fn the_first_draw_does_not_wait_for_the_build_and_a_later_one_has_the_pass() {
     let mut frame = frame(Color::BLACK, SIZE);
     frame.push_layer(shaded(Rect::new(8, 8, 16, 16), colour(255, 0, 0, 255), &[broken_first]));
     // A build that takes 400 ms, as a slow driver's would.
-    vulkan.context.faults.build_delay.set(Some(Duration::from_millis(400)));
+    vulkan
+        .device
+        .context
+        .faults
+        .build_delay
+        .set(Some(Duration::from_millis(400)));
     let started = std::time::Instant::now();
     vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
     let took = started.elapsed();
@@ -601,9 +622,14 @@ fn dropping_the_renderer_during_a_build_is_safe() {
         colour(255, 0, 0, 255),
         &[pass(SWAP, &[])],
     ));
-    vulkan.context.faults.build_delay.set(Some(Duration::from_millis(300)));
+    vulkan
+        .device
+        .context
+        .faults
+        .build_delay
+        .set(Some(Duration::from_millis(300)));
     vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
-    assert_eq!(vulkan.shaders.pending(), 1);
+    assert_eq!(vulkan.device.shaders.borrow().pending(), 1);
     clean(&vulkan);
     // The worker is still in its build: the drop joins it before the device goes.
     drop(vulkan);
@@ -618,12 +644,22 @@ fn a_device_lost_during_a_build_is_safe_and_drains_the_worker() {
         colour(255, 0, 0, 255),
         &[pass(SWAP, &[])],
     ));
-    vulkan.context.faults.build_delay.set(Some(Duration::from_millis(300)));
+    vulkan
+        .device
+        .context
+        .faults
+        .build_delay
+        .set(Some(Duration::from_millis(300)));
     vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
-    vulkan.context.faults.submit.set(Some(vk::Result::ERROR_DEVICE_LOST));
+    vulkan
+        .device
+        .context
+        .faults
+        .submit
+        .set(Some(vk::Result::ERROR_DEVICE_LOST));
     assert_eq!(vulkan.draw(&frame, Scale::IDENTITY), Err(RenderError::Lost));
-    assert_eq!(vulkan.shaders.pending(), 0);
-    assert_eq!(vulkan.shaders.len(), 0);
+    assert_eq!(vulkan.device.shaders.borrow().pending(), 0);
+    assert_eq!(vulkan.device.shaders.borrow().len(), 0);
 }
 
 #[test]
@@ -647,8 +683,8 @@ fn a_frame_with_more_sources_than_the_cache_holds_refuses_the_extras_and_builds_
         .map(|(key, _)| *key)
         .collect();
     assert_eq!(full, keys[64..], "the extras, and only they, are cache-full");
-    assert_eq!(vulkan.shaders.len(), 64);
-    assert!(vulkan.shaders.contains(keys[0]) && !vulkan.shaders.contains(keys[69]));
+    assert_eq!(vulkan.device.shaders.borrow().len(), 64);
+    assert!(vulkan.device.shaders.borrow().contains(keys[0]) && !vulkan.device.shaders.borrow().contains(keys[69]));
     // Steady frames build nothing: the same 64 stay, and a frame is cheap.
     for _ in 0..3 {
         let started = std::time::Instant::now();
@@ -656,8 +692,8 @@ fn a_frame_with_more_sources_than_the_cache_holds_refuses_the_extras_and_builds_
         let took = started.elapsed();
         println!("a steady frame of 70 sources took {took:?}");
         assert!(took < Duration::from_millis(500), "{took:?}");
-        assert_eq!(vulkan.shaders.pending(), 0, "nothing is built again");
-        assert_eq!(vulkan.shaders.len(), 64);
+        assert_eq!(vulkan.device.shaders.borrow().pending(), 0, "nothing is built again");
+        assert_eq!(vulkan.device.shaders.borrow().len(), 64);
         frame.shader_timings().take();
     }
     clean(&vulkan);
@@ -684,5 +720,42 @@ fn a_filter_grade_is_applied_after_a_shader_pass() {
     let grey = (0.715_f32 * 0.5 * 255.0).round() as u8;
     assert_pixel(&image, (12, 12), [grey, grey, grey, 255], 1);
     assert_pixel(&image, (2, 2), [0, 0, 0, 255], 0);
+    clean(&vulkan);
+}
+
+#[test]
+fn the_worker_writes_the_pipeline_cache_after_sixteen_builds_and_counts_them() {
+    let directory = tempfile::tempdir().expect("a directory");
+    let options = VulkanOptions {
+        pipeline_cache: PipelineCacheLocation::Directory(directory.path().to_owned()),
+        ..options()
+    };
+    let mut vulkan = match Vulkan::with_options(SIZE, &options) {
+        Ok(vulkan) => vulkan,
+        Err(error @ (VulkanError::NoLoader { .. } | VulkanError::NoDevice { .. })) => {
+            println!("skipping: {error}; there is no Vulkan device on this machine");
+            return;
+        }
+        Err(error) => panic!("the Vulkan renderer could not be created: {error}"),
+    };
+    let file = options
+        .pipeline_cache
+        .file(&vulkan.device.context.cache_identity)
+        .expect("a file for the device");
+    // The shipped pipelines: the layer passes and the effect passes, made when the device starts.
+    let shipped = vulkan.stats().pipelines_built;
+    assert!(shipped >= 2, "at least the solid and surface pipelines");
+    assert!(!file.exists(), "nothing is written before there is something to keep");
+    // Fifteen builds are not enough for a write.
+    let (few, _) = many_sources(15);
+    settle(&mut vulkan, &few, Scale::IDENTITY);
+    assert_eq!(vulkan.stats().pipelines_built, shipped + 15);
+    assert!(!file.exists(), "fifteen builds do not make the worker write");
+    // Twenty more distinct sources cross sixteen builds, and the file is written while the device is still running.
+    let (many, _) = many_sources(40);
+    settle(&mut vulkan, &many, Scale::IDENTITY);
+    assert!(vulkan.stats().pipelines_built > shipped + 15);
+    let written = std::fs::read(&file).expect("the worker wrote the cache after sixteen builds");
+    assert_eq!(&written[..4], b"GNVC");
     clean(&vulkan);
 }

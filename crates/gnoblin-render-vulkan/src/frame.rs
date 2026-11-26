@@ -1,45 +1,51 @@
 #![allow(unsafe_code)]
 //! Recording a frame, submitting it and reading the target back.
 //!
-//! A frame is one command buffer, submitted once and waited for before `draw` returns. That is
-//! the honest cost of an offscreen renderer whose output is read by the CPU: there is nothing
-//! to overlap with, and a fence per frame is what tells the renderer the device is lost.
-//! Presentation to a display will not wait like this, which is the next slice's work.
+//! A frame is recorded into one [`FrameSlot`](super::sync::FrameSlot) of the output, submitted once, and not waited for:
+//! `draw` returns when the frame is on the queue. The output has two slots, so a second frame can be recorded while the
+//! first runs, and the slot a frame needs is waited for only when its previous frame has not finished, which in a steady
+//! session it has. What a frame in flight reads is kept alive until the timeline passes its value (`sync.rs`).
+//!
+//! The exception is a frame that draws a shell's shader: its cost is what the watchdog needs to see, so that frame is waited
+//! for and timed. A capture waits for its own submission, and so for every frame before it.
 //!
 //! # A frame, in order
 //!
-//! 1. **Shader pipelines.** Every shader pass of the frame gets its pipeline (`ShaderPipelines`), made
+//! 1. **A slot.** The frame's slot is waited for (its previous frame has finished), reset, and begun.
+//! 2. **Shader pipelines.** Every shader pass of the frame gets its pipeline (`ShaderPipelines`), made
 //!    now if its source has not been drawn before. A source that cannot be drawn is reported on the
 //!    frame's timings and its passes are left out.
-//! 2. **Textures.** Every surface layer's `wl_shm` pixels are copied once, into a staging
-//!    buffer, and from there into an image of their own. The overlay and the cursor are made
-//!    the same way, and a solid layer with a shader pass has a one-pixel texture of its colour. A
-//!    buffer that cannot be read, or an image the device cannot allocate, is logged and its layer
-//!    skipped: the rest of the frame is drawn.
-//! 3. **Images of the shader layers.** A layer whose pass reads the backdrop gets an image of its
+//! 3. **Textures.** The texture cache (`textures.rs`) makes every surface layer's texture ready: the one it holds when the
+//!    surface's commit is the one it has, the damaged rectangles of a new commit, the whole buffer otherwise. The overlay and
+//!    the cursor are made the same way, and a solid layer with a shader pass has a one-pixel texture of its colour; those have
+//!    no key and are made for the frame alone. A buffer that cannot be read, or an image the device cannot allocate, is
+//!    logged and its layer skipped: the rest of the frame is drawn.
+//! 4. **Images of the shader layers.** A layer whose pass reads the backdrop gets an image of its
 //!    size to draw the backdrop into, and a layer with several passes gets two scratch images; a
 //!    layer whose images cannot be made is drawn without its passes.
-//! 4. **Plan.** With the textures known, the frame, each backdrop and each pass of a chain
+//! 5. **Plan.** With the textures known, the frame, each backdrop and each pass of a chain
 //!    become lists of draws (`plan.rs`), joined into one set of buffers.
-//! 5. **Shader jobs**, from the bottom layer up: a layer's backdrop is drawn (the layers below
-//!    it, secure ones black, over its rectangle) and then the passes of its chain, each into its
-//!    own render pass and then made readable. A layer reads the backdrops of those below it, so
-//!    the order is the layers'.
-//! 6. **Pass A.** The damage is cleared to the background and the layers are drawn, each
+//! 6. **Uploads and shader jobs**, from the bottom layer up: the copies that update textures, then a layer's backdrop is
+//!    drawn (the layers below it, secure ones black, over its rectangle) and the passes of its chain, each into its own render
+//!    pass and then made readable. A layer reads the backdrops of those below it, so the order is the layers'.
+//! 7. **Pass A.** The damage is cleared to the background and the layers are drawn, each
 //!    clipped to the damage rectangle it belongs to.
-//! 7. **Overlay.** The overlay is drawn over the layers. The cursor's pixels are copied into
+//! 8. **Overlay.** The overlay is drawn over the layers. The cursor's pixels are copied into
 //!    a host buffer first so a capture can leave the cursor out, then the cursor is drawn.
-//! 8. **Submit and wait**, and tell the frame's timings what each shader source cost.
+//! 9. **Submit**, which signals the next timeline value. The frame's own images go to the retire queue with that value.
 //!
 //! # Layouts
 //!
 //! The target lives in `COLOR_ATTACHMENT_OPTIMAL` between frames. A copy out of it moves it to
 //! `TRANSFER_SRC_OPTIMAL` and back with explicit barriers; the render pass has the matching
 //! subpass dependencies. A texture goes `UNDEFINED`, `TRANSFER_DST_OPTIMAL`,
-//! `SHADER_READ_ONLY_OPTIMAL` and is destroyed when the frame has finished. A backdrop or scratch
+//! `SHADER_READ_ONLY_OPTIMAL` and stays there; a cached texture that is updated goes `SHADER_READ_ONLY_OPTIMAL`,
+//! `TRANSFER_DST_OPTIMAL` and back. A backdrop or scratch
 //! image goes `UNDEFINED`, `COLOR_ATTACHMENT_OPTIMAL` (the render pass draws into it) and
 //! `SHADER_READ_ONLY_OPTIMAL` by a barrier after the pass; a scratch image a later pass of the same
 //! chain draws into again is moved back by a barrier that waits for the reads of the pass before.
+//! Every frame begins with a memory barrier from all earlier work to all later work, so the frames in flight never race on
+//! the target, a texture or the pixels saved under the cursor.
 
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -50,32 +56,25 @@ use gnoblin_render::{Pass, ShaderKey};
 use gnoblin_types::{Color, Rect, Scale, Size};
 
 use super::Vulkan;
-use super::context::{SHM_FORMAT, TARGET_FORMAT, VkBuffer, VkContext, VkImage, colour_range};
+use super::context::{TARGET_FORMAT, VkContext};
 use super::error::classify;
-use super::pipeline::{BLOCK_RANGE, DescriptorArena, USER_BLOCK_RANGE, UserPipeline};
+use super::memory::{VkBuffer, VkImage, colour_range};
+use super::pipeline::{BLOCK_RANGE, RetiredPipeline, USER_BLOCK_RANGE, UserPipeline};
 use super::plan::{
     ChainStep, DrawBatch, FramePlan, PassKind, PlanTarget, PlannedDraw, ShaderUse, Shaders, TextureSizes, TextureSlot,
     UNIFORM_STRIDE, chain, damage_of, overlay_of, plan, plan_into, quad_of,
 };
+use super::sync::{FrameSlot, STAMP_QUERIES, TimestampQuery};
+use super::textures::{Frame, Prepared, Source, Wanted, colour_layers, write_texture_set};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::{BackdropInput, Layer, OutputFrame, SurfaceSource};
 use gnoblin_render_frame::image::Image;
-use gnoblin_render_frame::shm;
 
 use crate::log;
 
-/// How long a frame may take before the device is treated as lost, in nanoseconds.
-const FRAME_TIMEOUT: u64 = 10_000_000_000;
-
-/// The alignment of a texture's bytes inside the staging buffer.
-const STAGING_ALIGN: usize = 16;
-
-/// The size of a recorder's staging and readback buffers when it is made, and what a trim leaves.
-const MIN_BUFFER: usize = 4096;
-
 /// How many output-sized uploads the staging buffer keeps room for between frames. A frame of a few full-screen
 /// windows fits; a larger frame grows the buffer for itself and gives it back after the frame.
-const STAGING_SCREENS: usize = 4;
+pub(super) const STAGING_SCREENS: usize = 4;
 
 /// What the renderer draws into: an image and the framebuffer over it.
 pub(super) struct RenderTarget {
@@ -85,7 +84,7 @@ pub(super) struct RenderTarget {
 }
 
 impl RenderTarget {
-    /// A target of `size` pixels. Its pixels are undefined until [`FrameRecorder::clear`].
+    /// A target of `size` pixels. Its pixels are undefined until [`Vulkan::clear_target`].
     pub(super) fn new(context: &Rc<VkContext>, pass: vk::RenderPass, size: Size) -> Result<Self, vk::Result> {
         Self::with_usage(
             context,
@@ -133,7 +132,7 @@ impl RenderTarget {
 
 impl Drop for RenderTarget {
     fn drop(&mut self) {
-        // SAFETY: the renderer waited for the last frame that drew into it.
+        // SAFETY: the owner waited for the last frame that drew into it, or retired it until that frame had finished.
         unsafe { self.context.device.destroy_framebuffer(self.framebuffer, None) };
     }
 }
@@ -141,7 +140,7 @@ impl Drop for RenderTarget {
 /// The pixels under the cursor, saved so a capture can leave it out.
 #[derive(Default)]
 pub(super) struct Saved {
-    buffer: Option<VkBuffer>,
+    pub(super) buffer: Option<VkBuffer>,
     /// The rectangle of the output the buffer holds, packed rows of it.
     pub(super) rect: Option<Rect>,
 }
@@ -153,317 +152,6 @@ impl Saved {
         self.buffer
             .as_ref()?
             .read(0, rect.width as usize * rect.height as usize * 4)
-    }
-}
-
-/// The command buffer, the fence and the host-visible buffers a frame uses.
-pub(super) struct FrameRecorder {
-    context: Rc<VkContext>,
-    pool: vk::CommandPool,
-    cmd: vk::CommandBuffer,
-    fence: vk::Fence,
-    arena: DescriptorArena,
-    quad: VkBuffer,
-    uniforms: VkBuffer,
-    /// The shader passes' own blocks: the second uniform binding of group 0.
-    user_uniforms: VkBuffer,
-    instances: VkBuffer,
-    staging: VkBuffer,
-    readback: VkBuffer,
-    /// The timestamp queries, when the queue writes them.
-    query: Option<TimestampQuery>,
-    /// How long the last submission took from submit to fence.
-    wall: Duration,
-}
-
-impl FrameRecorder {
-    pub(super) fn new(context: &Rc<VkContext>) -> Result<Self, vk::Result> {
-        let device = &context.device;
-        let pool_info = vk::CommandPoolCreateInfo::default()
-            .queue_family_index(context.family)
-            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
-        // SAFETY: the family index is the one the device's queue was taken from.
-        let pool = unsafe { device.create_command_pool(&pool_info, None) }?;
-        let allocate = vk::CommandBufferAllocateInfo::default()
-            .command_pool(pool)
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(1);
-        // SAFETY: the pool was just created on this device.
-        let cmd = match unsafe { device.allocate_command_buffers(&allocate) } {
-            Ok(buffers) => buffers[0],
-            Err(result) => {
-                // SAFETY: nothing was recorded.
-                unsafe { device.destroy_command_pool(pool, None) };
-                return Err(result);
-            }
-        };
-        // SAFETY: a plain fence, created unsignalled.
-        let fence = match unsafe { device.create_fence(&vk::FenceCreateInfo::default(), None) } {
-            Ok(fence) => fence,
-            Err(result) => {
-                // SAFETY: nothing was recorded.
-                unsafe { device.destroy_command_pool(pool, None) };
-                return Err(result);
-            }
-        };
-        // From here the guard destroys the three handles if a buffer cannot be made.
-        let mut guard = Handles {
-            context: Rc::clone(context),
-            pool,
-            fence,
-        };
-        let mut quad = VkBuffer::new(context, 32, vk::BufferUsageFlags::VERTEX_BUFFER, false)?;
-        // The unit quad as a triangle strip: the vertex stage scales it to the rectangle.
-        let corners: [f32; 8] = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0];
-        let bytes: Vec<u8> = corners.iter().flat_map(|value| value.to_ne_bytes()).collect();
-        quad.write(0, &bytes);
-        let made = Self {
-            context: Rc::clone(context),
-            pool,
-            cmd,
-            fence,
-            arena: DescriptorArena::new(context),
-            quad,
-            uniforms: VkBuffer::new(context, 4096, vk::BufferUsageFlags::UNIFORM_BUFFER, false)?,
-            user_uniforms: VkBuffer::new(context, 4096, vk::BufferUsageFlags::UNIFORM_BUFFER, false)?,
-            instances: VkBuffer::new(context, 4096, vk::BufferUsageFlags::VERTEX_BUFFER, false)?,
-            staging: VkBuffer::new(context, 4096, vk::BufferUsageFlags::TRANSFER_SRC, false)?,
-            readback: VkBuffer::new(context, 4096, vk::BufferUsageFlags::TRANSFER_DST, true)?,
-            query: make_query(context),
-            wall: Duration::ZERO,
-        };
-        guard.pool = vk::CommandPool::null();
-        guard.fence = vk::Fence::null();
-        Ok(made)
-    }
-
-    /// Clears the target to transparent black and leaves it ready to draw into.
-    pub(super) fn clear(&mut self, target: &RenderTarget) -> Result<(), vk::Result> {
-        self.begin()?;
-        let image = target.image.raw();
-        self.barrier(
-            image,
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            (vk::PipelineStageFlags::TOP_OF_PIPE, vk::AccessFlags::empty()),
-            (vk::PipelineStageFlags::TRANSFER, vk::AccessFlags::TRANSFER_WRITE),
-        );
-        let transparent = vk::ClearColorValue { float32: [0.0; 4] };
-        // SAFETY: the image is in `TRANSFER_DST_OPTIMAL` after the barrier above.
-        unsafe {
-            self.context.device.cmd_clear_color_image(
-                self.cmd,
-                image,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &transparent,
-                &[colour_range()],
-            );
-        }
-        self.barrier(
-            image,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            (vk::PipelineStageFlags::TRANSFER, vk::AccessFlags::TRANSFER_WRITE),
-            (
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            ),
-        );
-        self.submit()
-    }
-
-    /// Starts recording a new frame: resets the fence, the command buffer and the descriptors.
-    fn begin(&mut self) -> Result<(), vk::Result> {
-        let device = &self.context.device;
-        // SAFETY: the previous frame's fence was waited, so neither the fence nor the buffer is
-        // in use, and the pool allows resetting its buffers.
-        unsafe {
-            device.reset_fences(&[self.fence])?;
-            device.reset_command_buffer(self.cmd, vk::CommandBufferResetFlags::empty())?;
-            device.begin_command_buffer(
-                self.cmd,
-                &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
-            )?;
-            if let Some(query) = &self.query {
-                device.cmd_reset_query_pool(self.cmd, query.pool, 0, STAMP_QUERIES);
-            }
-        }
-        self.arena.reset()
-    }
-
-    /// Ends the command buffer, submits it and waits for the fence.
-    ///
-    /// A timeout is reported as a lost device: the work may still be running, and the renderer
-    /// can say nothing more about what the device holds.
-    fn submit(&mut self) -> Result<(), vk::Result> {
-        let device = &self.context.device;
-        // SAFETY: the buffer is in the recording state and holds complete commands.
-        unsafe { device.end_command_buffer(self.cmd) }?;
-        #[cfg(test)]
-        if let Some(result) = self.context.faults.submit.take() {
-            return Err(result);
-        }
-        let buffers = [self.cmd];
-        let submit = vk::SubmitInfo::default().command_buffers(&buffers);
-        let started = Instant::now();
-        // SAFETY: the queue belongs to this device and is used from this thread only; the
-        // fence was reset in `begin`.
-        unsafe {
-            device.queue_submit(self.context.queue, &[submit], self.fence)?;
-            device.wait_for_fences(&[self.fence], true, FRAME_TIMEOUT)?;
-        }
-        self.wall = started.elapsed();
-        Ok(())
-    }
-
-    /// An image layout transition with the stages and accesses on each side.
-    fn barrier(
-        &self,
-        image: vk::Image,
-        old: vk::ImageLayout,
-        new: vk::ImageLayout,
-        before: (vk::PipelineStageFlags, vk::AccessFlags),
-        after: (vk::PipelineStageFlags, vk::AccessFlags),
-    ) {
-        let barrier = vk::ImageMemoryBarrier::default()
-            .old_layout(old)
-            .new_layout(new)
-            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .image(image)
-            .subresource_range(colour_range())
-            .src_access_mask(before.1)
-            .dst_access_mask(after.1);
-        // SAFETY: the command buffer is recording and the image belongs to this device.
-        unsafe {
-            self.context.device.cmd_pipeline_barrier(
-                self.cmd,
-                before.0,
-                after.0,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[barrier],
-            );
-        }
-    }
-
-    /// Grows `buffer` to hold at least `bytes`.
-    fn ensure(
-        context: &Rc<VkContext>,
-        buffer: &mut VkBuffer,
-        bytes: usize,
-        usage: vk::BufferUsageFlags,
-        cached: bool,
-    ) -> Result<(), vk::Result> {
-        if buffer.size() < bytes {
-            // The device is idle between frames, so the old buffer can be dropped at once.
-            *buffer = VkBuffer::new(context, bytes.next_power_of_two(), usage, cached)?;
-        }
-        Ok(())
-    }
-
-    /// The host-visible bytes the recorder holds now: the quad, uniform, shader-block, instance, staging and readback buffers.
-    pub(super) fn bytes(&self) -> u64 {
-        [
-            &self.quad,
-            &self.uniforms,
-            &self.user_uniforms,
-            &self.instances,
-            &self.staging,
-            &self.readback,
-        ]
-        .iter()
-        .map(|buffer| buffer.size() as u64)
-        .fold(0, u64::saturating_add)
-    }
-
-    /// Gives back what a past peak left behind: a staging buffer above `staging_retain` bytes and a readback buffer
-    /// above `readback_retain` are replaced by the smallest a recorder starts with, and the next frame that needs
-    /// more grows it again.
-    ///
-    /// [`FrameRecorder::ensure`] only grows, so without this one large frame (a window opened at a huge size, an
-    /// output supersampled and then not) keeps its host-visible memory for the life of the renderer. A buffer that
-    /// cannot be replaced is kept: a trim that fails costs memory, never a frame.
-    pub(super) fn trim(&mut self, staging_retain: usize, readback_retain: usize) {
-        let context = Rc::clone(&self.context);
-        if self.staging.size() > staging_retain
-            && let Ok(buffer) = VkBuffer::new(&context, MIN_BUFFER, vk::BufferUsageFlags::TRANSFER_SRC, false)
-        {
-            // The device is idle between frames, so the old buffer can be dropped at once.
-            self.staging = buffer;
-        }
-        if self.readback.size() > readback_retain
-            && let Ok(buffer) = VkBuffer::new(&context, MIN_BUFFER, vk::BufferUsageFlags::TRANSFER_DST, true)
-        {
-            self.readback = buffer;
-        }
-    }
-}
-
-/// Destroys a command pool and a fence if the recorder could not be completed.
-struct Handles {
-    context: Rc<VkContext>,
-    pool: vk::CommandPool,
-    fence: vk::Fence,
-}
-
-impl Drop for Handles {
-    fn drop(&mut self) {
-        // SAFETY: nothing was submitted; a null handle is a no-op.
-        unsafe {
-            self.context.device.destroy_fence(self.fence, None);
-            self.context.device.destroy_command_pool(self.pool, None);
-        }
-    }
-}
-
-impl Drop for FrameRecorder {
-    fn drop(&mut self) {
-        // SAFETY: the renderer is idle; destroying the pool frees its command buffer.
-        unsafe {
-            if let Some(query) = &self.query {
-                self.context.device.destroy_query_pool(query.pool, None);
-            }
-            self.context.device.destroy_fence(self.fence, None);
-            self.context.device.destroy_command_pool(self.pool, None);
-        }
-    }
-}
-
-/// A texture made for one frame: its image and where its pixels wait in the staging buffer.
-struct Upload {
-    slot: TextureSlot,
-    image: VkImage,
-    offset: usize,
-}
-
-/// A texture to make: its source and the space it takes.
-enum PixelSource<'a> {
-    Shm {
-        buffer: &'a smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer,
-        shape: shm::ShmShape,
-    },
-    Bitmap(&'a Image),
-    /// One premultiplied pixel: a solid layer's colour, which its shader pass reads as the layer's own.
-    Pixel([u8; 4]),
-}
-
-impl PixelSource<'_> {
-    fn size(&self) -> (u32, u32) {
-        match self {
-            Self::Shm { shape, .. } => (shape.width, shape.height),
-            Self::Bitmap(image) => {
-                let size = image.size();
-                (size.width, size.height)
-            }
-            Self::Pixel(_) => (1, 1),
-        }
-    }
-
-    fn bytes(&self) -> usize {
-        let (width, height) = self.size();
-        width as usize * height as usize * 4
     }
 }
 
@@ -479,36 +167,6 @@ const BACKDROP_UNAVAILABLE: &str = "backdrop-unavailable";
 
 /// The code of the passes left out because the layer's scratch images could not be made.
 const IMAGE_FAILED: &str = "image-failed";
-
-/// How many timestamps a frame can write: two for each draw of a shader pass.
-const STAMP_QUERIES: u32 = 512;
-
-/// The timestamp queries of the device: the pool, and what a tick of it is worth.
-struct TimestampQuery {
-    pool: vk::QueryPool,
-    /// The length of a tick in nanoseconds.
-    nanoseconds: f64,
-    /// The bits of a timestamp the queue writes.
-    mask: u64,
-}
-
-/// The pool of timestamp queries, when the queue writes any.
-fn make_query(context: &VkContext) -> Option<TimestampQuery> {
-    if context.timestamp_bits == 0 {
-        return None;
-    }
-    let info = vk::QueryPoolCreateInfo::default()
-        .query_type(vk::QueryType::TIMESTAMP)
-        .query_count(STAMP_QUERIES);
-    // SAFETY: `info` is a valid description; the pool is destroyed with the recorder.
-    let pool = unsafe { context.device.create_query_pool(&info, None) }.ok()?;
-    let bits = context.timestamp_bits;
-    Some(TimestampQuery {
-        pool,
-        nanoseconds: f64::from(context.limits.timestamp_period),
-        mask: if bits >= 64 { u64::MAX } else { (1_u64 << bits) - 1 },
-    })
-}
 
 /// The timestamps a frame has written around its shader draws.
 #[derive(Default)]
@@ -578,7 +236,7 @@ struct FrameRecording<'a> {
     frame: &'a OutputFrame,
     planned: &'a FramePlan,
     batch: DrawBatch,
-    uploads: &'a [Upload],
+    prepared: &'a Prepared,
     images: &'a BTreeMap<usize, LayerImages>,
     jobs: Vec<Job>,
     pipelines: &'a [(ShaderKey, vk::Pipeline)],
@@ -597,23 +255,90 @@ struct Clear<'a> {
     rects: &'a [Rect],
 }
 
+/// What a submitted frame keeps in use until its timeline value is reached: the images made for it alone.
+struct FrameObjects {
+    _transient: Vec<VkImage>,
+    _images: BTreeMap<usize, LayerImages>,
+}
+
 impl Vulkan {
-    /// The host-visible bytes the renderer holds: the recorder's buffers and the pixels saved under the cursor.
-    pub(super) fn host_bytes(&self) -> u64 {
-        self.recorder.bytes().saturating_add(
-            self.cursor_under
-                .buffer
-                .as_ref()
-                .map_or(0, |buffer| buffer.size() as u64),
-        )
+    /// The slot the frame being recorded uses.
+    fn slot(&self) -> &FrameSlot {
+        self.ring.slot(self.active)
     }
 
-    /// Gives back the host-visible memory a past peak left in the recorder, keeping what one steady frame needs: a
-    /// readback of the target, and staging for [`STAGING_SCREENS`] output-sized uploads.
+    /// The host-visible bytes the renderer holds: the slots' buffers, the readback and the pixels saved under the cursor.
+    pub(super) fn host_bytes(&self) -> u64 {
+        self.ring
+            .bytes()
+            .saturating_add(self.readback.size() as u64)
+            .saturating_add(
+                self.cursor_under
+                    .buffer
+                    .as_ref()
+                    .map_or(0, |buffer| buffer.size() as u64),
+            )
+    }
+
+    /// Gives back the host-visible memory a past peak left behind, keeping what one steady frame needs: a readback of the
+    /// target, and staging for [`STAGING_SCREENS`] output-sized uploads.
+    ///
+    /// The staging buffer a frame in flight reads goes to the retire queue with that frame's value. The readback is idle:
+    /// a capture waits for its own submission.
     pub(super) fn trim(&mut self) {
         let target = self.physical.width as usize * self.physical.height as usize * 4;
         let readback = target.next_power_of_two();
-        self.recorder.trim(readback.saturating_mul(STAGING_SCREENS), readback);
+        if self.readback.size() > readback
+            && let Ok(small) = VkBuffer::new(
+                &self.device.context,
+                super::sync::MIN_BUFFER,
+                vk::BufferUsageFlags::TRANSFER_DST,
+                true,
+            )
+        {
+            self.readback = small;
+        }
+        let slot = self.ring.slot_mut(self.active);
+        if let Some(old) = slot.trim(readback.saturating_mul(STAGING_SCREENS)) {
+            self.device.retire.borrow_mut().push(slot.value, old);
+        }
+    }
+
+    /// Clears the target image `image` to transparent black and leaves it ready to draw into. The clear is submitted and not
+    /// waited for: the queue runs it before any frame that draws into the target.
+    pub(super) fn clear_target(&mut self, image: vk::Image) -> Result<(), vk::Result> {
+        self.active = self.ring.acquire();
+        self.ring.slot_mut(self.active).begin()?;
+        let slot = self.slot();
+        slot.barrier(
+            image,
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            (vk::PipelineStageFlags::TOP_OF_PIPE, vk::AccessFlags::empty()),
+            (vk::PipelineStageFlags::TRANSFER, vk::AccessFlags::TRANSFER_WRITE),
+        );
+        let transparent = vk::ClearColorValue { float32: [0.0; 4] };
+        // SAFETY: the image is in `TRANSFER_DST_OPTIMAL` after the barrier above.
+        unsafe {
+            self.device.context.device.cmd_clear_color_image(
+                slot.cmd,
+                image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &transparent,
+                &[colour_range()],
+            );
+        }
+        slot.barrier(
+            image,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            (vk::PipelineStageFlags::TRANSFER, vk::AccessFlags::TRANSFER_WRITE),
+            (
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            ),
+        );
+        self.ring.slot_mut(self.active).submit().map(|_| ())
     }
 
     /// Draws `frame` into the target. See [`Vulkan::draw`].
@@ -621,69 +346,34 @@ impl Vulkan {
         if damage_of(frame, scale, self.physical).is_empty() {
             return Ok(());
         }
+        let device = Rc::clone(&self.device);
+        self.active = self.ring.acquire();
+        self.ring.slot_mut(self.active).begin()?;
+        // The timeline value this frame signals: the last use of every texture and image it touches.
+        let value = device.context.timeline.submitted() + 1;
         let (mut shaders, pipelines) = self.resolve_shaders(frame);
-        let sources = sources(frame, &shaders);
-        let staging_bytes = sources
-            .iter()
-            .map(|(_, source)| source.bytes().next_multiple_of(STAGING_ALIGN))
-            .sum::<usize>();
-        let context = Rc::clone(&self.context);
-        FrameRecorder::ensure(
-            &context,
-            &mut self.recorder.staging,
-            staging_bytes,
-            vk::BufferUsageFlags::TRANSFER_SRC,
-            false,
+        let wanted = wanted(frame, &shaders);
+        let prepared = device.textures.borrow_mut().prepare(
+            wanted,
+            &mut Frame {
+                context: &device.context,
+                pipelines: &device.pipelines,
+                slot: self.ring.slot_mut(self.active),
+                retire: &mut device.retire.borrow_mut(),
+                value,
+            },
         )?;
-        let mut uploads: Vec<Upload> = Vec::with_capacity(sources.len());
         let mut sizes = TextureSizes {
             layers: vec![None; frame.layers().len()],
             ..TextureSizes::default()
         };
-        let mut offset = 0;
-        for (slot, source) in &sources {
-            let (width, height) = source.size();
-            let (format, opaque) = match source {
-                PixelSource::Shm { shape, .. } => (SHM_FORMAT, shape.opaque),
-                PixelSource::Bitmap(_) | PixelSource::Pixel(_) => (TARGET_FORMAT, false),
-            };
-            let image = match VkImage::new(
-                &context,
-                width,
-                height,
-                format,
-                vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
-                opaque,
-            ) {
-                Ok(image) => image,
-                Err(result) => {
-                    log::warn!(
-                        area = "render",
-                        ?result,
-                        ?slot,
-                        "a texture could not be made; the layer is skipped"
-                    );
-                    continue;
-                }
-            };
-            let Some(destination) = self.recorder.staging.as_mut_slice(offset, source.bytes()) else {
-                continue;
-            };
-            if !fill(source, destination) {
-                continue;
-            }
+        for (slot, size) in &prepared.sizes {
             match *slot {
-                TextureSlot::Layer(index) => sizes.layers[index] = Some((width, height)),
-                TextureSlot::Overlay => sizes.overlay = Some((width, height)),
-                TextureSlot::Cursor => sizes.cursor = Some((width, height)),
-                TextureSlot::Chain(..) | TextureSlot::Backdrop(_) => continue,
+                TextureSlot::Layer(index) => sizes.layers[index] = Some(*size),
+                TextureSlot::Overlay => sizes.overlay = Some(*size),
+                TextureSlot::Cursor => sizes.cursor = Some(*size),
+                TextureSlot::Chain(..) | TextureSlot::Backdrop(_) => {}
             }
-            uploads.push(Upload {
-                slot: *slot,
-                image,
-                offset,
-            });
-            offset += source.bytes().next_multiple_of(STAGING_ALIGN);
         }
         let images = self.make_images(frame, scale, &mut shaders, &sizes);
         let mut batch = DrawBatch::default();
@@ -702,15 +392,43 @@ impl Vulkan {
                 "unsupported-filter-blur: the Vulkan renderer does not blur a filter yet, so a filter that blurs is drawn graded only"
             );
         }
-        self.record(FrameRecording {
+        let recorded = self.record(FrameRecording {
             frame,
             planned: &planned,
             batch,
-            uploads: &uploads,
+            prepared: &prepared,
             images: &images,
             jobs,
             pipelines: &pipelines,
-        })
+        });
+        match recorded {
+            Ok(submitted) => {
+                debug_assert_eq!(submitted, value, "the frame signalled the value it was promised");
+                // What only this frame used goes when it has finished.
+                device.retire.borrow_mut().push(
+                    submitted,
+                    FrameObjects {
+                        _transient: prepared.transient,
+                        _images: images,
+                    },
+                );
+                Ok(())
+            }
+            Err(result) => {
+                // The textures this frame meant to update were not uploaded: the cache must not believe they were. The
+                // frame's own images go with the last frame submitted, which is no later than the one that failed.
+                let mut retire = device.retire.borrow_mut();
+                device.textures.borrow_mut().invalidate(&prepared.keys, &mut retire);
+                retire.push(
+                    device.context.timeline.submitted(),
+                    FrameObjects {
+                        _transient: prepared.transient,
+                        _images: images,
+                    },
+                );
+                Err(result)
+            }
+        }
     }
 
     /// Makes the pipeline of every shader pass the frame draws, and says which passes each layer has.
@@ -719,10 +437,11 @@ impl Vulkan {
     /// reported on the frame's timings with a short code and left out: its node is drawn without the pass. A pass that was not
     /// marked as reading the backdrop but whose source does is refused too, because the frame would not have built one.
     fn resolve_shaders(&mut self, frame: &OutputFrame) -> (Shaders, Vec<(ShaderKey, vk::Pipeline)>) {
-        self.shaders.begin_frame();
+        let mut cache = self.device.shaders.borrow_mut();
+        cache.begin_frame();
         let mut shaders = Shaders {
             layers: vec![Vec::new(); frame.layers().len()],
-            time: self.epoch.elapsed().as_secs_f32(),
+            time: self.device.epoch.elapsed().as_secs_f32(),
         };
         let mut found: Vec<(ShaderKey, Result<UserPipeline, &'static str>)> = Vec::new();
         for (index, layer) in frame.layers().iter().enumerate() {
@@ -737,7 +456,7 @@ impl Vulkan {
                 let outcome = match found.iter().find(|(held, _)| *held == key) {
                     Some((_, outcome)) => *outcome,
                     None => {
-                        let outcome = self.shaders.resolve(pass);
+                        let outcome = cache.resolve(pass);
                         found.push((key, outcome));
                         outcome
                     }
@@ -831,14 +550,15 @@ impl Vulkan {
 
     /// The backdrop image of a layer and the scratch images its passes alternate between.
     fn layer_images(&self, size: Size, input: Option<BackdropInput>, passes: usize) -> Result<LayerImages, vk::Result> {
-        let render_pass = self.pipelines.render_pass;
+        let render_pass = self.device.pipelines.render_pass;
+        let context = &self.device.context;
         let backdrop = match input {
-            Some(input) => Some((RenderTarget::scratch(&self.context, render_pass, size)?, input)),
+            Some(input) => Some((RenderTarget::scratch(context, render_pass, size)?, input)),
             None => None,
         };
         let mut chain = [None, None];
         for image in chain.iter_mut().take(passes.saturating_sub(1)) {
-            *image = Some(RenderTarget::scratch(&self.context, render_pass, size)?);
+            *image = Some(RenderTarget::scratch(context, render_pass, size)?);
         }
         Ok(LayerImages { backdrop, chain })
     }
@@ -878,89 +598,77 @@ impl Vulkan {
         jobs
     }
 
-    /// A descriptor set that binds `view` with `sampler` as a texture and its sampler.
+    /// A descriptor set from the frame's arena that binds `view` with `sampler` as a texture and its sampler.
     fn texture_set(&mut self, view: vk::ImageView, sampler: vk::Sampler) -> Result<vk::DescriptorSet, vk::Result> {
-        let set = self.recorder.arena.allocate(self.pipelines.texture_layout)?;
-        let image = [vk::DescriptorImageInfo::default()
-            .image_view(view)
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)];
-        let sampler = [vk::DescriptorImageInfo::default().sampler(sampler)];
-        let writes = [
-            vk::WriteDescriptorSet::default()
-                .dst_set(set)
-                .dst_binding(0)
-                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                .image_info(&image),
-            vk::WriteDescriptorSet::default()
-                .dst_set(set)
-                .dst_binding(1)
-                .descriptor_type(vk::DescriptorType::SAMPLER)
-                .image_info(&sampler),
-        ];
-        // SAFETY: the set, view and sampler are live and the layout matches the set's.
-        unsafe { self.context.device.update_descriptor_sets(&writes, &[]) };
+        let layout = self.device.pipelines.texture_layout;
+        let set = self.ring.slot_mut(self.active).arena.allocate(layout)?;
+        write_texture_set(&self.device.context, set, view, sampler);
         Ok(set)
     }
 
-    /// Records the frame and submits it.
-    fn record(&mut self, recording: FrameRecording<'_>) -> Result<(), vk::Result> {
+    /// Records the frame and submits it. Returns the timeline value it signals.
+    fn record(&mut self, recording: FrameRecording<'_>) -> Result<u64, vk::Result> {
         let FrameRecording {
             frame,
             planned,
             batch,
-            uploads,
+            prepared,
             images,
             jobs,
             pipelines,
         } = recording;
-        let context = Rc::clone(&self.context);
-        FrameRecorder::ensure(
-            &context,
-            &mut self.recorder.uniforms,
-            batch.uniforms.len().max(UNIFORM_STRIDE),
-            vk::BufferUsageFlags::UNIFORM_BUFFER,
-            false,
-        )?;
-        FrameRecorder::ensure(
-            &context,
-            &mut self.recorder.user_uniforms,
-            batch.user.len().max(UNIFORM_STRIDE),
-            vk::BufferUsageFlags::UNIFORM_BUFFER,
-            false,
-        )?;
+        let device = Rc::clone(&self.device);
+        let context = Rc::clone(&device.context);
         let instance_bytes: Vec<u8> = batch.instances.iter().flat_map(|value| value.to_ne_bytes()).collect();
-        FrameRecorder::ensure(
-            &context,
-            &mut self.recorder.instances,
-            instance_bytes.len().max(16),
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-            false,
-        )?;
-        self.recorder.uniforms.write(0, &batch.uniforms);
-        self.recorder.user_uniforms.write(0, &batch.user);
-        self.recorder.instances.write(0, &instance_bytes);
+        {
+            let slot = self.ring.slot_mut(self.active);
+            FrameSlot::ensure(
+                &context,
+                &mut slot.uniforms,
+                batch.uniforms.len().max(UNIFORM_STRIDE),
+                vk::BufferUsageFlags::UNIFORM_BUFFER,
+            )?;
+            FrameSlot::ensure(
+                &context,
+                &mut slot.user_uniforms,
+                batch.user.len().max(UNIFORM_STRIDE),
+                vk::BufferUsageFlags::UNIFORM_BUFFER,
+            )?;
+            FrameSlot::ensure(
+                &context,
+                &mut slot.instances,
+                instance_bytes.len().max(16),
+                vk::BufferUsageFlags::VERTEX_BUFFER,
+            )?;
+            slot.uniforms.write(0, &batch.uniforms);
+            slot.user_uniforms.write(0, &batch.user);
+            slot.instances.write(0, &instance_bytes);
+        }
         let saved = &mut self.cursor_under;
         saved.rect = planned.cursor_visible;
         if let Some(rect) = planned.cursor_visible {
             let bytes = rect.width as usize * rect.height as usize * 4;
             if saved.buffer.as_ref().is_none_or(|buffer| buffer.size() < bytes) {
-                saved.buffer = Some(VkBuffer::new(
-                    &context,
-                    bytes,
-                    vk::BufferUsageFlags::TRANSFER_DST,
-                    true,
-                )?);
+                let bigger = VkBuffer::new(&context, bytes, vk::BufferUsageFlags::TRANSFER_DST, true)?;
+                if let Some(old) = saved.buffer.replace(bigger) {
+                    // A frame in flight may still copy into the old one.
+                    device.retire.borrow_mut().push(context.timeline.submitted(), old);
+                }
             }
         }
 
-        self.recorder.begin()?;
-        let uniform_set = self.recorder.arena.allocate(self.pipelines.uniform_layout)?;
+        let uniform_set = {
+            let layout = device.pipelines.uniform_layout;
+            self.ring.slot_mut(self.active).arena.allocate(layout)?
+        };
+        let slot_uniforms = self.slot().uniforms.raw();
+        let slot_user_uniforms = self.slot().user_uniforms.raw();
         let block = [vk::DescriptorBufferInfo::default()
-            .buffer(self.recorder.uniforms.raw())
+            .buffer(slot_uniforms)
             .offset(0)
             .range(BLOCK_RANGE)];
         let user_block = [vk::DescriptorBufferInfo::default()
-            .buffer(self.recorder.user_uniforms.raw())
+            .buffer(slot_user_uniforms)
             .offset(0)
             .range(USER_BLOCK_RANGE)];
         let write_uniforms = [
@@ -977,32 +685,24 @@ impl Vulkan {
         ];
         // SAFETY: the set and buffers are live and the ranges lie inside the buffers.
         unsafe { context.device.update_descriptor_sets(&write_uniforms, &[]) };
-        let mut sets: Vec<(TextureSlot, vk::DescriptorSet)> = Vec::with_capacity(uploads.len() + 2 * images.len());
-        for upload in uploads {
-            let sampler = if upload.slot.nearest() {
-                self.pipelines.nearest
-            } else {
-                self.pipelines.linear
-            };
-            let set = self.texture_set(upload.image.view(), sampler)?;
-            sets.push((upload.slot, set));
-        }
+        // (the texture sets of the frame are next)
+        let mut sets: Vec<(TextureSlot, vk::DescriptorSet)> =
+            Vec::with_capacity(prepared.sets.len() + 2 * images.len());
+        sets.extend_from_slice(&prepared.sets);
         for (index, layer_images) in images {
             if let Some((target, _)) = &layer_images.backdrop {
-                let set = self.texture_set(target.image.view(), self.pipelines.linear)?;
+                let set = self.texture_set(target.image.view(), device.pipelines.linear)?;
                 sets.push((TextureSlot::Backdrop(*index), set));
             }
             for (which, target) in layer_images.chain.iter().enumerate() {
                 if let Some(target) = target {
-                    let set = self.texture_set(target.image.view(), self.pipelines.nearest)?;
+                    let set = self.texture_set(target.image.view(), device.pipelines.nearest)?;
                     sets.push((TextureSlot::Chain(*index, which), set));
                 }
             }
         }
 
-        for upload in uploads {
-            self.upload(upload);
-        }
+        self.upload(prepared);
         let bindings = Bindings {
             uniform: uniform_set,
             textures: &sets,
@@ -1091,7 +791,6 @@ impl Vulkan {
                 &mut stamps,
             );
         }
-        self.recorder.submit()?;
         let mut keys: Vec<ShaderKey> = Vec::new();
         let drawn = jobs
             .iter()
@@ -1107,30 +806,39 @@ impl Vulkan {
                 keys.push(key);
             }
         }
-        self.report_timings(frame, &stamps, &keys);
-        Ok(())
+        let started = Instant::now();
+        let value = self.ring.slot_mut(self.active).submit()?;
+        if !keys.is_empty() {
+            // A shell's shader is timed, which needs the frame finished: the watchdog is what stops one that is too slow.
+            context.wait(value)?;
+            self.report_timings(frame, &stamps, &keys, started.elapsed());
+        }
+        Ok(value)
     }
 
     /// Tells the frame's shader timings what each shader source cost this frame: the GPU time of its draws when the queue
     /// writes timestamps and the frame's draws fit the query pool, otherwise the wall time from submit to fence, which is
     /// the frame's and so counts every source in it for the whole frame.
-    fn report_timings(&self, frame: &OutputFrame, stamps: &Stamps, keys: &[ShaderKey]) {
+    fn report_timings(&self, frame: &OutputFrame, stamps: &Stamps, keys: &[ShaderKey], wall: Duration) {
         if keys.is_empty() {
             return;
         }
         let timings = frame.shader_timings();
         let measured = self
-            .recorder
+            .slot()
             .query
             .as_ref()
             .filter(|_| !stamps.overflowed && stamps.used > 0)
             .and_then(|query| {
                 let mut ticks = vec![0_u64; stamps.used as usize];
-                // SAFETY: the frame's fence was waited, so every timestamp of the pool was written.
+                // SAFETY: the frame's timeline value was waited, so every timestamp of the pool was written.
                 unsafe {
-                    self.context
-                        .device
-                        .get_query_pool_results(query.pool, 0, &mut ticks, vk::QueryResultFlags::TYPE_64)
+                    self.device.context.device.get_query_pool_results(
+                        query.pool,
+                        0,
+                        &mut ticks,
+                        vk::QueryResultFlags::TYPE_64,
+                    )
                 }
                 .ok()?;
                 let mut sums: Vec<(ShaderKey, Duration)> = Vec::new();
@@ -1153,49 +861,53 @@ impl Vulkan {
             }
             None => {
                 for key in keys {
-                    timings.record(*key, self.recorder.wall);
+                    timings.record(*key, wall);
                 }
             }
         }
     }
 
-    /// Copies a texture's pixels from the staging buffer into its image.
-    fn upload(&self, upload: &Upload) {
-        let recorder = &self.recorder;
-        let image = upload.image.raw();
-        recorder.barrier(
-            image,
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            (vk::PipelineStageFlags::TOP_OF_PIPE, vk::AccessFlags::empty()),
-            (vk::PipelineStageFlags::TRANSFER, vk::AccessFlags::TRANSFER_WRITE),
-        );
-        let region = vk::BufferImageCopy::default()
-            .buffer_offset(upload.offset as u64)
-            .image_subresource(colour_layers())
-            .image_extent(vk::Extent3D {
-                width: upload.image.width(),
-                height: upload.image.height(),
-                depth: 1,
-            });
-        // SAFETY: the staging buffer holds the texture's rows at `offset`, and the image is in
-        // `TRANSFER_DST_OPTIMAL` after the barrier above.
-        unsafe {
-            self.context.device.cmd_copy_buffer_to_image(
-                recorder.cmd,
-                recorder.staging.raw(),
-                image,
+    /// Records the copies that bring the frame's textures up to date.
+    fn upload(&self, prepared: &Prepared) {
+        let slot = self.slot();
+        for copy in &prepared.copies {
+            let (old, before) = if copy.fresh {
+                (
+                    vk::ImageLayout::UNDEFINED,
+                    (vk::PipelineStageFlags::TOP_OF_PIPE, vk::AccessFlags::empty()),
+                )
+            } else {
+                (
+                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                    (vk::PipelineStageFlags::FRAGMENT_SHADER, vk::AccessFlags::SHADER_READ),
+                )
+            };
+            slot.barrier(
+                copy.image,
+                old,
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &[region],
+                before,
+                (vk::PipelineStageFlags::TRANSFER, vk::AccessFlags::TRANSFER_WRITE),
+            );
+            // SAFETY: the staging buffer holds the regions' rows at their offsets, they are disjoint and inside the
+            // image, and the image is in `TRANSFER_DST_OPTIMAL` after the barrier above.
+            unsafe {
+                self.device.context.device.cmd_copy_buffer_to_image(
+                    slot.cmd,
+                    slot.staging.raw(),
+                    copy.image,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &copy.regions,
+                );
+            }
+            slot.barrier(
+                copy.image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                (vk::PipelineStageFlags::TRANSFER, vk::AccessFlags::TRANSFER_WRITE),
+                (vk::PipelineStageFlags::FRAGMENT_SHADER, vk::AccessFlags::SHADER_READ),
             );
         }
-        recorder.barrier(
-            image,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            (vk::PipelineStageFlags::TRANSFER, vk::AccessFlags::TRANSFER_WRITE),
-            (vk::PipelineStageFlags::FRAGMENT_SHADER, vk::AccessFlags::SHADER_READ),
-        );
     }
 
     /// Copies the parts of the target the cursor is about to cover.
@@ -1207,9 +919,9 @@ impl Vulkan {
         let Some(buffer) = saved.buffer.as_ref() else {
             return;
         };
-        let recorder = &self.recorder;
+        let slot = self.slot();
         let image = self.target.image.raw();
-        recorder.barrier(
+        slot.barrier(
             image,
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
@@ -1243,15 +955,15 @@ impl Vulkan {
         // SAFETY: every region lies inside the target and inside the saved buffer, which was
         // sized for the visible rectangle; the target is in `TRANSFER_SRC_OPTIMAL`.
         unsafe {
-            self.context.device.cmd_copy_image_to_buffer(
-                recorder.cmd,
+            self.device.context.device.cmd_copy_image_to_buffer(
+                slot.cmd,
                 image,
                 vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                 buffer.raw(),
                 &regions,
             );
         }
-        recorder.barrier(
+        slot.barrier(
             image,
             vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
@@ -1272,11 +984,13 @@ impl Vulkan {
         bindings: &Bindings<'_>,
         stamps: &mut Stamps,
     ) {
-        let device = &self.context.device;
-        let cmd = self.recorder.cmd;
+        let device = &self.device.context.device;
+        let pipelines = &self.device.pipelines;
+        let slot = self.slot();
+        let cmd = slot.cmd;
         let (framebuffer, size) = target;
         let begin = vk::RenderPassBeginInfo::default()
-            .render_pass(self.pipelines.render_pass)
+            .render_pass(pipelines.render_pass)
             .framebuffer(framebuffer)
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
@@ -1299,12 +1013,7 @@ impl Vulkan {
         unsafe {
             device.cmd_begin_render_pass(cmd, &begin, vk::SubpassContents::INLINE);
             device.cmd_set_viewport(cmd, 0, &[viewport]);
-            device.cmd_bind_vertex_buffers(
-                cmd,
-                0,
-                &[self.recorder.quad.raw(), self.recorder.instances.raw()],
-                &[0, 0],
-            );
+            device.cmd_bind_vertex_buffers(cmd, 0, &[self.device.quad.raw(), slot.instances.raw()], &[0, 0]);
             for clear in clears.iter().filter(|clear| !clear.rects.is_empty()) {
                 let attachment = vk::ClearAttachment {
                     aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -1328,11 +1037,11 @@ impl Vulkan {
             for draw in draws {
                 if bound != Some(draw.kind) {
                     let pipeline = match draw.kind {
-                        PassKind::Solid => self.pipelines.solid,
-                        PassKind::Surface => self.pipelines.surface,
-                        PassKind::Shadow => self.pipelines.shadow,
-                        PassKind::InsetShadow => self.pipelines.inset_shadow,
-                        PassKind::Border => self.pipelines.border,
+                        PassKind::Solid => pipelines.solid,
+                        PassKind::Surface => pipelines.surface,
+                        PassKind::Shadow => pipelines.shadow,
+                        PassKind::InsetShadow => pipelines.inset_shadow,
+                        PassKind::Border => pipelines.border,
                         PassKind::User(key) => match bindings.pipelines.iter().find(|(held, _)| *held == key) {
                             Some((_, pipeline)) => *pipeline,
                             None => continue,
@@ -1345,7 +1054,7 @@ impl Vulkan {
                 device.cmd_bind_descriptor_sets(
                     cmd,
                     vk::PipelineBindPoint::GRAPHICS,
-                    self.pipelines.layout,
+                    pipelines.layout,
                     0,
                     &[bindings.uniform],
                     &[draw.uniform_offset, draw.user_offset],
@@ -1357,7 +1066,7 @@ impl Vulkan {
                         device.cmd_bind_descriptor_sets(
                             cmd,
                             vk::PipelineBindPoint::GRAPHICS,
-                            self.pipelines.layout,
+                            pipelines.layout,
                             set,
                             &[*texture],
                             &[],
@@ -1373,7 +1082,7 @@ impl Vulkan {
                     | PassKind::Border => None,
                 };
                 // The draw is covered by this block's contract: the buffers, sets and scissor are the ones bound above.
-                stamps.bracket(device, cmd, self.recorder.query.as_ref(), key, || {
+                stamps.bracket(device, cmd, slot.query.as_ref(), key, || {
                     device.cmd_draw(cmd, 4, 1, 0, draw.instance);
                 });
             }
@@ -1383,7 +1092,7 @@ impl Vulkan {
 
     /// Moves an image a pass drew into to the layout a later pass samples it in.
     fn to_sampled(&self, image: vk::Image) {
-        self.recorder.barrier(
+        self.slot().barrier(
             image,
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
@@ -1397,7 +1106,7 @@ impl Vulkan {
 
     /// Moves an image to be drawn into, dropping what it held. The image may have been sampled by an earlier pass of this frame.
     fn to_drawn(&self, image: vk::Image) {
-        self.recorder.barrier(
+        self.slot().barrier(
             image,
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
@@ -1410,21 +1119,26 @@ impl Vulkan {
     }
 
     /// Reads the target back, with the cursor's pixels put back when `!with_cursor`.
+    ///
+    /// The read is a submission of its own, and the call waits for it, which is also every frame submitted before it.
     pub(super) fn read_target(&mut self, with_cursor: bool) -> Result<Image, vk::Result> {
         let size = self.physical;
         let bytes = size.width as usize * size.height as usize * 4;
-        let context = Rc::clone(&self.context);
-        FrameRecorder::ensure(
-            &context,
-            &mut self.recorder.readback,
-            bytes,
-            vk::BufferUsageFlags::TRANSFER_DST,
-            true,
-        )?;
-        self.recorder.begin()?;
+        let context = Rc::clone(&self.device.context);
+        if self.readback.size() < bytes {
+            // The readback is idle: a capture waits for its own submission.
+            self.readback = VkBuffer::new(
+                &context,
+                bytes.next_power_of_two(),
+                vk::BufferUsageFlags::TRANSFER_DST,
+                true,
+            )?;
+        }
+        self.active = self.ring.acquire();
+        self.ring.slot_mut(self.active).begin()?;
         let image = self.target.image.raw();
-        let recorder = &self.recorder;
-        recorder.barrier(
+        let slot = self.slot();
+        slot.barrier(
             image,
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
@@ -1446,21 +1160,21 @@ impl Vulkan {
             .dst_access_mask(vk::AccessFlags::HOST_READ)
             .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
             .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .buffer(recorder.readback.raw())
+            .buffer(self.readback.raw())
             .offset(0)
             .size(vk::WHOLE_SIZE);
         // SAFETY: the readback buffer holds `bytes` bytes and the target is in
         // `TRANSFER_SRC_OPTIMAL` after the barrier above.
         unsafe {
-            self.context.device.cmd_copy_image_to_buffer(
-                recorder.cmd,
+            context.device.cmd_copy_image_to_buffer(
+                slot.cmd,
                 image,
                 vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                recorder.readback.raw(),
+                self.readback.raw(),
                 &[region],
             );
-            self.context.device.cmd_pipeline_barrier(
-                recorder.cmd,
+            context.device.cmd_pipeline_barrier(
+                slot.cmd,
                 vk::PipelineStageFlags::TRANSFER,
                 vk::PipelineStageFlags::HOST,
                 vk::DependencyFlags::empty(),
@@ -1469,7 +1183,7 @@ impl Vulkan {
                 &[],
             );
         }
-        recorder.barrier(
+        slot.barrier(
             image,
             vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
@@ -1479,8 +1193,9 @@ impl Vulkan {
                 vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
             ),
         );
-        self.recorder.submit()?;
-        let Some(pixels) = self.recorder.readback.read(0, bytes) else {
+        let value = self.ring.slot_mut(self.active).submit()?;
+        context.wait(value)?;
+        let Some(pixels) = self.readback.read(0, bytes) else {
             return Err(vk::Result::ERROR_MEMORY_MAP_FAILED);
         };
         let mut pixels = pixels.to_vec();
@@ -1492,23 +1207,33 @@ impl Vulkan {
         Image::new(size, stride, pixels).ok_or(vk::Result::ERROR_UNKNOWN)
     }
 
-    /// The renderer error a failed call becomes; a lost device is remembered.
+    /// The renderer error a failed call becomes; a lost device is remembered by the device and every output on it.
     pub(super) fn fail(&mut self, result: vk::Result) -> RenderError {
         let error = classify(result);
         if error == RenderError::Lost {
             self.lost = true;
-            // Nothing is drawn on this device again, so every shader pipeline goes now.
-            self.shaders.drain();
+            self.device.lose();
         }
         log::warn!(area = "render", ?result, ?error, "the Vulkan renderer failed a frame");
         error
     }
+
+    /// Hands what the shader cache evicted to the retire queue, and drops what the GPU has finished with.
+    pub(super) fn collect(&self) {
+        let value = self.device.context.timeline.submitted();
+        let evicted = self.device.shaders.borrow_mut().take_retired();
+        let mut retire = self.device.retire.borrow_mut();
+        for pipeline in evicted {
+            retire.push(value, RetiredPipeline::new(&self.device.context, pipeline));
+        }
+        retire.release(self.device.context.completed());
+    }
 }
 
-/// The layers of a frame that have pixels to upload, with the slot each fills.
+/// The textures of a frame that have pixels to make, with the slot each fills.
 ///
 /// A solid layer that draws a shader pass has one pixel of its colour, which the pass reads as the layer's own.
-fn sources<'a>(frame: &'a OutputFrame, shaders: &Shaders) -> Vec<(TextureSlot, PixelSource<'a>)> {
+fn wanted<'a>(frame: &'a OutputFrame, shaders: &Shaders) -> Vec<Wanted<'a>> {
     let mut found = Vec::new();
     for (index, layer) in frame.layers().iter().enumerate() {
         let surface = match layer {
@@ -1516,7 +1241,11 @@ fn sources<'a>(frame: &'a OutputFrame, shaders: &Shaders) -> Vec<(TextureSlot, P
             Layer::Solid(solid) => {
                 if solid.model.is_none() && !shaders.of(index).is_empty() {
                     let pixel = premultiplied(solid.colour).map(|value| (value * 255.0).round() as u8);
-                    found.push((TextureSlot::Layer(index), PixelSource::Pixel(pixel)));
+                    found.push(Wanted {
+                        slot: TextureSlot::Layer(index),
+                        source: Source::Pixel(pixel),
+                        key: None,
+                    });
                 }
                 continue;
             }
@@ -1525,15 +1254,19 @@ fn sources<'a>(frame: &'a OutputFrame, shaders: &Shaders) -> Vec<(TextureSlot, P
         if surface.model.is_some() {
             continue;
         }
+        let key = surface.content.as_deref();
         match &surface.source {
-            SurfaceSource::Buffer(buffer) => match shm::shape(buffer) {
-                Ok(shape) => found.push((TextureSlot::Layer(index), PixelSource::Shm { buffer, shape })),
-                Err(error) => {
-                    log::warn!(area = "render", %error, "a client buffer could not be read; the layer is skipped")
-                }
-            },
+            SurfaceSource::Buffer(buffer) => found.push(Wanted {
+                slot: TextureSlot::Layer(index),
+                source: Source::Shm(buffer),
+                key,
+            }),
             // A snapshot is premultiplied pixels already, the same as the overlay bitmap.
-            SurfaceSource::Snapshot(image) => found.push((TextureSlot::Layer(index), PixelSource::Bitmap(image))),
+            SurfaceSource::Snapshot(image) => found.push(Wanted {
+                slot: TextureSlot::Layer(index),
+                source: Source::Bitmap(image),
+                key,
+            }),
             SurfaceSource::Dmabuf(_) => {
                 log::warn!(
                     area = "render",
@@ -1549,41 +1282,20 @@ fn sources<'a>(frame: &'a OutputFrame, shaders: &Shaders) -> Vec<(TextureSlot, P
         }
     }
     if let Some(overlay) = overlay_of(frame) {
-        found.push((TextureSlot::Overlay, PixelSource::Bitmap(overlay.image())));
+        found.push(Wanted {
+            slot: TextureSlot::Overlay,
+            source: Source::Bitmap(overlay.image()),
+            key: None,
+        });
     }
     if let Some(cursor) = frame.cursor() {
-        found.push((TextureSlot::Cursor, PixelSource::Bitmap(cursor.image())));
+        found.push(Wanted {
+            slot: TextureSlot::Cursor,
+            source: Source::Bitmap(cursor.image()),
+            key: None,
+        });
     }
     found
-}
-
-/// Copies a source's pixels, rows packed, into `destination`. Returns false when it cannot.
-fn fill(source: &PixelSource<'_>, destination: &mut [u8]) -> bool {
-    match source {
-        PixelSource::Shm { buffer, .. } => match shm::read_packed(buffer, destination) {
-            Ok(_) => true,
-            Err(error) => {
-                log::warn!(area = "render", %error, "a client buffer could not be read; the layer is skipped");
-                false
-            }
-        },
-        PixelSource::Bitmap(image) => {
-            let size = image.size();
-            let row = size.width as usize * 4;
-            for (line, out) in destination.chunks_exact_mut(row).enumerate() {
-                let start = line * image.stride();
-                let Some(pixels) = image.data().get(start..start + row) else {
-                    return false;
-                };
-                out.copy_from_slice(pixels);
-            }
-            true
-        }
-        PixelSource::Pixel(pixel) => {
-            destination.copy_from_slice(pixel);
-            true
-        }
-    }
 }
 
 /// A straight colour as the premultiplied floats a clear takes.
@@ -1605,16 +1317,6 @@ fn scissor(rect: Rect) -> vk::Rect2D {
             width: rect.width,
             height: rect.height,
         },
-    }
-}
-
-/// The colour layers of the first mip level.
-fn colour_layers() -> vk::ImageSubresourceLayers {
-    vk::ImageSubresourceLayers {
-        aspect_mask: vk::ImageAspectFlags::COLOR,
-        mip_level: 0,
-        base_array_layer: 0,
-        layer_count: 1,
     }
 }
 

@@ -2,10 +2,17 @@
 //! back as an [`Image`].
 //!
 //! This is the third implementation of the frame description (see `gnoblin-render-frame`), built on `ash` and
-//! `naga`. Slice 1 is the offscreen renderer:
-//! it draws what the software renderer draws, plus the rounded corners the shared shaders
-//! already clip, and it reads the result back. It does not present, import dmabufs or draw a blur
-//! yet; the design note lists what is next and in what order.
+//! `naga`. It is the offscreen renderer: it draws what the software renderer draws, plus the rounded corners the shared
+//! shaders already clip, and it reads the result back. It does not present, import dmabufs or draw a blur
+//! yet; `DESIGN.md` lists what is next and in what order.
+//!
+//! # The device and the output
+//!
+//! A [`VulkanDevice`] is one physical GPU: the instance and logical device, the allocator, the pipelines, the cache of client
+//! textures and the timeline every submission signals. It is shared (`Rc`) by every output on the GPU. A [`Vulkan`] is one
+//! output: its target image, its two frame slots and the pixels under its cursor. [`Vulkan::new`] makes a private device for
+//! one output, for tests and the headless default; [`Vulkan::with_device`] makes an output on a device that already exists,
+//! and a window that spans two outputs is then uploaded once.
 //!
 //! # What it draws
 //!
@@ -27,6 +34,20 @@
 //! Layers carrying a 3D model, the backdrop blur, a filter's blur and a buffer's
 //! `set_buffer_transform` are not drawn, which is what the GLES renderer does for the last of
 //! them and what the design note schedules for the others. The `shader` pass is drawn (below).
+//!
+//! # Frames in flight, textures and memory
+//!
+//! - **`draw` does not wait for the GPU.** It records into one of the output's two slots, submits, and returns; the next
+//!   frame is recorded while the last runs. A device-wide timeline semaphore says which frames have finished, and an object a
+//!   frame in flight uses is destroyed when the timeline passes that frame (`sync.rs`). A capture waits for its own
+//!   submission. A frame that draws a shell's shader is waited for, because the watchdog needs its cost.
+//! - **Client textures persist.** A layer that carries a [`ContentKey`](gnoblin_render_frame::frame::ContentKey) keeps its
+//!   texture between frames, and a new commit uploads only the damaged rectangles (`textures.rs`). A frame that changed
+//!   nothing uploads nothing.
+//! - **Memory is sub-allocated.** Images and buffers are ranges of a few large device allocations (`memory.rs`), so a steady
+//!   session asks the driver for none.
+//! - **Pipelines are cached on disk.** The driver's pipeline cache is kept in a file between runs (`pipeline.rs`).
+//! - **[`Stats`]** count the submissions, uploads, allocations and pipelines, which is what the tests of the points above read.
 //!
 //! # The shader pass
 //!
@@ -55,7 +76,7 @@
 //! [`Vulkan::new`] returns a [`VulkanError`] that names why there is no renderer, so the
 //! caller can fall back to another one. Once a renderer exists, a frame that cannot be drawn
 //! returns a [`RenderError`]; [`RenderError::Lost`] means the device is gone and the caller must
-//! build a new renderer and damage the whole output.
+//! build a new renderer and damage the whole output. A lost device is lost for every output on it.
 //!
 //! # Failure modes
 //!
@@ -63,7 +84,7 @@
 //!    [`VulkanError::NoLoader`] instead of a binary that will not start:
 //!    `tests::a_missing_loader_is_a_named_error`.
 //! 2. **No suitable device.** A machine whose loader lists no device, or only ones that cannot
-//!    draw, gets [`VulkanError::NoDevice`] with the reason for each:
+//!    draw (or speak Vulkan 1.2 with timeline semaphores), gets [`VulkanError::NoDevice`] with the reason for each:
 //!    `tests::an_unmatched_device_is_a_named_error`.
 //! 3. **The device is lost during a frame.** The frame is dropped, the call returns
 //!    [`RenderError::Lost`], and every later call returns it without touching the device:
@@ -74,8 +95,8 @@
 //! 5. **A texture cannot be allocated.** That layer is skipped with a warning and the others
 //!    are drawn: `tests::a_texture_that_cannot_be_allocated_skips_its_layer`.
 //! 6. **The driver is used wrongly.** The validation layer runs in debug builds when it is
-//!    installed, every drawing test fails on anything it reports, and a deliberate misuse proves
-//!    the collector sees it: `tests::validation_reports_a_driver_misuse`.
+//!    installed, every drawing test fails on anything it reports (synchronisation checks included), and a deliberate misuse
+//!    proves the collector sees it: `tests::validation_reports_a_driver_misuse`.
 //! 7. **A readback is upside down.** The shared vertex stage maps pixel row 0 to the top and
 //!    the writer must not flip it: `tests::a_readback_is_top_left_first`.
 //! 8. **A client's buffer is read after it was destroyed or shrunk.** The pool is read through
@@ -90,10 +111,19 @@
 //!    `tests::shader::a_source_that_does_not_compile_leaves_its_layer_drawn_and_is_reported`,
 //!    `tests::shader::a_pipeline_the_driver_refuses_is_tried_again_next_frame`.
 //! 10. **A shader pipeline is destroyed while a frame still uses it.** The 64-entry cache evicts
-//!     into a retired list that is destroyed once the frame's fence has been waited, and a lost
-//!     device or a dropped renderer drains everything after waiting for the queue:
+//!     into a list the device hands to the retire queue, which destroys it when the timeline passes the last frame, and a lost
+//!     device or a dropped device drains everything after waiting for the queue:
 //!     `tests::shader::the_pipelines_are_kept_by_source_and_the_least_recently_used_leave_after_64`,
 //!     `tests::shader::a_lost_device_drains_the_pipelines`.
+//! 11. **A frame races the one beside it.** Each slot owns what the CPU writes and the GPU reads, a slot is waited for before it
+//!     is written, and every frame begins with a barrier from all earlier work: `tests::a_frame_returns_before_the_gpu_finishes`
+//!     and the whole drawing suite, which runs with synchronisation validation.
+//! 12. **A texture is destroyed under a frame, or shows an old picture.** The retire queue holds it until the frame that used it
+//!     has finished, and a commit the cache did not see in order is uploaded whole:
+//!     `tests::a_texture_is_destroyed_only_after_its_last_frame_retires`,
+//!     `tests::a_commit_that_was_not_drawn_is_uploaded_whole`.
+//! 13. **A corrupt pipeline cache file takes the renderer down.** A file that fails a check is deleted and ignored:
+//!     `tests::a_corrupt_pipeline_cache_is_ignored_and_replaced`.
 //!
 //! # Byte order
 //!
@@ -107,14 +137,18 @@ mod error;
 mod frame;
 #[cfg(test)]
 mod harness;
+mod memory;
 mod pipeline;
 mod plan;
 mod shader;
+mod sync;
 #[cfg(test)]
 mod tests;
+mod textures;
 
 gnoblin_log::logger!(log = "render");
 
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -122,24 +156,232 @@ use gnoblin_types::{Scale, Size};
 
 pub use context::{DeviceChoice, DeviceInfo, GpuKind, Loader, Validation, VulkanOptions};
 pub use error::VulkanError;
+pub use pipeline::PipelineCacheLocation;
 
 use context::VkContext;
-use frame::{FrameRecorder, RenderTarget, Saved};
+use frame::{RenderTarget, Saved};
+use memory::VkBuffer;
 use pipeline::{Compiled, Pipelines, ShaderPipelines, ShaderSources};
+use sync::{FrameRing, MIN_BUFFER, RetireQueue};
+use textures::TextureCache;
 
+use ash::vk;
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::footprint::{COLOUR_BYTES_PER_PIXEL, Footprint, image_bytes};
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_frame::image::Image;
+use gnoblin_render_frame::redraw::RedrawSignal;
 
-/// A Vulkan renderer and the offscreen image it draws into.
-pub struct Vulkan {
-    // The fields that hold device objects come before the context they were made on.
-    recorder: FrameRecorder,
+/// What the renderer has done, which a test reads to prove that a frame did nothing, or did only what it had to.
+///
+/// The counts are of the device: every output on it adds to them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Stats {
+    /// Queue submissions: a frame, a capture, the clear of a new target. A frame that has nothing to draw submits none.
+    pub submits: u64,
+    /// Bytes of client pixels copied into staging for textures. A texture that is current costs none, and one that a commit
+    /// damaged costs the damaged rectangles.
+    pub bytes_uploaded: u64,
+    /// Textures uploaded, whole or in part.
+    pub uploads: u64,
+    /// Times the allocator took memory from the driver. A steady session adds none.
+    pub device_allocations: u64,
+    /// Pipelines built: the shipped ones, then each of a shell's.
+    pub pipelines_built: u64,
+    /// Client textures in the cache.
+    pub textures: u64,
+    /// Images destroyed since the device was made.
+    pub images_destroyed: u64,
+    /// Frames submitted and not yet finished.
+    pub frames_in_flight: u64,
+    /// Objects held until the frames that used them have finished.
+    pub retiring: u64,
+    /// Bytes of device memory handed to buffers and images and not given back.
+    pub allocated_bytes: u64,
+    /// Bytes of device memory the allocator holds from the driver, used or not.
+    pub device_memory: u64,
+    /// Whether the pipeline cache was read from its file when the device was made.
+    pub pipeline_cache_loaded: bool,
+}
+
+/// One physical GPU, shared by every output on it.
+///
+/// It owns what is the GPU's and not an output's: the Vulkan device, the allocator, the compiled pipelines and the shell's
+/// shader worker, the cache of client textures, and the timeline every submission signals. Outputs hold it by `Rc`, so it
+/// outlives them all.
+pub struct VulkanDevice {
+    // The fields come in the order they are dropped: what holds device objects before the context they were made on.
+    /// Objects waiting for the frames that used them to finish.
+    retire: RefCell<RetireQueue>,
+    /// The textures of client buffers, by surface.
+    textures: RefCell<TextureCache>,
     /// The pipelines of the shell's shader passes, made when a frame first draws a source.
-    shaders: ShaderPipelines,
+    shaders: RefCell<ShaderPipelines>,
     pipelines: Pipelines,
+    /// The unit quad every draw scales to its rectangle.
+    quad: VkBuffer,
+    /// Set when the device was lost; every output on it returns [`RenderError::Lost`].
+    lost: Cell<bool>,
+    /// When the device was made: a shader pass's time `t` is the seconds since.
+    epoch: Instant,
+    context: Rc<VkContext>,
+}
+
+impl VulkanDevice {
+    /// The best device the machine has.
+    ///
+    /// # Errors
+    ///
+    /// A [`VulkanError`] naming why there is no renderer: no loader, no device, a shader that
+    /// does not compile, or a driver call that failed.
+    pub fn new() -> Result<Rc<Self>, VulkanError> {
+        Self::with_options(&VulkanOptions::default())
+    }
+
+    /// A device chosen and set up as `options` say.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`VulkanDevice::new`].
+    pub fn with_options(options: &VulkanOptions) -> Result<Rc<Self>, VulkanError> {
+        Self::with_sources(options, &ShaderSources::shared())
+    }
+
+    /// A device whose passes are compiled from `sources`.
+    fn with_sources(options: &VulkanOptions, sources: &ShaderSources<'_>) -> Result<Rc<Self>, VulkanError> {
+        // Compiled first: a pass that does not compile is refused before any driver is asked.
+        let compiled = Compiled::new(sources)?;
+        let context = Rc::new(VkContext::create(options)?);
+        let pipelines = Pipelines::new(&context, &compiled, &options.pipeline_cache)?;
+        let mut quad = VkBuffer::new(&context, 32, vk::BufferUsageFlags::VERTEX_BUFFER, false)
+            .map_err(|result| VulkanError::driver("create the quad", result))?;
+        // The unit quad as a triangle strip: the vertex stage scales it to the rectangle.
+        let corners: [f32; 8] = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0];
+        let bytes: Vec<u8> = corners.iter().flat_map(|value| value.to_ne_bytes()).collect();
+        quad.write(0, &bytes);
+        Ok(Rc::new(Self {
+            retire: RefCell::new(RetireQueue::default()),
+            textures: RefCell::new(TextureCache::default()),
+            shaders: RefCell::new(ShaderPipelines::new(&context, &pipelines)),
+            pipelines,
+            quad,
+            lost: Cell::new(false),
+            epoch: Instant::now(),
+            context,
+        }))
+    }
+
+    /// The device the renderer draws on.
+    #[must_use]
+    pub fn info(&self) -> &DeviceInfo {
+        &self.context.info
+    }
+
+    /// Whether the device was lost, after which every output on it returns [`RenderError::Lost`].
+    #[must_use]
+    pub fn is_lost(&self) -> bool {
+        self.lost.get()
+    }
+
+    /// What the device has done: see [`Stats`].
+    #[must_use]
+    pub fn stats(&self) -> Stats {
+        let counters = &self.context.memory.counters;
+        Stats {
+            submits: counters.submits.get(),
+            bytes_uploaded: counters.uploaded.get(),
+            uploads: counters.uploads.get(),
+            device_allocations: counters.device_allocations.get(),
+            pipelines_built: self.pipelines.built(),
+            textures: self.textures.borrow().len() as u64,
+            images_destroyed: counters.images_destroyed.get(),
+            frames_in_flight: self
+                .context
+                .timeline
+                .submitted()
+                .saturating_sub(self.context.completed()),
+            retiring: self.retire.borrow().len() as u64,
+            allocated_bytes: counters.allocated.get(),
+            device_memory: self.context.memory.capacity(),
+            pipeline_cache_loaded: self.pipelines.cache_loaded(),
+        }
+    }
+
+    /// The bytes the device holds that are not an output's: the textures of client buffers, as `scratch`.
+    ///
+    /// An output's own [`Vulkan::footprint`] includes this, so a session with one output counts it once; a backend that
+    /// shares a device between outputs counts the device with this and the outputs with [`Vulkan::footprint`] less it.
+    #[must_use]
+    pub fn footprint(&self) -> Footprint {
+        Footprint {
+            scratch: self.textures.borrow().bytes(),
+            ..Footprint::default()
+        }
+    }
+
+    /// The largest edge, in pixels, of an image the device can create: what bounds the target of a supersampled output.
+    #[must_use]
+    pub fn max_image_edge(&self) -> u32 {
+        self.context.limits.max_image_dimension2_d
+    }
+
+    /// Whether the validation layer is on for this device.
+    #[must_use]
+    pub fn validation_enabled(&self) -> bool {
+        self.context.validating
+    }
+
+    /// What the validation layer reported since the last call: errors, and validation warnings.
+    ///
+    /// Empty when the layer is off.
+    pub fn take_validation_messages(&self) -> Vec<String> {
+        self.context.take_messages()
+    }
+
+    /// Gives back every cached client texture, which a session under memory pressure asks of its renderer. The next frame
+    /// that draws a surface uploads it again, whole. The textures are destroyed once the frames that drew them have
+    /// finished.
+    pub fn release_textures(&self) {
+        let mut retire = self.retire.borrow_mut();
+        self.textures.borrow_mut().clear(&mut retire);
+    }
+
+    /// Marks the device lost and drops every shader pipeline: nothing is drawn on it again.
+    fn lose(&self) {
+        if !self.lost.replace(true) {
+            self.shaders.borrow_mut().drain();
+        }
+    }
+}
+
+impl Drop for VulkanDevice {
+    fn drop(&mut self) {
+        // A frame that timed out may still be running; nothing below may be destroyed under it.
+        self.context.wait_idle();
+        self.retire.borrow_mut().clear();
+    }
+}
+
+impl std::fmt::Debug for VulkanDevice {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("VulkanDevice")
+            .field("device", &self.context.info)
+            .field("lost", &self.lost.get())
+            .finish_non_exhaustive()
+    }
+}
+
+/// A Vulkan renderer for one output: the offscreen image it draws into and the frame slots it records with, on a
+/// [`VulkanDevice`] it shares with the other outputs of the GPU.
+pub struct Vulkan {
+    // The fields that hold device objects come before the device they were made on.
+    ring: FrameRing,
+    /// The slot of the frame being recorded.
+    active: usize,
     target: RenderTarget,
+    /// What a capture copies the target into, which it waits for.
+    readback: VkBuffer,
     /// The pixels the cursor covers, saved for a capture that leaves it out.
     cursor_under: Saved,
     physical: Size,
@@ -149,13 +391,16 @@ pub struct Vulkan {
     warned_models: bool,
     /// Whether the filter-blur warning has been logged.
     warned_filter_blur: bool,
-    /// When the renderer was made: a shader pass's time `t` is the seconds since.
-    epoch: Instant,
-    context: Rc<VkContext>,
+    /// The signal the shell's shader worker asks this output for another frame on.
+    redraw: RedrawSignal,
+    device: Rc<VulkanDevice>,
 }
 
+/// The renderer of one output, under the name the design uses for it.
+pub type VulkanOutput = Vulkan;
+
 impl Vulkan {
-    /// A renderer with a target of `physical` pixels, on the best device.
+    /// A renderer with a target of `physical` pixels, on the best device, which it opens for itself.
     ///
     /// # Errors
     ///
@@ -165,7 +410,7 @@ impl Vulkan {
         Self::with_options(physical, &VulkanOptions::default())
     }
 
-    /// A renderer created with `options`.
+    /// A renderer created with `options`, on a device it opens for itself.
     ///
     /// # Errors
     ///
@@ -182,38 +427,57 @@ impl Vulkan {
                 height: physical.height,
             });
         }
-        // Compiled first: a pass that does not compile is refused before any driver is asked.
-        let compiled = Compiled::new(sources)?;
-        let context = Rc::new(VkContext::create(options)?);
-        let pipelines = Pipelines::new(&context, &compiled)?;
-        let mut recorder =
-            FrameRecorder::new(&context).map_err(|result| VulkanError::driver("create the recorder", result))?;
-        let target = RenderTarget::new(&context, pipelines.render_pass, physical)
+        let device = VulkanDevice::with_sources(options, sources)?;
+        Self::with_device(&device, physical)
+    }
+
+    /// A renderer for one output with a target of `physical` pixels, on a device other outputs may share.
+    ///
+    /// # Errors
+    ///
+    /// [`VulkanError::Degenerate`] for a size with no pixels, and [`VulkanError::Driver`] when the target or the frame
+    /// slots cannot be made.
+    pub fn with_device(device: &Rc<VulkanDevice>, physical: Size) -> Result<Self, VulkanError> {
+        if physical.is_empty() {
+            return Err(VulkanError::Degenerate {
+                width: physical.width,
+                height: physical.height,
+            });
+        }
+        let context = &device.context;
+        let ring = FrameRing::new(context).map_err(|result| VulkanError::driver("create the frame slots", result))?;
+        let target = RenderTarget::new(context, device.pipelines.render_pass, physical)
             .map_err(|result| VulkanError::driver("create the target", result))?;
-        recorder
-            .clear(&target)
-            .map_err(|result| VulkanError::driver("clear the target", result))?;
-        Ok(Self {
-            recorder,
-            shaders: ShaderPipelines::new(&context, &pipelines),
-            pipelines,
+        let readback = VkBuffer::new(context, MIN_BUFFER, vk::BufferUsageFlags::TRANSFER_DST, true)
+            .map_err(|result| VulkanError::driver("create the readback", result))?;
+        let redraw = RedrawSignal::new();
+        device.shaders.borrow().listen(redraw.clone());
+        let mut output = Self {
+            ring,
+            active: 0,
             target,
+            readback,
             cursor_under: Saved::default(),
             physical,
             lost: false,
             warned_models: false,
             warned_filter_blur: false,
-            epoch: Instant::now(),
-            context,
-        })
+            redraw,
+            device: Rc::clone(device),
+        };
+        let image = output.target.image.raw();
+        output
+            .clear_target(image)
+            .map_err(|result| VulkanError::driver("clear the target", result))?;
+        Ok(output)
     }
 
     /// The signal this renderer asks for another frame on: a shell's shader pipeline finished building on the worker thread,
     /// so a node drawn without its pass can be drawn with it. The backend asks the target (`Target::take_redraw`) and
     /// damages the output; it may install a waker to wake its loop.
     #[must_use]
-    pub fn redraw_signal(&self) -> gnoblin_render_frame::redraw::RedrawSignal {
-        self.shaders.redraw_signal()
+    pub fn redraw_signal(&self) -> RedrawSignal {
+        self.redraw.clone()
     }
 
     /// The target's size in physical pixels.
@@ -222,52 +486,67 @@ impl Vulkan {
         self.physical
     }
 
-    /// The bytes this renderer holds: the target image, and the host-visible buffers (staging, readback, uniforms,
-    /// instances and the pixels under the cursor) it keeps between frames.
+    /// The bytes this renderer holds: the target image, the host-visible buffers (the frame slots' staging, uniforms and
+    /// instances, the readback and the pixels under the cursor) it keeps between frames, and the client textures its device
+    /// caches (as `scratch`).
     ///
     /// The staging and readback buffers are trimmed after every frame to what one steady frame needs, so a number
-    /// above that is a frame in flight and not a ratchet.
+    /// above that is a frame in flight and not a ratchet. The textures are the device's: an output on a device with others
+    /// reports them too.
     #[must_use]
     pub fn footprint(&self) -> Footprint {
         Footprint {
             target: image_bytes(self.physical, COLOUR_BYTES_PER_PIXEL),
             staging: self.host_bytes(),
-            ..Footprint::default()
+            ..self.device.footprint()
         }
     }
 
     /// The largest edge, in pixels, of an image the device can create: what bounds the target of a supersampled output.
     #[must_use]
     pub fn max_image_edge(&self) -> u32 {
-        self.context.limits.max_image_dimension2_d
+        self.device.max_image_edge()
     }
 
     /// The device the renderer draws on.
     #[must_use]
     pub fn device(&self) -> &DeviceInfo {
-        &self.context.info
+        self.device.info()
+    }
+
+    /// The GPU this output draws on, which other outputs may share.
+    #[must_use]
+    pub fn gpu(&self) -> &Rc<VulkanDevice> {
+        &self.device
+    }
+
+    /// What the device has done: see [`Stats`].
+    #[must_use]
+    pub fn stats(&self) -> Stats {
+        self.device.stats()
     }
 
     /// Whether the device was lost, after which every call returns [`RenderError::Lost`].
     #[must_use]
     pub fn is_lost(&self) -> bool {
-        self.lost
+        self.lost || self.device.is_lost()
     }
 
     /// Whether the validation layer is on for this renderer.
     #[must_use]
     pub fn validation_enabled(&self) -> bool {
-        self.context.validating
+        self.device.validation_enabled()
     }
 
     /// What the validation layer reported since the last call: errors, and validation warnings.
     ///
     /// Empty when the layer is off.
     pub fn take_validation_messages(&self) -> Vec<String> {
-        self.context.take_messages()
+        self.device.take_validation_messages()
     }
 
-    /// Draws `frame`, repainting only what it damaged.
+    /// Draws `frame`, repainting only what it damaged, and returns when the frame is on the queue: it does not wait for the
+    /// GPU, which finishes it while the next one is recorded.
     ///
     /// `scale` is the output's compositing scale: a frame's rectangles are logical and the
     /// target is physical.
@@ -279,18 +558,14 @@ impl Vulkan {
     /// be read or a texture that cannot be allocated is not an error: that layer is skipped and
     /// the rest of the frame is drawn.
     pub fn draw(&mut self, frame: &OutputFrame, scale: Scale) -> Result<(), RenderError> {
-        if self.lost {
+        if self.is_lost() {
             return Err(RenderError::Lost);
         }
         if frame.is_empty() {
             return Ok(());
         }
         let painted = self.paint(frame, scale);
-        if painted.is_err() {
-            // A frame that failed may still be on the queue; nothing a pipeline evicted during it is destroyed until it is not.
-            self.context.wait_idle();
-        }
-        self.shaders.release_retired();
+        self.collect();
         painted.map(|()| self.trim()).map_err(|result| self.fail(result))
     }
 
@@ -305,17 +580,19 @@ impl Vulkan {
 
     /// Reads the target back as an [`Image`], with the cursor composed in when `with_cursor`.
     ///
+    /// The call waits for the read, which is every frame drawn before it and no later one.
+    ///
     /// # Errors
     ///
     /// [`RenderError::Lost`] when the device is gone and [`RenderError::Failed`] when the
     /// readback is refused.
     pub fn capture(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
-        if self.lost {
+        if self.is_lost() {
             return Err(RenderError::Lost);
         }
-        self.read_target(with_cursor)
-            .inspect(|_| self.trim())
-            .map_err(|result| self.fail(result))
+        let read = self.read_target(with_cursor);
+        self.collect();
+        read.inspect(|_| self.trim()).map_err(|result| self.fail(result))
     }
 
     /// Replaces the target with one of `physical` pixels.
@@ -333,18 +610,21 @@ impl Vulkan {
                 height: physical.height,
             });
         }
-        if self.lost {
+        if self.is_lost() {
             return Err(RenderError::Lost);
         }
         if physical == self.physical {
             return Ok(());
         }
-        let target = RenderTarget::new(&self.context, self.pipelines.render_pass, physical)
+        let target = RenderTarget::new(&self.device.context, self.device.pipelines.render_pass, physical)
             .map_err(|result| self.fail(result))?;
-        if let Err(result) = self.recorder.clear(&target) {
+        // Frames submitted so far may still draw into the old target.
+        let before = self.device.context.timeline.submitted();
+        if let Err(result) = self.clear_target(target.image.raw()) {
             return Err(self.fail(result));
         }
-        self.target = target;
+        let old = std::mem::replace(&mut self.target, target);
+        self.device.retire.borrow_mut().push(before, old);
         self.physical = physical;
         self.cursor_under.rect = None;
         Ok(())
@@ -353,8 +633,9 @@ impl Vulkan {
 
 impl Drop for Vulkan {
     fn drop(&mut self) {
-        // A frame that timed out may still be running; nothing below may be destroyed under it.
-        self.context.wait_idle();
+        // A frame still in flight uses this output's target and buffers; nothing below may be destroyed under it. A device
+        // that cannot answer is lost, and has nothing running.
+        let _ = self.device.context.wait(self.ring.newest());
     }
 }
 
@@ -362,9 +643,9 @@ impl std::fmt::Debug for Vulkan {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("Vulkan")
-            .field("device", &self.context.info)
+            .field("device", self.device.info())
             .field("physical", &self.physical)
-            .field("lost", &self.lost)
+            .field("lost", &self.is_lost())
             .finish_non_exhaustive()
     }
 }

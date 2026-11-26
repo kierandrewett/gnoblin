@@ -2058,6 +2058,7 @@ dependencies = [
  "gnoblin-render-frame",
  "gnoblin-render-software",
  "gnoblin-types",
+ "gpu-allocator",
  "naga",
  "smithay",
  "tempfile",
@@ -3112,6 +3113,18 @@ dependencies = [
  "prost",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "gpu-allocator"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51255ea7cfaadb6c5f1528d43e92a82acb2b96c43365989a28b2d44ee38f8795"
+dependencies = [
+ "ash",
+ "log",
+ "presser",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -4494,6 +4507,12 @@ dependencies = [
  "writeable",
  "zerovec",
 ]
+
+[[package]]
+name = "presser"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8cf8e6a8aa66ce33f63993ffc4ea4271eb5b0530a9002db8455ea6050c77bfa"
 
 [[package]]
 name = "prettyplease"

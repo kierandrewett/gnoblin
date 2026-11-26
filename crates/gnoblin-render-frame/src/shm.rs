@@ -130,6 +130,37 @@ pub fn read_packed(buffer: &WlBuffer, out: &mut [u8]) -> Result<ShmShape, ShmErr
     .map_err(access_error)?
 }
 
+/// Copies one rectangle of a client's pixels into `out` with the rows packed, in the buffer's own byte order.
+///
+/// It is [`read_packed`] for a part of the buffer, which is what a renderer that keeps its texture between frames
+/// uploads when a commit damaged only a rectangle: the rest of the pool is not read. `out` must be exactly the
+/// rectangle's area in pixels times four bytes, and the rectangle must lie inside the buffer.
+///
+/// # Errors
+///
+/// The same as [`shape`], and [`ShmError::Outside`] when the rectangle is not inside the buffer or `out` is the wrong
+/// length.
+pub fn read_region(buffer: &WlBuffer, region: Rect, out: &mut [u8]) -> Result<ShmShape, ShmError> {
+    with_buffer_contents(buffer, |pointer, length, data| {
+        let shape = checked_shape(length, &data)?;
+        let inside = region.intersection(Rect::new(0, 0, shape.width, shape.height)) == Some(region);
+        let bytes = region.width as usize * region.height as usize * 4;
+        if pointer.is_null() || !inside || out.len() != bytes {
+            return Err(ShmError::Outside);
+        }
+        let stride = usize::try_from(data.stride).map_err(|_| ShmError::Outside)?;
+        let first = usize::try_from(data.offset)
+            .map_err(|_| ShmError::Outside)?
+            .checked_add(region.y as usize * stride + region.x as usize * 4)
+            .ok_or(ShmError::Outside)?;
+        // The rectangle is inside the buffer, and `checked_shape` bounded the buffer inside `length`, so every row lies
+        // inside the mapping.
+        copy_rows(pointer, first, stride, out, region.width as usize * 4);
+        Ok(shape)
+    })
+    .map_err(access_error)?
+}
+
 /// Reads the last byte of a client's buffer, to find out whether its pool still reaches that far.
 ///
 /// A client can shrink the file behind a pool after it made a buffer from it, and the next

@@ -225,6 +225,10 @@ naga = { version = "30.0.1", features = ["wgsl-in", "glsl-out"] }
 # reports a named error instead. `debug` is the debug-utils extension the validation
 # layer reports through. Licence MIT OR Apache-2.0, on the allow-list in deny.toml.
 ash = { version = "0.38.0", default-features = false, features = ["loaded", "debug", "std"] }
+# Sub-allocates the Vulkan renderer's device memory, so a steady session makes no `vkAllocateMemory` call and an image is
+# not a memory object of its own. The Vulkan backend only, on the same `ash` 0.38 the renderer and Smithay use; `std` is
+# the crate's error and logging support. Licence MIT OR Apache-2.0, on the allow-list in deny.toml.
+gpu-allocator = { version = "0.28.0", default-features = false, features = ["std", "vulkan"] }
 # The safe OpenGL ES API Smithay's `renderer_glow` feature is built on. The same
 # 0.16 the pinned Smithay revision depends on, so the two cannot resolve to
 # different contexts.

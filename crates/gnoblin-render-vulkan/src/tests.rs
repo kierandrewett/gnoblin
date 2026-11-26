@@ -31,15 +31,26 @@ use gnoblin_render_frame::frame::{Layer, Model, Overlay, Solid, Surface, Surface
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_software::Software;
 
+mod device;
 mod effects;
 mod shader;
 
 /// The largest per-channel difference accepted where a blend rounds.
 const BLEND: u8 = 1;
 
+/// The options every drawing test makes its renderer with: synchronisation validation on, so a race between the frames in
+/// flight fails the test that has it, and no pipeline cache file, so a test never reads or writes the user's.
+fn options() -> VulkanOptions {
+    VulkanOptions {
+        validation: Validation::Synchronized,
+        pipeline_cache: PipelineCacheLocation::Off,
+        ..VulkanOptions::default()
+    }
+}
+
 /// A renderer, or [`None`] with a printed reason when this machine has no Vulkan.
 fn renderer(size: Size) -> Option<Vulkan> {
-    match Vulkan::new(size) {
+    match Vulkan::with_options(size, &options()) {
         Ok(renderer) => {
             println!(
                 "Vulkan device: {} ({:?}), validation layer {}",
@@ -654,7 +665,12 @@ fn a_lost_device_drops_the_frame_and_is_reported() {
     let mut frame = frame(Color::BLACK, SIZE);
     solid(&mut frame, Rect::new(0, 0, 8, 8), colour(255, 0, 0, 255));
     vulkan.draw(&frame, Scale::IDENTITY).expect("a frame before the loss");
-    vulkan.context.faults.submit.set(Some(vk::Result::ERROR_DEVICE_LOST));
+    vulkan
+        .device
+        .context
+        .faults
+        .submit
+        .set(Some(vk::Result::ERROR_DEVICE_LOST));
     assert_eq!(
         vulkan.draw(&frame, Scale::IDENTITY),
         Err(RenderError::Lost),
@@ -698,6 +714,7 @@ fn a_texture_that_cannot_be_allocated_skips_its_layer() {
     }
     // The first texture runs out of memory; the second is made.
     vulkan
+        .device
         .context
         .faults
         .texture_allocation
@@ -774,8 +791,8 @@ fn validation_reports_a_driver_misuse() {
         .sharing_mode(vk::SharingMode::EXCLUSIVE);
     // SAFETY: the call is the deliberate misuse; whatever the driver returns is destroyed.
     unsafe {
-        if let Ok(buffer) = vulkan.context.device.create_buffer(&info, None) {
-            vulkan.context.device.destroy_buffer(buffer, None);
+        if let Ok(buffer) = vulkan.device.context.device.create_buffer(&info, None) {
+            vulkan.device.context.device.destroy_buffer(buffer, None);
         }
     }
     let messages = vulkan.take_validation_messages();
