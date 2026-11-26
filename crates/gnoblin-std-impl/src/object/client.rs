@@ -339,8 +339,12 @@ pub(crate) fn client_node(ctx: GnoblinCtx, member: &str, value: &Val) -> Res<u64
             format!("Client#{id}.{member}: the client is gone"),
         ));
     }
-    id.parse::<u64>()
-        .map_err(|_| Fail::err(format!("the core named a client `{id}`, which is not a node number")))
+    let node = id
+        .parse::<u64>()
+        .map_err(|_| Fail::err(format!("the core named a client `{id}`, which is not a node number")))?;
+    // The core lists a window before the library hears of it: a listener's `onAdded` may be the first to ask for it.
+    crate::events::hear_of_client(ctx, node);
+    Ok(node)
 }
 
 /// The node of the output the core `Output` `value` is, for a call of the member `member` (named in the message of a failure). The core
