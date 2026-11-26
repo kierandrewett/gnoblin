@@ -19,9 +19,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use gnoblin_output::{DisplayMode, Edid, VrrSupport};
-use gnoblin_types::{Orientation, OutputId};
+use gnoblin_types::{Orientation, OutputId, Rect};
 use smithay::backend::drm::{
-    DrmDevice, DrmDeviceFd, DrmDeviceNotifier, DrmEvent, DrmSurface, PlaneConfig, PlaneState, VrrSupport as KernelVrr,
+    DrmDevice, DrmDeviceFd, DrmDeviceNotifier, DrmEvent, DrmSurface, PlaneConfig, PlaneDamageClips, PlaneState,
+    VrrSupport as KernelVrr,
 };
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::drm::control::{
@@ -732,6 +733,11 @@ impl Gpu {
     /// change) is committed with a modeset instead: smithay's `page_flip` keeps the surface's current state and never
     /// allows a modeset, so the kernel refuses it with `EINVAL` and the output would never light.
     ///
+    /// `damage` is what changed in the buffer since the one the plane shows, in the buffer's pixels, which an atomic
+    /// surface passes as `FB_DAMAGE_CLIPS` so a driver that copies a frame to the display (a virtual GPU) copies only that.
+    /// It is a superset when a slot missed more than the last frame. Empty means the whole buffer, which is what a
+    /// renderer that does not track damage says; a blob the kernel refuses is taken the same way.
+    ///
     /// # Errors
     ///
     /// The reason the kernel refused the flip, or that no output is scanned out by `crtc`.
@@ -740,6 +746,7 @@ impl Gpu {
         crtc: crtc::Handle,
         framebuffer: framebuffer::Handle,
         size: Size<i32, Physical>,
+        damage: &[Rect],
     ) -> Result<(), String> {
         let hardware = self
             .state
@@ -751,7 +758,8 @@ impl Gpu {
             .find(|port| port.crtc() == Some(crtc))
             .ok_or_else(|| format!("no output is scanned out by CRTC {crtc:?}"))?;
         let surface = port.surface()?;
-        let planes = [scanout_plane(surface, framebuffer, size)];
+        let clips = damage_clips(surface, size, damage);
+        let planes = [scanout_plane(surface, framebuffer, size, clips.as_ref())];
         if surface.commit_pending() {
             surface.commit(planes, true)
         } else {
@@ -804,7 +812,7 @@ impl Gpu {
         // Staging the mode runs the kernel's own test with a scratch buffer of that size.
         surface.use_mode(kernel).map_err(|error| error.to_string())?;
         let tested = surface
-            .test_state([scanout_plane(surface, framebuffer, size)], true)
+            .test_state([scanout_plane(surface, framebuffer, size, None)], true)
             .map_err(|error| error.to_string());
         let restored = surface
             .use_mode(committed)
@@ -830,7 +838,7 @@ impl Gpu {
         let surface = port.surface()?;
         surface.use_mode(kernel).map_err(|error| error.to_string())?;
         surface
-            .commit([scanout_plane(surface, framebuffer, size)], false)
+            .commit([scanout_plane(surface, framebuffer, size, None)], false)
             .map_err(|error| error.to_string())
     }
 
@@ -946,12 +954,40 @@ impl Gpu {
     }
 }
 
-/// The primary plane of `surface` scanning `framebuffer` out over the whole of a mode of `size`.
-fn scanout_plane(
+/// `FB_DAMAGE_CLIPS` for `damage`, in the buffer's pixels, on an atomic `surface`; `None` when there is none to say, the
+/// surface is legacy, or the kernel refused the blob (the plane is then taken as damaged whole, which is always right).
+fn damage_clips(surface: &DrmSurface, size: Size<i32, Physical>, damage: &[Rect]) -> Option<PlaneDamageClips> {
+    if damage.is_empty() || surface.is_legacy() {
+        return None;
+    }
+    let whole = Rectangle::<i32, Physical>::from_size(size);
+    let rects = damage.iter().filter_map(|rect| {
+        let rect = Rectangle::<i32, Physical>::new(
+            (rect.x, rect.y).into(),
+            (i32::try_from(rect.width).ok()?, i32::try_from(rect.height).ok()?).into(),
+        );
+        rect.intersection(whole)
+    });
+    PlaneDamageClips::from_damage(
+        surface.device_fd(),
+        Rectangle::<f64, Buffer>::from_size((f64::from(size.w), f64::from(size.h)).into()),
+        whole,
+        Transform::Normal,
+        Transform::Normal,
+        rects,
+    )
+    .ok()
+    .flatten()
+}
+
+/// The primary plane of `surface` scanning `framebuffer` out over the whole of a mode of `size`, with the damage `clips`
+/// say when there are any.
+fn scanout_plane<'a>(
     surface: &DrmSurface,
     framebuffer: framebuffer::Handle,
     size: Size<i32, Physical>,
-) -> PlaneState<'static> {
+    clips: Option<&'a PlaneDamageClips>,
+) -> PlaneState<'a> {
     PlaneState {
         handle: surface.plane(),
         config: Some(PlaneConfig {
@@ -959,7 +995,7 @@ fn scanout_plane(
             dst: Rectangle::from_size(size),
             transform: Transform::Normal,
             alpha: 1.0,
-            damage_clips: None,
+            damage_clips: clips.map(PlaneDamageClips::blob),
             fb: framebuffer,
             fence: None,
         }),

@@ -1,4 +1,4 @@
-//! The hardware backend: DRM and KMS through udev and libseat, with a GLES scan-out path.
+//! The hardware backend: DRM and KMS through udev and libseat, with a GLES or a Vulkan scan-out path.
 //!
 //! This is the third backend of the Backends card, and the only one that drives a real
 //! display. It is split the way the rest of the crate is:
@@ -53,6 +53,10 @@
 //!    and not an empty frame, which is a black screen:
 //!    `frame::tests::a_change_described_while_a_flip_is_in_flight_is_drawn_when_the_flip_completes`
 //!    and `frame::tests::a_refused_flip_retries_the_frame_that_was_described_not_an_empty_one`.
+//! 7. **The Vulkan device is lost.** The output's renderer returns the loss and draws nothing more; the scan-out
+//!    buffers and framebuffers are not touched, so the screen keeps the last frame. [`Drm::render`] rebuilds the
+//!    renderer on a new device after 0 ms, 100 ms and 1 s, then every 5 s, wakes the loop for each wait, and draws the
+//!    output whole when it is back: `vulkan::tests::the_rebuilds_back_off_and_settle`.
 
 /// The DRM column of the backend status table, measured against a fake kernel.
 #[cfg(test)]
@@ -78,12 +82,16 @@ pub(crate) mod scanout;
 pub mod session;
 /// The udev discovery of GPUs and the connectors they carry.
 pub mod udev;
+/// The Vulkan renderer's half of the scan-out path: slot damage, loss recovery and the redacted capture.
+pub(crate) mod vulkan;
 
 use std::fmt;
 use std::io;
+use std::time::{Duration, Instant};
 
 use gnoblin_types::{Orientation, OutputId, Scale};
 use smithay::reexports::calloop::LoopHandle;
+use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::drm::control::crtc;
 
 use crate::frame::{Presented, UndrawnFrame, present};
@@ -93,10 +101,13 @@ use crate::modeset::Composition;
 use crate::present::{OutputPresenter, Presenter, complete_flips};
 use crate::scanout::{Buffers, Device as ScanoutDevice, Flip, LiveModeset};
 use crate::session::{SeatEvent, SeatState, Transition};
+use crate::vulkan::Recovery;
+use gnoblin_backend::render::renderer::RendererKind;
 use gnoblin_backend::{
     Backend, BackendError, BackendEvent, DmabufImportError, DmabufSupport, Host, InputEvent, InputSource, Output,
     Present, Target,
 };
+use gnoblin_render_frame::frame::SecureTreatment;
 use gnoblin_render_frame::image::Image;
 use std::collections::{HashMap, HashSet};
 
@@ -120,7 +131,7 @@ pub enum DrmError {
     Seat(String),
     /// The GPU could not be opened or initialised.
     Device(String),
-    /// The GLES context on the GPU could not be created.
+    /// The renderer's device on the GPU could not be created, or the renderer cannot scan out.
     Renderer(gnoblin_render_frame::error::RenderError),
 }
 
@@ -167,6 +178,19 @@ pub struct Drm {
     seat: SeatState,
     /// Whether the process opted in to changing the mode of a real display. Off, a mode change is refused.
     real_modeset: RealModeset,
+    /// What draws the outputs.
+    renderer: RendererKind,
+    /// What a capture draws in place of a secure layer.
+    treatment: SecureTreatment,
+    /// How soon a lost Vulkan renderer is rebuilt.
+    recovery: Recovery,
+    /// When the next rebuild of a lost renderer may happen, while one is waiting.
+    retry_at: Option<Instant>,
+    /// Wakes the event loop after a delay, so a rebuild that has waited is noticed; set when the backend registers.
+    wake: Option<Box<dyn Fn(Duration)>>,
+    /// How many frames were queued for a flip since the backend started, logged every 60 at debug level so a run can
+    /// tell that frames keep completing.
+    flipped: u64,
 }
 
 /// Why the hardware backend offers no input events.
@@ -244,11 +268,20 @@ impl Drm {
     /// `real_modeset` is whether mode changes on the real display are allowed; pass
     /// [`RealModeset::from_process_env`] so that they are off unless [`MODESET_ENV`] is set.
     ///
+    /// `renderer` is what draws the outputs, [`RendererKind::Gles`] or [`RendererKind::Vulkan`]; the software renderer
+    /// cannot scan out, and is refused as [`DrmError::Renderer`]. `treatment` is what a capture draws in place of a
+    /// secure layer, which only a Vulkan output can be captured of.
+    ///
     /// # Errors
     ///
     /// [`DrmError`] naming what could not be opened. A session that gets this error runs the
     /// headless backend instead; it is not a frame error.
-    pub fn open(seat_name: &str, real_modeset: RealModeset) -> Result<Self, DrmError> {
+    pub fn open(
+        seat_name: &str,
+        real_modeset: RealModeset,
+        renderer: RendererKind,
+        treatment: SecureTreatment,
+    ) -> Result<Self, DrmError> {
         let gpu = gpu::Gpu::open(seat_name)?;
         let outputs: Vec<Output> = gpu
             .outputs()
@@ -266,7 +299,7 @@ impl Drm {
                 })
             })
             .collect();
-        let scanout = ScanoutDevice::open(gpu.device_fd()).map_err(DrmError::Renderer)?;
+        let scanout = ScanoutDevice::open(gpu.device_fd(), renderer).map_err(DrmError::Renderer)?;
         let input = match Libinput::open(gpu.seat().libseat()) {
             Ok(libinput) => Input::Live(Box::new(libinput)),
             Err(error) => {
@@ -288,6 +321,12 @@ impl Drm {
             input,
             seat: SeatState::new(),
             real_modeset,
+            renderer,
+            treatment,
+            recovery: Recovery::default(),
+            retry_at: None,
+            wake: None,
+            flipped: 0,
         })
     }
 
@@ -496,6 +535,15 @@ impl<S: Host + 'static> Backend<S> for Drm {
             libinput.set_screens(screens);
             libinput.register(loop_handle)?;
         }
+        // A lost renderer is rebuilt when its backoff has passed, which only a turn of the loop notices: a timer
+        // that does nothing wakes the loop for it.
+        let handle = loop_handle.clone();
+        self.wake = Some(Box::new(move |after| {
+            let timer = Timer::from_duration(after);
+            if let Err(error) = handle.insert_source(timer, |_, _, _| TimeoutAction::Drop) {
+                log::warn!(area = "render", %error, "the loop could not be woken for the renderer's rebuild");
+            }
+        }));
         Ok(())
     }
 
@@ -504,6 +552,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
             return Err(BackendError::UnknownOutput(output));
         };
         let (scale, size, composed) = (known.effective_scale(), known.mode, known.virtual_size());
+        let logical = known.logical_size();
         let Some(index) = self.channels.iter().position(|channel| channel.id == output) else {
             return Err(BackendError::Unpresentable(output));
         };
@@ -530,10 +579,38 @@ impl<S: Host + 'static> Backend<S> for Drm {
                     .plane_formats(crtc)
                     .ok_or(BackendError::Unpresentable(output))?;
                 let buffers =
-                    Buffers::new(&self.scanout, physical, composed, &formats).map_err(BackendError::Render)?;
+                    Buffers::new(&mut self.scanout, physical, composed, &formats).map_err(BackendError::Render)?;
                 entry.insert(buffers)
             }
         };
+        if buffers.is_lost() {
+            // The device went away under this output. The screen keeps the last frame (the scan-out buffers are not
+            // touched) until a renderer is made on a device again, paced by `Recovery`.
+            let now = Instant::now();
+            if self.retry_at.is_some_and(|at| now < at) {
+                return Ok(Present::Nothing);
+            }
+            match buffers.rebuild(&mut self.scanout) {
+                Ok(()) => {
+                    log::info!(area = "render", output = %output, "the Vulkan renderer was rebuilt after the device was lost");
+                    self.retry_at = None;
+                    // The new target holds no pixels: the output is drawn whole.
+                    waiting
+                        .frame_mut()
+                        .push_damage(gnoblin_types::Rect::new(0, 0, logical.width, logical.height));
+                    self.channels[index].presenter.mark_dirty();
+                }
+                Err(error) => {
+                    let wait = self.recovery.failed(now);
+                    self.retry_at = Some(now + wait);
+                    log::warn!(area = "render", output = %output, %error, retry_ms = wait.as_millis(), "the Vulkan renderer could not be rebuilt; the output keeps its last frame");
+                    if let Some(wake) = &self.wake {
+                        wake(wait);
+                    }
+                    return Ok(Present::Nothing);
+                }
+            }
+        }
         let mut flip = Flip {
             buffers,
             gpu: &self.gpu,
@@ -543,13 +620,25 @@ impl<S: Host + 'static> Backend<S> for Drm {
         match present(&mut self.channels[index].presenter, &mut flip, waiting.frame()) {
             Presented::Idle | Presented::Waiting => Ok(Present::Nothing),
             Presented::Queued { .. } => {
+                self.flipped += 1;
+                if self.flipped.is_multiple_of(60) {
+                    log::debug!(area = "drm", output = %output, flips = self.flipped, "frames flipped");
+                }
                 host.drawn(output, waiting.frame_mut());
                 waiting.drawn();
                 Ok(Present::Rendered)
             }
             Presented::Refused { slot, first, error } => {
                 host.drawn(output, waiting.frame_mut());
-                if first {
+                if flip.buffers.is_lost() {
+                    let now = Instant::now();
+                    let wait = self.recovery.failed(now);
+                    self.retry_at = Some(now + wait);
+                    log::warn!(area = "render", output = %output, retry_ms = wait.as_millis(), "the Vulkan device was lost; the output keeps its last frame while the renderer is rebuilt");
+                    if let Some(wake) = &self.wake {
+                        wake(wait);
+                    }
+                } else if first {
                     log::warn!(area = "drm", output = %output, slot, %error, "a frame was refused; the output retries it");
                 }
                 Ok(Present::Nothing)
@@ -557,17 +646,34 @@ impl<S: Host + 'static> Backend<S> for Drm {
         }
     }
 
-    fn capture(&mut self, _output: OutputId, _with_cursor: bool) -> Option<Image> {
-        None
+    /// The frame last drawn, read back from the Vulkan output's target; a GLES output keeps none, because its frame is
+    /// only ever in the buffer the kernel shows, so a screenshot or a screen cast of it is refused.
+    fn capture(&mut self, output: OutputId, with_cursor: bool) -> Option<Image> {
+        let scale = self.outputs.iter().find(|known| known.id == output)?.effective_scale();
+        match self
+            .buffers
+            .get_mut(&output)?
+            .capture(with_cursor, scale, self.treatment)
+        {
+            Ok(image) => Some(image),
+            Err(gnoblin_render_frame::error::RenderError::Unsupported) => None,
+            Err(error) => {
+                log::warn!(area = "drm", output = %output, %error, "the frame could not be read back");
+                None
+            }
+        }
+    }
+
+    fn secure_treatment(&self) -> SecureTreatment {
+        self.treatment
     }
 
     fn effect_kinds(&self) -> &'static [&'static str] {
-        // The scan-out path draws with the GLES renderer.
-        gnoblin_backend::render::renderer::RendererKind::Gles.effect_kinds()
+        self.renderer.effect_kinds()
     }
 
     fn draws_filter_blur(&self) -> bool {
-        gnoblin_backend::render::renderer::RendererKind::Gles.draws_filter_blur()
+        self.renderer.draws_filter_blur()
     }
 
     fn dmabuf(&mut self) -> Option<DmabufSupport> {
@@ -578,8 +684,16 @@ impl<S: Host + 'static> Backend<S> for Drm {
         self.scanout.import_dmabuf(dmabuf)
     }
 
-    // `dmabuf_capture_support` stays the default (`None`): this backend keeps no readable frame of an output (see
-    // `capture`), so there is none to copy into a client's buffer. A View's picture is on the CPU and is.
+    // A Vulkan output keeps its composed frame readable, so a capture client may be given the GPU path; a GLES output's
+    // frame is only ever in the buffer the kernel shows, so there is none to copy (see `capture`). A View's picture is
+    // on the CPU and is written either way.
+    fn dmabuf_capture_support(&mut self, output: OutputId) -> Option<DmabufSupport> {
+        if self.renderer != RendererKind::Vulkan || !self.outputs.iter().any(|known| known.id == output) {
+            return None;
+        }
+        self.scanout.dmabuf_support()
+    }
+
     fn dmabuf_picture_support(&mut self) -> Option<DmabufSupport> {
         self.scanout.dmabuf_support()
     }
@@ -592,7 +706,20 @@ impl<S: Host + 'static> Backend<S> for Drm {
     ) -> Result<(), gnoblin_backend::DmabufCopyError> {
         match source {
             gnoblin_backend::DmabufSource::Picture(picture) => self.scanout.copy_picture(dmabuf, picture, copy),
-            gnoblin_backend::DmabufSource::Frame { .. } => Err(gnoblin_backend::DmabufCopyError::Unsupported),
+            gnoblin_backend::DmabufSource::Frame { output, with_cursor } => {
+                self.scanout.check_capture(dmabuf)?;
+                let scale = self
+                    .outputs
+                    .iter()
+                    .find(|known| known.id == output)
+                    .map(Output::effective_scale)
+                    .ok_or(gnoblin_backend::DmabufCopyError::NoFrame)?;
+                self.buffers
+                    .get_mut(&output)
+                    .ok_or(gnoblin_backend::DmabufCopyError::NoFrame)?
+                    .copy_frame_into_dmabuf(dmabuf, copy, with_cursor, scale, self.treatment)
+                    .map_err(gnoblin_backend::DmabufCopyError::from)
+            }
         }
     }
 
@@ -604,8 +731,8 @@ impl<S: Host + 'static> Backend<S> for Drm {
     }
 
     fn gpu_views(&self) -> bool {
-        // The scan-out path draws with the GLES renderer, which draws a View's subtree into a texture.
-        gnoblin_backend::render::renderer::RendererKind::Gles.draws_views()
+        // GLES and Vulkan draw a View's subtree into a texture on the GPU.
+        self.renderer.draws_views()
     }
 
     fn read_view(

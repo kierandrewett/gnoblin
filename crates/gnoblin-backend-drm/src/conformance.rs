@@ -9,7 +9,7 @@
 //!
 //! Each row of `crates/gnoblin-backend/parity.md`'s status table is either measured here or declared: a declared row is one
 //! only hardware can prove, and its table cell must say so (`unproven on hardware`) or name the reason it is refused
-//! (`GLES only`, `scan-out only`). The same table is measured for headless and nested in
+//! (`GLES or Vulkan only`). The same table is measured for headless and nested in
 //! `gnoblin-wayland/tests/backend_conformance.rs`, so one document is held to all three.
 
 use gnoblin_backend::{BackendError, InputEvent, TabletAxes, TabletEvent, TabletTool, TouchPhase};
@@ -519,10 +519,26 @@ fn the_status_table_holds_for_the_hardware_backend() {
     measured.declared("gpu.views", "unproven on hardware");
     measured.declared("input.touchpad", "unproven on hardware");
     measured.declared("lifecycle.shutdown", "unproven on hardware");
-    // Refused for a reason in the code: the scan-out path is GLES and keeps no readable frame.
-    measured.declared("render.software", "GLES only");
-    measured.declared("render.vulkan", "GLES only");
-    measured.declared("render.readback", "scan-out only");
+    // Refused for a reason in the code: the CPU renderer cannot scan out.
+    measured.declared("render.software", "GLES or Vulkan only");
+    // The Vulkan output composes into a target of its own, so the frame can be read back, which the GLES output, whose
+    // frame is only in the buffer the kernel shows, cannot: `a_vulkan_output_reads_its_frame_back_...` draws a frame and
+    // reads it back, secure layer redacted. The scan-out copy into a GBM buffer needs a device; a virtual machine proves it
+    // (`scripts/ci/vm/run.sh`, `vulkan-foot` and `vkms-vulkan`), and the table says so.
+    let vulkan_test = "a_vulkan_output_reads_its_frame_back_and_a_capture_redacts_a_secure_layer";
+    let vulkan_source = include_str!("vulkan.rs");
+    measured.covered("render.vulkan", CellStatus::Supported, vulkan_test, vulkan_source);
+    measured.covered("render.readback", CellStatus::Supported, vulkan_test, vulkan_source);
+    let readback = table.row("render.readback").cell("drm").note.clone();
+    assert!(
+        readback.contains("with Vulkan") && readback.contains("refused with GLES"),
+        "a frame is read back with Vulkan and refused with GLES, and the table says which: `{readback}`"
+    );
+    let vulkan = table.row("render.vulkan").cell("drm").note.clone();
+    assert!(
+        vulkan.contains("virtual machine") && vulkan.contains("unproven on hardware"),
+        "the scan-out copy is proven in a virtual machine and not on hardware, and the table says so: `{vulkan}`"
+    );
     // Refused for a reason in the code: the toolkit's libinput source drops a pad's events, so a pad is not announced.
     measured.declared("input.tablet_pad", "drops pad events");
     // Not applicable by nature: there is no host and no window.

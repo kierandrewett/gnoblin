@@ -106,6 +106,17 @@ fn refused(renderer: RendererChoice, backend: &'static str, reason: &'static str
     }
 }
 
+/// The renderer the hardware backend scans out with for a `compositor.renderer` setting: `auto` is GLES, until the selection
+/// chain makes it Vulkan where a device is eligible, and the CPU renderer, which cannot scan out, is refused with why.
+#[cfg(feature = "drm")]
+fn drm_renderer(renderer: RendererChoice) -> Result<RendererKind, &'static str> {
+    match renderer {
+        RendererChoice::Auto | RendererChoice::Gles => Ok(RendererKind::Gles),
+        RendererChoice::Vulkan => Ok(RendererKind::Vulkan),
+        RendererChoice::Software => Err("the hardware backend scans out with the GLES or the Vulkan renderer only"),
+    }
+}
+
 /// What a person does about a hardware backend that could not start. One line per kind of failure, because the
 /// answer differs: a machine with no seat wants a login session, a machine with no GPU wants another backend, and a
 /// GPU that refuses is a permissions problem.
@@ -134,7 +145,7 @@ pub fn drm_hint(error: &DrmError) -> &'static str {
             "the GPU refused to be driven: it may be a device without KMS, or another process may hold DRM master"
         }
         DrmError::Renderer(_) => {
-            "the GPU cannot give the GLES context the hardware backend scans out with: use the nested or headless              backend on this machine"
+            "the GPU cannot give the renderer the hardware backend scans out with (GLES or Vulkan, as compositor.renderer says): name the other one, or use the nested or headless              backend on this machine"
         }
     }
 }
@@ -154,7 +165,7 @@ pub enum Backend {
     Nested(NestedConfig),
     /// Direct rendering on the hardware: the GPU, its displays and libinput on the seat this process runs in.
     ///
-    /// It scans out with the GLES renderer only, and a mode change on a real display stays off unless the process
+    /// It scans out with the GLES renderer, or the Vulkan one when `compositor.renderer` says so, and a mode change on a real display stays off unless the process
     /// sets `GNOBLIN_DRM_MODESET=1` (`RealModeset`). A machine that cannot start it is refused with the reason
     /// (`Error::Drm`), never given another backend. A build without the `drm` feature still has this value, because the
     /// selection is data, and refuses it with [`Error::DrmNotBuilt`].
@@ -235,20 +246,17 @@ impl Backend {
             Backend::Drm => Err(Error::DrmNotBuilt),
             #[cfg(feature = "drm")]
             Backend::Drm => {
-                // The scan-out path is the GLES renderer. `auto` is that renderer here, and another named renderer
-                // is refused rather than replaced.
-                if !matches!(renderer, RendererChoice::Auto | RendererChoice::Gles) {
-                    return Err(refused(
-                        renderer,
-                        "drm",
-                        "the hardware backend scans out with the GLES renderer only",
-                    ));
-                }
+                // The scan-out path draws with GLES or Vulkan. `auto` is GLES here, and the software renderer, which
+                // cannot scan out, is refused rather than replaced.
+                let kind = match drm_renderer(renderer) {
+                    Ok(kind) => kind,
+                    Err(reason) => return Err(refused(renderer, "drm", reason)),
+                };
                 let seat = std::env::var("XDG_SEAT")
                     .ok()
                     .filter(|seat| !seat.is_empty())
                     .unwrap_or_else(|| "seat0".to_owned());
-                match Drm::open(&seat, RealModeset::from_process_env()) {
+                match Drm::open(&seat, RealModeset::from_process_env(), kind, treatment) {
                     Ok(drm) => Ok(Box::new(drm)),
                     Err(error) => Err(Error::Drm {
                         hint: drm_hint(&error),
@@ -315,22 +323,29 @@ mod tests {
 
     #[cfg(feature = "drm")]
     #[test]
-    fn the_hardware_backend_scans_out_with_gles_only_and_refuses_another_renderer_by_name() {
-        // Refused before the seat is touched, so this test never reaches hardware.
-        for choice in [RendererChoice::Software, RendererChoice::Vulkan] {
-            match Backend::Drm.build(choice, SecureTreatment::default()) {
-                Err(Error::RendererRefused {
-                    leaf,
-                    renderer,
-                    backend,
-                    ..
-                }) => assert_eq!(
-                    (leaf, renderer, backend),
-                    ("compositor.renderer", choice.as_str(), "drm")
-                ),
-                Err(other) => panic!("{choice} on drm refused with the wrong error: {other}"),
-                Ok(_) => panic!("drm must not draw with {choice}"),
-            }
+    fn the_hardware_backend_scans_out_with_gles_or_vulkan_and_refuses_software_by_name() {
+        use super::{RendererKind, drm_renderer};
+        // Decided before the seat is touched, so these never reach hardware.
+        assert_eq!(
+            drm_renderer(RendererChoice::Auto),
+            Ok(RendererKind::Gles),
+            "auto stays GLES here"
+        );
+        assert_eq!(drm_renderer(RendererChoice::Gles), Ok(RendererKind::Gles));
+        assert_eq!(drm_renderer(RendererChoice::Vulkan), Ok(RendererKind::Vulkan));
+        assert!(
+            drm_renderer(RendererChoice::Software).is_err(),
+            "the CPU renderer cannot scan out"
+        );
+        match Backend::Drm.build(RendererChoice::Software, SecureTreatment::default()) {
+            Err(Error::RendererRefused {
+                leaf,
+                renderer,
+                backend,
+                ..
+            }) => assert_eq!((leaf, renderer, backend), ("compositor.renderer", "software", "drm")),
+            Err(other) => panic!("software on drm refused with the wrong error: {other}"),
+            Ok(_) => panic!("drm must not draw with software"),
         }
     }
 
