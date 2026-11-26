@@ -588,8 +588,8 @@ and [animation](/js-transitions) show every example in TypeScript, Python and Ru
 
 ### XR
 
-XR scripting is the one part of the shell API that exists only in TypeScript: the XR extension is part of the TypeScript
-library, and no Rust type carries it. See [XR mode](/xr#scripting-xr-in-typescript).
+XR scripting is part of `gnoblin-std`, and the Rust types match the TypeScript classes. See
+[XR mode](/xr#scripting-xr) for the room, the viewport and the bindings that move and resize a panel.
 
 ### Run your own event loop
 

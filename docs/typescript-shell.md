@@ -534,7 +534,7 @@ classes. There, `gnoblin.extensions.xr` is `null` until the XR program has a ses
 a headset.
 
 The stock shell builds the room and places the panels when the session starts. See
-[XR mode](/xr#scripting-xr-in-typescript) for the room, the viewport and the bindings that move and resize a panel.
+[XR mode](/xr#scripting-xr) for the room, the viewport and the bindings that move and resize a panel.
 
 ### Console and inspector
 
