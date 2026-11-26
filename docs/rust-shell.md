@@ -9,7 +9,8 @@ std library. Pick the language you like. The [shell API](/shell-api/) and the [A
 each of them.
 
 This page builds a first shell, then covers running it, reloading it while windows stay open, and what happens when you
-update Gnoblin.
+update Gnoblin. The types and functions you call are in the [Rust API reference](/reference/rust/), which is the rustdoc of
+`gnoblin-core`, `gnoblin-std` and `gnoblin-macros`.
 
 ## Create a shell {#create-the-project}
 

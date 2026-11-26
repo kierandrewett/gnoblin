@@ -9,6 +9,7 @@ std library. Pick the language you like. The [shell API](/shell-api/) and the [A
 each of them.
 
 The session runs this shell unless you pick another: see [Where the config lives](#where-the-config-lives).
+Every class and member the file can use is in the [TypeScript API reference](/reference/typescript/).
 
 ## Create a shell
 

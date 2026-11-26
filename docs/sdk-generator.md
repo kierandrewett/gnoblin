@@ -16,14 +16,18 @@ cargo xtask gen-sdks --update           # record an additive change of the catal
 
 ## The API reference
 
-The generator also writes the [API reference](reference/index.md) of the website: one page of the types of each library for
-each language. `cargo xtask docs-reference` writes the pages, and `yarn build` in `infra/site` runs it. Nothing it writes is
-committed.
+The [API reference](reference/index.md) of the website is the output of each language's own documentation tool, run over the SDK that
+language installs: TypeDoc over the declarations, Sphinx over the Python stubs and rustdoc over the Rust crates. The generator is what
+makes them agree:
 
-- The declarations on a page are slices of the files the `object-types` and `object-api` targets render, so a page cannot name a
-  member the SDK lacks.
-- The descriptions are the comments above each class, property, method and signal in the schema files.
-- The command fails when a class of the catalog has no declaration in a language.
+- The descriptions are the comments above each class, property, method, signal and enum in the schema files. The `object-types` target
+  writes them as TSDoc comments and Python docstrings, and the `object-api` target writes them as Rust doc comments, so a description is
+  the same sentence in the three references and in an editor's hover text. A comment above a member of an `[[augment]]` describes the
+  member the library adds to the core's class.
+- A member without a comment has the generic one-line description its kind has: "The property `x`." or "The method `y`."
+- `cargo xtask docs-reference` writes the declarations the TypeScript and Python tools read into `infra/site/.generated/sdk`, and
+  `yarn build` in `infra/site` runs the three tools. Nothing it writes is committed. [Documentation site](documentation-site.md) has the
+  details.
 
 ## Where the files go
 

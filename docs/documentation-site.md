@@ -27,7 +27,8 @@ The build fails when a link in `docs/` points to a page or heading that does not
 the sidebar nor the unlisted list. Links to files outside `docs/` should point directly to their source on GitHub.
 
 `yarn build` also writes the [API reference](#api-reference) and checks the [examples](#show-an-example-in-every-language).
-Both need the Rust toolchain of the source repository, because the SDK generator and the SDK crates are Rust.
+Both need the Rust toolchain of the source repository, because the SDK generator and the SDK crates are Rust, and the reference needs
+Python 3.11 or later (with `uv`, or the `venv` and `pip` modules) for its Python tool.
 
 To check the built pages in headless Chrome, run `yarn test:pages` after `yarn build`.
 
@@ -125,16 +126,36 @@ The build prints each skipped example with its reason. Do not skip an example be
 
 ## API reference
 
-The pages under [API reference](reference/index.md) are not in `docs/`. `yarn build` runs `cargo xtask docs-reference`,
-which writes them into `infra/site/.generated/docs` from the schema catalog, and the site reads them with the pages of
-`docs/`. Git ignores them. `yarn reference` writes them again.
+The [API reference](reference/index.md) is the reference of each SDK, made by the documentation tool of that language and served as its own
+HTML beside the docs:
 
-- Each page lists every type of one library for one language. The declarations are the ones the type checker reads.
+| Language   | Tool                                            | URL                      | Reads                                                                                            |
+| ---------- | ----------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------ |
+| TypeScript | TypeDoc                                         | `/reference/typescript/` | The declarations an install gives an editor: `gnoblin-core` and `gnoblin-std`.                   |
+| Python     | Sphinx with `sphinx-autoapi` and the Furo theme | `/reference/python/`     | The stub package an install gives a type checker. It reads the `.pyi` files and imports nothing. |
+| Rust       | rustdoc, through `cargo doc`                    | `/reference/rust/`       | The `gnoblin-core`, `gnoblin-std` and `gnoblin-macros` crates.                                   |
+
+`yarn build` runs `scripts/reference.mjs`, which writes the three into `infra/site/.generated/api`, and `scripts/postbuild.mjs` copies
+them to `build/reference`. Git ignores both. `yarn reference` writes them again, and `node scripts/reference.mjs --only python` writes one.
+A language that is missing fails the build.
+
+- The TypeScript and Python tools read the files that an install writes for editors. `cargo xtask docs-reference` writes them into
+  `infra/site/.generated/sdk`, so the reference cannot name a member the SDK lacks.
+- The versions are pinned. TypeDoc is in `infra/site/package.json`, and the Python packages are in
+  `infra/site/reference/python/requirements.txt`.
+- The script makes the Python environment in `.generated/venv` from that file. It uses `uv` when it is installed, and `python3 -m venv`
+  otherwise.
 - A description is the comment above the class or member in the schema file under `crates/gnoblin-core-abi/schema` or
-  `crates/gnoblin-std-abi/schema`. To change one, edit that comment.
-- A page names each language's own spelling: `isIdle` in TypeScript, `is_idle` in Python and `is_idle()` in Rust.
+  `crates/gnoblin-std-abi/schema`. The generator writes it as a TSDoc comment, a Python docstring and a Rust doc comment, so it is the
+  same sentence in the three references and in an editor's hover text. To change one, edit that comment. A paragraph indented by two
+  spaces more than the comment around it is kept as a code block.
+- The code of the SDKs has descriptions of its own beside the generated ones: the TSDoc of `data/js`, the docstrings of
+  `crates/gnoblin-runtime-python/stubs` and the doc comments of `crates/gnoblin-core` and `crates/gnoblin-std`. Edit those where they are.
+  The Rust build fails on a rustdoc warning (`-D warnings`), and the TypeScript build on a broken `{@link}`.
+- The pages of the docs link to a reference with `/reference/typescript/`, `/reference/python/` or `/reference/rust/`, and to a type by the
+  name of its file. The build checks that the language is there, and the other pages of the reference are not checked.
 
-Link to a type from a page with `/reference/typescript/core#idlewatch`, and to the pages of another language the same way.
+The references are not searched by the search box of the docs, which covers the guides. Each tool has a search of its own.
 
 ## Write for the reader
 
