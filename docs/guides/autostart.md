@@ -15,9 +15,9 @@ The programs end with the shell, so this is not a startup list for the login ses
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin";
+import { gnoblin } from "gnoblin-core/generated/objects";
 
-gnoblin.bind("Super+b", () => {
+gnoblin.input.primary.bind("Super+b", () => {
     gnoblin.spawn(["waybar"]);
 });
 ```
@@ -38,7 +38,7 @@ use gnoblin_core::Gnoblin;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     g.bind("Super+b", move || {
-        if let Err(error) = g.spawn(&["waybar".to_string()], None) {
+        if let Err(error) = g.spawn("waybar") {
             g.log(&format!("cannot start waybar: {error}"));
         }
     })?;

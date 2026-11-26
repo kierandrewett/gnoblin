@@ -23,10 +23,9 @@ for (const device of gnoblin.input.devices) {
 ```
 
 ```python
-from gnoblin import gnoblin
-from gnoblin.objects.model import Keyboard, Touchpad
+from gnoblin.objects.model import Gnoblin, Keyboard, Touchpad
 
-for device in gnoblin.input.devices:
+for device in Gnoblin.get().input.devices:
     if isinstance(device, Keyboard):
         device.repeat_rate = 40
         device.repeat_delay = 250

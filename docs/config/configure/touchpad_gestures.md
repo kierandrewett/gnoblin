@@ -14,8 +14,8 @@ lift past `commit`, a fraction from 0 to 1 that defaults to 0.25.
 ::: tabs
 
 ```typescript
-import { GestureBinding } from "gnoblin-core";
-import { WorkspaceSlideBinding } from "gnoblin-std";
+import { GestureBinding, gnoblin } from "gnoblin-core/generated/objects";
+import { WorkspaceSlideBinding } from "gnoblin-std/generated/objects";
 
 class CloseOnSwipe extends GestureBinding {
     onBegin(): boolean {
@@ -33,8 +33,7 @@ new WorkspaceSlideBinding({ trigger: "Swipe3" }).install();
 ```
 
 ```python
-from gnoblin import gnoblin
-from gnoblin.objects.model import GestureBinding
+from gnoblin.objects.model import Gnoblin, GestureBinding
 from gnoblin.objects.std import WorkspaceSlideBinding
 
 
@@ -43,25 +42,25 @@ class CloseOnSwipe(GestureBinding):
         return True
 
     def on_end(self, event):
-        primary = gnoblin.input.primary
+        primary = Gnoblin.get().input.primary
         if primary is not None and primary.focused_client is not None:
             primary.focused_client.close()
 
 
-gnoblin.input.primary.bind_gesture("Swipe4Up", CloseOnSwipe())
+Gnoblin.get().input.primary.bind_gesture("Swipe4Up", CloseOnSwipe())
 
 WorkspaceSlideBinding(trigger="Swipe3").install()
 ```
 
 ```rust
-use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
 use gnoblin_core::objects::{GestureBindingHandlers, ModelRoot};
 use gnoblin_std::objects::{WorkspaceSlideBinding, WorkspaceSlideBindingOptions};
+use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.objects()?;
+    let std_objects = g.std()?.objects()?;
     let model = ModelRoot::get(&objects)?;
     let Some(input) = model.input()? else {
         return Ok(());
@@ -80,7 +79,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     context.bind_gesture("Swipe4Up", &close, None)?;
 
     let slide = WorkspaceSlideBinding::new_with(
-        &objects,
+        &std_objects,
         WorkspaceSlideBindingOptions {
             priority: None,
             trigger: Some("Swipe3".to_string()),

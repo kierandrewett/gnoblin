@@ -9,7 +9,8 @@ A file replaces the stock setup, and a statement you delete is gone after the ne
 ::: tabs
 
 ```typescript
-import { FloatingLayout, Workspace } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { FloatingLayout, Workspace } from "gnoblin-std/generated/objects";
 
 gnoblin.workspaces.add(new Workspace("main", { layout: new FloatingLayout() }));
 gnoblin.input.primary.bind("Super+Return", () => {
@@ -18,11 +19,10 @@ gnoblin.input.primary.bind("Super+Return", () => {
 ```
 
 ```python
-import gnoblin.objects.std  # puts the std members on `gnoblin`
 from gnoblin import gnoblin
-from gnoblin.objects.std import Workspace
+from gnoblin.objects.std import Workspace, Workspaces
 
-gnoblin.workspaces.add(Workspace("main"))  # floating is the default layout
+Workspaces.get().add(Workspace("main"))  # floating is the default layout
 
 
 @gnoblin.bind("<Super>Return")
@@ -31,12 +31,11 @@ def terminal():
 ```
 
 ```rust
-use gnoblin_std::objects::Workspace;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    Workspace::builder("main")?.add()?; // floating is the default layout
+    Workspace::builder_in(&g.std()?, "main").add()?; // floating is the default layout
 
     g.bind("<Super>Return", move || {
         if let Err(error) = g.spawn("foot") {

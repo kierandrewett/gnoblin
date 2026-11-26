@@ -15,8 +15,8 @@ The module logs each new window through `journalctl`:
 ::: tabs
 
 ```typescript
-import { ClientCollectionListener, gnoblin } from "gnoblin-core";
-import type { Client } from "gnoblin-core";
+import { ClientCollectionListener, gnoblin } from "gnoblin-core/generated/objects";
+import type { Client } from "gnoblin-core/generated/objects";
 
 class WindowLog extends ClientCollectionListener {
     onAdded(client: Client) {
@@ -54,9 +54,11 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         return Ok(());
     };
     let listener = clients.on_added(move |client, _collection| {
-        let line = format!("{}: {}", client.app_id()?, client.title()?);
-        process.spawn(&["logger".into(), "-t".into(), "windows".into(), line], None)?;
-        Ok(())
+        let (Ok(app_id), Ok(title)) = (client.app_id(), client.title()) else {
+            return;
+        };
+        let line = format!("{app_id}: {title}");
+        let _ = process.spawn(&["logger".into(), "-t".into(), "windows".into(), line], None);
     })?;
     let _listener = listener;
     Ok(())

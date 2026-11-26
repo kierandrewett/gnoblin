@@ -7,7 +7,8 @@ so it survives unplugging and hotplug.
 ::: tabs
 
 ```typescript
-import { OutputProfile } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { OutputProfile } from "gnoblin-std/generated/objects";
 
 const main = new OutputProfile(
     { connector: "DP-1" },
@@ -30,8 +31,7 @@ gnoblin.outputs.profiles.add(side);
 ```
 
 ```python
-from gnoblin import gnoblin
-from gnoblin.objects.std import OutputMatch, OutputPosition, OutputProfile, PositionKind, ProfileSettings, OutputTransform
+from gnoblin.objects.std import OutputCollectionAugment, OutputMatch, OutputPosition, OutputProfile, PositionKind, ProfileSettings, OutputTransform
 
 main = OutputProfile(
     OutputMatch(connector="DP-1"),
@@ -50,13 +50,11 @@ side = OutputProfile(
     ),
 )
 
-gnoblin.outputs.profiles.add(main)
-gnoblin.outputs.profiles.add(side)
+OutputCollectionAugment.get().profiles.add(main)
+OutputCollectionAugment.get().profiles.add(side)
 ```
 
 ```rust
-use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
 use gnoblin_core::objects::ModelRoot;
 use gnoblin_std::objects::{
     OutputMatch, OutputPosition, OutputProfile, OutputProfileOptions, OutputTransform, PositionKind, ProfileSettings,
@@ -64,7 +62,7 @@ use gnoblin_std::objects::{
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let model = ModelRoot::get(&g.objects()?)?;
     let objects = g.std()?.objects()?;
     let Some(outputs) = model.outputs()? else {

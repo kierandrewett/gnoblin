@@ -18,10 +18,9 @@ for (const device of gnoblin.input.devices) {
 ```
 
 ```python
-from gnoblin import gnoblin
-from gnoblin.objects.model import Touchpad
+from gnoblin.objects.model import Gnoblin, Touchpad
 
-for device in gnoblin.input.devices:
+for device in Gnoblin.get().input.devices:
     if isinstance(device, Touchpad):
         device.tap_to_click = True
         device.natural_scroll = True

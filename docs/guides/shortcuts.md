@@ -104,7 +104,7 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let shell = g.clone();
-    g.bind("Super+q", move || -> gnoblin::Result<()> {
+    g.bind("Super+q", move || -> gnoblin_std::Result<()> {
         if let Some(client) = shell.clients()?.focused()? {
             client.close()?;
         }

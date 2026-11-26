@@ -81,11 +81,12 @@ gnoblin.input.primary.bind("Super+l", () => {
 
 ```python
 from gnoblin import gnoblin
+from gnoblin.objects.model import Gnoblin
 
 
 @gnoblin.bind("<Super>l")
 def lock():
-    gnoblin.session.lock()
+    Gnoblin.get().session.lock()
 ```
 
 ```rust
