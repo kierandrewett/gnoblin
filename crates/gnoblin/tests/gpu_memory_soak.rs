@@ -2,11 +2,15 @@
 //! (tests/gpu-memory-soak/DESIGN.md).
 //!
 //! The session is [`Compositor::run`] on a headless backend with the renderer the soak is told to use, the stock
-//! JavaScript shell runs over its owner socket as it does in a real session, and a Wayland client opens, resizes and
-//! closes windows, takes screenshots, toggles supersampling and hotplugs a second output, for as long as it is told
-//! to. Every sample interval one JSON line records what the process holds (resident set, threads, descriptors) and
-//! what the compositor says it holds for each output (the `gpu_memory_*` properties of its screen nodes), so growth
-//! shows as a series and the allocator that grows is named by the column that rises.
+//! JavaScript shell runs over its owner socket as it does in a real session (a [`JsRole`] over a core with the std library
+//! loaded, as `js_shell.rs` runs it), and a Wayland client opens, resizes and closes windows, takes screenshots, toggles
+//! supersampling and hotplugs a second output, for as long as it is told to. The shell is checked alive every cycle: a
+//! shell that ended, stalled or degraded fails the soak at that time, a panic of its thread or of the compositor's is the
+//! soak's failure with the thread's own message, and at the end the shell's own script must have counted the stock entry's
+//! workspaces and the windows the churn opened. Every sample interval one JSON line records what the process holds
+//! (resident set, threads, descriptors) and what the compositor says it holds for each output (the `gpu_memory_*`
+//! properties of its screen nodes), so growth shows as a series and the allocator that grows is named by the column that
+//! rises.
 //!
 //! It is `#[ignore]`: a soak is minutes, not a unit test. Run it on purpose:
 //!
@@ -21,7 +25,10 @@
 //! Two things are held in the churn on purpose. A capture session (`capture.rs`) stays open on the first output for
 //! the whole run and is fed a frame whenever the last one ended. The session lock is taken and released every
 //! `GNOBLIN_SOAK_LOCK_EVERY` cycles (25 by default; 0 for never) through the same tree call and the same keystrokes
-//! as `js_lock.rs`, so the cover the lock draws and the lock screen the stock shell paints come and go too.
+//! as `js_lock.rs`, so the cover the lock draws and the compositor's password card come and go too (the stock starter
+//! makes no `LockScreen`, so the card is what takes the password). A lock ends the capture session, and the one frame the
+//! recorder wants of it as it stops is refused (`capture_frames_failed`, at most one per lock); the soak asserts that is
+//! the only refusal there is.
 //! `GNOBLIN_SOAK_RSS_LIMIT_MIB` (0 by default: none) ends the run, and fails it, when the process grows past it, so
 //! a run that cannot stay bounded leaves its series instead of an OOM kill.
 //!
@@ -38,7 +45,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -49,6 +56,7 @@ use gnoblin_compositor::{Compositor, InputTap, OutputTap, SessionConfig, StopHan
 use gnoblin_config::RendererChoice;
 use gnoblin_js::{JsRole, JsRoleConfig};
 use gnoblin_proto::Version;
+use gnoblin_shell_host::supervisor::Health;
 use serde_json::json;
 
 mod support;
@@ -56,7 +64,7 @@ use support::{Mapper, scene, snapshot};
 
 #[path = "gpu_memory_soak/capture.rs"]
 mod capture;
-use capture::Capture;
+use capture::{Capture, Refusals};
 
 #[path = "gpu_memory_soak/pressure.rs"]
 mod pressure;
@@ -73,6 +81,15 @@ const KEYBOARD: gnoblin_types::DeviceId = gnoblin_types::DeviceId::new(7);
 
 /// How long the session may take to start listening.
 const PATIENCE: Duration = Duration::from_secs(60);
+
+/// What the stock shell may spend on one listener call, one frame and one staging. They are wall-clock budgets, and a soak keeps the
+/// machine busy for minutes with a compositor, its renderer and a churning client, so the product's short ones would stop the
+/// generation of an honest script for a stretch the machine did not schedule its thread through. The soak is not about the budgets.
+const HONEST_BUDGET: Duration = Duration::from_secs(30);
+
+/// How long the stock shell may run no frame before the soak calls it dead. A frame takes milliseconds and the longest the role lets
+/// one run is [`HONEST_BUDGET`], so a shell that has gone this long without one is not slow.
+const SHELL_STALL: Duration = Duration::from_secs(60);
 
 /// The sizes the churn client opens and resizes windows to, in pixels: a small dialog up to a 1080p window.
 const SIZES: [(i32, i32); 6] = [
@@ -184,55 +201,171 @@ impl Session {
             }));
         }
     }
-}
 
-impl Drop for Session {
-    fn drop(&mut self) {
+    /// Stops the compositor and waits for its thread. A panic of the thread (`Compositor::run` ended in an error) fails the test with the
+    /// thread's own message. A second call does nothing.
+    fn finish(&mut self) {
         self.stop.request();
         if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
+            support::join_worker(thread);
         }
     }
 }
 
-/// The stock shell, in a thread of its own as the runtime role is a process of its own.
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.finish();
+    }
+}
+
+/// The stock shell: a [`JsRole`] over a core with the std library loaded, in a thread of its own as the runtime role is a process of its own.
+///
+/// The classes the stock entry makes are written over the core's object protocol (`__gnoblinObjects`) and std's natives, so the role is
+/// built over a [`support::core_rig::CoreRig`] as the shells of `js_shell.rs` and `support/lock_session.rs` are. A role built without it
+/// cannot load the entry ("the object classes need the JavaScript runtime library"), which is how this soak once ran with no shell at all
+/// while the thread's panic was thrown away. Liveness is checked as the soak runs ([`Shell::assert_alive`]) and again when it ends
+/// ([`Shell::finish`]), so a shell that is gone, stuck or degraded fails the soak.
 struct Shell {
     stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
+    /// The frames the thread has run, and the most clients and workspaces the shell's own script has counted at once: the stock entry adds
+    /// workspaces when it runs, and the clients are the windows the soak opens.
+    frames: Arc<AtomicU64>,
+    most_clients: Arc<AtomicU64>,
+    most_workspaces: Arc<AtomicU64>,
+    /// Whether the role reports its generation degraded (a budget trip that was not restaged): the thread still ticks, the script no longer runs.
+    degraded: Arc<AtomicBool>,
+    thread: Option<JoinHandle<Vec<String>>>,
+    /// The place of this shell's core in the process's queue, until the shell ends.
+    turn: Option<support::core_rig::Turn>,
+    /// The frame count the last liveness check saw, and when the count last rose.
+    progress: (u64, Instant),
 }
 
 impl Shell {
-    /// Starts the shell with an empty configuration directory, so the stock configuration runs.
+    /// Starts the shell with an empty configuration directory, so the stock configuration runs, and returns once it has run a frame: it has
+    /// attached to the session and loaded the stock entry, or it has ended and this fails the test with why.
     fn start(ipc: &Path, config: &Path) -> Self {
+        let turn = support::core_rig::Turn::wait();
         let socket = ipc.to_str().expect("a UTF-8 socket path").to_owned();
         let dir = config.to_path_buf();
         let stop = Arc::new(AtomicBool::new(false));
-        let stopped = Arc::clone(&stop);
+        let frames = Arc::new(AtomicU64::new(0));
+        let most_clients = Arc::new(AtomicU64::new(0));
+        let most_workspaces = Arc::new(AtomicU64::new(0));
+        let degraded = Arc::new(AtomicBool::new(false));
+        let (stopped, ran, counted, spaces, health) = (
+            Arc::clone(&stop),
+            Arc::clone(&frames),
+            Arc::clone(&most_clients),
+            Arc::clone(&most_workspaces),
+            Arc::clone(&degraded),
+        );
         let thread = std::thread::Builder::new()
             .name("js-shell".to_owned())
             .spawn(move || {
                 let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
-                let mut role = JsRole::connect(&env, JsRoleConfig::new(&dir, Some(support::stock_dir())))
-                    .expect("the shell connects");
+                let mut config = JsRoleConfig::new(&dir, Some(support::stock_dir()));
+                config.shell.entry_budget = HONEST_BUDGET;
+                config.shell.frame_budget = HONEST_BUDGET;
+                config.shell.js.stage_budget = HONEST_BUDGET;
+                // The shell runs over a core with the std library loaded, as in the compositor: the library computes the stock layouts, and
+                // the core is what the object classes are written over.
+                let rig = support::core_rig::CoreRig::new(Arc::clone(&config.shell.clock))
+                    .expect("a core with the std library");
+                config.shell.js.natives.push(rig.std_native());
+                config.shell.js.natives.push(rig.object_native());
+                // The verbs of the `gnoblin` namespace and the dialog slot reach the session over the owner socket, as in a session.
+                if let Some(path) = env(gnoblin_client::unix::SOCKET_VARIABLE) {
+                    rig.reach(Path::new(&path));
+                }
+                let mut role =
+                    JsRole::connect_through(&env, config, |link| rig.take_over(link)).expect("the shell attaches");
+                let mut problems = Vec::new();
+                let mut taken = 0;
                 while !stopped.load(Ordering::Relaxed) {
-                    role.tick().expect("the shell runs");
+                    let ticked = role.tick();
+                    rig.dispatch(role.shell_mut());
+                    if let Err(error) = ticked {
+                        problems.push(error.to_string());
+                        break;
+                    }
+                    problems.extend(role.diagnostics_since(taken).iter().cloned());
+                    taken = role.diagnostics_reported();
+                    health.store(matches!(role.health(), Health::Degraded { .. }), Ordering::Relaxed);
+                    let round = ran.fetch_add(1, Ordering::Relaxed) + 1;
+                    // What the shell's own script sees, every few frames: the workspaces the stock entry made and the clients the soak opens.
+                    if round.is_multiple_of(20)
+                        && let Ok(Some(text)) = role
+                            .shell_mut()
+                            .eval("gnoblin.clients.length + ',' + (gnoblin.workspaces?.list ?? []).length")
+                        && let Some((clients, workspaces)) = text.split_once(',')
+                        && let (Ok(clients), Ok(workspaces)) = (clients.parse::<u64>(), workspaces.parse::<u64>())
+                    {
+                        counted.fetch_max(clients, Ordering::Relaxed);
+                        spaces.fetch_max(workspaces, Ordering::Relaxed);
+                    }
                     std::thread::sleep(Duration::from_millis(5));
                 }
+                drop(role);
+                problems
             })
             .expect("the shell thread");
-        Self {
+        let mut shell = Self {
             stop,
+            frames,
+            most_clients,
+            most_workspaces,
+            degraded,
             thread: Some(thread),
+            turn: Some(turn),
+            progress: (0, Instant::now()),
+        };
+        while shell.frames.load(Ordering::Relaxed) == 0 {
+            shell.assert_alive();
+            std::thread::sleep(Duration::from_millis(5));
         }
+        shell
+    }
+
+    /// Fails the soak unless the shell is running: its thread is still there, its generation is not degraded, and it has run a frame in the
+    /// last [`SHELL_STALL`]. Called every cycle of the churn, so a shell that dies in the middle of a run is the run's failure at that
+    /// time and not a discovery at the end.
+    #[track_caller]
+    fn assert_alive(&mut self) {
+        if self.thread.as_ref().is_none_or(JoinHandle::is_finished) {
+            // The thread ends only when told to or when it fails; `finish` raises its own panic when that is how it ended.
+            let problems = self.finish();
+            panic!("the stock shell ended while the soak ran; it reported {problems:?}");
+        }
+        assert!(
+            !self.degraded.load(Ordering::Relaxed),
+            "the stock shell's generation is degraded: its script no longer runs"
+        );
+        let frames = self.frames.load(Ordering::Relaxed);
+        if frames > self.progress.0 {
+            self.progress = (frames, Instant::now());
+        }
+        assert!(
+            self.progress.1.elapsed() < SHELL_STALL,
+            "the stock shell ran no frame for {:?}; it is stuck at {frames} frames",
+            self.progress.1.elapsed()
+        );
+    }
+
+    /// Stops the shell and returns the problems it reported. A panic of the shell's thread (it could not attach) fails the test with the
+    /// thread's own message. A second call returns nothing.
+    fn finish(&mut self) -> Vec<String> {
+        self.stop.store(true, Ordering::Relaxed);
+        let problems = self.thread.take().and_then(support::join_worker).unwrap_or_default();
+        // The thread's core is gone with it: the next shell of the process may have its turn.
+        self.turn.take();
+        problems
     }
 }
 
 impl Drop for Shell {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
+        self.finish();
     }
 }
 
@@ -290,34 +423,53 @@ fn lock_state(ipc: &Path) -> String {
         .unwrap_or_else(|| "not-locked".to_owned())
 }
 
+/// How many capture frames the recorder has had refused so far.
+fn refused(capture: &Option<Capture>) -> u64 {
+    capture.as_ref().map_or(0, |capture| capture.counts().1)
+}
+
 /// Locks the session the way the screensaver service does and unlocks it with the password typed at the keyboard,
-/// asserting both happen: a soak that carries on with a stuck lock measures nothing.
-fn lock_and_unlock(session: &Session, capture: &mut Option<Capture>) {
+/// asserting both happen: a soak that carries on with a stuck lock measures nothing. The shell is checked alive throughout, so one
+/// that dies while the session is locked fails the lock and not the end of the run.
+///
+/// Returns how many capture frames the recorder had refused between the lock being taken and the session being unlocked.
+fn lock_and_unlock(session: &Session, shell: &mut Shell, capture: &mut Option<Capture>) -> u64 {
     let ipc = session.ipc();
+    if let Some(capture) = capture {
+        capture.step();
+    }
+    let refused_before = refused(capture);
     support::take_lock(&ipc);
     let deadline = Instant::now() + PATIENCE;
     while lock_state(&ipc) != "locked" {
+        shell.assert_alive();
         assert!(Instant::now() < deadline, "the session never locked");
         std::thread::sleep(Duration::from_millis(20));
     }
-    // Held long enough for the cover and the lock screen to be drawn a few frames, with the recorder still asking.
+    // Held long enough for the cover and the password card to be drawn a few frames, with the recorder still asking.
     for _ in 0..10 {
+        shell.assert_alive();
         if let Some(capture) = capture {
             capture.step();
         }
         std::thread::sleep(Duration::from_millis(100));
     }
     loop {
+        shell.assert_alive();
         for code in PASSWORD_KEYS.into_iter().chain([KEY_ENTER]) {
             session.key(code);
         }
         std::thread::sleep(Duration::from_millis(300));
         let state = lock_state(&ipc);
         if state == "not-locked" {
-            return;
+            break;
         }
         assert!(Instant::now() < deadline, "the session never unlocked: {state}");
     }
+    if let Some(capture) = capture {
+        capture.step();
+    }
+    refused(capture) - refused_before
 }
 
 /// A numeric field of `/proc/self/status`: kilobytes for the `Vm*` ones, a count for `Threads`.
@@ -407,9 +559,9 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
     if budget_mib > 0 {
         limits.budget_bytes = budget_mib << 20;
     }
-    let session = Session::start(renderer(), limits);
+    let mut session = Session::start(renderer(), limits);
     let config = tempfile::tempdir().expect("a config directory");
-    let _shell = Shell::start(&session.ipc(), config.path());
+    let mut shell = Shell::start(&session.ipc(), config.path());
     let ipc = session.ipc();
     let output = {
         let deadline = Instant::now() + PATIENCE;
@@ -437,6 +589,13 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
     let mut factor = "1";
     // What the client that leans on the budget was told: buffers admitted and buffers refused.
     let (admitted, refused_buffers) = (std::cell::Cell::new(0u64), std::cell::Cell::new(0u64));
+    // What the shell's script counted of the churn, and the capture frames refused while the session was locked.
+    let (shell_frames, shell_clients, shell_workspaces) = (
+        Arc::clone(&shell.frames),
+        Arc::clone(&shell.most_clients),
+        Arc::clone(&shell.most_workspaces),
+    );
+    let refused_in_locks = std::cell::Cell::new(0u64);
     let mut sample = |cycle: u64,
                       windows: usize,
                       factor: &str,
@@ -446,6 +605,7 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
                       capture: &Option<Capture>| {
         let screens = screens(&ipc);
         let (frames, frames_failed, capture_sessions) = capture.as_ref().map_or((0, 0, 0), Capture::counts);
+        let why = capture.as_ref().map_or_else(Refusals::default, Capture::refusals);
         let line = json!({
             "t": started.elapsed().as_secs_f64(),
             "renderer": renderer_name,
@@ -459,6 +619,14 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
             "capture_frames": frames,
             "capture_frames_failed": frames_failed,
             "capture_sessions": capture_sessions,
+            "capture_refused_stopped": why.stopped,
+            "capture_refused_constraints": why.constraints,
+            "capture_refused_unknown": why.unknown,
+            "capture_refused_in_locks": refused_in_locks.get(),
+            "capture_sessions_ended": why.sessions_ended,
+            "shell_frames": shell_frames.load(Ordering::Relaxed),
+            "shell_clients_most": shell_clients.load(Ordering::Relaxed),
+            "shell_workspaces_most": shell_workspaces.load(Ordering::Relaxed),
             "rss": status_field("VmRSS") * 1024,
             "threads": status_field("Threads"),
             "fds": entries("/proc/self/fd"),
@@ -492,6 +660,7 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
             over_limit_at = Some(started.elapsed().as_secs_f64());
             break;
         }
+        shell.assert_alive();
         cycle += 1;
         let (width, height) = SIZES[(cycle as usize) % SIZES.len()];
         // Windows come and go: the long-lived client opens one per cycle, resizes an older one, and disconnects whole
@@ -557,7 +726,7 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
         }
         // The lock, with the windows still mapped and the recorder still open.
         if lock_every > 0 && cycle.is_multiple_of(lock_every) {
-            lock_and_unlock(&session, &mut capture);
+            refused_in_locks.set(refused_in_locks.get() + lock_and_unlock(&session, &mut shell, &mut capture));
             locks += 1;
         }
         // A second output plugged for three cycles of every seven.
@@ -593,6 +762,13 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
     let _ = supersample(&ipc, output, "1");
     std::thread::sleep(Duration::from_secs(3));
     sample(cycle, 0, "1", screenshots, refused_screenshots, locks, &capture);
+    // What the recorder was refused over the whole run, read before the recorder is closed.
+    let refusals = capture.as_ref().map_or_else(Refusals::default, Capture::refusals);
+    let refused_frames = refused(&capture);
+    println!(
+        "capture refusals: {refusals:?} of {refused_frames} refused frames, {} of them while locked",
+        refused_in_locks.get()
+    );
     if budget_mib > 0 {
         // With every client of the churn gone and the recorder closed, nothing may stay counted: a refusal that left a
         // buffer or a surface in the ledger would show here as bytes no client holds. The budget must also have been
@@ -618,10 +794,49 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
             "the budget was never refused anything, so the run proved nothing about refusal: {last}"
         );
     }
+    // The shell and the session end here, on the normal path: a panic of either thread is the soak's failure with its own message, and
+    // the shell, which was checked every cycle, must still be running when the churn is over.
+    shell.assert_alive();
+    let (ran, counted, spaces) = (
+        shell.frames.load(Ordering::Relaxed),
+        shell.most_clients.load(Ordering::Relaxed),
+        shell.most_workspaces.load(Ordering::Relaxed),
+    );
+    let problems = shell.finish();
+    session.finish();
+    println!("the shell ran {ran} frames; its script counted up to {counted} clients and {spaces} workspaces");
     assert!(
         over_limit_at.is_none(),
         "the process passed {rss_limit_mib} MiB resident after {:.0} s: the series in {out_path} shows what grew",
         over_limit_at.unwrap_or_default()
+    );
+    assert!(
+        problems.is_empty(),
+        "the stock shell reported problems during the soak: {problems:#?}"
+    );
+    assert!(
+        spaces > 0 && counted > 0,
+        "the stock shell's own script counted {spaces} workspaces and {counted} clients in {ran} frames: the stock entry did not run, or it \
+         was not looking at the session"
+    );
+    // The recorder's refused frames are expected, and only at a lock. The lock ends the capture session (`Stop::Embargoed`), and the
+    // recorder always has a frame wanted, so one reaches the session as it stops. The compositor refuses a frame of a stopped session
+    // (a session that stopped has no constraints: failure mode 4 of `ext-image-copy-capture-v1`) and the client reads that and the
+    // `stopped` event together; the recorder then asks for nothing more of that session. So every refused frame is read while a lock is
+    // held, there is at most one per session the server ended, and none has the reason `unknown`. A frame refused anywhere else (at a
+    // supersample change, an output hotplug, a window closing) is a bug.
+    assert_eq!(
+        refusals.unknown, 0,
+        "a capture frame was refused with a reason an ended session does not give: {refusals:?}"
+    );
+    assert_eq!(
+        refused_frames,
+        refused_in_locks.get(),
+        "capture frames were refused outside the session locks ({locks} locks): {refusals:?}"
+    );
+    assert!(
+        refused_frames <= u64::from(refusals.sessions_ended),
+        "more capture frames were refused than sessions the server ended: {refusals:?}"
     );
 }
 

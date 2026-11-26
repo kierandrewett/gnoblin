@@ -13,7 +13,7 @@ use std::path::Path;
 
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_buffer, wl_output, wl_registry, wl_shm, wl_shm_pool};
-use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle};
+use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::ext::image_capture_source::v1::client::{
     ext_image_capture_source_v1, ext_output_image_capture_source_manager_v1,
 };
@@ -29,9 +29,12 @@ struct State {
     done: u32,
     /// How many times the server ended the session.
     stopped: u32,
-    /// Frames that were delivered and frames the server refused.
+    /// Frames that were delivered and frames the server refused, and the refused ones by the reason the frame event gives.
     ready: u64,
     failed: u64,
+    failed_stopped: u64,
+    failed_constraints: u64,
+    failed_unknown: u64,
 }
 
 /// The pixels a frame is written into: a file the compositor maps through a `wl_shm` pool.
@@ -60,6 +63,19 @@ pub struct Capture {
     /// Steps to wait before opening another session after the server ended one. A session asked for while the
     /// session is locked is ended at once, so a recorder that reopened on every step would open a session a step.
     cooldown: u32,
+}
+
+/// What [`Capture::refusals`] reports.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Refusals {
+    /// Frames refused with the reason `stopped`: the session is over, and the server says so with the `stopped` event.
+    pub stopped: u64,
+    /// Frames refused with the reason `buffer_constraints`.
+    pub constraints: u64,
+    /// Frames refused with the reason `unknown`.
+    pub unknown: u64,
+    /// How many times the server ended a session.
+    pub sessions_ended: u32,
 }
 
 /// How many steps a recorder waits after its session ended before it asks for another.
@@ -197,6 +213,17 @@ impl Capture {
     pub fn counts(&self) -> (u64, u64, u32) {
         (self.state.ready, self.state.failed, self.sessions)
     }
+
+    /// The refused frames by the reason the frame event gave: the session was ended (`stopped`), the buffer no longer matched the
+    /// session's constraints, and no reason the protocol names. And how many times the server ended a session.
+    pub fn refusals(&self) -> Refusals {
+        Refusals {
+            stopped: self.state.failed_stopped,
+            constraints: self.state.failed_constraints,
+            unknown: self.state.failed_unknown,
+            sessions_ended: self.state.stopped,
+        }
+    }
 }
 
 /// A session on the first output the server lists.
@@ -280,8 +307,16 @@ impl Dispatch<ext_image_copy_capture_frame_v1::ExtImageCopyCaptureFrameV1, ()> f
     ) {
         match event {
             ext_image_copy_capture_frame_v1::Event::Ready => state.ready += 1,
-            // A frame refused for a buffer that no longer matches is answered by the next constraints round.
-            ext_image_copy_capture_frame_v1::Event::Failed { .. } => state.failed += 1,
+            ext_image_copy_capture_frame_v1::Event::Failed { reason } => {
+                state.failed += 1;
+                match reason {
+                    WEnum::Value(ext_image_copy_capture_frame_v1::FailureReason::Stopped) => state.failed_stopped += 1,
+                    WEnum::Value(ext_image_copy_capture_frame_v1::FailureReason::BufferConstraints) => {
+                        state.failed_constraints += 1
+                    }
+                    _ => state.failed_unknown += 1,
+                }
+            }
             _ => {}
         }
     }
