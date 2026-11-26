@@ -11,8 +11,8 @@ use gnoblin_core::Gnoblin;
 use gnoblin_core::objects::ModelRoot;
 use gnoblin_std::objects::{
     Decorations, FloatingLayout, Launcher, MoveBinding, MoveBindingOptions, NotRespondingAlerts, ResizeBinding,
-    ResizeBindingOptions, ShowOptions, WindowMenus, WindowState, Workspace, WorkspaceOptions, WorkspaceSlideBinding,
-    WorkspaceSlideBindingOptions, Workspaces,
+    ResizeBindingOptions, ShowOptions, StripLayout, WindowMenus, WindowState, Workspace, WorkspaceOptions,
+    WorkspaceSlideBinding, WorkspaceSlideBindingOptions, Workspaces,
 };
 use gnoblin_std::prelude::*;
 // To use the examples below, add what they name to the import above.
@@ -65,6 +65,39 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
                         progress: 0.0,
                         output: None,
                     }))?;
+                }
+                Ok(true)
+            }),
+            None,
+        )?;
+    }
+
+    // Super+Left and Super+Right move focus between StripLayout columns on the display under the pointer. They do nothing
+    // on other layouts.
+    for (key, right) in [("Super+Left", false), ("Super+Right", true)] {
+        let model = Rc::clone(&model);
+        let library = objects.clone();
+        seat.bind(
+            key,
+            Some(move |_event| {
+                let Some(display) = model.input()?.primary()?.active_display()? else {
+                    return Ok(true);
+                };
+                let Some(viewport) = display.viewport()? else {
+                    return Ok(true);
+                };
+                let Some(content) = viewport.content()? else {
+                    return Ok(true);
+                };
+                let Some(layout) = content.layout()? else {
+                    return Ok(true);
+                };
+                if let Some(strip) = StripLayout::downcast(&library, &layout)? {
+                    if right {
+                        strip.focus_right()?;
+                    } else {
+                        strip.focus_left()?;
+                    }
                 }
                 Ok(true)
             }),
