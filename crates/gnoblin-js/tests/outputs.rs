@@ -249,9 +249,10 @@ fn a_hotplugged_output_is_announced_and_an_unplugged_one_is_removed_with_its_las
         "disconnected output-1 800;removed output-1",
         "the listener reads the output's last values, and it is no longer connected"
     );
+    // A gone output's std members answer none rather than throw, as the TypeScript library's did (js-VrnwB `00487d166`).
     assert_eq!(
         rig.eval("(() => { const o = g.gone; let w; try { w = String(o.workspace); } catch (e) { w = e.code; } return [o.alive, o.name, o.width, w].join('|'); })()"),
-        "false|output-1|800|not_found"
+        "false|output-1|800|undefined"
     );
 }
 

@@ -2085,16 +2085,10 @@ fn assert_configured_for_good(log: &[(i32, i32, Vec<u32>)], maximised: bool, siz
     }
 }
 
-/// The starter as a `shell.ts`, with the answers to a window's own requests (maximise, fullscreen, minimise): the starter starts
-/// none of `WindowState`, which is what answers them.
+/// The starter as a `shell.ts`. It answers a window's own requests (maximise, fullscreen, minimise) itself: it starts
+/// `WindowState`, which is what answers them.
 fn write_starter_with_requests(dir: &Path) {
-    save(
-        &dir.join("shell.ts"),
-        &format!(
-            "{}\nimport {{ WindowState }} from \"gnoblin-std\";\nWindowState.get().start();\n",
-            support::STARTER_CONFIG
-        ),
-    );
+    save(&dir.join("shell.ts"), support::STARTER_CONFIG);
 }
 
 /// A toolkit window that draws at every size it is told, as GTK does, asks to be maximised and then to leave it. The
