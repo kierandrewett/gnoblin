@@ -317,7 +317,7 @@ one. A node from `adopt_ephemeral_node` is removed at the next reload unless the
 
 Rust is typed by the compiler, so `cargo check` is the type check: every member the SDK crates have is a method with its
 types, and a name that does not exist does not compile. An editor with `rust-analyzer` completes the members and shows
-their documentation, which is the generated [Rust reference](/reference/rust/core).
+their documentation, which is the generated [Rust reference](/reference/rust/).
 
 To check that the installed `gnoblin` loads your built shell, without starting a session:
 
