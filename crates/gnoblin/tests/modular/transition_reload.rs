@@ -42,7 +42,6 @@ fn tweens(ipc: &Path) -> usize {
 }
 
 #[test]
-#[ignore = "vrnw: needs a transition whose work writes a window property: requestTransition from a timer panics in the engine (RefCell already borrowed) and raises `the callback failed`, so no tween node reaches the tree"]
 fn a_running_transitions_tween_node_is_destroyed_when_its_generation_is_retired_by_a_reload() {
     let dir = tempfile::tempdir().expect("a directory for the shell");
     let shell = dir.path().join("shell.ts");

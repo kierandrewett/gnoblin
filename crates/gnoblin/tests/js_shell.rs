@@ -2400,7 +2400,6 @@ fn transition_probe(shell: &Shell) -> (f64, Option<bool>, Vec<String>) {
 }
 
 #[test]
-#[ignore = "vrnw: needs gnoblin.requestTransition callable from a gnoblin.timers.after callback: the js-shell thread panics `RefCell already borrowed` (rquickjs safe_ref.rs:35) when the timer's callback runs it"]
 fn a_layout_change_in_a_transition_commits_to_the_scene_and_the_transition_ends_on_the_compositors_word() {
     // spec-review AN2: a layout change inside `requestTransition` is computed once and the windows move by id. The
     // scene holds the committed rectangles (a timed write keeps the target as the node's value, as `tree_live.rs`
@@ -2519,7 +2518,6 @@ fn tween_state(ipc: &Path) -> Option<(f64, bool)> {
 }
 
 #[test]
-#[ignore = "vrnw: needs gnoblin.requestTransition callable from a gnoblin.timers.after callback: the js-shell thread panics `RefCell already borrowed` (rquickjs safe_ref.rs:35) when the timer's callback runs it"]
 fn a_held_transition_is_scrubbed_through_the_compositors_tween_node_and_ends_on_the_compositors_word() {
     // AN4, AN6: `autoplay: false` stages the transition held; each scrub is one write the compositor receives as the
     // `tween` node's `progress`; letting it go at progress 1 ends it by the compositor's `track_ended`, not by the
@@ -3725,7 +3723,6 @@ impl ConsoleClient {
 }
 
 #[test]
-#[ignore = "vrnw: needs the console to render a value read through the object classes: `gnoblin.clients.length` fails with `the renderer returned what is not JSON: invalid type: integer `2`, expected a map`"]
 fn the_console_reads_and_writes_the_live_shell_and_survives_errors_and_runaways() {
     let session = Session::start();
     // No shell.ts: the stock config runs, with its seat claims and its keys.

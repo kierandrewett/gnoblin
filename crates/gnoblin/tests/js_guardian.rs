@@ -258,7 +258,6 @@ fn write_init(dir: &Path, source: &str) {
 }
 
 #[test]
-#[ignore = "vrnw: needs config.reload answered by the native runtime: `gnoblinctl config reload` exits 1 with reload-timeout (the runtime did not answer the reload before its deadline); the saved-file reload passes"]
 fn config_reload_reloads_the_javascript_shell_in_the_runtime_role_and_reports_a_broken_file_with_its_position() {
     let session = Session::start(&init_at(111, 222));
     session.wait_for_log("configuration revision 1 accepted");
@@ -385,7 +384,6 @@ fn a_session_with_no_shell_of_the_users_runs_the_packaged_starter_and_commits_it
 }
 
 #[test]
-#[ignore = "vrnw: needs config.reload answered by the native runtime: `gnoblinctl config reload` exits 1 with reload-timeout (the runtime did not answer the reload before its deadline); the saved-file reload passes"]
 fn config_reload_commits_the_new_document_and_a_refused_file_leaves_the_accepted_one() {
     let session = Session::start(&init_with_shaders(false));
     let document = wait_for_revision(&session, 1);
