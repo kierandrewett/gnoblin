@@ -86,7 +86,7 @@ gnoblinctl --json console --eval 'gnoblin.clients.at(0)?.title'
   `const`, use `var` or assign to it.
 - **Read plain data.** `gnoblin.clients.toList()` and `gnoblin.workspaces.list` are arrays, so `map`, `filter` and
   `find` work on them: see [Read state](#read-state).
-- **Use the helpers.** `inspect` is a global in the console; see below. It exists at the prompt only: a shell on the
+- **Use the helpers.** `inspect` is a global in the console; see [The inspect helpers](#the-inspect-helpers). It exists at the prompt only: a shell on the
   TypeScript library can import it into `shell.ts` (`import { inspect } from "gnoblin-core"`), and a shell on the
   native library has none.
 - **Return objects.** A value whose first character is `{` is read as an object literal: `{a: 1}` is the object.
@@ -120,6 +120,26 @@ generation, so the shell does not restart over it.
 - A value that does not fit the size cap (64 KiB of text, counted in bytes) is cut, and the reply says
   `"truncated": true`; the prompt prints a warning. A long list ends in a `... N more` entry, and a string over 4096
   characters is cut. Ask for less with `.map` or `.slice`.
+
+## The inspect helpers
+
+`inspect` gives plain data where a printed object would be long. Each helper returns arrays and objects of text, numbers
+and booleans, so `filter`, `find` and `map` work on the result, and `--eval` prints it as JSON.
+
+| Helper                  | Returns                                                                                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect.clients()`     | Every window: `id`, `appId`, `title`, `focused`, `fullscreen`, `floating`, `x`, `y`, `width`, `height` and the `workspace` id, or `null`. |
+| `inspect.workspaces()`  | Every workspace: `id`, `name`, `index`, `active`, the `layout` class name and the `clients` ids on it.                                    |
+| `inspect.bindings()`    | Every binding on every input context, as `describeBindings()` gives them, sorted by context, trigger and rank.                            |
+| `inspect.render(value)` | What the prompt prints for a value, as the reply's JSON text.                                                                             |
+| `inspect.plain(value)`  | The value as plain data: a class instance is an object with `$class`.                                                                     |
+
+```text
+gnoblin> inspect.clients().filter((c) => c.focused).map((c) => c.title)
+[ "Terminal" ]
+```
+
+A shell with no input seat has no bindings, so `inspect.bindings()` is `[]`.
 
 ## Printing with `console`
 
