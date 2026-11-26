@@ -1071,7 +1071,6 @@ fn value_of(reply: &Json) -> &Json {
 }
 
 #[test]
-#[ignore = "gnoblin-xkwb: needs the rich console renderer on the native library (Client#3 { .. }, $class, Collection(n), [Function name], [Circular]); the native renderer gives plain JSON, and `gnoblin.clients.map` is not a function on the native collection"]
 fn the_console_evaluates_in_the_running_generation_and_renders_what_it_finds() {
     let comp = two_windows();
     let rig = rig(&comp, "import \"gnoblin-std\";\nexport {};\n");
@@ -1087,8 +1086,10 @@ fn the_console_evaluates_in_the_running_generation_and_renders_what_it_finds() {
         (&json!(2), &json!("number"), &json!("2"))
     );
     assert_eq!(reply["truncated"], json!(false));
+    // The collection is a live handle with the methods its contract names (`at`, `get`, `contains`, `where`, `toList`) and no array
+    // methods of its own: a snapshot of the members, `toList()`, is what a script maps over.
     assert_eq!(
-        value_of(&prompt.ask("gnoblin.clients.map(c => c.appId)", &mut serve)),
+        value_of(&prompt.ask("gnoblin.clients.toList().map(c => c.appId)", &mut serve)),
         &json!(["foot", "firefox"])
     );
     assert_eq!(
@@ -1097,22 +1098,41 @@ fn the_console_evaluates_in_the_running_generation_and_renders_what_it_finds() {
         "a tree with no seat reads the focus from the window's own `focused`"
     );
 
-    // A client prints as its kind, its id and its members; a collection is an array of summaries.
+    // A client prints as its class, its id and every member it has; a collection is an array of summaries.
     let client = prompt.ask("gnoblin.clients.at(0)", &mut serve);
     assert_eq!(client["type"], json!("Client"));
     let text = client["text"].as_str().expect("text");
+    assert!(text.starts_with("Client#3 { "), "{text}");
     assert!(
-        text.starts_with("Client#3 { appId: \"foot\", title: \"term\", focused: true"),
+        text.contains("appId: \"foot\", title: \"term\", focused: true"),
         "{text}"
     );
+    let shown = value_of(&client);
+    assert_eq!((&shown["$class"], &shown["id"]), (&json!("Client"), &json!("3")));
+    for (member, expected) in [
+        ("appId", json!("foot")),
+        ("title", json!("term")),
+        ("focused", json!(true)),
+        ("fullscreen", json!(false)),
+        ("x", json!(10)),
+        ("y", json!(20)),
+        ("width", json!(300)),
+        ("height", json!(200)),
+    ] {
+        assert_eq!(shown[member], expected, "{member} of {shown}");
+    }
     assert_eq!(
-        value_of(&client),
-        &json!({"$class": "Client", "id": "3", "appId": "foot", "title": "term", "focused": true,
-            "fullscreen": false, "floating": false, "x": 10, "y": 20, "width": 300, "height": 200,
-            "workspace": client["value"]["workspace"]})
+        shown["bounds"],
+        json!({"$class": "Rect", "x": 10, "y": 20, "width": 300, "height": 200}),
+        "a record the client holds shows its fields"
+    );
+    assert_eq!(
+        shown["parentWindow"],
+        json!(null),
+        "a member that holds nothing shows null"
     );
     let collection = prompt.ask("gnoblin.clients", &mut serve);
-    assert_eq!(collection["type"], json!("Collection"));
+    assert_eq!(collection["type"], json!("ClientCollection"));
     assert_eq!(
         value_of(&collection),
         &json!([
@@ -1124,7 +1144,12 @@ fn the_console_evaluates_in_the_running_generation_and_renders_what_it_finds() {
         collection["text"]
             .as_str()
             .expect("text")
-            .starts_with("Collection(2) [ Client#3 {")
+            .starts_with("ClientCollection(2) [ Client#3 {")
+    );
+    assert_eq!(
+        value_of(&prompt.ask("({ held: gnoblin.clients.at(0) })", &mut serve)),
+        &json!({"held": {"$class": "Client", "id": "3", "appId": "foot", "title": "term"}}),
+        "a client nested in another value shows its brief"
     );
 
     // Functions, cycles, undefined, an object literal and a settled promise.
@@ -1173,7 +1198,6 @@ fn the_console_evaluates_in_the_running_generation_and_renders_what_it_finds() {
 }
 
 #[test]
-#[ignore = "gnoblin-xkwb: needs the rich console renderer on the native library: a long array is not cut to a list with a `more` entry (the reply has no `value` array)"]
 fn a_rendering_that_outgrows_the_cap_is_cut_and_says_so() {
     let comp = two_windows();
     let rig = rig(&comp, "export {};\n");
@@ -1193,6 +1217,67 @@ fn a_rendering_that_outgrows_the_cap_is_cut_and_says_so() {
     let long: Json = serde_json::from_str(&long).expect("JSON");
     assert_eq!(long["truncated"], json!(true));
     assert!(long["value"].as_str().expect("a string").len() <= 4096);
+}
+
+/// How the native console reads what is not plain: a class's getters are its members (the way a library object holds them), a
+/// getter that throws is shown and does not fail the reply, the engine's own kinds print as their kind, an object deeper than the
+/// limit is named and not walked, and a prompt that defines its own `inspect` does not break the renderer.
+#[test]
+fn the_native_console_describes_classes_by_their_getters_and_the_engines_kinds_by_name() {
+    let comp = two_windows();
+    let rig = rig(&comp, "export {};\n");
+    let reply = |source: &str| -> Json {
+        let text = evaluate_in(&rig.shell, source, 65536).expect("it renders");
+        serde_json::from_str(&text).expect("the reply is JSON")
+    };
+    let seen = reply(
+        "(() => { class Pair { get id() { return 7; } get left() { return 'l'; } get n() { return 2; } } return new Pair(); })()",
+    );
+    assert_eq!(
+        (&seen["type"], &seen["text"]),
+        (&json!("Pair"), &json!("Pair#7 { left: \"l\", n: 2 }"))
+    );
+    assert_eq!(seen["value"], json!({"$class": "Pair", "id": "7", "left": "l", "n": 2}));
+    let broken = reply(
+        "(() => { class Broken { get fine() { return 1; } get boom() { throw new Error('nope'); } } return new Broken(); })()",
+    );
+    assert_eq!(
+        broken["value"],
+        json!({"$class": "Broken", "fine": 1, "boom": "[Error: nope]"}),
+        "a getter that throws is shown where it is"
+    );
+    let held = reply(
+        "(() => { class Pair { get id() { return 7; } get a() { return 'x'; } get b() { return 'y'; } get c() { return 'z'; } } return [new Pair()]; })()",
+    );
+    assert_eq!(
+        held["value"],
+        json!([{"$class": "Pair", "id": "7", "a": "x", "b": "y"}]),
+        "an object nested in another shows its id and its first two string members"
+    );
+    assert_eq!(reply("(class Foo {})")["text"], json!("[class Foo]"));
+    assert_eq!(reply("new Error('bad')")["text"], json!("Error: bad"));
+    assert_eq!(reply("new Map([[1, 2]])")["text"], json!("Map(1) [ [ 1, 2 ] ]"));
+    assert_eq!(reply("new Set([1])")["text"], json!("Set(1) [ 1 ]"));
+    assert_eq!(reply("10n")["text"], json!("10n"));
+    let deep = reply("({ a: { b: { c: { d: { e: { f: { g: { h: 1 } } } } } } } })");
+    assert_eq!(deep["truncated"], json!(false));
+    assert!(
+        deep["text"].as_str().expect("text").contains("[Object]"),
+        "{}",
+        deep["text"]
+    );
+
+    evaluate_in(&rig.shell, "var inspect = 'the prompt\\'s own'", 65536).expect("a prompt may define its own");
+    assert_eq!(
+        reply("inspect")["value"],
+        json!("the prompt's own"),
+        "the console does not take the name back"
+    );
+    assert_eq!(
+        reply("[1]")["text"],
+        json!("[ 1 ]"),
+        "and it still renders with its own"
+    );
 }
 
 /// The reply the native library gives `gnoblinctl console` for one value: `{ type, value?, text, truncated }`, the shape
@@ -1217,13 +1302,15 @@ fn the_native_console_answers_each_value_with_its_type_value_text_and_truncated(
         reply("null", 65536),
         json!({"type": "null", "value": null, "text": "null", "truncated": false})
     );
+    // The text is what a person reads at the prompt, as the TypeScript library's renderer gave it (`{ a: 1 }`, `[ 1, 2 ]`), no longer
+    // the JSON a plain `JSON.stringify` made of it: it has to read the same as a client or a collection that holds such values.
     assert_eq!(
         reply("({ a: 1, b: [1, 2] })", 65536),
-        json!({"type": "object", "value": {"a": 1, "b": [1, 2]}, "text": "{\"a\":1,\"b\":[1,2]}", "truncated": false})
+        json!({"type": "object", "value": {"a": 1, "b": [1, 2]}, "text": "{ a: 1, b: [ 1, 2 ] }", "truncated": false})
     );
     assert_eq!(
         reply("[1, 2]", 65536),
-        json!({"type": "array", "value": [1, 2], "text": "[1,2]", "truncated": false})
+        json!({"type": "array", "value": [1, 2], "text": "[ 1, 2 ]", "truncated": false})
     );
     assert_eq!(
         reply("undefined", 65536),
@@ -1239,6 +1326,25 @@ fn the_native_console_answers_each_value_with_its_type_value_text_and_truncated(
         reply("'x'.repeat(100)", 10),
         json!({"type": "string", "text": "\"xxxxxxxxx", "truncated": true}),
         "a text past the limit is cut, says so, and carries no value"
+    );
+    // The limit is in bytes, as the socket's is, and a cut falls between two characters: `é` is two bytes and `😀` four (two UTF-16
+    // units), so a text that is short in characters can be long in bytes.
+    let cut = reply("'é'.repeat(100)", 10);
+    assert_eq!(
+        cut,
+        json!({"type": "string", "text": "\"éééé", "truncated": true}),
+        "nine bytes fit in ten, and a fifth é would be eleven"
+    );
+    assert!(cut["text"].as_str().expect("text").len() <= 10);
+    assert_eq!(
+        reply("'😀'.repeat(10)", 6),
+        json!({"type": "string", "text": "\"😀", "truncated": true}),
+        "a character of four bytes is kept whole or dropped"
+    );
+    assert_eq!(
+        reply("'é'.repeat(4)", 10),
+        json!({"type": "string", "value": "éééé", "text": "\"éééé\"", "truncated": false}),
+        "ten bytes of text that is six characters long fit a limit of ten"
     );
 }
 
@@ -1352,7 +1458,6 @@ fn a_write_made_at_the_prompt_travels_in_the_next_frames_transaction() {
 }
 
 #[test]
-#[ignore = "gnoblin-xkwb: needs `inspect` (clients, workspaces, bindings) at the native console: `inspect is not defined`"]
 fn the_inspector_helpers_return_plain_data() {
     let comp = two_windows();
     let mut rig = rig(
@@ -1400,7 +1505,6 @@ fn the_inspector_helpers_return_plain_data() {
 }
 
 #[test]
-#[ignore = "gnoblin-yffr: a write made at the native console (`gnoblin.clients.at(0).y = 55`) is not in the frames `sent` reads; not yet traced whether it is a missing core commit or a rig that reads the legacy path"]
 fn the_role_serves_its_console_between_frames_and_a_reload_drops_what_the_prompt_defined() {
     let comp = two_windows();
     let dir = tempfile::tempdir().expect("a temp dir");
@@ -1410,10 +1514,17 @@ fn the_role_serves_its_console_between_frames_and_a_reload_drops_what_the_prompt
     let mut config = honest_role_config(&root);
     config.watch = false;
     config.console = JsConsoleSite::At(site.clone());
-    let (role, mut core) = core_role(&comp, config);
+    let (role, core) = core_role(&comp, config);
     let role = std::cell::RefCell::new(role);
+    let core = std::cell::RefCell::new(core);
     let mut prompt = Prompt::connect(&site);
-    let mut serve = || role.borrow_mut().tick().expect("a frame");
+    // A turn of the runtime: the role's frame (the console is served first), then the core's half of it, which is what sends a write
+    // a generated object made. `tick` alone leaves the write in the core.
+    let mut serve = || {
+        let mut role = role.borrow_mut();
+        role.tick().expect("a frame");
+        core.borrow().dispatch(role.shell_mut());
+    };
 
     assert_eq!(
         value_of(&prompt.ask("globalThis.mark = 'set at the prompt'", &mut serve)),
@@ -1433,7 +1544,7 @@ fn the_role_serves_its_console_between_frames_and_a_reload_drops_what_the_prompt
         sent(&comp)
     );
 
-    let report = core.reload(&mut role.borrow_mut());
+    let report = core.borrow_mut().reload(&mut role.borrow_mut());
     assert!(report.ok, "{:?}", report.errors);
     let after = prompt.ask("typeof mark", &mut serve);
     assert_eq!(

@@ -4,6 +4,7 @@
 use std::time::Duration;
 
 use rquickjs::context::EvalOptions;
+use rquickjs::object::Property;
 use rquickjs::{Ctx, Function, Object, Value};
 use serde_json::{Map, Value as Json, json};
 
@@ -14,48 +15,11 @@ use crate::generation::JsGeneration;
 use crate::script_console::JsConsoleLine;
 use crate::shell::JsShell;
 
-/// How a generation on the native library renders a console value, as the protocol's reply `{ type, value?, text, truncated }` (the
-/// TypeScript library's is `inspect.render`): `type` names the value as that one does (`undefined`, `null`, `boolean`, `number`,
-/// `string`, `array`, `function`, `object`, or the class name of an object made by a class), `value` is the value as plain JSON data
-/// (absent for `undefined` and for what JSON cannot hold, such as a cycle), and `text` is its JSON, or `String(value)` when it has
-/// none. A text longer than the reply's limit is cut, says `truncated`, and carries no `value`.
-const PLAIN_RENDER: &str = r#"(function (value, max) {
-  const replacer = (key, item) => typeof item === "bigint" ? String(item) : item;
-  let type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
-  if (type === "object") {
-    try {
-      const name = value.constructor && value.constructor.name;
-      if (typeof name === "string" && name !== "" && name !== "Object") type = name;
-    } catch (error) {
-      // A getter that throws leaves the plain type.
-    }
-  }
-  let data;
-  let text;
-  if (type !== "function" && value !== undefined) {
-    try {
-      text = JSON.stringify(value, replacer);
-      if (text !== undefined) data = JSON.parse(text);
-    } catch (error) {
-      text = undefined;
-    }
-  }
-  if (text === undefined) {
-    try {
-      text = String(value);
-    } catch (error) {
-      text = "[" + type + "]";
-    }
-  }
-  const reply = { type, text, truncated: false };
-  if (text.length > max) {
-    reply.text = text.slice(0, max);
-    reply.truncated = true;
-  } else if (data !== undefined) {
-    reply.value = data;
-  }
-  return JSON.stringify(reply);
-})"#;
+/// What a generation on the native library renders a console value with, and the console's `inspect` global (`inspect.js`): the
+/// reply is the protocol's `{ type, value?, text, truncated }`, as the TypeScript library's `inspect.render` gives it. The script is
+/// evaluated for each request, and its value is installed as the global `inspect` when the prompt has none, so a `var inspect` of the
+/// prompt's own is not replaced and does not break the replies.
+const INSPECT: &str = include_str!("inspect.js");
 
 /// The reply to one request line.
 pub(super) fn answer(shell: &JsShell, line: &[u8], max_bytes: usize) -> Json {
@@ -167,22 +131,36 @@ fn evaluate_capturing(
 fn evaluate(generation: &JsGeneration, budget: Duration, source: &str, max_bytes: usize) -> Result<String, JsError> {
     let source = as_expression(source);
     generation.call_budgeted(budget, |ctx| {
+        // A generation on the native library has no `inspect` of its own: the console brings the one it renders with, ahead of the
+        // expression, so the expression can call it.
+        let inspect = if generation.runtime() == StockRuntime::Typescript {
+            None
+        } else {
+            let inspect: Object<'_> = ctx.eval(INSPECT)?;
+            let globals = ctx.globals();
+            if !globals.contains_key("inspect")? {
+                globals.prop("inspect", Property::from(inspect.clone()).writable().configurable())?;
+            }
+            Some(inspect)
+        };
         // Sloppy mode, as a prompt expects: `x = 5` makes a global and does not throw.
         let mut options = EvalOptions::default();
         options.strict = false;
         options.filename = Some(CONSOLE_FILE.to_owned());
         let value: Value<'_> = ctx.eval_with_options(source, options)?;
         let settled = settle(ctx, value)?;
-        if generation.runtime() == StockRuntime::Typescript {
+        let Some(inspect) = inspect else {
             let host: Object<'_> = ctx.globals().get("__gnoblinHost")?;
             let entry: Object<'_> = host.get("entry")?;
             return entry
                 .get::<_, Function<'_>>("render")?
                 .call::<_, String>((settled, max_bytes));
-        }
-        // A generation on the native library has no `inspect` of its own yet: a value is shown as JSON when it has one.
-        let render: Function<'_> = ctx.eval(PLAIN_RENDER)?;
-        render.call::<_, String>((settled, max_bytes))
+        };
+        let limits = Object::new(ctx.clone())?;
+        limits.set("maxBytes", max_bytes as f64)?;
+        inspect
+            .get::<_, Function<'_>>("render")?
+            .call::<_, String>((settled, limits))
     })
 }
 

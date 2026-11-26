@@ -4,6 +4,14 @@ The console is a live prompt into the running [TypeScript shell](typescript-shel
 shell evaluates it in its own runtime and prints the value. It sees what `shell.ts` sees: the `gnoblin` global, the
 clients and workspaces as they are right now, and the bindings the shell has registered.
 
+A shell runs on the native library or on the TypeScript library
+([Which library a shell runs on](typescript-shell.md#which-library-a-shell-runs-on)), and the prompt is that shell's own.
+The examples here are the native library's, which most shells run on.
+
+- A native collection is a live handle. Read its members with `toList()`, `at(i)` or `get(id)`; the collection itself
+  has no array methods such as `map`.
+- On the TypeScript library a collection also takes `map` and `for ... of` directly.
+
 ```sh
 gnoblinctl console
 ```
@@ -13,7 +21,7 @@ gnoblin> gnoblin.clients.length
 2
 gnoblin> gnoblin.clients.focused?.title
 "Terminal"
-gnoblin> gnoblin.workspaces.map((ws) => [ws.id, ws.clients.length])
+gnoblin> gnoblin.workspaces.list.map((ws) => [ws.id, ws.clients.length])
 [ [ "1", 2 ], [ "2", 0 ], [ "3", 0 ], [ "4", 0 ] ]
 ```
 
@@ -37,7 +45,7 @@ adds arrow-key history. These lines are commands of the prompt, not expressions:
 An error prints as a block with the message, where in the expression it happened and a hint, and the prompt goes on:
 
 ```text
-gnoblin> gnoblin.clients.map(
+gnoblin> gnoblin.clients.toList().map(
 ... )
 error: unexpected token in expression: ')'
 why:   at <console>:2:1
@@ -52,7 +60,7 @@ When standard input is not a terminal there are no prompts, so a script can pipe
 `--eval` evaluates one expression, prints its value as JSON and exits:
 
 ```sh
-gnoblinctl console --eval 'gnoblin.clients.map((c) => c.appId)'
+gnoblinctl console --eval 'gnoblin.clients.toList().map((c) => c.appId)'
 ```
 
 ```text
@@ -76,8 +84,9 @@ gnoblinctl --json console --eval 'gnoblin.clients.at(0)'
 - **Define variables.** A `var`, a `let` or a `const` at the prompt, or an assignment to an undeclared name, is a global
   of the running generation and stays for the next expression, from any console connection. To redefine a `let` or a
   `const`, use `var` or assign to it.
-- **Use the helpers.** `inspect` is a global in the console; see below. In `shell.ts` import it:
-  `import { inspect } from "gnoblin-core"`.
+- **Use the helpers.** `inspect` is a global in the console; see below. It exists at the prompt only: a shell on the
+  TypeScript library can import it into `shell.ts` (`import { inspect } from "gnoblin-core"`), and a shell on the
+  native library has none.
 - **Return objects.** A value whose first character is `{` is read as an object literal: `{a: 1}` is the object.
   A promise that has already settled shows its result.
 
@@ -95,13 +104,20 @@ generation, so the shell does not restart over it.
 
 ### How values print
 
-- A client prints as its kind and id, then its fields: `Client#3 { appId: "foot", title: "Terminal", ... }`. A
-  workspace prints the same way.
-- A collection prints as an array of summaries: `gnoblin.clients` is `Collection(2) [ Client#3 { ... }, ... ]`, with
-  each client's app id and title only. In JSON each is `{"$class": "Client", "id": "3", "appId": "foot", ...}`.
-- A function prints as `[Function name]`, a class as `[class Name]`, a cycle as `[Circular]`.
-- A value that does not fit the size cap (64 KiB of text) is cut, and the reply says `"truncated": true`; the prompt
-  prints a warning. Ask for less with `.map` or `.slice`.
+- An object a library made (a client, a workspace, an output) prints as its class and id, then every member it has:
+  `Client#3 { alive: true, appId: "foot", title: "Terminal", focused: true, ... }`. A member that cannot be read shows
+  `[Error: message]` in its place, and the rest still prints. The same rule serves every class, so a class a library adds
+  needs nothing here.
+- An object nested in another value prints as a summary: its class, its id and its first two text members. A
+  collection prints as a list of summaries: `gnoblin.clients` is `ClientCollection(2) [ Client#3 { ... }, ... ]`, with
+  each client's app id and title only. In JSON each is `{"$class": "Client", "id": "3", "appId": "foot", "title": "Terminal"}`.
+- A plain object or array prints as you would write it (`{ a: 1, b: [ 1, 2 ] }`), with `$class` in its JSON when it
+  is an instance of a class.
+- A function prints as `[Function name]`, a class as `[class Name]`, a cycle as `[Circular]`, and an object nested more
+  than six levels deep as `[Object]`.
+- A value that does not fit the size cap (64 KiB of text, counted in bytes) is cut, and the reply says
+  `"truncated": true`; the prompt prints a warning. A long list ends in a `... N more` entry, and a string over 4096
+  characters is cut. Ask for less with `.map` or `.slice`.
 
 ## Printing with `console`
 
@@ -113,7 +129,7 @@ the prompt the lines an expression prints come out before its value:
 - With `--eval` all of them go to standard error, so standard output stays the value alone.
 
 ```text
-gnoblin> gnoblin.clients.forEach((c) => console.log("%s: %s", c.appId, c.title)); gnoblin.clients.length
+gnoblin> gnoblin.clients.toList().forEach((c) => console.log("%s: %s", c.appId, c.title)); gnoblin.clients.length
 foot: Terminal
 firefox: Mozilla Firefox
 2
