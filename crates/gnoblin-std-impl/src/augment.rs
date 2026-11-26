@@ -15,11 +15,16 @@
 //! | `gnoblin.outputs.profiles` | the service `output_profiles` |
 //! | `input.activeDisplay` | the display under the context's pointer (`display_objects::manager`) |
 //! | `collection.style` | the style of the collection's windows (`style::objects`) |
+//! | `client.style`, `computedStyle`, `styleWarnings` | the window's style, as `ClientStyle.ofClient`, `computed`, `warnings` |
+//! | `client.workspace`, `moveToWorkspace` | the window's workspace, and a move to another (`workspace_objects`) |
+//! | `client.moveWithKeys`, `resizeWithKeys` | the keyboard mode of `Repositioning` for the window (`policy`) |
+//! | `output.workspace`, `show` | the workspace the output shows, and showing one there (`workspace_objects`) |
 //!
-//! The last two are `receiver = true` augments: each call is handed the core object it acts on first.
+//! The members of `input`, `collection`, `client` and `output` are `receiver = true` augments: each call is handed the core object it
+//! acts on first.
 //!
-//! `data/js/gnoblin-std/host/roots.ts` and `data/js/gnoblin-std/index.ts` are the reference: the TypeScript host makes the same members on the
-//! root object when the package is loaded.
+//! `data/js/gnoblin-std/host/roots.ts`, `data/js/gnoblin-std/host/members.ts` and `data/js/gnoblin-std/index.ts` are the reference: the
+//! TypeScript host makes the same members when the package is loaded.
 
 use gnoblin_object::server::Builder;
 
@@ -40,4 +45,36 @@ pub(crate) fn register(builder: &mut Builder) {
         .ctor(|_, _| Ok(()))
         .get("profiles", |_, cx| cx.service("output_profiles"));
     crate::style::objects::register_collection_augment(builder);
+    let _ = builder
+        .class::<()>("client_augment")
+        .ctor(|_, _| Ok(()))
+        .method("style", |_, cx, args| crate::style::objects::client_style(cx, &args[0]))
+        .method("computed_style", |_, cx, args| {
+            crate::style::objects::client_computed_style(cx, &args[0])
+        })
+        .method("style_warnings", |_, cx, args| {
+            crate::style::objects::client_style_warnings(cx, &args[0])
+        })
+        .method("workspace", |_, cx, args| {
+            crate::workspace_objects::client_workspace(cx, &args[0])
+        })
+        .method("move_to_workspace", |_, cx, args| {
+            crate::workspace_objects::move_client(cx, &args[0], &args[1])
+        })
+        .method("move_with_keys", |_, cx, args| {
+            crate::policy::reposition_with_keys(cx, &args[0], false)
+        })
+        .method("resize_with_keys", |_, cx, args| {
+            crate::policy::reposition_with_keys(cx, &args[0], true)
+        });
+    let _ = builder
+        .class::<()>("output_augment")
+        .ctor(|_, _| Ok(()))
+        .method("workspace", |_, cx, args| {
+            crate::workspace_objects::output_workspace(cx, &args[0])
+        })
+        .method("show", |_, cx, args| {
+            crate::workspace_objects::show_on_output(cx, &args[0], &args[1], &args[2])?;
+            Ok(gnoblin_object::Val::None)
+        });
 }

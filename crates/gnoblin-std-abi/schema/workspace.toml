@@ -1470,3 +1470,56 @@ name = "workspaces"
 type = "object:workspaces"
 since = "0.2.0"
 readonly = true
+
+# What a window has once this library is loaded: the core has no workspace.
+[[augment]]
+target = "core.client"
+since = "0.2.0"
+receiver = true
+
+# The workspace the window belongs to, or none for a window that is in none.
+[[augment.property]]
+name = "workspace"
+type = "object:workspace"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# Moves the window to `workspace`, which is in the list. False when the move is refused: the window is there already, is gone, or the
+# workspace is not in the list.
+[[augment.method]]
+name = "move_to_workspace"
+since = "0.2.0"
+returns = "bool"
+
+[[augment.method.param]]
+name = "workspace"
+type = "object:workspace"
+
+# What an output has once this library is loaded: the core has no workspace.
+[[augment]]
+target = "core.output"
+since = "0.2.0"
+receiver = true
+
+# The workspace the output shows (the one its span shows, for an output a span covers), or none.
+[[augment.property]]
+name = "workspace"
+type = "object:workspace"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# Shows `workspace` on the output, as `gnoblin.workspaces.show` does when `options.output` names it. `options.output` is not read.
+[[augment.method]]
+name = "show"
+since = "0.2.0"
+
+[[augment.method.param]]
+name = "workspace"
+type = "object:workspace"
+
+[[augment.method.param]]
+name = "options"
+type = "object:show_options"
+optional = true

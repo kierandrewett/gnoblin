@@ -1256,3 +1256,22 @@ name = "gestures"
 type = "object:gestures"
 since = "0.2.0"
 readonly = true
+
+# The keyboard modes of `Repositioning` for one window, once this library is loaded.
+[[augment]]
+target = "core.client"
+since = "0.2.0"
+receiver = true
+
+# Starts moving the window with the arrow keys. False for a window the mode does not take (fullscreen, maximised, tiled, gone or not
+# showing) and before `Repositioning` starts.
+[[augment.method]]
+name = "move_with_keys"
+since = "0.2.0"
+returns = "bool"
+
+# Starts resizing the window with the arrow keys, under the same conditions as `move_with_keys`.
+[[augment.method]]
+name = "resize_with_keys"
+since = "0.2.0"
+returns = "bool"

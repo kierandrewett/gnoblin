@@ -7,8 +7,10 @@
 //!
 //! The members the library adds to the core's typed classes (the `[[augment]]` blocks of its catalog) are the extension traits
 //! `ModelRootStdExt`, for the root's `workspaces`, `displays`, `scene`, `gestures` and `request_transition`, `OutputCollectionStdExt`,
-//! for `profiles`, `InputContextStdExt`, for `active_display`, and `ClientCollectionStdExt`, for `style`. `gnoblin_std::prelude` brings
-//! them in; a shell that does not use it has none of them, and a call of one does not compile:
+//! for `profiles`, `InputContextStdExt`, for `active_display`, `ClientCollectionStdExt`, for `style`, `ClientStdExt`, for a window's
+//! `workspace`, `move_to_workspace`, `style`, `computed_style`, `style_warnings`, `move_with_keys` and `resize_with_keys`, and
+//! `OutputStdExt`, for an output's `workspace` and `show`. `gnoblin_std::prelude` brings them in; a shell that does not use it has none
+//! of them, and a call of one does not compile:
 //!
 //! ```compile_fail,E0599
 //! use gnoblin_core::objects::ModelRoot;

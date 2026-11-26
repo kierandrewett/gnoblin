@@ -17,7 +17,7 @@ use super::layouts::{self, mode_of, step_of};
 use super::values::{checked_rect, gaps_of, gaps_val, member_val, rect_val, wire_of};
 use super::{LIST_OBJECTS, WORKSPACE_OBJECTS, edit, look};
 use crate::floating::{DEFAULT_CASCADE_STEP, PlaceMode};
-use crate::object::client::{client_node, optional_client_node};
+use crate::object::client::{client_node, optional_client_node, output_node};
 use crate::object::record::{field, number_field, record, text_field};
 use crate::state::{Id, NodeId, State};
 
@@ -372,16 +372,54 @@ fn register_list(builder: &mut Builder) {
             maybe_workspace(cx, found)
         })
         .method("of_output", |_, cx, args| {
-            let output = args[0].uint()?;
-            let found = look(cx.ctx(), |st| {
-                Ok(st
-                    .desk_of_output(output)
-                    .map(|desk| st.desk(desk).and_then(|desk| desk.spanned_by).unwrap_or(desk))
-                    .and_then(|desk| st.desk(desk))
-                    .and_then(|desk| desk.shown))
-            })?;
+            let found = shown_on_output(cx.ctx(), args[0].uint()?)?;
             maybe_workspace(cx, found)
         });
+}
+
+/// The workspace the output shows (the one its span shows, for a spanned output), if any.
+fn shown_on_output(ctx: GnoblinCtx, output: NodeId) -> Res<Option<Id>> {
+    look(ctx, |st| {
+        Ok(st
+            .desk_of_output(output)
+            .map(|desk| st.desk(desk).and_then(|desk| desk.spanned_by).unwrap_or(desk))
+            .and_then(|desk| st.desk(desk))
+            .and_then(|desk| desk.shown))
+    })
+}
+
+/// `client.workspace`: the workspace the core's `Client` `client` belongs to, or none.
+pub(crate) fn client_workspace(cx: &mut Cx<'_>, client: &Val) -> Res<Val> {
+    let client = client_node(cx.ctx(), "workspace", client)?;
+    let found = look(cx.ctx(), |st| Ok(st.rec.get(&client).and_then(|rec| rec.workspace)))?;
+    maybe_workspace(cx, found)
+}
+
+/// `client.moveToWorkspace(workspace)`: moves the window to `workspace`; false when it is there already or cannot move.
+pub(crate) fn move_client(cx: &mut Cx<'_>, client: &Val, workspace: &Val) -> Res<Val> {
+    let client = client_node(cx.ctx(), "moveToWorkspace", client)?;
+    let workspace = handle_of(cx, workspace)?;
+    edit(cx.ctx(), |st| st.move_client_to(client, workspace)).map(Val::Bool)
+}
+
+/// `output.workspace`: the workspace the core's `Output` `output` shows, or none.
+pub(crate) fn output_workspace(cx: &mut Cx<'_>, output: &Val) -> Res<Val> {
+    let output = output_node(cx.ctx(), "workspace", output)?;
+    let found = shown_on_output(cx.ctx(), output)?;
+    maybe_workspace(cx, found)
+}
+
+/// `output.show(workspace, options)`: shows `workspace` on the core's `Output` `output`, as `gnoblin.workspaces.show` does with the
+/// output given.
+pub(crate) fn show_on_output(cx: &mut Cx<'_>, output: &Val, workspace: &Val, options: &Val) -> Res<()> {
+    let output = output_node(cx.ctx(), "show", output)?;
+    let handle = handle_of(cx, workspace)?;
+    let fields: &[Val] = if options.is_none() { &[] } else { options.record()? };
+    let duration = number_field(fields, 0, 0.0)?;
+    let progress = number_field(fields, 1, 0.0)?;
+    edit(cx.ctx(), |st| {
+        st.show_workspace(handle, Some(output), duration, progress)
+    })
 }
 
 // ---- the desks -------------------------------------------------------------------------------------------------------------------

@@ -663,6 +663,26 @@ pub(crate) fn register_collection_augment(builder: &mut Builder) {
         });
 }
 
+/// `client.style`: the style of the one window the core's `Client` `client` is, as `ClientStyle.ofClient` gives it.
+pub(crate) fn client_style(cx: &mut Cx<'_>, client: &Val) -> Res<Val> {
+    let node = crate::object::client::client_node(cx.ctx(), "style", client)?;
+    made_style(cx, |st| st.style_for(super::cascade::Scope::Client(node)))
+}
+
+/// `client.computedStyle`: what the window's style resolves to now, as `ClientStyle.computed` gives it.
+pub(crate) fn client_computed_style(cx: &mut Cx<'_>, client: &Val) -> Res<Val> {
+    let node = crate::object::client::client_node(cx.ctx(), "computedStyle", client)?;
+    look(cx.ctx(), |st| Ok(computed_val(st, node)))
+}
+
+/// `client.styleWarnings`: what of the window's style is not drawn and why, as `ClientStyle.warnings` gives it.
+pub(crate) fn client_style_warnings(cx: &mut Cx<'_>, client: &Val) -> Res<Val> {
+    let node = crate::object::client::client_node(cx.ctx(), "styleWarnings", client)?;
+    look(cx.ctx(), |st| {
+        Ok(Val::List(st.style_warnings(node).into_iter().map(Val::Text).collect()))
+    })
+}
+
 // ---- the lists ----------------------------------------------------------------------------------------------------------------------
 
 type ListClass<'a> = ClassBuilder<'a, ListRef>;

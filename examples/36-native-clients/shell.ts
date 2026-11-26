@@ -5,8 +5,11 @@
 // Does what the Rust shell of the same example (`36-native-clients`) does and logs the same lines, which start with `clients:`: when a window
 // appears it asks `Decorations` for the room of the window's frame (`insetOf`), opens the window menu on it (`WindowMenus.show`) and closes
 // the menu, and adds it to a workspace (`clients.add`). The library checks every handle against the core: text where a `Client` is taken, an
-// object of another class and a window that has closed are each refused, and the log says how.
+// object of another class and a window that has closed are each refused, and the log says how. It then reads the members the library adds to
+// a window and an output once it is loaded: the window's `workspace`, `moveToWorkspace`, `style`, `styleWarnings` and `moveWithKeys`, and
+// the output's `workspace` and `show`.
 import { Gnoblin } from "gnoblin-core/generated/objects";
+import type { Client } from "gnoblin-core/generated/objects";
 import { Decorations, WindowMenus, Workspace, Workspaces } from "gnoblin-std/generated/objects";
 import type {} from "gnoblin-std";
 
@@ -18,7 +21,30 @@ const decorations = Decorations.get();
 const menus = WindowMenus.get();
 menus.start();
 const main = new Workspace("main");
+const side = new Workspace("side");
 Workspaces.get().add(main);
+Workspaces.get().add(side);
+
+// The members the library adds to the core's `Client` and `Output`, read once, for the first window.
+let checked = false;
+function checkMembers(client: Client): void {
+    checked = true;
+    say(`${client.title}: its workspace is main: ${client.workspace?.id === "main"}`);
+    const moved = client.moveToWorkspace(side);
+    say(`${client.title}: moved to side: ${moved}, now in side: ${client.workspace?.id === "side"}`);
+    const back = client.moveToWorkspace(main);
+    say(`${client.title}: moved back: ${back}, again refused: ${!client.moveToWorkspace(main)}`);
+    client.style.opacity = 0.8;
+    say(`${client.title}: its own style holds 0.8: ${Math.abs(client.style.opacity - 0.8) < 1e-6}`);
+    say(`${client.title}: its style warnings are a list: ${Array.isArray(client.styleWarnings)}`);
+    say(`${client.title}: keyboard move before Repositioning starts: ${client.moveWithKeys()}`);
+    const output = gnoblin.outputs!.at(0)!;
+    say(`${client.title}: the output shows main: ${output.workspace?.id === "main"}`);
+    output.show(side);
+    const showed = output.workspace?.id === "side";
+    output.show(main);
+    say(`${client.title}: the output showed side: ${showed}`);
+}
 
 // The library puts a window on the workspace as it appears and tells the shell of it with the core's `Client`: the same object the core's own
 // collections give, which `add` and `contains` take as it is.
@@ -27,6 +53,9 @@ members.on("added", (client) => {
     members.add(client);
     say(`${client.title}: it is in main: ${members.contains(client)}`);
     say(`${client.title}: the library's client is the core's: ${client === gnoblin.clients.get(client.id)}`);
+    if (!checked) {
+        checkMembers(client);
+    }
 });
 
 gnoblin.clients.on("added", (client) => {

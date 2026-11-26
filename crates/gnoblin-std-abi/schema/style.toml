@@ -1003,3 +1003,30 @@ name = "style"
 type = "object:style"
 since = "0.2.0"
 readonly = true
+
+# The style of one window, once this library is loaded: the core draws no style.
+[[augment]]
+target = "core.client"
+since = "0.2.0"
+receiver = true
+
+# The style of the window alone, the scope over every other: what `ClientStyle.ofClient` gives for its node.
+[[augment.property]]
+name = "style"
+type = "object:style"
+since = "0.2.0"
+readonly = true
+
+# What the window's style resolves to now, with the scope each value came from.
+[[augment.property]]
+name = "computed_style"
+type = "object:computed_style"
+since = "0.2.0"
+readonly = true
+
+# What of the window's style is not drawn and why, and the effects the compositor skipped.
+[[augment.property]]
+name = "style_warnings"
+type = "list<string>"
+since = "0.2.0"
+readonly = true

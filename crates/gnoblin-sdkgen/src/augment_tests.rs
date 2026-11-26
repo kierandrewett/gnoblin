@@ -31,7 +31,7 @@ fn generated(target: &str, path: &str) -> String {
 
 /// The members of the std library's augments, by the class that holds them. A receiver augment's members are all methods, which take the
 /// object they act on first.
-const MEMBERS: [(&str, &[&str], &[&str]); 4] = [
+const MEMBERS: [(&str, &[&str], &[&str]); 6] = [
     (
         "gnoblin_augment",
         &["workspaces", "displays", "scene", "gestures"],
@@ -40,6 +40,20 @@ const MEMBERS: [(&str, &[&str], &[&str]); 4] = [
     ("output_collection_augment", &["profiles"], &[]),
     ("input_context_augment", &[], &["active_display"]),
     ("client_collection_augment", &[], &["style"]),
+    (
+        "client_augment",
+        &[],
+        &[
+            "computed_style",
+            "move_to_workspace",
+            "move_with_keys",
+            "resize_with_keys",
+            "style",
+            "style_warnings",
+            "workspace",
+        ],
+    ),
+    ("output_augment", &[], &["show", "workspace"]),
 ];
 
 #[test]

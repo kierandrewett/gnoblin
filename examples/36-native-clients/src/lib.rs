@@ -8,8 +8,14 @@
 //! The Rust types make the other two refusals a build error: text where a `Client` is taken, and an object of another class. The
 //! TypeScript and Python shells of the same example log those refusals at run time.
 //!
+//! For the first window it then reads the members the library adds to a window and an output, through the extension traits
+//! `ClientStdExt` and `OutputStdExt` of the prelude: the window's `workspace`, `move_to_workspace`, `style`, `style_warnings` and
+//! `move_with_keys`, and the output's `workspace` and `show`.
+//!
 //! Every line it logs starts with `clients:`, and the other shells log the same lines. Build it with
 //! `cargo build -p gnoblin-example-native-clients` and run it with `gnoblin ./target/debug/libnative_clients.so`.
+
+use std::cell::Cell;
 
 use gnoblin_core::objects::{Client, ModelRoot};
 use gnoblin_std::objects::{Decorations, WindowMenus, Workspace, Workspaces};
@@ -35,6 +41,54 @@ fn arrived(g: &Gnoblin, decorations: &Decorations, menus: &WindowMenus, client: 
     Ok(())
 }
 
+/// The members the library adds to the core's `Client` and `Output`, read once, for the first window.
+fn check_members(g: &Gnoblin, workspaces: &Workspaces, client: &Client) -> gnoblin_std::Result<()> {
+    let title = client.title()?;
+    let say = |text: String| g.log(&format!("clients: {title}: {text}"));
+    let (Some(main), Some(side)) = (workspaces.by_id("main")?, workspaces.by_id("side")?) else {
+        say("the workspaces are missing".to_owned());
+        return Ok(());
+    };
+    let is = |workspace: Option<Workspace>, id: &str| {
+        workspace.and_then(|workspace| workspace.id().ok()).as_deref() == Some(id)
+    };
+    say(format!("its workspace is main: {}", is(client.workspace()?, "main")));
+    let moved = client.move_to_workspace(&side)?;
+    say(format!(
+        "moved to side: {moved}, now in side: {}",
+        is(client.workspace()?, "side")
+    ));
+    let back = client.move_to_workspace(&main)?;
+    say(format!(
+        "moved back: {back}, again refused: {}",
+        !client.move_to_workspace(&main)?
+    ));
+    client.style()?.set_opacity(0.8)?;
+    say(format!(
+        "its own style holds 0.8: {}",
+        (client.style()?.opacity()? - 0.8).abs() < 1e-6
+    ));
+    say(format!(
+        "its style warnings are a list: {}",
+        client.style_warnings().is_ok()
+    ));
+    say(format!(
+        "keyboard move before Repositioning starts: {}",
+        client.move_with_keys()?
+    ));
+    let model = ModelRoot::get(&g.objects()?)?;
+    let Some(output) = model.outputs()?.and_then(|outputs| outputs.at(0).ok().flatten()) else {
+        say("there is no output".to_owned());
+        return Ok(());
+    };
+    say(format!("the output shows main: {}", is(output.workspace()?, "main")));
+    output.show(&side, None)?;
+    let showed = is(output.workspace()?, "side");
+    output.show(&main, None)?;
+    say(format!("the output showed side: {showed}"));
+    Ok(())
+}
+
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
@@ -42,7 +96,9 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let menus = WindowMenus::get(&objects)?;
     menus.start()?;
     let main = Workspace::new(&objects, "main")?;
+    let side = Workspace::new(&objects, "side")?;
     Workspaces::get(&objects)?.add(&main)?;
+    Workspaces::get(&objects)?.add(&side)?;
 
     let model = ModelRoot::get(&g.objects()?)?;
 
@@ -53,6 +109,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         return Ok(());
     };
     let finder = ModelRoot::get(&g.objects()?)?;
+    let workspaces = Workspaces::get(&objects)?;
+    let checked = Cell::new(false);
     members
         .on_added(move |client: Client| {
             let title = client.title().unwrap_or_default();
@@ -69,6 +127,11 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
                 .and_then(|clients| clients.get_by_id(&client.id().ok()?).ok().flatten())
                 .is_some_and(|core| core == client);
             g.log(&format!("clients: {title}: the library's client is the core's: {same}"));
+            if !checked.replace(true)
+                && let Err(error) = check_members(g, &workspaces, &client)
+            {
+                g.log(&format!("clients: {title}: the members failed: {error}"));
+            }
         })?
         .keep();
     model
@@ -92,6 +155,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         .keep();
     // The list holds the workspace from here on.
     std::mem::forget(main);
+    std::mem::forget(side);
     g.log("clients: running");
     Ok(())
 }

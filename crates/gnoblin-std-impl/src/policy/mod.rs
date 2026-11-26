@@ -101,3 +101,17 @@ pub(crate) fn repositions(ui: &Ui) -> bool {
 pub(crate) fn begin_reposition(ui: &Rc<Ui>, client: u64, resize: bool) {
     reposition::begin_from_menu(ui, client, resize);
 }
+
+/// `client.moveWithKeys()` (`resize` false) and `client.resizeWithKeys()`: starts the keyboard mode for the core's `Client` `client`.
+/// False for a window the mode does not take (fullscreen, maximised, tiled, gone or not showing) and before `Repositioning` starts.
+pub(crate) fn reposition_with_keys(
+    cx: &mut gnoblin_object::server::Cx<'_>,
+    client: &gnoblin_object::Val,
+    resize: bool,
+) -> gnoblin_object::Res<gnoblin_object::Val> {
+    let member = if resize { "resizeWithKeys" } else { "moveWithKeys" };
+    let client = crate::object::client::client_node(cx.ctx(), member, client)?;
+    let ui = crate::ui::ui_of(cx)?;
+    let mode = if resize { 1 } else { 0 };
+    reposition::begin(&ui, cx, client, mode).map(gnoblin_object::Val::Bool)
+}

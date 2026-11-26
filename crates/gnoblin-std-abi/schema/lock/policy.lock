@@ -9,6 +9,7 @@
 # to the version that ships, and from then on its entries are frozen.
 released none
 
+augment | core.client | members added to a class of the core catalog | 0.2.0
 augment | core.gnoblin | members added to a class of the core catalog | 0.2.0
 
 callback | gesture_run | (event:object:gesture_event) | 0.2.0
@@ -28,6 +29,8 @@ member | client_request.handled | property bool ro | 0.2.0
 member | client_request.kind | property enum:client_request_kind ro | 0.2.0
 member | client_request.x | property double ro | 0.2.0
 member | client_request.y | property double ro | 0.2.0
+member | core.client.move_with_keys | method () -> bool | 0.2.0
+member | core.client.resize_with_keys | method () -> bool | 0.2.0
 member | core.gnoblin.gestures | property object:gestures ro | 0.2.0
 member | focus_action.clear | property bool rw | 0.2.0
 member | focus_action.focus | property bool rw | 0.2.0

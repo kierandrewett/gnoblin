@@ -268,6 +268,42 @@ pub(crate) fn client_node(ctx: GnoblinCtx, member: &str, value: &Val) -> Res<u64
         .map_err(|_| Fail::err(format!("the core named a client `{id}`, which is not a node number")))
 }
 
+/// The node of the output the core `Output` `value` is, for a call of the member `member` (named in the message of a failure). The core
+/// names an output by its node number in `id`.
+///
+/// # Errors
+///
+/// The value is not a handle of the core's `Output`, the handle was released, or the output is gone.
+pub(crate) fn output_node(ctx: GnoblinCtx, member: &str, value: &Val) -> Res<u64> {
+    let obj = match value {
+        Val::Object { obj, .. } => obj,
+        Val::Foreign { namespace, obj } if namespace == CORE => obj,
+        _ => {
+            return Err(Fail::type_error(format!(
+                "`{member}` takes an Output, got {}",
+                value.kind_name()
+            )));
+        }
+    };
+    let core = core_api(ctx)?;
+    let output = core.class("output")?;
+    if core.class_of(*obj)? != output {
+        return Err(Fail::type_error(format!(
+            "`{member}` takes an Output, got an object of another class"
+        )));
+    }
+    let read = |name: &str| -> Res<Val> { core.get(*obj, core.member(output, abi::MEMBER_PROPERTY, name)?) };
+    let id = read("id")?.text()?.to_owned();
+    if !read("alive")?.bool()? {
+        return Err(Fail::new(
+            abi::E_NO_SUCH_NODE,
+            format!("Output#{id}.{member}: the output is gone"),
+        ));
+    }
+    id.parse::<u64>()
+        .map_err(|_| Fail::err(format!("the core named an output `{id}`, which is not a node number")))
+}
+
 /// [`client_node`] for a client the call may leave out: none is `None`.
 ///
 /// # Errors

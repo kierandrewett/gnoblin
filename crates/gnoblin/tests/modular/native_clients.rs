@@ -63,6 +63,20 @@ fn the_shell_passes_a_client(language: Language, session: &mut Gnoblin) {
     // The workspace told the shell of the window with the core's `Client`: the very object the core's own collection gives.
     logged(session, "clients: Terminal: the library's client is the core's: true");
     logged(session, "clients: Terminal: the menu is for the window: true");
+    // The members the library adds to the core's `Client` and `Output`: the window's workspace and a move away and back, which a move to
+    // the workspace it is in already refuses; the window's own style and its warnings; the keyboard move, refused before `Repositioning`
+    // starts; and the workspace the output shows, which `show` changes.
+    logged(session, "clients: Terminal: its workspace is main: true");
+    logged(session, "clients: Terminal: moved to side: true, now in side: true");
+    logged(session, "clients: Terminal: moved back: true, again refused: true");
+    logged(session, "clients: Terminal: its own style holds 0.8: true");
+    logged(session, "clients: Terminal: its style warnings are a list: true");
+    logged(
+        session,
+        "clients: Terminal: keyboard move before Repositioning starts: false",
+    );
+    logged(session, "clients: Terminal: the output shows main: true");
+    logged(session, "clients: Terminal: the output showed side: true");
 
     match language {
         Language::Rust => {

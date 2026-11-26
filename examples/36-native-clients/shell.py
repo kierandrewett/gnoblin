@@ -5,7 +5,9 @@
 Does what the Rust shell of the same example (``36-native-clients``) does and logs the same lines, which start with ``clients:``: when a
 window appears it asks ``Decorations`` for the room of the window's frame (``inset_of``), opens the window menu on it (``WindowMenus.show``)
 and closes the menu, and adds it to a workspace (``clients.add``). The library checks every handle against the core: text where a ``Client``
-is taken, an object of another class and a window that has closed are each refused, and the log says how.
+is taken, an object of another class and a window that has closed are each refused, and the log says how. It then reads the members the
+library adds to a window and an output once it is loaded: the window's ``workspace``, ``move_to_workspace``, ``style``, ``style_warnings``
+and ``move_with_keys``, and the output's ``workspace`` and ``show``.
 """
 
 from gnoblin import gnoblin as session
@@ -26,7 +28,40 @@ decorations = Decorations.get()
 menus = WindowMenus.get()
 menus.start()
 main = Workspace("main")
+side = Workspace("side")
 Workspaces.get().add(main)
+Workspaces.get().add(side)
+
+
+def flag(value):
+    return str(value).lower()
+
+
+def id_of(workspace):
+    return workspace.id if workspace is not None else None
+
+
+checked = []
+
+
+def check_members(client):
+    """The members the library adds to the core's ``Client`` and ``Output``, read once, for the first window."""
+    checked.append(True)
+    say(f"{client.title}: its workspace is main: {flag(id_of(client.workspace) == 'main')}")
+    moved = client.move_to_workspace(side)
+    say(f"{client.title}: moved to side: {flag(moved)}, now in side: {flag(id_of(client.workspace) == 'side')}")
+    back = client.move_to_workspace(main)
+    say(f"{client.title}: moved back: {flag(back)}, again refused: {flag(not client.move_to_workspace(main))}")
+    client.style.opacity = 0.8
+    say(f"{client.title}: its own style holds 0.8: {flag(abs(client.style.opacity - 0.8) < 1e-6)}")
+    say(f"{client.title}: its style warnings are a list: {flag(isinstance(client.style_warnings, list))}")
+    say(f"{client.title}: keyboard move before Repositioning starts: {flag(client.move_with_keys())}")
+    output = gnoblin.outputs.at(0)
+    say(f"{client.title}: the output shows main: {flag(id_of(output.workspace) == 'main')}")
+    output.show(side)
+    showed = id_of(output.workspace) == "side"
+    output.show(main)
+    say(f"{client.title}: the output showed side: {flag(showed)}")
 
 
 # The library puts a window on the workspace as it appears and tells the shell of it with the core's ``Client``: the same object the core's
@@ -39,6 +74,8 @@ def joined(client):
     members.add(client)
     say(f"{client.title}: it is in main: {str(members.contains(client)).lower()}")
     say(f"{client.title}: the library's client is the core's: {str(client is gnoblin.clients.get(client.id)).lower()}")
+    if not checked:
+        check_members(client)
 
 
 @gnoblin.clients.on("added")

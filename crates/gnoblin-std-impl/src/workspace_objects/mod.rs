@@ -34,6 +34,7 @@ use crate::object::with_lib;
 use crate::state::{Id, Notice, State, Std};
 
 pub(crate) use values::{NOTICE_HIDDEN, NOTICE_SHOWN};
+pub(crate) use workspaces::{client_workspace, move_client, output_workspace, show_on_output};
 
 thread_local! {
     /// The object of each workspace a shell was given: one for each, so asking for a workspace again gives the one object.
