@@ -2898,3 +2898,45 @@ left = "gnoblin-fixture-shell-policy::Counter"
 right = "gnoblin-fixture-shell-tiling::GestureProbe"
 kind = "near-shape"
 reason = "both fixture shells probe the core's gesture matcher with the same writes; one binds through the table, the other through the core's typed classes"
+
+[[allow]]
+left = "gnoblin-core::DragPhase"
+right = "gnoblin-std-impl::Hook"
+kind = "same-shape"
+reason = "the XR extension's Hook is the four phases of one drag with the handler member and the log label each one calls; it stays private to the extension rather than widen the core's input phase with script spellings"
+
+[[allow]]
+left = "gnoblin-std-impl::Hook"
+right = "gnoblin-wayland::PointerChordPhase"
+kind = "same-shape"
+reason = "the XR extension's Hook is the four phases of one drag with the handler member and the log label each one calls; the wayland phase is the protocol's own, read from the compositor"
+
+[[allow]]
+left = "gnoblin-render-gles::DownsampleUniforms"
+right = "gnoblin-render-vulkan::DownsampleBlock"
+kind = "same-shape"
+reason = "each renderer packs the downsample pass's uniform block as its own shader reads it; the two crates share no dependency and the layouts agree because the shaders do"
+
+[[allow]]
+left = "gnoblin-render-gles::Slot"
+right = "gnoblin-render-vulkan::ViewSlot"
+kind = "same-shape"
+reason = "each renderer keeps one View's picture as drawn or refused, in its own device's textures; the two share a job, not a type, and neither crate depends on the other"
+
+[[allow]]
+left = "gnoblin-render-gles::ViewUniforms"
+right = "gnoblin-render-vulkan::ViewBlock"
+kind = "same-shape"
+reason = "each renderer packs the view pass's uniform block as its own shader reads it; the two crates share no dependency and the layouts agree because the shaders do"
+
+[[allow]]
+left = "gnoblin-input::Stats"
+right = "gnoblin-render-vulkan::Stats"
+kind = "same-name"
+reason = "each crate's Stats is the counters of its own subsystem (the input router's, the Vulkan device's), read by its own callers; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-render-vulkan::Stats"
+right = "gnoblin-std::Stats"
+kind = "same-name"
+reason = "each crate's Stats is the counters of its own subsystem (the Vulkan device's, the library's), read by its own callers; the name is shared, the meaning is not"
