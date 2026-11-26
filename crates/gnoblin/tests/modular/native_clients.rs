@@ -71,6 +71,16 @@ fn the_shell_passes_a_client(language: Language, session: &mut Gnoblin) {
     logged(session, "clients: Terminal: moved back: true, again refused: true");
     logged(session, "clients: Terminal: its own style holds 0.8: true");
     logged(session, "clients: Terminal: its style warnings are a list: true");
+    // A selection styles the windows it holds and no others; a selection that can hold no window has no style.
+    logged(session, "clients: Terminal: an empty any list has no style: true");
+    logged(
+        session,
+        "clients: Terminal: an app id outside its any list has no style: true",
+    );
+    logged(
+        session,
+        "clients: Terminal: only the matching selections style it: true",
+    );
     logged(
         session,
         "clients: Terminal: keyboard move before Repositioning starts: false",

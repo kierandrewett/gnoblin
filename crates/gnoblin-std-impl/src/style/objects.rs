@@ -592,15 +592,42 @@ fn core_object(member: &str, value: &Val) -> Res<Obj> {
 
 /// The terms of a core `client_query` record, in the std's terms: the same keys, and an `any_` list as one term for each value, which a
 /// match holds when one of them does.
+///
+/// The core requires every field of a query, so a key given both directly and in its `any_` list holds for the direct value only when
+/// the list has it, and an empty `any_` list holds for no window. The std's terms of one key are alternatives, so the first case keeps the
+/// direct term alone, and a query that can hold no window is refused: a style for it would style windows the selection does not hold.
 fn client_query_terms(value: &Val) -> Res<Vec<(String, Want)>> {
     if value.is_none() {
         return Ok(Vec::new());
     }
     let fields = value.record()?;
+    let nothing = |why: String| {
+        Err(Fail::refused(
+            ErrorCode::InvalidState,
+            format!("the selection holds no window ({why}), so it has no style"),
+        ))
+    };
     let mut terms = Vec::new();
-    for (at, key) in [(0, "id"), (1, "app_id"), (2, "title")] {
-        if let Some(text) = field(fields, at) {
-            terms.push((key.to_owned(), Want::Text(text.text()?.to_owned())));
+    for (at, any_at, key) in [(0, 9, "id"), (1, 10, "app_id"), (2, 11, "title")] {
+        let direct = field(fields, at)
+            .map(|text| text.text().map(str::to_owned))
+            .transpose()?;
+        let any = field(fields, any_at)
+            .map(|list| {
+                list.list()?
+                    .iter()
+                    .map(|item| item.text().map(str::to_owned))
+                    .collect::<Res<Vec<String>>>()
+            })
+            .transpose()?;
+        match (direct, any) {
+            (_, Some(list)) if list.is_empty() => return nothing(format!("`any_{key}` is empty")),
+            (Some(direct), Some(list)) if !list.contains(&direct) => {
+                return nothing(format!("`{key}` is not one of `any_{key}`"));
+            }
+            (Some(direct), _) => terms.push((key.to_owned(), Want::Text(direct))),
+            (None, Some(list)) => terms.extend(list.into_iter().map(|item| (key.to_owned(), Want::Text(item)))),
+            (None, None) => {}
         }
     }
     for (at, key) in [(3, "focused"), (4, "fullscreen")] {
@@ -611,13 +638,6 @@ fn client_query_terms(value: &Val) -> Res<Vec<(String, Want)>> {
     for (at, key) in [(5, "x"), (6, "y"), (7, "width"), (8, "height")] {
         if let Some(number) = field(fields, at) {
             terms.push((key.to_owned(), Want::Number(number.double()?)));
-        }
-    }
-    for (at, key) in [(9, "id"), (10, "app_id"), (11, "title")] {
-        if let Some(list) = field(fields, at) {
-            for item in list.list()? {
-                terms.push((key.to_owned(), Want::Text(item.text()?.to_owned())));
-            }
         }
     }
     Ok(terms)

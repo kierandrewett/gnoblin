@@ -17,7 +17,7 @@
 
 use std::cell::Cell;
 
-use gnoblin_core::objects::{Client, ModelRoot};
+use gnoblin_core::objects::{Client, ClientQuery, ModelRoot};
 use gnoblin_std::objects::{Decorations, WindowMenus, Workspace, Workspaces};
 use gnoblin_std::prelude::*;
 
@@ -72,6 +72,45 @@ fn check_members(g: &Gnoblin, workspaces: &Workspaces, client: &Client) -> gnobl
         "its style warnings are a list: {}",
         client.style_warnings().is_ok()
     ));
+    // A selection styles the windows it holds and no others, and a selection that can hold no window has no style.
+    if let Some(clients) = ModelRoot::get(&g.objects()?)?.clients()? {
+        let query = |app_id: Option<&str>, any: Option<&[&str]>, title: Option<&str>| ClientQuery {
+            app_id: app_id.map(str::to_owned),
+            any_app_id: any.map(|any| any.iter().map(|item| (*item).to_owned()).collect()),
+            title: title.map(str::to_owned),
+            ..ClientQuery::default()
+        };
+        let refused = |query: ClientQuery| {
+            clients
+                .where_(&query, None)
+                .and_then(|selection| selection.style())
+                .err()
+                .is_some_and(|error| error.to_string().contains("holds no window"))
+        };
+        say(format!(
+            "an empty any list has no style: {}",
+            refused(query(None, Some(&[]), None))
+        ));
+        say(format!(
+            "an app id outside its any list has no style: {}",
+            refused(query(Some("foot"), Some(&["x"]), None))
+        ));
+        let matching = clients
+            .where_(&query(Some("foot"), Some(&["foot", "x"]), None), None)?
+            .style()?;
+        matching.set_background("#112233")?;
+        clients
+            .where_(&query(Some("nope"), None, None), Some(10.0))?
+            .style()?
+            .set_background("#ffffff")?;
+        clients
+            .where_(&query(Some("foot"), None, None), None)?
+            .where_(&query(None, None, Some("nope")), Some(20.0))?
+            .style()?
+            .set_background("#ffffff")?;
+        let only = client.computed_style()?.background == matching.background()?;
+        say(format!("only the matching selections style it: {only}"));
+    }
     say(format!(
         "keyboard move before Repositioning starts: {}",
         client.move_with_keys()?

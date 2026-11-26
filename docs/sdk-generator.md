@@ -89,7 +89,16 @@ A local file may use keys a compositor file may not:
 - `optional` on a property: a record may leave the field out.
 - `optional` on a method: its `object:` result may be none, as `Option<T>` in Rust, `T | undefined` in TypeScript and `T | None` in
   Python. The library flags the method `MEMBER_OPTIONAL` and refuses a none answer from a method that is not marked.
+- `optional` on a method of an interface, or on a `[[callback]]`: the shell's method or function may answer nothing (`T | void` in
+  TypeScript, `T | None` in Python; a Rust closure always answers). The library reads nothing as the answer the comment gives. The
+  core's bindings use it: `key_action`, `on_press`, `on_start` and `on_begin` decline only with `false`.
 - `python = { dunder = ".." }`, `inert`, `abi = "fn:<name>"` and `export = { js, py, rust }`.
+- `number = "<field>"` on a record that is not a family of variants: a bare number stands for the record with only that number field.
+  `corner_radius` says `all`, so a script may write `style.cornerRadius = 12`. TypeScript types the input `CornerRadiusInit | number`
+  and Python `CornerRadius | float`; Rust takes the record.
+- A family of variants (`tag` with `[[object.variant]]`) also takes an object with one key, a variant's tag: the value is the variant's
+  one property (`{ blur: 24 }`), or its options when it has more (`{ shader: { source, params } }`). TypeScript declares the forms as
+  `<Family>Literal` (`FilterLiteral`); Python takes a dict with one key; Rust takes the variant.
 - `find = "Kind"` on a method of a service that returns a list of objects and takes one optional record (its filter). Each method of a
   service names a kind of its own. In the core, `find_clients` is `find = "Window"` and `find_outputs` is `find = "Output"`. The service
   then gets:
@@ -105,16 +114,25 @@ a hash of its own (`Catalog::namespace_fingerprint`), which its object table rep
 
 A local file of a library above the core may declare `[[augment]]` with `target = "core.<class>"`, where the target is a class of the
 core catalog. Its `[[augment.property]]` and `[[augment.method]]` blocks are written as an object's members are. The std catalog
-augments two classes:
+augments six classes:
 
 - `core.gnoblin` gets `workspaces`, `displays`, `scene`, `gestures` and `request_transition`.
 - `core.output_collection` gets `profiles`.
+- `core.input_context` gets `active_display`, and `core.client_collection` gets `style`.
+- `core.client` gets `style`, `computed_style`, `style_warnings`, `workspace`, `move_to_workspace`, `move_with_keys` and
+  `resize_with_keys`, and `core.output` gets `workspace` and `show`.
+
+The last four are `receiver = true`.
 
 The rules:
 
 - The core catalog never reads the file, and no symbol of the core names std. The core's namespace fingerprint, its static catalog and
   its typed Rust API are the same bytes with and without the std files (`cargo test -p gnoblin-sdkgen` proves it).
 - An augment's property is read-only, and its method is a method of the object, not a function.
+- `receiver = true` makes each member act on the object it is used on (`gnoblin.clients.where({ ... }).style`), not on every object of
+  the class alike (`gnoblin.workspaces`). Each member of the lowered class takes that object as its first parameter, `target`. A
+  property becomes a method that takes only `target`, which each generator installs as a read-only property of the target. A receiver
+  augment targets a handle, every augment of one target sets `receiver` alike, and no method of it has a parameter named `target`.
 - The catalog refuses a target the core catalog lacks (the message names `core.<class>`), a record or an interface as a target, and a
   member whose name the target has as a property, a method or a signal, its own or inherited (the message names the member, the
   augment, the file of each and the core class). Two augments of one target may not declare one member.
@@ -129,9 +147,10 @@ The rules:
     - TypeScript: importing `gnoblin-std/generated/objects` defines the members on the prototype of the core's class, and its
       declarations merge them into it (`declare module "gnoblin-core/generated/objects"`).
     - Python: importing `gnoblin.objects.std` sets them on the core's class. A stub cannot add a member to a class of another file, so
-      the stubs name them on `GnoblinAugment` and `OutputCollectionAugment`.
-    - Rust: the extension traits `ModelRootStdExt` and `OutputCollectionStdExt` (the core's typed class and the suffix `StdExt`) are
-      implemented for `gnoblin_core::objects::ModelRoot` and `OutputCollection`, and `gnoblin_std::prelude` brings them in.
+      the stubs name them on the lowered classes (`GnoblinAugment`, `ClientAugment`, `InputContextAugment` and the others).
+    - Rust: an extension trait for each target, the core's typed class and the suffix `StdExt` (`ModelRootStdExt`, `ClientStdExt`,
+      `OutputStdExt`, `InputContextStdExt`, `ClientCollectionStdExt`, `OutputCollectionStdExt`), is implemented for the core's typed
+      class, and `gnoblin_std::prelude` brings them in.
 - A shell that loads no std has none of the members: the attribute is missing in TypeScript and Python, and a call of an extension
   trait that is not imported does not compile in Rust.
 

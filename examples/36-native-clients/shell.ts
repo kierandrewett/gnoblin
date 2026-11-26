@@ -37,6 +37,25 @@ function checkMembers(client: Client): void {
     client.style.opacity = 0.8;
     say(`${client.title}: its own style holds 0.8: ${Math.abs(client.style.opacity - 0.8) < 1e-6}`);
     say(`${client.title}: its style warnings are a list: ${Array.isArray(client.styleWarnings)}`);
+    // A selection styles the windows it holds and no others, and a selection that can hold no window has no style.
+    const clients = gnoblin.clients!;
+    const refused = (query: Parameters<typeof clients.where>[0]) => {
+        try {
+            void clients.where(query).style;
+            return false;
+        } catch (error) {
+            return (error as Error).message.includes("holds no window");
+        }
+    };
+    say(`${client.title}: an empty any list has no style: ${refused({ anyAppId: [] })}`);
+    const outside = refused({ appId: "foot", anyAppId: ["x"] });
+    say(`${client.title}: an app id outside its any list has no style: ${outside}`);
+    const matching = clients.where({ appId: "foot", anyAppId: ["foot", "x"] }).style;
+    matching.background = "#112233";
+    clients.where({ appId: "nope" }, 10).style.background = "#ffffff";
+    clients.where({ appId: "foot" }).where({ title: "nope" }, 20).style.background = "#ffffff";
+    const only = client.computedStyle.background === matching.background;
+    say(`${client.title}: only the matching selections style it: ${only}`);
     say(`${client.title}: keyboard move before Repositioning starts: ${client.moveWithKeys()}`);
     const output = gnoblin.outputs!.at(0)!;
     say(`${client.title}: the output shows main: ${output.workspace?.id === "main"}`);
