@@ -451,8 +451,7 @@ pub const CASES: [Case; 14] = [
                 .expect("a filter");
             vec![window(chain, Color::WHITE, 1.0)]
         },
-        // Not marked: the software renderer draws no `filter`.
-        software: false,
+        software: true,
         tolerance: SHAPE_TOLERANCE,
         probes: |image| {
             let graded = |colour: Color| bytes(grade::apply(FILTER, colour));
@@ -550,8 +549,7 @@ pub const CASES: [Case; 14] = [
             });
             vec![window(one(filter), Color::WHITE, 1.0)]
         },
-        // Not marked: the software renderer draws no `filter`.
-        software: false,
+        software: true,
         tolerance: BLUR_TOLERANCE,
         probes: |image| {
             let inside = rgb(image, 16, 11);

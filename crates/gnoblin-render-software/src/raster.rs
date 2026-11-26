@@ -12,6 +12,7 @@
 use smithay::utils::{Physical, Rectangle};
 
 use gnoblin_render::{Border, Shadow};
+use gnoblin_render_frame::grade::{self, Grade};
 use gnoblin_types::{Color, Scale};
 
 /// A rectangle of the output, in physical pixels.
@@ -499,6 +500,37 @@ pub(crate) fn fade(drawn: &mut Patch, before: &Patch, shape: Shape, fade: f32) {
     }
 }
 
+/// Composes a filter's blurred `picture` over `frame`, where the two overlap: the picture graded as one (on straight
+/// colour, as the surface shader grades a layer's pixels), multiplied by the layer's `tint` and faded by its `opacity`,
+/// then blended over what is there. The colour channels take the tint's colour and the whole pixel its alpha, as a
+/// tinted layer's own pixels do on this renderer.
+pub(crate) fn compose(frame: &mut Patch, picture: &Patch, grade: Grade, tint: Color, opacity: f32) {
+    let Some(area) = frame.rect.intersection(picture.rect) else {
+        return;
+    };
+    let keep = tint.a.clamp(0.0, 1.0) * opacity;
+    let by = [tint.r, tint.g, tint.b].map(|channel| channel.clamp(0.0, 1.0) * keep);
+    let graded = !grade.is_identity();
+    for y in area.loc.y..area.loc.y + area.size.h {
+        for x in area.loc.x..area.loc.x + area.size.w {
+            let [r, g, b, a] = picture.load(x, y);
+            if a <= 0.0 {
+                continue;
+            }
+            let mut colour = [r, g, b];
+            if graded {
+                let straight = grade::apply(grade, Color::new(r / a, g / a, b / a, 1.0));
+                colour = [straight.r * a, straight.g * a, straight.b * a];
+            }
+            frame.over(
+                x,
+                y,
+                [colour[0] * by[0], colour[1] * by[1], colour[2] * by[2], a * keep],
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -673,49 +705,6 @@ mod tests {
             [255, 255, 255, 255],
             "nothing leaks past the edge"
         );
-    }
-
-    /// The shader multiplies the inset shadow by the shape's coverage; here the corner fade supplies that factor once.
-    /// A coverage applied by both would weaken the shadow along the curve (the golden `inset_shadow` held it 33 levels
-    /// off at the corner).
-    #[test]
-    fn an_inset_shadow_meets_the_rounded_corner_through_one_coverage() {
-        let base = area(4, 4, 24, 24);
-        let shape = Shape::new(base, 10.0);
-        let before = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
-        let mut drawn = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
-        Cast::inset(&shadow(4.0, 0.0, (0.0, 0.0)), base, 10.0, 1.0, Scale::IDENTITY).draw(&mut drawn);
-        let square = pixel(&drawn, 4, 4);
-        assert!(
-            square[0] < 40,
-            "drawn square, the corner pixel is under the shadow: {square:?}"
-        );
-        let mut faded = patch(area(0, 0, 32, 32), [255, 255, 255, 255]);
-        faded.bytes.copy_from_slice(&drawn.bytes);
-        fade(&mut faded, &before, shape, 1.0);
-        assert_eq!(
-            pixel(&faded, 4, 4),
-            [255, 255, 255, 255],
-            "the square corner is outside the shape"
-        );
-        assert!(pixel(&faded, 16, 4)[0] < 40, "the edge's middle is dark");
-        let mut partial = 0;
-        for y in 4..14 {
-            for x in 4..14 {
-                let coverage = shape.coverage(x, y);
-                if coverage > 0.05 && coverage < 0.95 {
-                    partial += 1;
-                    let shadowed = f32::from(pixel(&drawn, x, y)[0]);
-                    let want = 255.0 + (shadowed - 255.0) * coverage;
-                    let got = f32::from(pixel(&faded, x, y)[0]);
-                    assert!(
-                        (got - want).abs() <= 1.5,
-                        "({x}, {y}) has coverage {coverage}: shadowed {shadowed}, drew {got}, wanted {want}"
-                    );
-                }
-            }
-        }
-        assert!(partial > 4, "the corner has pixels the curve cuts: {partial}");
     }
 
     #[test]

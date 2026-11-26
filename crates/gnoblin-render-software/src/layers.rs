@@ -16,20 +16,34 @@
 //! 5. The borders, over the layer's own pixels, faded with the layer.
 //!
 //! A layer with none of those draws nothing but its own pixels, and costs what it always did.
+//!
+//! # The filter
+//!
+//! A `filter` grades and may blur everything the layer paints, and is drawn as the GLES renderer draws it
+//! (`gles/effects.rs`, "The filter"):
+//!
+//! - A grade alone grades each piece as it is drawn: a solid colour (a shadow, a background, a border, a solid layer's
+//!   fill) by [`grade::apply`], and a surface's pixels as they are imported (`lib.rs`), on straight colour.
+//! - A blur draws the pieces (shadows, background, inset shadows, the layer's own pixels, borders) with this same code
+//!   into a transparent picture of their own, which is the layer's painted extent grown by the blur's reach; blurs the
+//!   picture with one pair of sweeps; grades it as a whole; and composes it over the frame at the layer's tint and
+//!   opacity. The picture is not clipped to the layer's corners, so the blur spills past the edge, and a layer that also
+//!   has a backdrop blur draws that glass first, outside the picture. The picture is made whatever the damage; only the
+//!   composition is limited to it.
 
 use std::sync::Once;
 
 use smithay::backend::renderer::pixman::{PixmanRenderer, PixmanTarget, PixmanTexture};
-use smithay::backend::renderer::{Color32F, ExportMem, Frame, ImportMem, Renderer, Texture};
+use smithay::backend::renderer::{Bind, Color32F, ExportMem, Frame, ImportMem, Renderer, Texture};
 use smithay::utils::{Physical, Rectangle, Size as PhysicalSize, Transform};
 
-use gnoblin_render::{BlurParams, MAX_BLUR_PASSES, Pass};
+use gnoblin_render::{BlurParams, Border, Effects, FilterParams, MAX_BLUR_PASSES, Pass, Shadow};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::Layer;
 use gnoblin_render_frame::geometry::physical_rect;
-use gnoblin_render_frame::grade::Grade;
+use gnoblin_render_frame::grade::{self, Grade};
 use gnoblin_render_frame::image::READBACK_FORMAT;
-use gnoblin_types::Scale;
+use gnoblin_types::{Color, Scale};
 
 use crate::blur::Blur;
 use crate::raster::{self, Area, Cast, MAX_RADIUS, Patch, Shape, Stroke};
@@ -156,6 +170,84 @@ fn corner_squares(outline: Area, radius: f32) -> [Area; 4] {
     ]
 }
 
+/// What `paint` draws a layer from, in physical pixels: the layer's own rectangle, the outline its corners and borders
+/// follow, and what its effects, tint and opacity say.
+///
+/// A filter's picture is drawn by `paint_parts` again, on a canvas of its own, from parts that are the layer's moved
+/// into the picture's coordinates, so the pieces of a filtered layer are drawn by the code that draws any layer.
+#[derive(Clone, Copy)]
+struct Parts<'a> {
+    dst: Area,
+    outline: Area,
+    radius: f32,
+    effects: &'a Effects,
+    tint: Color,
+    opacity: f32,
+    /// Whether the layer is on the flat plane: a layer placed in depth is drawn without its effects.
+    flat: bool,
+}
+
+/// What a layer's `filter` does to how it is drawn.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Treatment {
+    /// The grade each piece of the layer is drawn with: its own pixels, its solid colour, its shadows, its background and
+    /// its borders. Identity when the filter grades a picture as a whole, and for a layer with no filter.
+    pub(crate) grade: Grade,
+    /// Whether the filter blurs, which draws the pieces into a picture of their own, blurs that and grades the result.
+    pub(crate) picture: bool,
+}
+
+impl Treatment {
+    const NONE: Self = Self {
+        grade: Grade::IDENTITY,
+        picture: false,
+    };
+}
+
+/// The layer's filter: the one `Pass::Filter` of its effects, or the filter that changes nothing.
+fn filter_of(effects: &Effects) -> FilterParams {
+    effects
+        .passes()
+        .iter()
+        .find_map(|pass| match pass {
+            Pass::Filter(filter) => Some(*filter),
+            _ => None,
+        })
+        .unwrap_or(FilterParams::IDENTITY)
+}
+
+/// The grade a filter puts on colour.
+fn grade_of(filter: &FilterParams) -> Grade {
+    Grade {
+        saturate: filter.saturate,
+        brightness: filter.brightness,
+        contrast: filter.contrast,
+        noise: 0.0,
+    }
+}
+
+/// How a layer's filter treats its pieces: a grade alone grades each piece as it is drawn, a blur draws a picture.
+pub(crate) fn treatment(effects: &Effects, flat: bool) -> Treatment {
+    if !flat {
+        return Treatment::NONE;
+    }
+    let filter = filter_of(effects);
+    if filter.blur > 0.0 {
+        Treatment {
+            grade: Grade::IDENTITY,
+            picture: true,
+        }
+    } else {
+        Treatment {
+            grade: grade_of(&filter),
+            picture: false,
+        }
+    }
+}
+
+/// The largest picture a filter's blur draws, on a side: the texture limit the GLES renderer holds a filtered layer to.
+const MAX_PICTURE: i32 = 16_384;
+
 /// Draws one layer into the canvas.
 ///
 /// `texture` is the layer's imported pixels, which a solid layer has none of. `clipped` is scratch for the damage a
@@ -188,24 +280,57 @@ pub(crate) fn paint(
         ),
         Layer::Overlay(_) => return Ok(()),
     };
-    let opacity = opacity.clamp(0.0, 1.0);
-    let radius = corner_radius(logical_radius, scale).min(MAX_RADIUS);
     // The rectangle the corner radius rounds, a shadow that asks for the frame follows and a border runs along: the
     // layer's silhouette when it is one part of a larger frame, else its own rectangle.
     let outline = silhouette.map_or(dst, |area| physical_rect(area, scale));
+    let parts = Parts {
+        dst,
+        outline,
+        radius: corner_radius(logical_radius, scale).min(MAX_RADIUS),
+        effects,
+        tint,
+        opacity: opacity.clamp(0.0, 1.0),
+        flat,
+    };
+    paint_parts(canvas, &parts, layer, texture, clipped)
+}
+
+fn paint_parts(
+    canvas: &mut Canvas<'_, '_>,
+    parts: &Parts<'_>,
+    layer: &Layer,
+    texture: Option<&PixmanTexture>,
+    clipped: &mut Vec<Area>,
+) -> Result<(), RenderError> {
+    let Parts {
+        dst,
+        outline,
+        radius,
+        effects,
+        tint,
+        opacity,
+        flat,
+    } = *parts;
     let shape = Shape::new(outline, radius);
 
     // A layer placed in depth is drawn flat here, without the effects: they are not drawn on a node in 3D.
     let blurs = |pass: &&Pass| matches!(pass, Pass::Blur(held) if held.radius > 0.0);
     let blurred = flat && effects.passes().iter().any(|pass| blurs(&pass));
+    let Treatment { grade, picture } = treatment(effects, flat);
     if flat {
         warn_unsupported(effects);
-        shadows(canvas, effects, (dst, outline), radius, opacity)?;
+        // A filter that blurs draws the shadows into its picture, with the rest of the layer.
+        if !picture {
+            shadows(canvas, effects, (dst, outline), radius, opacity, grade)?;
+        }
     }
     // A layer with a backdrop blur is a group: it is drawn at full strength and faded as one.
     let group = blurred && opacity < 1.0;
 
-    if let Some(need) = canvas.touched(dst) {
+    // A filter's picture draws the layer's own pixels, so on the frame there is only the glass to draw.
+    if (!picture || blurred)
+        && let Some(need) = canvas.touched(dst)
+    {
         // What the layer's square drawing must be faded back to: the whole of it for a group, else the corners.
         let fixes: Vec<Area> = if group {
             vec![need]
@@ -232,15 +357,17 @@ pub(crate) fn paint(
             }
         }
 
-        // What of the layer's opacity each part of it is drawn with: none of it for a group, which fades as a whole.
-        let alpha = if group { 1.0 } else { opacity };
-        if flat {
-            under_content(canvas, effects, (dst, need), radius, tint, alpha)?;
-        }
+        if !picture {
+            // What of the layer's opacity each part of it is drawn with: none of it for a group, which fades as a whole.
+            let alpha = if group { 1.0 } else { opacity };
+            if flat {
+                under_content(canvas, effects, (dst, need), radius, (tint, grade), alpha)?;
+            }
 
-        layer_damage(canvas.damage, dst, clipped);
-        if !clipped.is_empty() {
-            draw_own_pixels(canvas, layer, texture, dst, clipped, alpha)?;
+            layer_damage(canvas.damage, dst, clipped);
+            if !clipped.is_empty() {
+                draw_own_pixels(canvas, layer, texture, (dst, clipped), alpha, (tint, grade))?;
+            }
         }
 
         for (rect, before) in fixes.iter().zip(&before) {
@@ -250,30 +377,143 @@ pub(crate) fn paint(
         }
     }
     if flat {
-        borders(canvas, effects, outline, radius, tint, opacity)?;
+        if picture {
+            filter_picture(canvas, parts, layer, texture, &filter_of(effects))?;
+        } else {
+            borders(canvas, effects, outline, radius, (tint, grade), opacity)?;
+        }
     }
     Ok(())
 }
 
+/// Draws a layer whose filter blurs: its pieces into a picture of their own, the blur over that picture, then the
+/// picture over the frame at the layer's tint and opacity, graded as one.
+///
+/// The picture holds what the layer paints (shadows, background, inset shadows, its own pixels, borders) at full strength
+/// and is not clipped to the layer's corners, so the blur spills past the edge. Its extent is what the pieces cover grown
+/// by the blur's reach. It does not depend on the frame's damage; only what the composition writes does.
+fn filter_picture(
+    canvas: &mut Canvas<'_, '_>,
+    parts: &Parts<'_>,
+    layer: &Layer,
+    texture: Option<&PixmanTexture>,
+    filter: &FilterParams,
+) -> Result<(), RenderError> {
+    let scale = canvas.scale;
+    let radius = (filter.blur * scale.as_f64() as f32).clamp(0.0, MAX_RADIUS);
+    let reach = (radius / 3.0 * 4.0).ceil() as i32 + 1;
+    // What the pieces cover: the layer, its outline, every outer shadow and every border.
+    let mut painted = parts.dst.merge(parts.outline);
+    for pass in parts.effects.passes() {
+        match pass {
+            Pass::Shadow(held) if !held.inset && held.opacity > 0.0 && held.color.a > 0.0 => {
+                let base = if held.frame { parts.outline } else { parts.dst };
+                painted = painted.merge(Cast::outer(held, base, parts.radius, 1.0, scale).quad);
+            }
+            Pass::Border(held) if held.width > 0.0 && held.color.a > 0.0 => {
+                painted = painted.merge(Stroke::new(held, parts.outline, parts.radius, Color::WHITE, 1.0, scale).quad);
+            }
+            _ => {}
+        }
+    }
+    // Only what can reach the output matters: the picture's blur spills `reach` pixels in.
+    let Some(painted) = painted.intersection(raster::grown(canvas.bounds(), reach)) else {
+        return Ok(());
+    };
+    let extent = raster::grown(painted, reach);
+    let Some(need) = canvas.touched(extent) else {
+        return Ok(());
+    };
+    if extent.size.w > MAX_PICTURE || extent.size.h > MAX_PICTURE {
+        log::warn!(
+            area = "render",
+            "a filtered layer is larger than the picture limit; it is drawn without its filter"
+        );
+        return Ok(());
+    }
+    let mut picture = draw_picture(canvas, parts, layer, texture, extent)?;
+    Blur::sweep_picture(&mut picture, radius);
+    picture.rect = extent;
+    let mut frame = canvas.read(need)?;
+    raster::compose(&mut frame, &picture, grade_of(filter), parts.tint, parts.opacity);
+    canvas.write(&frame, need)
+}
+
+/// The pieces of a filtered layer, drawn over a transparent picture of `extent` pixels and read back, with the layer's
+/// own tint, opacity and grade left to the composition.
+fn draw_picture(
+    canvas: &mut Canvas<'_, '_>,
+    parts: &Parts<'_>,
+    layer: &Layer,
+    texture: Option<&PixmanTexture>,
+    extent: Area,
+) -> Result<Patch, RenderError> {
+    let size = gnoblin_types::Size::new(extent.size.w as u32, extent.size.h as u32);
+    let mut buffer = crate::create_buffer(canvas.renderer, size)?;
+    let mut target = canvas.renderer.bind(&mut buffer).map_err(failed)?;
+    let whole: Area = Rectangle::from_size(extent.size);
+    {
+        let mut frame = canvas
+            .renderer
+            .render(&mut target, extent.size, Transform::Normal)
+            .map_err(failed)?;
+        frame
+            .clear(Color32F::new(0.0, 0.0, 0.0, 0.0), &[whole])
+            .map_err(failed)?;
+        let _sync = frame.finish().map_err(failed)?;
+    }
+    let moved = |rect: Area| Rectangle::new((rect.loc.x - extent.loc.x, rect.loc.y - extent.loc.y).into(), rect.size);
+    // The pieces the picture holds: what the layer paints. The filter itself and the glass are not part of it.
+    let mut effects = Effects::new();
+    for pass in parts.effects.passes() {
+        if matches!(pass, Pass::Shadow(_) | Pass::Background { .. } | Pass::Border(_)) {
+            effects.push(pass.clone()).map_err(failed)?;
+        }
+    }
+    let inner = Parts {
+        dst: moved(parts.dst),
+        outline: moved(parts.outline),
+        radius: parts.radius,
+        effects: &effects,
+        tint: Color::WHITE,
+        opacity: 1.0,
+        flat: true,
+    };
+    let damage = [whole];
+    let mut sub = Canvas {
+        renderer: &mut *canvas.renderer,
+        target: &mut target,
+        output: extent.size,
+        damage: &damage,
+        scale: canvas.scale,
+    };
+    paint_parts(&mut sub, &inner, layer, texture, &mut Vec::new())?;
+    sub.read(whole)
+}
+
 /// Draws the layer's own pixels with Pixman: a solid's colour or a surface's texture.
 ///
-/// The layer is drawn square, whatever its corner radius: the corners are put back afterwards. `opacity` is the alpha it
-/// is drawn with, which is 1 for a layer whose group is faded as a whole.
+/// The layer is drawn square, whatever its corner radius: the corners are put back afterwards. `place` is the layer's
+/// rectangle and the part of the frame's damage inside it. `opacity` is the alpha it is drawn with, which is 1 for a layer
+/// whose group is faded as a whole. A solid is graded by `grade` and multiplied by `tint`; a surface's texture is imported
+/// already graded and tinted, so only the tint's alpha is applied here.
 fn draw_own_pixels(
     canvas: &mut Canvas<'_, '_>,
     layer: &Layer,
     texture: Option<&PixmanTexture>,
-    dst: Area,
-    clipped: &[Area],
+    place: (Area, &[Area]),
     opacity: f32,
+    look: (Color, Grade),
 ) -> Result<(), RenderError> {
+    let (dst, clipped) = place;
+    let (tint, grade) = look;
     let mut frame = canvas
         .renderer
         .render(canvas.target, canvas.output, Transform::Normal)
         .map_err(failed)?;
     match layer {
         Layer::Solid(solid) => {
-            let fill = tinted(solid.colour, solid.tint);
+            let fill = tinted(grade::apply(grade, solid.colour), tint);
             // A layer that is only its effects (a border's ring) has nothing of its own to fill.
             if fill.a > 0.0 {
                 frame.draw_solid(dst, clipped, colour(fill)).map_err(failed)?;
@@ -281,7 +521,7 @@ fn draw_own_pixels(
         }
         Layer::Surface(surface) => {
             if let Some(texture) = texture {
-                let alpha = opacity * surface.tint.a.clamp(0.0, 1.0);
+                let alpha = opacity * tint.a.clamp(0.0, 1.0);
                 frame
                     .render_texture_from_to(texture, source(surface), dst, clipped, &[], surface.transform, alpha)
                     .map_err(failed)?;
@@ -297,16 +537,19 @@ fn draw_own_pixels(
 /// of the output and one write.
 ///
 /// `place` is the layer's rectangle and the part of it the frame redraws. The fill is square and the layer's corners are
-/// put back afterwards, so a rounded layer's background has the same anti-aliased corner as its pixels.
+/// put back afterwards, so a rounded layer's background has the same anti-aliased corner as its pixels. `look` is the
+/// layer's tint and the grade each colour is drawn with, and both multiply an inset shadow's colour as they do on the
+/// GPU, whose inset pass takes no tint of its own.
 fn under_content(
     canvas: &mut Canvas<'_, '_>,
-    effects: &gnoblin_render::Effects,
+    effects: &Effects,
     place: (Area, Area),
     radius: f32,
-    tint: gnoblin_types::Color,
+    look: (Color, Grade),
     alpha: f32,
 ) -> Result<(), RenderError> {
     let (dst, need) = place;
+    let (tint, grade) = look;
     let passes = effects.passes();
     let drawn = |pass: &&Pass| match pass {
         Pass::Background { color } => color.a > 0.0 && tint.a > 0.0,
@@ -320,11 +563,18 @@ fn under_content(
     for pass in passes.iter().filter(drawn) {
         match pass {
             Pass::Background { color } => {
-                let colour =
-                    gnoblin_types::Color::new(color.r * tint.r, color.g * tint.g, color.b * tint.b, color.a * tint.a);
+                let color = grade::apply(grade, *color);
+                let colour = Color::new(color.r * tint.r, color.g * tint.g, color.b * tint.b, color.a * tint.a);
                 raster::fill(&mut patch, dst, colour, colour.a * alpha);
             }
-            Pass::Shadow(held) => Cast::inset(held, dst, radius, alpha, canvas.scale).draw(&mut patch),
+            Pass::Shadow(held) => {
+                let color = grade::apply(grade, held.color);
+                let held = Shadow {
+                    color: Color::new(color.r * tint.r, color.g * tint.g, color.b * tint.b, color.a * tint.a),
+                    ..*held
+                };
+                Cast::inset(&held, dst, radius, alpha, canvas.scale).draw(&mut patch);
+            }
             _ => {}
         }
     }
@@ -332,26 +582,34 @@ fn under_content(
 }
 
 /// Draws the layer's drop shadows behind it, in one read of the output and one write. `place` is the layer's rectangle and
-/// the rectangle a shadow that asks for the frame follows; `opacity` is the layer's, which each shadow takes.
+/// the rectangle a shadow that asks for the frame follows; `opacity` is the layer's, which each shadow takes; `grade` is
+/// the filter's, which each shadow's colour is drawn with.
 fn shadows(
     canvas: &mut Canvas<'_, '_>,
-    effects: &gnoblin_render::Effects,
+    effects: &Effects,
     place: (Area, Area),
     radius: f32,
     opacity: f32,
+    grade: Grade,
 ) -> Result<(), RenderError> {
     let (dst, outline) = place;
     let casts: Vec<Cast> = effects
         .passes()
         .iter()
         .filter_map(|pass| match pass {
-            Pass::Shadow(held) if !held.inset && held.opacity > 0.0 && held.color.a > 0.0 => Some(Cast::outer(
-                held,
-                if held.frame { outline } else { dst },
-                radius,
-                opacity,
-                canvas.scale,
-            )),
+            Pass::Shadow(held) if !held.inset && held.opacity > 0.0 && held.color.a > 0.0 => {
+                let graded = Shadow {
+                    color: grade::apply(grade, held.color),
+                    ..*held
+                };
+                Some(Cast::outer(
+                    &graded,
+                    if held.frame { outline } else { dst },
+                    radius,
+                    opacity,
+                    canvas.scale,
+                ))
+            }
             _ => None,
         })
         .collect();
@@ -408,21 +666,27 @@ fn blur_backdrop(canvas: &mut Canvas<'_, '_>, held: &BlurParams, need: Area, dst
     canvas.write(&patch, need)
 }
 
-/// Draws the layer's borders over its pixels, a strip of the output at a time.
+/// Draws the layer's borders over its pixels, a strip of the output at a time. `look` is the layer's tint and the grade
+/// each border's colour is drawn with.
 fn borders(
     canvas: &mut Canvas<'_, '_>,
-    effects: &gnoblin_render::Effects,
+    effects: &Effects,
     outline: Area,
     radius: f32,
-    tint: gnoblin_types::Color,
+    look: (Color, Grade),
     opacity: f32,
 ) -> Result<(), RenderError> {
+    let (tint, grade) = look;
     let strokes: Vec<Stroke> = effects
         .passes()
         .iter()
         .filter_map(|pass| match pass {
             Pass::Border(held) if held.width > 0.0 && held.color.a > 0.0 => {
-                Some(Stroke::new(held, outline, radius, tint, opacity, canvas.scale))
+                let graded = Border {
+                    color: grade::apply(grade, held.color),
+                    ..*held
+                };
+                Some(Stroke::new(&graded, outline, radius, tint, opacity, canvas.scale))
             }
             _ => None,
         })
@@ -445,31 +709,19 @@ fn borders(
     Ok(())
 }
 
-/// Says, once, that a shader the shell wrote, or a `filter`, is not drawn.
+/// Says, once, that a shader the shell wrote is not drawn.
 ///
 /// A shader is WGSL, and drawing it needs the compiler and the GPU the GLES and Vulkan renderers have. The software
 /// renderer has no WGSL interpreter, so a layer with a shader is drawn without it, and the node's `skipped` list names
-/// `shader: unsupported-by-renderer`. A `filter` grades and blurs everything the layer paints, which needs the layer drawn
-/// into a picture of its own; this renderer draws into the output only, so it is left out the same way.
-fn warn_unsupported(effects: &gnoblin_render::Effects) {
+/// `shader: unsupported-by-renderer`.
+fn warn_unsupported(effects: &Effects) {
     static SHADER_REFUSED: Once = Once::new();
-    static FILTER_REFUSED: Once = Once::new();
-    let passes = effects.passes();
-    if passes.iter().any(|pass| matches!(pass, Pass::Shader(_))) {
+    if effects.passes().iter().any(|pass| matches!(pass, Pass::Shader(_))) {
         SHADER_REFUSED.call_once(|| {
             log::warn!(
                 area = "render",
                 "unsupported-effect: the software renderer has no WGSL interpreter, so a user shader is not drawn; \
                  the GLES and Vulkan renderers draw it"
-            );
-        });
-    }
-    if passes.iter().any(|pass| matches!(pass, Pass::Filter(_))) {
-        FILTER_REFUSED.call_once(|| {
-            log::warn!(
-                area = "render",
-                "unsupported-effect: the software renderer draws into the output only, so a filter, which blurs and \
-                 grades what the layer paints as a picture of its own, is not drawn"
             );
         });
     }
@@ -1001,7 +1253,7 @@ mod tests {
     }
 
     #[test]
-    fn a_filter_is_not_drawn_and_the_layer_still_is() {
+    fn a_filters_grade_is_drawn_on_the_layer() {
         use gnoblin_render::FilterParams;
         let mut solid = Solid::new(Rect::new(16, 16, 32, 32), RED);
         solid.effects = chain(vec![Pass::Filter(FilterParams {
@@ -1011,8 +1263,8 @@ mod tests {
         let image = picture(Color::WHITE, vec![solid]);
         assert_eq!(
             image.colour_at(24, 24),
-            Some([255, 0, 0, 255]),
-            "the layer is drawn ungraded"
+            Some([54, 54, 54, 255]),
+            "red with no saturation is its luma grey"
         );
     }
 

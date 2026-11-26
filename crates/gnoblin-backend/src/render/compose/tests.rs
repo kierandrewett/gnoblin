@@ -4157,33 +4157,38 @@ fn an_inset_shadow_a_background_and_a_filter_are_skipped_by_a_renderer_that_does
     });
     composer.take_tree_changes();
 
-    // Each renderer names the kinds of the chain it does not list, in list order: the software renderer draws an inset
-    // shadow and a background but not a filter; GLES and Vulkan draw all three (Vulkan grades a filter and does not blur
-    // it, which the `unsupported-filter-blur` code reports, not this list). A list that has not changed since the last
-    // publication is not published again.
+    // Each renderer names the kinds of the chain it does not list, in list order: one that draws none of the three names
+    // all of them, one that draws an inset shadow and a background but not a filter names the filter; the software, GLES
+    // and Vulkan renderers draw all three (Vulkan grades a filter and does not blur it, which the
+    // `unsupported-filter-blur` code reports, not this list). A list that has not changed since the last publication is
+    // not published again.
     let mut last: Option<Vec<String>> = None;
-    for renderer in [RendererKind::Software, RendererKind::Gles, RendererKind::Vulkan] {
+    for (name, kinds) in [
+        ("a renderer with none of the three", &["shadow"][..]),
+        (
+            "a renderer with no filter",
+            &["shadow", "inset-shadow", "background"][..],
+        ),
+        ("software", RendererKind::Software.effect_kinds()),
+        ("gles", RendererKind::Gles.effect_kinds()),
+        ("vulkan", RendererKind::Vulkan.effect_kinds()),
+    ] {
         let want: Vec<String> = ["inset-shadow", "background", "filter"]
             .into_iter()
-            .filter(|kind| !renderer.effect_kinds().contains(kind))
+            .filter(|kind| !kinds.contains(kind))
             .map(|kind| format!("{kind}: unsupported-by-renderer"))
             .collect();
-        composer.set_effect_kinds(renderer.effect_kinds());
+        composer.set_effect_kinds(kinds);
         composer.publish_skipped_effects();
         let published = queued_skipped(&mut composer, node);
         if last.as_ref() == Some(&want) {
-            assert_eq!(published, None, "{}: the same list is not republished", renderer.name());
+            assert_eq!(published, None, "{name}: the same list is not republished");
         } else {
-            assert_eq!(
-                published,
-                Some(want.clone()),
-                "{} names what it does not draw",
-                renderer.name()
-            );
+            assert_eq!(published, Some(want.clone()), "{name} names what it does not draw");
         }
         last = Some(want);
     }
-    for renderer in [RendererKind::Gles, RendererKind::Vulkan] {
+    for renderer in [RendererKind::Software, RendererKind::Gles, RendererKind::Vulkan] {
         assert!(
             ["inset-shadow", "background", "filter"]
                 .iter()
@@ -4262,7 +4267,7 @@ fn a_filter_whose_blur_the_renderer_does_not_draw_is_named_skipped_for_the_blur(
     assert_eq!(queued_skipped(&mut composer, blurred), Some(Vec::new()));
 
     // One that draws no filter says so for the kind and does not add the blur to it.
-    composer.set_effect_kinds(RendererKind::Software.effect_kinds());
+    composer.set_effect_kinds(&["shadow", "inset-shadow", "background"]);
     composer.set_filter_blur(false);
     composer.publish_skipped_effects();
     assert_eq!(

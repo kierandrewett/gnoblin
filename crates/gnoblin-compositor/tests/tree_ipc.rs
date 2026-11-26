@@ -803,8 +803,8 @@ fn a_shader_on_the_software_renderer_is_reported_skipped_by_the_renderer() {
 }
 
 /// `background`, `filter` and a `shadow` with `inset` are kinds of the list: the wire keeps each as written, and a renderer
-/// that does not draw one (the software one here draws a background and an inset shadow, not a filter) names it in
-/// `skipped` as `<kind>: unsupported-by-renderer`.
+/// that does not draw one (the software one here draws all three and no shader) names it in `skipped` as
+/// `<kind>: unsupported-by-renderer`.
 #[test]
 fn a_background_a_filter_and_an_inset_shadow_are_accepted_and_reported_skipped_by_the_renderer() {
     let session = Session::start();
@@ -837,6 +837,7 @@ fn a_background_a_filter_and_an_inset_shadow_are_accepted_and_reported_skipped_b
                 contrast: 1.25,
                 ..Default::default()
             },
+            shader_effect(TINT_SHADER, &[0.5]),
         ],
     ));
     transact(&mut wire, 2, 0, 1, ops);
@@ -874,7 +875,15 @@ fn a_background_a_filter_and_an_inset_shadow_are_accepted_and_reported_skipped_b
         .iter()
         .map(|entry| (entry.kind.as_str(), entry.inset))
         .collect();
-    assert_eq!(kinds, [("background", false), ("shadow", true), ("filter", false)]);
+    assert_eq!(
+        kinds,
+        [
+            ("background", false),
+            ("shadow", true),
+            ("filter", false),
+            ("shader", false)
+        ]
+    );
     assert_eq!(effects.value_effects[2].contrast, 1.25);
     let skipped = changes
         .iter()
@@ -883,8 +892,8 @@ fn a_background_a_filter_and_an_inset_shadow_are_accepted_and_reported_skipped_b
         .expect("the skipped list is published");
     assert_eq!(
         skipped.value_texts,
-        vec!["filter: unsupported-by-renderer".to_owned()],
-        "the software renderer draws a background and an inset shadow but not a filter"
+        vec!["shader: unsupported-by-renderer".to_owned()],
+        "the software renderer draws a background, an inset shadow and a filter, and names only the shader"
     );
     session.stop().expect("the session stops cleanly");
 }

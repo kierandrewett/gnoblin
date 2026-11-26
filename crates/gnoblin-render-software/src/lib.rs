@@ -41,16 +41,16 @@
 //!   the blur is the shader's nine-tap Gaussian, swept `passes` times, then graded by `gnoblin_render_frame::grade`, the
 //!   function the GPU shaders are checked against, so the colours agree. A blur with a `downscale` is reduced and
 //!   swept as the GLES blur is: the region it reads (the layer grown by the sweeps' reach) halved through a bilinear tap
-//!   to `ceil(size * downscale)`, swept there and read back up through a bilinear tap (`blur.rs`). The shared goldens
-//!   (`tests/golden.rs`) hold all of it to the GPU pictures.
+//!   to `ceil(size * downscale)`, swept there and read back up through a bilinear tap (`blur.rs`). A `filter` grades
+//!   each piece of the layer as it is drawn, and one that blurs draws the pieces into a transparent picture of their own,
+//!   blurs and grades that and composes it over the frame, as the GLES renderer does (`layers.rs`, "The filter"). The
+//!   shared goldens (`tests/golden.rs`) hold all of it to the GPU pictures.
 //!
 //! What it does not draw, and why:
 //!
 //! - **A user shader.** It is WGSL, and running it needs the compiler and the GPU of the other renderers; there is no
 //!   CPU WGSL interpreter. A layer with a shader is drawn without it, the node's `skipped` list says
 //!   `shader: unsupported-by-renderer`, and the log says why once.
-//! - **A `filter`**, the grade and blur of everything the layer paints. It needs the layer drawn into a picture of its
-//!   own and this renderer draws into the output only, so the node's `skipped` list names `filter` and the log says why once.
 //! - **Effects on a layer placed in depth** (a `model` matrix). The layer is drawn flat, as before, without its effects.
 //! - **Four different corner radii**, which the node cannot state yet.
 //!
@@ -86,6 +86,7 @@ use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::footprint::{COLOUR_BYTES_PER_PIXEL, Footprint, image_bytes};
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, Overlay, Surface, SurfaceSource, View};
 use gnoblin_render_frame::geometry::physical_rect;
+use gnoblin_render_frame::grade::{self, Grade};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::image::READBACK_FORMAT;
 
@@ -810,7 +811,11 @@ fn import(renderer: &mut PixmanRenderer, surface: &Surface, scratch: &mut Vec<u8
             return None;
         }
     };
-    if surface.tint == Color::WHITE {
+    // A filter grades the pixels as they are imported; one that blurs draws them untinted into its picture, which the
+    // composition tints.
+    let treatment = layers::treatment(&surface.effects, surface.model.is_none());
+    let tint = if treatment.picture { Color::WHITE } else { surface.tint };
+    if tint == Color::WHITE && treatment.grade.is_identity() {
         return Some(texture);
     }
     let region = Rectangle::from_size(texture.size());
@@ -818,7 +823,12 @@ fn import(renderer: &mut PixmanRenderer, surface: &Surface, scratch: &mut Vec<u8
     let bytes = renderer.map_texture(&mapping).ok()?;
     scratch.clear();
     scratch.extend_from_slice(bytes);
-    multiply(scratch, surface.tint);
+    if !treatment.grade.is_identity() {
+        grade_pixels(scratch, treatment.grade);
+    }
+    if tint != Color::WHITE {
+        multiply(scratch, tint);
+    }
     renderer
         .import_memory(
             scratch,
@@ -875,6 +885,29 @@ fn import_bitmap(renderer: &mut PixmanRenderer, image: &Image) -> Option<PixmanT
             );
         })
         .ok()
+}
+
+/// Grades every pixel of premultiplied RGBA bytes on its straight colour, as the surface shader grades a layer's pixels
+/// (`wgsl/surface.wgsl`), and keeps the alpha.
+fn grade_pixels(bytes: &mut [u8], grade: Grade) {
+    let (pixels, remainder) = bytes.as_chunks_mut::<4>();
+    debug_assert!(remainder.is_empty(), "a pixman readback is whole RGBA pixels");
+    for pixel in pixels {
+        if pixel[3] == 0 {
+            continue;
+        }
+        let alpha = f32::from(pixel[3]) / 255.0;
+        let straight = Color::new(
+            f32::from(pixel[0]) / 255.0 / alpha,
+            f32::from(pixel[1]) / 255.0 / alpha,
+            f32::from(pixel[2]) / 255.0 / alpha,
+            1.0,
+        );
+        let graded = grade::apply(grade, straight);
+        for (byte, channel) in pixel.iter_mut().zip([graded.r, graded.g, graded.b]) {
+            *byte = raster::to_byte(channel * alpha);
+        }
+    }
 }
 
 /// Multiplies every pixel's colour channels by `tint`.

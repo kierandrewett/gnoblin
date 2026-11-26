@@ -135,6 +135,31 @@ impl Blur {
         self.reach() * self.passes as i32 + 2
     }
 
+    /// Blurs a filter's picture of premultiplied pixels with one horizontal and one vertical sweep, as the GLES filter
+    /// does (`effects.rs`, `picture_into`): the tap step is `radius / 3`, at least half a pixel, the edge is clamped, and
+    /// nothing is graded here (the composition grades the picture as a whole). The picture is made with a margin of the
+    /// sweep's reach around what it paints, so its clamped edge is transparent.
+    pub(crate) fn sweep_picture(picture: &mut Patch, radius: f32) {
+        let size = (picture.rect.size.w as usize, picture.rect.size.h as usize);
+        if size.0 == 0 || size.1 == 0 {
+            return;
+        }
+        let taps = kernel((radius / 3.0).max(0.5));
+        let pad = taps
+            .iter()
+            .map(|(offset, _)| offset.unsigned_abs() as usize)
+            .max()
+            .unwrap_or(0);
+        let mut current: Vec<f32> = picture.bytes.iter().map(|byte| f32::from(*byte)).collect();
+        let mut next = vec![0.0_f32; current.len()];
+        let mut padded = vec![0.0_f32; (size.0 + 2 * pad) * 4];
+        horizontal(&current, &mut next, size, &taps, &mut padded, true);
+        vertical(&next, &mut current, size, &taps, true);
+        for (byte, value) in picture.bytes.iter_mut().zip(&current) {
+            *byte = value.clamp(0.0, 255.0) as u8;
+        }
+    }
+
     /// Blurs `patch` and writes the result into the pixels of `keep`, which must lie inside it; the pixels of the patch
     /// outside `keep` are the margin the blur reads, and are left as they were.
     ///
