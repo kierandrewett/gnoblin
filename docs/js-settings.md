@@ -28,7 +28,7 @@ is the setting of every mouse.
 ::: tabs
 
 ```typescript
-import { Keyboard, Mouse, Touchpad } from "gnoblin-core";
+import { gnoblin, Keyboard, Mouse, Touchpad } from "gnoblin-core/generated/objects";
 
 for (const device of gnoblin.input.devices) {
     if (device instanceof Keyboard) {
@@ -110,20 +110,21 @@ Each device page lists the properties and their ranges: [keyboard](/config/confi
 ## Outputs
 
 An `OutputProfile` is made from what it matches, and its `settings` describe the mode, scale, transform and position of
-the output that matches it. It survives hotplug. Add it to `gnoblin.outputs.profiles`. See
+the output that matches it. It survives hotplug. Add it to `OutputProfiles.get()`, the list `gnoblin.outputs.profiles` holds. See
 [monitors](/config/configure/monitors).
 
 ::: tabs
 
 ```typescript
-import { OutputProfile } from "gnoblin-std";
+import { OutputProfile, OutputProfiles } from "gnoblin-std/generated/objects";
 
+const profiles = OutputProfiles.get();
 const main = new OutputProfile(
     { connector: "DP-1" },
     { settings: { mode: "3440x1440@144", scale: 1.25, position: { kind: "absolute", x: 0, y: 0 } } },
 );
-gnoblin.outputs.profiles.add(main);
-gnoblin.outputs.profiles.add(
+profiles.add(main);
+profiles.add(
     new OutputProfile(
         { connector: "HDMI-A-1" },
         { settings: { position: { kind: "right_of", profile: main, align: "top" } } },
@@ -132,10 +133,9 @@ gnoblin.outputs.profiles.add(
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import OutputMatch, OutputPosition, OutputProfile, PositionKind, ProfileSettings
+from gnoblin.objects.std import OutputMatch, OutputPosition, OutputProfile, OutputProfiles, PositionKind, ProfileSettings
 
-gnoblin = Gnoblin.get()
+profiles = OutputProfiles.get()
 
 main = OutputProfile(
     OutputMatch(connector="DP-1"),
@@ -145,8 +145,8 @@ main = OutputProfile(
         position=OutputPosition(PositionKind.ABSOLUTE, x=0, y=0),
     ),
 )
-gnoblin.outputs.profiles.add(main)
-gnoblin.outputs.profiles.add(
+profiles.add(main)
+profiles.add(
     OutputProfile(
         OutputMatch(connector="HDMI-A-1"),
         settings=ProfileSettings(position=OutputPosition(PositionKind.RIGHT_OF, profile=main, align="top")),
@@ -224,20 +224,17 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { ClientStyle } from "gnoblin-std/generated/objects";
 
-gnoblin.clients.style.cornerRadius = 12;
-gnoblin.clients.where({ appId: "foot" }).style.opacity = 0.9;
+ClientStyle.ofClients().cornerRadius = { all: 12 };
+ClientStyle.ofClients().where({ appId: "foot" }).opacity = 0.9;
 ```
 
 ```python
-from gnoblin.objects.model import ClientQuery, Gnoblin
-import gnoblin.objects.std  # adds `style` to the window collections
+from gnoblin.objects.std import ClientStyle, CornerRadius, StyleQuery
 
-gnoblin = Gnoblin.get()
-
-gnoblin.clients.style.corner_radius = 12
-gnoblin.clients.where(ClientQuery(app_id="foot")).style.opacity = 0.9
+ClientStyle.of_clients().corner_radius = CornerRadius(all=12)
+ClientStyle.of_clients().where(StyleQuery(app_id="foot")).opacity = 0.9
 ```
 
 ```rust
@@ -274,7 +271,8 @@ overrides the inner one. See [workspaces](/shell-api/workspaces).
 ::: tabs
 
 ```typescript
-import { MasterStackLayout, Workspace } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { MasterStackLayout, Workspace } from "gnoblin-std/generated/objects";
 
 gnoblin.workspaces.add(
     new Workspace("dev", {
@@ -421,11 +419,11 @@ See [dialogs](/config/configure/dialogs).
 ::: tabs
 
 ```typescript
-import { DialogListener } from "gnoblin-core";
+import { DialogListener, DialogRequest, gnoblin } from "gnoblin-core/generated/objects";
 
 gnoblin.dialogs.addListener(
     new (class extends DialogListener {
-        onConsentRequest(request: { subject: string; decline(reason: string): void }) {
+        onConsentRequest(request: DialogRequest) {
             if (request.subject === "Screenshot") {
                 request.decline("screenshots are off");
             }

@@ -3,7 +3,7 @@
 A shell draws its own interface with a small toolkit. It is a class library of `gnoblin-std`, so a TypeScript, a Python and
 a Rust shell use the same classes with the same members, each spelled its own way.
 
-- TypeScript imports them with `import { Box, Text } from "gnoblin-std"`.
+- TypeScript imports them with `import { Box, Text } from "gnoblin-std/generated/objects"`.
 - Python imports them with `from gnoblin.objects.std import Box, Text`.
 - Rust takes them from `gnoblin_std::objects`, where the box is `UiBox` because `Box` is a Rust type.
 
@@ -23,8 +23,8 @@ interface, and have its `paint()` return the ops to paint, in node-local pixels,
 ::: tabs
 
 ```typescript
-import { Canvas, Widget } from "gnoblin-std";
-import type { PaintOp } from "gnoblin-std";
+import { Canvas, Widget } from "gnoblin-std/generated/objects";
+import type { PaintOp } from "gnoblin-std/generated/objects";
 
 class Meter extends Widget {
     level = 0.5;
@@ -177,7 +177,7 @@ A `Box` is a canvas that fills itself (`fill`, `radius`) and arranges its child 
 ::: tabs
 
 ```typescript
-import { Box, Icon, Text } from "gnoblin-std";
+import { Box, Icon, Text } from "gnoblin-std/generated/objects";
 
 const bar = new Box({ width: 300, height: 32, direction: "row", gap: 8, padding: 6, fill: "#1e1e2e" });
 bar.add(new Text({ text: "Files", grow: 1 }));
@@ -283,7 +283,7 @@ Its look is plain data, `TitlebarStyle`. A field you leave out keeps its default
 ::: tabs
 
 ```typescript
-import { Decorations } from "gnoblin-std";
+import { Decorations } from "gnoblin-std/generated/objects";
 
 const decorations = Decorations.get();
 decorations.style = { height: 36, buttons: ["close"], focusedFill: "#223344" };
@@ -400,7 +400,7 @@ To have no frame on any window, leave `Decorations.get().start()` out of your fi
 ::: tabs
 
 ```typescript
-import { Entry } from "gnoblin-std";
+import { Entry } from "gnoblin-std/generated/objects";
 
 const entry = new Entry({ x: 20, y: 48, width: 320, height: 36, fill: "#313244" });
 entry.mountTop();
@@ -465,7 +465,8 @@ Each of these is started by the starter and has a function that starts it.
 ::: tabs
 
 ```typescript
-import { Launcher, NotRespondingAlerts, Toast, WindowMenus } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { Launcher, NotRespondingAlerts, Toast, WindowMenus } from "gnoblin-std/generated/objects";
 
 WindowMenus.get().start();
 NotRespondingAlerts.get().start();

@@ -8,33 +8,39 @@ The tables on this page use the TypeScript spelling of a name:
 - Python uses `snake_case`, such as `corner_radius`, `backdrop_filter` and `is_set`.
 - Rust has a getter and a `set_` method for each property, such as `corner_radius()` and `set_corner_radius(..)`.
 - Rust spells `where` as `where_`.
+- `gnoblin.clients.style` is `ClientStyle.ofClients()` (`of_clients()` in Python), `clients.where(...).style` is
+  `ClientStyle.ofClients().where(...)`, and `client.style` and `client.computedStyle` are `ClientAugment.get().style(client)` and
+  `.computedStyle(client)`.
 
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { ClientAugment, ClientStyle } from "gnoblin-std/generated/objects";
 
-gnoblin.clients.style.opacity = 0.95;
-gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];
-gnoblin.clients.where({ appId: "firefox" }).style.shadows = [];
+const clients = ClientStyle.ofClients();
+clients.opacity = 0.95;
+clients.shadows = [{ y: 8, blur: 24, color: "#00000066" }];
+clients.where({ appId: "firefox" }).shadows = [];
 const client = gnoblin.clients.get("42");
 if (client) {
-    client.style.opacity = 0.8;
+    ClientAugment.get().style(client).opacity = 0.8;
 }
 ```
 
 ```python
-from gnoblin.objects.model import ClientQuery, Gnoblin
-from gnoblin.objects.std import Shadow
+from gnoblin.objects.model import Gnoblin
+from gnoblin.objects.std import ClientAugment, ClientStyle, Shadow, StyleQuery
 
 gnoblin = Gnoblin.get()
 
-gnoblin.clients.style.opacity = 0.95
-gnoblin.clients.style.shadows = [Shadow(y=8, blur=24, color="#00000066")]
-gnoblin.clients.where(ClientQuery(app_id="firefox")).style.shadows = []
+clients = ClientStyle.of_clients()
+clients.opacity = 0.95
+clients.shadows = [Shadow(y=8, blur=24, color="#00000066")]
+clients.where(StyleQuery(app_id="firefox")).shadows = []
 client = gnoblin.clients.get("42")
 if client is not None:
-    client.style.opacity = 0.8
+    ClientAugment.get().style(client).opacity = 0.8
 ```
 
 ```rust
@@ -99,27 +105,32 @@ inherits. `computedStyle` gives the resolved value for a window:
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { ClientAugment } from "gnoblin-std/generated/objects";
 
 const client = gnoblin.clients.focused;
 if (client) {
-    console.log(client.style.isSet("corner_radius")); // false: the client does not override it
-    console.log(client.computedStyle.cornerRadius.all); // 12
-    console.log(client.computedStyle.origin.cornerRadius); // "global"
+    const augment = ClientAugment.get();
+    console.log(augment.style(client).isSet("corner_radius")); // false: the client does not override it
+    const computed = augment.computedStyle(client);
+    console.log(computed.cornerRadius.all); // 12
+    console.log(computed.origin.cornerRadius); // "global"
 }
 ```
 
 ```python
 from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import StyleProperty
+from gnoblin.objects.std import ClientAugment, StyleProperty
 
 gnoblin = Gnoblin.get()
 
 client = gnoblin.clients.focused
 if client is not None:
-    print(client.style.is_set(StyleProperty.CORNER_RADIUS))  # False: the client does not override it
-    print(client.computed_style.corner_radius.all)  # 12.0
-    print(client.computed_style.origin.corner_radius)  # "global"
+    augment = ClientAugment.get()
+    print(augment.style(client).is_set(StyleProperty.CORNER_RADIUS))  # False: the client does not override it
+    computed = augment.computed_style(client)
+    print(computed.corner_radius.all)  # 12.0
+    print(computed.origin.corner_radius)  # "global"
 ```
 
 ```rust
@@ -151,31 +162,34 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { gnoblin } from "gnoblin-core/generated/objects";
+import { ClientAugment } from "gnoblin-std/generated/objects";
 
 const client = gnoblin.clients.focused;
 if (client) {
-    client.style.opacity = 0.5; // an override
-    client.style.unset("opacity"); // inherit again
-    client.style.reset(); // unset every property
-    client.style.background = ""; // a value: no background, whatever the scopes above say
-    client.style.shadows = []; // a value: no shadows
+    const style = ClientAugment.get().style(client);
+    style.opacity = 0.5; // an override
+    style.unset("opacity"); // inherit again
+    style.reset(); // unset every property
+    style.background = ""; // a value: no background, whatever the scopes above say
+    style.shadows = []; // a value: no shadows
 }
 ```
 
 ```python
 from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import StyleProperty
+from gnoblin.objects.std import ClientAugment, StyleProperty
 
 gnoblin = Gnoblin.get()
 
 client = gnoblin.clients.focused
 if client is not None:
-    client.style.opacity = 0.5  # an override
-    client.style.unset(StyleProperty.OPACITY)  # inherit again
-    client.style.reset()  # unset every property
-    client.style.background = ""  # a value: no background, whatever the scopes above say
-    client.style.shadows = []  # a value: no shadows
+    style = ClientAugment.get().style(client)
+    style.opacity = 0.5  # an override
+    style.unset(StyleProperty.OPACITY)  # inherit again
+    style.reset()  # unset every property
+    style.background = ""  # a value: no background, whatever the scopes above say
+    style.shadows = []  # a value: no shadows
 ```
 
 ```rust
@@ -256,21 +270,18 @@ the kind of the filter. Rust writes the class and calls `.into()`.
 ::: tabs
 
 ```typescript
-import { BlurFilter, SaturateFilter } from "gnoblin-std";
+import { BlurFilter, ClientStyle, SaturateFilter } from "gnoblin-std/generated/objects";
 
-const style = gnoblin.clients.style;
+const style = ClientStyle.ofClients();
 style.backdropFilter = [{ blur: 18 }, { saturate: 1.25 }]; // the shorthand
 style.backdropFilter = [new BlurFilter({ radius: 18 }), new SaturateFilter({ amount: 1.25 })]; // the classes
 console.log(style.backdropFilter[0] instanceof BlurFilter); // true
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import BlurFilter, SaturateFilter
+from gnoblin.objects.std import BlurFilter, ClientStyle, SaturateFilter
 
-gnoblin = Gnoblin.get()
-
-style = gnoblin.clients.style
+style = ClientStyle.of_clients()
 style.backdrop_filter = [{"blur": 18}, {"saturate": 1.25}]  # the shorthand
 style.backdrop_filter = [BlurFilter(radius=18), SaturateFilter(amount=1.25)]  # the classes
 print(isinstance(style.backdrop_filter[0], BlurFilter))  # True
@@ -304,24 +315,23 @@ A list and a record you read from a style are copies. Change one and write it ba
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { ClientStyle } from "gnoblin-std/generated/objects";
 
-gnoblin.clients.style.shadows = [{ blur: 10 }];
-const shadows = gnoblin.clients.style.shadows;
+const style = ClientStyle.ofClients();
+style.shadows = [{ blur: 10 }];
+const shadows = style.shadows;
 shadows[0].blur = 20;
-gnoblin.clients.style.shadows = shadows; // every client that inherits the list follows
+style.shadows = shadows; // every client that inherits the list follows
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Shadow
+from gnoblin.objects.std import ClientStyle, Shadow
 
-gnoblin = Gnoblin.get()
-
-gnoblin.clients.style.shadows = [Shadow(blur=10)]
-shadows = gnoblin.clients.style.shadows
+style = ClientStyle.of_clients()
+style.shadows = [Shadow(blur=10)]
+shadows = style.shadows
 shadows[0].blur = 20
-gnoblin.clients.style.shadows = shadows  # every client that inherits the list follows
+style.shadows = shadows  # every client that inherits the list follows
 ```
 
 ```rust
@@ -362,9 +372,9 @@ For example:
 ::: tabs
 
 ```typescript
-import { BlurFilter, Border } from "gnoblin-std";
+import { BlurFilter, Border, ClientStyle } from "gnoblin-std/generated/objects";
 
-const style = gnoblin.clients.style;
+const style = ClientStyle.ofClients();
 style.cornerRadius = 12;
 style.borderList().add(new Border({ width: 2, color: "#7c3aed" }));
 style.shadowList().add({ y: 8, blur: 24, color: "#0006" });
@@ -372,12 +382,9 @@ style.backdropFilterList().add(new BlurFilter({ radius: 18 }));
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import BlurFilter, Border, Shadow
+from gnoblin.objects.std import BlurFilter, Border, ClientStyle, Shadow
 
-gnoblin = Gnoblin.get()
-
-style = gnoblin.clients.style
+style = ClientStyle.of_clients()
 style.corner_radius = 12
 style.border_list().add(Border(width=2, color="#7c3aed"))
 style.shadow_list().add(Shadow(y=8, blur=24, color="#0006"))
@@ -492,22 +499,21 @@ A window holds at most 16 effects (at most 8 shadows and 8 borders, and the blur
 ::: tabs
 
 ```typescript
-import "gnoblin-std";
+import { ClientStyle } from "gnoblin-std/generated/objects";
 
-gnoblin.clients.style.cornerRadius = 12;
-gnoblin.clients.style.borders = [{ width: 1, color: "#ffffff33", inset: true }];
-gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];
+const style = ClientStyle.ofClients();
+style.cornerRadius = { all: 12 };
+style.borders = [{ width: 1, color: "#ffffff33", inset: true }];
+style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Border, Shadow
+from gnoblin.objects.std import Border, ClientStyle, CornerRadius, Shadow
 
-gnoblin = Gnoblin.get()
-
-gnoblin.clients.style.corner_radius = 12
-gnoblin.clients.style.borders = [Border(width=1, color="#ffffff33", inset=True)]
-gnoblin.clients.style.shadows = [Shadow(y=8, blur=24, color="#00000066")]
+style = ClientStyle.of_clients()
+style.corner_radius = CornerRadius(all=12)
+style.borders = [Border(width=1, color="#ffffff33", inset=True)]
+style.shadows = [Shadow(y=8, blur=24, color="#00000066")]
 ```
 
 ```rust
