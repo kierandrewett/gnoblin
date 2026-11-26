@@ -10,7 +10,8 @@ publish.workspace = true
 # The workspace table forbids `unsafe` outright. This crate is one of the FFI shims that
 # restate the level with `deny` and confine the exemption to the modules that call `ash`:
 # every call into the loader and a driver is `unsafe` because `ash` is a raw binding. The
-# exemption is named per file (`context.rs`, `pipeline.rs`, `frame.rs`), each opening with
+# exemption is named per file (`context.rs`, `pipeline.rs`, `frame.rs`, `spatial.rs`, `subtree.rs`, `view.rs`,
+# `downsample.rs`), each opening with
 # `#[allow(unsafe_code)]` and a `SAFETY:` comment per block. Nothing else may contain `unsafe`.
 [lints.rust]
 unsafe_code = "deny"

@@ -305,6 +305,48 @@ impl VkImage {
         usage: vk::ImageUsageFlags,
         opaque: bool,
     ) -> Result<Self, vk::Result> {
+        Self::create(
+            context,
+            width,
+            height,
+            format,
+            usage,
+            opaque,
+            vk::ImageAspectFlags::COLOR,
+        )
+    }
+
+    /// A depth-stencil image of `format`, which a pass clears and tests against and nothing samples.
+    ///
+    /// # Errors
+    ///
+    /// As [`VkImage::new`].
+    pub(super) fn depth_stencil(
+        context: &Rc<VkContext>,
+        width: u32,
+        height: u32,
+        format: vk::Format,
+    ) -> Result<Self, vk::Result> {
+        Self::create(
+            context,
+            width,
+            height,
+            format,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            false,
+            vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
+        )
+    }
+
+    fn create(
+        context: &Rc<VkContext>,
+        width: u32,
+        height: u32,
+        format: vk::Format,
+        usage: vk::ImageUsageFlags,
+        opaque: bool,
+        aspect: vk::ImageAspectFlags,
+    ) -> Result<Self, vk::Result> {
         #[cfg(test)]
         if let Some(result) = context.texture_fault() {
             return Err(result);
@@ -359,7 +401,10 @@ impl VkImage {
                 b: vk::ComponentSwizzle::IDENTITY,
                 a: alpha,
             })
-            .subresource_range(colour_range());
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: aspect,
+                ..colour_range()
+            });
         // SAFETY: the memory is bound once, before the view is made over the image.
         let view = unsafe {
             device

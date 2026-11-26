@@ -64,10 +64,13 @@ use super::plan::{
     ChainStep, DrawBatch, FramePlan, PassKind, PlanTarget, PlannedDraw, ShaderUse, Shaders, TextureSizes, TextureSlot,
     UNIFORM_STRIDE, chain, damage_of, overlay_of, plan, plan_into, quad_of,
 };
+use super::spatial::{Base, Class, DepthTarget, Replace};
+use super::subtree::{Outcome, SceneTextures, ViewRequest, plan_scene, scene_surfaces, scene_views};
 use super::sync::{FrameSlot, STAMP_QUERIES, TimestampQuery};
 use super::textures::{Frame, Prepared, Source, Wanted, colour_layers, write_texture_set};
+use super::view::{self, WholePass};
 use gnoblin_render_frame::error::RenderError;
-use gnoblin_render_frame::frame::{BackdropInput, Layer, OutputFrame, SurfaceSource};
+use gnoblin_render_frame::frame::{BackdropInput, Layer, OutputFrame, Surface, SurfaceSource};
 use gnoblin_render_frame::image::Image;
 
 use crate::log;
@@ -91,6 +94,7 @@ impl RenderTarget {
             pass,
             size,
             vk::ImageUsageFlags::COLOR_ATTACHMENT
+                | vk::ImageUsageFlags::SAMPLED
                 | vk::ImageUsageFlags::TRANSFER_SRC
                 | vk::ImageUsageFlags::TRANSFER_DST,
         )
@@ -221,6 +225,13 @@ struct LayerImages {
 
 /// A render pass a frame records before its own.
 enum Job {
+    /// A View's scene, drawn into the picture the store holds, which later passes sample.
+    View {
+        colour: vk::Image,
+        framebuffer: vk::Framebuffer,
+        size: Size,
+        plan: FramePlan,
+    },
     /// The layers below a layer, drawn over its rectangle into its backdrop image.
     Backdrop {
         index: usize,
@@ -229,6 +240,14 @@ enum Job {
     },
     /// One pass of a layer's chain, drawn into one of its scratch images.
     Chain { index: usize, step: ChainStep },
+}
+
+/// The view pass of a frame: the scratch image the finished output is copied into and the pass that draws it back.
+struct Filter {
+    image: vk::Image,
+    view: vk::ImageView,
+    pipeline: vk::Pipeline,
+    pass: WholePass,
 }
 
 /// What `paint` hands to `record`.
@@ -240,6 +259,68 @@ struct FrameRecording<'a> {
     images: &'a BTreeMap<usize, LayerImages>,
     jobs: Vec<Job>,
     pipelines: &'a [(ShaderKey, vk::Pipeline)],
+    /// The pictures of the Views the frame samples, by View.
+    views: Vec<(u64, vk::ImageView)>,
+    /// The view pass, when the frame has a magnifier or colour matrix that changes a pixel.
+    filter: Option<Filter>,
+    /// The framebuffer over the output's target and its depth-stencil image, when the frame has layers a matrix places and
+    /// the device can draw them.
+    models: Option<vk::Framebuffer>,
+    /// Whether the frame only draws View pictures: its target, cursor and overlay are not touched.
+    views_only: bool,
+}
+
+/// What a render pass draws into.
+#[derive(Clone, Copy)]
+struct Target {
+    framebuffer: vk::Framebuffer,
+    size: Size,
+    /// Whether the framebuffer has a depth-stencil image, which makes the pass [`Extras::render_pass`].
+    depth: bool,
+}
+
+impl Target {
+    /// A target with colour only.
+    fn plain(framebuffer: vk::Framebuffer, size: Size) -> Self {
+        Self {
+            framebuffer,
+            size,
+            depth: false,
+        }
+    }
+}
+
+/// How an image rests between passes, and what a copy out of it must wait for and hand back.
+#[derive(Clone, Copy)]
+pub(super) struct Resting {
+    layout: vk::ImageLayout,
+    stage: vk::PipelineStageFlags,
+    /// The access that wrote it last.
+    written: vk::AccessFlags,
+    /// The access the next pass makes of it.
+    restored: vk::AccessFlags,
+}
+
+impl Resting {
+    /// An image the renderer draws into: a target.
+    pub(super) fn attachment() -> Self {
+        Self {
+            layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            stage: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            written: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            restored: vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+        }
+    }
+
+    /// An image a frame samples: a View's picture.
+    pub(super) fn sampled() -> Self {
+        Self {
+            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            stage: vk::PipelineStageFlags::FRAGMENT_SHADER,
+            written: vk::AccessFlags::SHADER_READ,
+            restored: vk::AccessFlags::SHADER_READ,
+        }
+    }
 }
 
 /// What a draw binds: the uniform set, the textures by slot and the shader pipelines by key.
@@ -263,7 +344,7 @@ struct FrameObjects {
 
 impl Vulkan {
     /// The slot the frame being recorded uses.
-    fn slot(&self) -> &FrameSlot {
+    pub(super) fn slot(&self) -> &FrameSlot {
         self.ring.slot(self.active)
     }
 
@@ -343,16 +424,112 @@ impl Vulkan {
 
     /// Draws `frame` into the target. See [`Vulkan::draw`].
     pub(super) fn paint(&mut self, frame: &OutputFrame, scale: Scale) -> Result<(), vk::Result> {
-        if damage_of(frame, scale, self.physical).is_empty() {
-            return Ok(());
-        }
+        let requests: Vec<ViewRequest<'_>> = frame
+            .view_scenes()
+            .iter()
+            .map(|scene| ViewRequest { scene, capture: false })
+            .collect();
+        self.paint_with(frame, scale, &requests, false)
+    }
+
+    /// Draws `frame` into the target and the pictures of `requests` that the device does not hold yet.
+    ///
+    /// With `views_only` the frame is only the carrier of the pictures: its layers, target, cursor and overlay are left
+    /// alone, which is what a read of a View's picture is.
+    pub(super) fn paint_with(
+        &mut self,
+        frame: &OutputFrame,
+        scale: Scale,
+        requests: &[ViewRequest<'_>],
+        views_only: bool,
+    ) -> Result<(), vk::Result> {
+        let filtering = !views_only && view::is_active(frame.view(), frame.colour_matrix());
+        let widened;
+        let frame = if views_only {
+            frame
+        } else {
+            if damage_of(frame, scale, self.physical).is_empty() {
+                return Ok(());
+            }
+            // The magnifier and the colour matrix read and rewrite the whole output: a pixel not repainted would be filtered
+            // again, and one left unfiltered after the filter was turned off would stay wrong. So the output is repainted
+            // whole whenever the filter is on now or was on the frame before.
+            let widen = filtering || self.filtered;
+            self.filtered = filtering;
+            if widen {
+                let mut copy = frame.clone();
+                copy.push_damage(Rect::new(0, 0, self.physical.width, self.physical.height));
+                widened = copy;
+                &widened
+            } else {
+                frame
+            }
+        };
         let device = Rc::clone(&self.device);
-        self.active = self.ring.acquire();
-        self.ring.slot_mut(self.active).begin()?;
         // The timeline value this frame signals: the last use of every texture and image it touches.
         let value = device.context.timeline.submitted() + 1;
+        let mut drawn: Vec<(u64, bool)> = Vec::new();
+        let mut fresh: Vec<ViewRequest<'_>> = Vec::new();
+        {
+            let mut store = device.views.borrow_mut();
+            let mut retire = device.retire.borrow_mut();
+            if !views_only {
+                let alive: Vec<u64> = frame
+                    .live_views()
+                    .iter()
+                    .copied()
+                    .chain(requests.iter().map(|request| request.scene.id()))
+                    .collect();
+                store.retire_except(&alive, &mut retire);
+            }
+            for request in requests {
+                if store.ensure(*request, &device.context, device.extras.as_ref(), value, &mut retire) == Outcome::Draw
+                {
+                    drawn.push((request.scene.id(), request.capture));
+                    fresh.push(*request);
+                }
+            }
+            for id in sampled_views(frame, requests) {
+                store.touch(id, value);
+            }
+        }
+        if views_only && fresh.is_empty() {
+            return Ok(());
+        }
+        self.active = self.ring.acquire();
+        self.ring.slot_mut(self.active).begin()?;
+        let painted = self.paint_body(frame, scale, &fresh, value, views_only);
+        if painted.is_err() && !drawn.is_empty() {
+            // The pictures this frame meant to draw were not: the store must not believe they were.
+            let mut retire = device.retire.borrow_mut();
+            device.views.borrow_mut().invalidate(&drawn, &mut retire);
+        }
+        painted
+    }
+
+    /// The rest of [`Vulkan::paint_with`], once the frame's slot is begun: textures, plans, recording and the submission.
+    fn paint_body(
+        &mut self,
+        frame: &OutputFrame,
+        scale: Scale,
+        fresh: &[ViewRequest<'_>],
+        value: u64,
+        views_only: bool,
+    ) -> Result<(), vk::Result> {
+        let device = Rc::clone(&self.device);
         let (mut shaders, pipelines) = self.resolve_shaders(frame);
-        let wanted = wanted(frame, &shaders);
+        let mut wanted = wanted(frame, &shaders);
+        for (number, request) in fresh.iter().enumerate() {
+            for (layer, surface) in scene_surfaces(request.scene.eyes(request.capture)) {
+                if let Some(source) = surface_source(surface) {
+                    wanted.push(Wanted {
+                        slot: TextureSlot::Scene(number, layer),
+                        source,
+                        key: surface.content.as_deref(),
+                    });
+                }
+            }
+        }
         let prepared = device.textures.borrow_mut().prepare(
             wanted,
             &mut Frame {
@@ -372,20 +549,62 @@ impl Vulkan {
                 TextureSlot::Layer(index) => sizes.layers[index] = Some(*size),
                 TextureSlot::Overlay => sizes.overlay = Some(*size),
                 TextureSlot::Cursor => sizes.cursor = Some(*size),
-                TextureSlot::Chain(..) | TextureSlot::Backdrop(_) => {}
+                TextureSlot::Chain(..) | TextureSlot::Backdrop(_) | TextureSlot::View(_) | TextureSlot::Scene(..) => {}
+            }
+        }
+        // The pictures of the Views this frame samples, and how big each is.
+        let mut views: Vec<(u64, vk::ImageView)> = Vec::new();
+        let mut view_sizes: Vec<(u64, (u32, u32))> = Vec::new();
+        {
+            let store = device.views.borrow();
+            for id in sampled_views(frame, fresh) {
+                if let Some((view, size)) = store.sampled(id) {
+                    views.push((id, view));
+                    view_sizes.push((id, size));
+                }
+            }
+        }
+        for (index, layer) in frame.layers().iter().enumerate() {
+            if let Layer::Surface(Surface {
+                source: SurfaceSource::View(view),
+                ..
+            }) = layer
+            {
+                sizes.layers[index] = view_sizes.iter().find(|(id, _)| *id == view.id).map(|(_, size)| *size);
             }
         }
         let images = self.make_images(frame, scale, &mut shaders, &sizes);
         let mut batch = DrawBatch::default();
-        let jobs = self.plan_jobs(frame, scale, &shaders, &sizes, &images, &mut batch);
-        let planned = plan(frame, scale, self.physical, &sizes, &shaders).append_to(&mut batch);
-        if planned.skipped_models > 0 && !self.warned_models {
-            self.warned_models = true;
-            log::warn!(
-                layers = planned.skipped_models,
-                "unsupported-3d: the Vulkan renderer has no depth pass, so a layer with a model is not drawn"
-            );
+        let mut jobs = Vec::new();
+        for (number, request) in fresh.iter().enumerate() {
+            let Some(handles) = device.views.borrow().handles((request.scene.id(), request.capture)) else {
+                continue;
+            };
+            let textures = SceneTextures {
+                scene: number,
+                sizes: &prepared.sizes,
+                views: &view_sizes,
+            };
+            let plan = plan_scene(request.scene.eyes(request.capture), handles.size, &textures).append_to(&mut batch);
+            jobs.push(Job::View {
+                colour: handles.colour,
+                framebuffer: handles.framebuffer,
+                size: handles.size,
+                plan,
+            });
         }
+        jobs.extend(self.plan_jobs(frame, scale, &shaders, &sizes, &images, &mut batch));
+        let planned = plan(frame, scale, self.physical, &sizes, &shaders).append_to(&mut batch);
+        let models = if planned.models_end > planned.layers_end {
+            self.depth_framebuffer()
+        } else {
+            None
+        };
+        let filter = if !views_only && view::is_active(frame.view(), frame.colour_matrix()) {
+            self.make_filter(frame, &mut batch)
+        } else {
+            None
+        };
         if planned.filter_blur && !self.warned_filter_blur {
             self.warned_filter_blur = true;
             log::warn!(
@@ -400,6 +619,10 @@ impl Vulkan {
             images: &images,
             jobs,
             pipelines: &pipelines,
+            views,
+            filter,
+            models,
+            views_only,
         });
         match recorded {
             Ok(submitted) => {
@@ -429,6 +652,77 @@ impl Vulkan {
                 Err(result)
             }
         }
+    }
+
+    /// The framebuffer over the target and its depth-stencil image, made when a frame first has a layer a matrix places. A
+    /// device with no depth-stencil format draws no such layer, which is logged once.
+    fn depth_framebuffer(&mut self) -> Option<vk::Framebuffer> {
+        let Some(extras) = self.device.extras.as_ref() else {
+            if !self.warned_models {
+                self.warned_models = true;
+                log::warn!(
+                    "unsupported-3d: this device has no depth-stencil format, so a layer with a model is not drawn"
+                );
+            }
+            return None;
+        };
+        if self.depth.is_none() {
+            match DepthTarget::over(&self.device.context, extras, &self.target.image) {
+                Ok(depth) => self.depth = Some(depth),
+                Err(result) => {
+                    log::warn!(
+                        area = "render",
+                        ?result,
+                        "the depth image of the output could not be made; 3D layers are not drawn"
+                    );
+                    return None;
+                }
+            }
+        }
+        self.depth.as_ref().map(|depth| depth.framebuffer)
+    }
+
+    /// The view pass of a frame with a magnifier or a colour matrix: its block and quad joined to `batch`, and the scratch
+    /// image and pipeline it draws with. `None`, logged, when the device cannot make them: the frame is drawn unfiltered.
+    fn make_filter(&mut self, frame: &OutputFrame, batch: &mut DrawBatch) -> Option<Filter> {
+        let device = Rc::clone(&self.device);
+        let extras = device.extras.as_ref()?;
+        let pipeline = match extras.replacing(&device.pipelines, Replace::View) {
+            Ok(pipeline) => pipeline,
+            Err(error) => {
+                log::warn!(area = "render", %error, "the view pass could not be made; the frame is drawn unfiltered");
+                return None;
+            }
+        };
+        if self.scratch.is_none() {
+            let made = VkImage::new(
+                &device.context,
+                self.physical.width,
+                self.physical.height,
+                TARGET_FORMAT,
+                vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+                false,
+            );
+            match made {
+                Ok(image) => self.scratch = Some(image),
+                Err(result) => {
+                    log::warn!(
+                        area = "render",
+                        ?result,
+                        "the view pass's copy could not be made; the frame is drawn unfiltered"
+                    );
+                    return None;
+                }
+            }
+        }
+        let scratch = self.scratch.as_ref()?;
+        let block = view::ViewUniforms::new(frame.view(), frame.colour_matrix(), self.physical).bytes();
+        Some(Filter {
+            image: scratch.raw(),
+            view: scratch.view(),
+            pipeline,
+            pass: view::push_block(batch, &block, self.physical),
+        })
     }
 
     /// Makes the pipeline of every shader pass the frame draws, and says which passes each layer has.
@@ -599,68 +893,50 @@ impl Vulkan {
     }
 
     /// A descriptor set from the frame's arena that binds `view` with `sampler` as a texture and its sampler.
-    fn texture_set(&mut self, view: vk::ImageView, sampler: vk::Sampler) -> Result<vk::DescriptorSet, vk::Result> {
+    pub(super) fn texture_set(
+        &mut self,
+        view: vk::ImageView,
+        sampler: vk::Sampler,
+    ) -> Result<vk::DescriptorSet, vk::Result> {
         let layout = self.device.pipelines.texture_layout;
         let set = self.ring.slot_mut(self.active).arena.allocate(layout)?;
         write_texture_set(&self.device.context, set, view, sampler);
         Ok(set)
     }
 
-    /// Records the frame and submits it. Returns the timeline value it signals.
-    fn record(&mut self, recording: FrameRecording<'_>) -> Result<u64, vk::Result> {
-        let FrameRecording {
-            frame,
-            planned,
-            batch,
-            prepared,
-            images,
-            jobs,
-            pipelines,
-        } = recording;
-        let device = Rc::clone(&self.device);
-        let context = Rc::clone(&device.context);
+    /// Writes a frame's blocks and quads where its passes read them: the slot's uniform, shader-block and instance buffers.
+    pub(super) fn upload_batch(&mut self, batch: &DrawBatch) -> Result<(), vk::Result> {
+        let context = Rc::clone(&self.device.context);
         let instance_bytes: Vec<u8> = batch.instances.iter().flat_map(|value| value.to_ne_bytes()).collect();
-        {
-            let slot = self.ring.slot_mut(self.active);
-            FrameSlot::ensure(
-                &context,
-                &mut slot.uniforms,
-                batch.uniforms.len().max(UNIFORM_STRIDE),
-                vk::BufferUsageFlags::UNIFORM_BUFFER,
-            )?;
-            FrameSlot::ensure(
-                &context,
-                &mut slot.user_uniforms,
-                batch.user.len().max(UNIFORM_STRIDE),
-                vk::BufferUsageFlags::UNIFORM_BUFFER,
-            )?;
-            FrameSlot::ensure(
-                &context,
-                &mut slot.instances,
-                instance_bytes.len().max(16),
-                vk::BufferUsageFlags::VERTEX_BUFFER,
-            )?;
-            slot.uniforms.write(0, &batch.uniforms);
-            slot.user_uniforms.write(0, &batch.user);
-            slot.instances.write(0, &instance_bytes);
-        }
-        let saved = &mut self.cursor_under;
-        saved.rect = planned.cursor_visible;
-        if let Some(rect) = planned.cursor_visible {
-            let bytes = rect.width as usize * rect.height as usize * 4;
-            if saved.buffer.as_ref().is_none_or(|buffer| buffer.size() < bytes) {
-                let bigger = VkBuffer::new(&context, bytes, vk::BufferUsageFlags::TRANSFER_DST, true)?;
-                if let Some(old) = saved.buffer.replace(bigger) {
-                    // A frame in flight may still copy into the old one.
-                    device.retire.borrow_mut().push(context.timeline.submitted(), old);
-                }
-            }
-        }
+        let slot = self.ring.slot_mut(self.active);
+        FrameSlot::ensure(
+            &context,
+            &mut slot.uniforms,
+            batch.uniforms.len().max(UNIFORM_STRIDE),
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+        )?;
+        FrameSlot::ensure(
+            &context,
+            &mut slot.user_uniforms,
+            batch.user.len().max(UNIFORM_STRIDE),
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+        )?;
+        FrameSlot::ensure(
+            &context,
+            &mut slot.instances,
+            instance_bytes.len().max(16),
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+        )?;
+        slot.uniforms.write(0, &batch.uniforms);
+        slot.user_uniforms.write(0, &batch.user);
+        slot.instances.write(0, &instance_bytes);
+        Ok(())
+    }
 
-        let uniform_set = {
-            let layout = device.pipelines.uniform_layout;
-            self.ring.slot_mut(self.active).arena.allocate(layout)?
-        };
+    /// The set that binds the slot's two uniform buffers, valid until the slot's next frame.
+    pub(super) fn uniform_set(&mut self) -> Result<vk::DescriptorSet, vk::Result> {
+        let layout = self.device.pipelines.uniform_layout;
+        let uniform_set = self.ring.slot_mut(self.active).arena.allocate(layout)?;
         let slot_uniforms = self.slot().uniforms.raw();
         let slot_user_uniforms = self.slot().user_uniforms.raw();
         let block = [vk::DescriptorBufferInfo::default()
@@ -684,10 +960,47 @@ impl Vulkan {
                 .buffer_info(&user_block),
         ];
         // SAFETY: the set and buffers are live and the ranges lie inside the buffers.
-        unsafe { context.device.update_descriptor_sets(&write_uniforms, &[]) };
+        unsafe { self.device.context.device.update_descriptor_sets(&write_uniforms, &[]) };
+        Ok(uniform_set)
+    }
+
+    /// Records the frame and submits it. Returns the timeline value it signals.
+    fn record(&mut self, recording: FrameRecording<'_>) -> Result<u64, vk::Result> {
+        let FrameRecording {
+            frame,
+            planned,
+            batch,
+            prepared,
+            images,
+            jobs,
+            pipelines,
+            views,
+            filter,
+            models,
+            views_only,
+        } = recording;
+        let device = Rc::clone(&self.device);
+        let context = Rc::clone(&device.context);
+        self.upload_batch(&batch)?;
+        if !views_only {
+            let saved = &mut self.cursor_under;
+            saved.rect = planned.cursor_visible;
+            if let Some(rect) = planned.cursor_visible {
+                let bytes = rect.width as usize * rect.height as usize * 4;
+                if saved.buffer.as_ref().is_none_or(|buffer| buffer.size() < bytes) {
+                    let bigger = VkBuffer::new(&context, bytes, vk::BufferUsageFlags::TRANSFER_DST, true)?;
+                    if let Some(old) = saved.buffer.replace(bigger) {
+                        // A frame in flight may still copy into the old one.
+                        device.retire.borrow_mut().push(context.timeline.submitted(), old);
+                    }
+                }
+            }
+        }
+
+        let uniform_set = self.uniform_set()?;
         // (the texture sets of the frame are next)
         let mut sets: Vec<(TextureSlot, vk::DescriptorSet)> =
-            Vec::with_capacity(prepared.sets.len() + 2 * images.len());
+            Vec::with_capacity(prepared.sets.len() + 2 * images.len() + views.len());
         sets.extend_from_slice(&prepared.sets);
         for (index, layer_images) in images {
             if let Some((target, _)) = &layer_images.backdrop {
@@ -701,6 +1014,14 @@ impl Vulkan {
                 }
             }
         }
+        for (id, view) in &views {
+            let set = self.texture_set(*view, device.pipelines.linear)?;
+            sets.push((TextureSlot::View(*id), set));
+        }
+        let filter_set = match &filter {
+            Some(filter) => Some(self.texture_set(filter.view, device.pipelines.nearest)?),
+            None => None,
+        };
 
         self.upload(prepared);
         let bindings = Bindings {
@@ -712,6 +1033,32 @@ impl Vulkan {
         let transparent = [0.0; 4];
         for job in &jobs {
             match job {
+                Job::View {
+                    colour,
+                    framebuffer,
+                    size,
+                    plan,
+                } => {
+                    // A View's picture is cleared to opaque black, and drawn through the depth-stencil pass.
+                    let whole = [Rect::new(0, 0, size.width, size.height)];
+                    let clears = [Clear {
+                        colour: [0.0, 0.0, 0.0, 1.0],
+                        rects: &whole,
+                    }];
+                    self.to_drawn(*colour);
+                    self.pass(
+                        Target {
+                            framebuffer: *framebuffer,
+                            size: *size,
+                            depth: true,
+                        },
+                        &clears,
+                        &plan.draws,
+                        &bindings,
+                        &mut stamps,
+                    );
+                    self.to_sampled(*colour);
+                }
                 Job::Backdrop {
                     index,
                     plan,
@@ -733,7 +1080,13 @@ impl Vulkan {
                         },
                     ];
                     self.to_drawn(target.image.raw());
-                    self.pass((target.framebuffer, size), &clears, &plan.draws, &bindings, &mut stamps);
+                    self.pass(
+                        Target::plain(target.framebuffer, size),
+                        &clears,
+                        &plan.draws[..plan.layers_end],
+                        &bindings,
+                        &mut stamps,
+                    );
                     self.to_sampled(target.image.raw());
                 }
                 Job::Chain { index, step } => {
@@ -747,7 +1100,7 @@ impl Vulkan {
                     }];
                     self.to_drawn(target.image.raw());
                     self.pass(
-                        (target.framebuffer, size),
+                        Target::plain(target.framebuffer, size),
                         &clears,
                         &step.plan.draws,
                         &bindings,
@@ -757,45 +1110,68 @@ impl Vulkan {
                 }
             }
         }
-        let background = premultiplied(frame.background());
-        let main = [Clear {
-            colour: background,
-            rects: &planned.damage,
-        }];
-        let target = (self.target.framebuffer, self.physical);
-        self.pass(
-            target,
-            &main,
-            &planned.draws[..planned.layers_end],
-            &bindings,
-            &mut stamps,
-        );
-        if planned.overlay_end > planned.layers_end {
+        if !views_only {
+            let background = premultiplied(frame.background());
+            let main = [Clear {
+                colour: background,
+                rects: &planned.damage,
+            }];
+            let target = Target::plain(self.target.framebuffer, self.physical);
             self.pass(
                 target,
-                &[],
-                &planned.draws[planned.layers_end..planned.overlay_end],
+                &main,
+                &planned.draws[..planned.layers_end],
                 &bindings,
                 &mut stamps,
             );
-        }
-        if !planned.cursor_under.is_empty() {
-            self.save_under(&planned.cursor_under, self.cursor_under.rect);
-        }
-        if planned.draws.len() > planned.overlay_end {
-            self.pass(
-                target,
-                &[],
-                &planned.draws[planned.overlay_end..],
-                &bindings,
-                &mut stamps,
-            );
+            if let Some(framebuffer) = models
+                && planned.models_end > planned.layers_end
+            {
+                // The layers a matrix places are tested against a depth buffer cleared for this pass, over what the flat
+                // layers drew.
+                let placed = Target {
+                    framebuffer,
+                    size: self.physical,
+                    depth: true,
+                };
+                self.pass(
+                    placed,
+                    &[],
+                    &planned.draws[planned.layers_end..planned.models_end],
+                    &bindings,
+                    &mut stamps,
+                );
+            }
+            if planned.overlay_end > planned.models_end {
+                self.pass(
+                    target,
+                    &[],
+                    &planned.draws[planned.models_end..planned.overlay_end],
+                    &bindings,
+                    &mut stamps,
+                );
+            }
+            if !planned.cursor_under.is_empty() {
+                self.save_under(&planned.cursor_under, self.cursor_under.rect);
+            }
+            if planned.draws.len() > planned.overlay_end {
+                self.pass(
+                    target,
+                    &[],
+                    &planned.draws[planned.overlay_end..],
+                    &bindings,
+                    &mut stamps,
+                );
+            }
+            if let (Some(filter), Some(texture)) = (&filter, filter_set) {
+                self.record_view(filter.image, filter.pipeline, (uniform_set, texture), filter.pass);
+            }
         }
         let mut keys: Vec<ShaderKey> = Vec::new();
         let drawn = jobs
             .iter()
             .flat_map(|job| match job {
-                Job::Backdrop { plan, .. } => plan.draws.iter(),
+                Job::View { plan, .. } | Job::Backdrop { plan, .. } => plan.draws.iter(),
                 Job::Chain { step, .. } => step.plan.draws.iter(),
             })
             .chain(planned.draws.iter());
@@ -976,9 +1352,13 @@ impl Vulkan {
     }
 
     /// Records one render pass into `target`: the clears, then the draws.
+    ///
+    /// A target with a depth-stencil image runs [`Extras::render_pass`], which clears depth to one and stencil to zero, and its
+    /// draws use the pipeline of their pass kind and class; a draw of a shell's shader has none there and is skipped. A draw
+    /// that names a viewport (a View's eye) sets it, and a draw with a stencil class sets its reference.
     fn pass(
         &self,
-        target: (vk::Framebuffer, Size),
+        target: Target,
         clears: &[Clear<'_>],
         draws: &[PlannedDraw],
         bindings: &Bindings<'_>,
@@ -986,12 +1366,25 @@ impl Vulkan {
     ) {
         let device = &self.device.context.device;
         let pipelines = &self.device.pipelines;
+        let extras = self.device.extras.as_ref();
+        let render_pass = match (target.depth, extras) {
+            (false, _) => pipelines.render_pass,
+            (true, Some(extras)) => extras.render_pass,
+            // The callers never ask for a depth pass on a device that has none.
+            (true, None) => return,
+        };
         let slot = self.slot();
         let cmd = slot.cmd;
-        let (framebuffer, size) = target;
-        let begin = vk::RenderPassBeginInfo::default()
-            .render_pass(pipelines.render_pass)
-            .framebuffer(framebuffer)
+        let size = target.size;
+        let cleared = [
+            vk::ClearValue::default(),
+            vk::ClearValue {
+                depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 },
+            },
+        ];
+        let mut begin = vk::RenderPassBeginInfo::default()
+            .render_pass(render_pass)
+            .framebuffer(target.framebuffer)
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
                 extent: vk::Extent2D {
@@ -999,7 +1392,10 @@ impl Vulkan {
                     height: size.height,
                 },
             });
-        let viewport = vk::Viewport {
+        if target.depth {
+            begin = begin.clear_values(&cleared);
+        }
+        let whole = vk::Viewport {
             x: 0.0,
             y: 0.0,
             width: size.width as f32,
@@ -1012,7 +1408,7 @@ impl Vulkan {
         // every scissor lies inside the target.
         unsafe {
             device.cmd_begin_render_pass(cmd, &begin, vk::SubpassContents::INLINE);
-            device.cmd_set_viewport(cmd, 0, &[viewport]);
+            device.cmd_set_viewport(cmd, 0, &[whole]);
             device.cmd_bind_vertex_buffers(cmd, 0, &[self.device.quad.raw(), slot.instances.raw()], &[0, 0]);
             for clear in clears.iter().filter(|clear| !clear.rects.is_empty()) {
                 let attachment = vk::ClearAttachment {
@@ -1034,21 +1430,61 @@ impl Vulkan {
                 device.cmd_clear_attachments(cmd, &[attachment], &rects);
             }
             let mut bound = None;
+            let mut eye = false;
             for draw in draws {
-                if bound != Some(draw.kind) {
-                    let pipeline = match draw.kind {
-                        PassKind::Solid => pipelines.solid,
-                        PassKind::Surface => pipelines.surface,
-                        PassKind::Shadow => pipelines.shadow,
-                        PassKind::InsetShadow => pipelines.inset_shadow,
-                        PassKind::Border => pipelines.border,
-                        PassKind::User(key) => match bindings.pipelines.iter().find(|(held, _)| *held == key) {
+                let class = if target.depth { draw.variant.class } else { Class::Flat };
+                if bound != Some((draw.kind, class)) {
+                    let pipeline = match (draw.kind, extras.filter(|_| target.depth)) {
+                        (PassKind::Solid, None) => pipelines.solid,
+                        (PassKind::Surface, None) => pipelines.surface,
+                        (PassKind::Shadow, None) => pipelines.shadow,
+                        (PassKind::InsetShadow, None) => pipelines.inset_shadow,
+                        (PassKind::Border, None) => pipelines.border,
+                        (PassKind::Solid, Some(extras)) => extras.placed(pipelines, Base::Solid, class),
+                        (PassKind::Surface, Some(extras)) => extras.placed(pipelines, Base::Surface, class),
+                        // A shadow, an inset shadow and a border are not drawn on a placed layer, as on GLES.
+                        (PassKind::Shadow | PassKind::InsetShadow | PassKind::Border, Some(_)) => continue,
+                        (PassKind::User(key), None) => match bindings.pipelines.iter().find(|(held, _)| *held == key) {
                             Some((_, pipeline)) => *pipeline,
                             None => continue,
                         },
+                        // A shell's shader has no pipeline in a pass with a depth buffer.
+                        (PassKind::User(_), Some(_)) => continue,
                     };
+                    if pipeline == vk::Pipeline::null() {
+                        continue;
+                    }
                     device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
-                    bound = Some(draw.kind);
+                    bound = Some((draw.kind, class));
+                }
+                match draw.viewport {
+                    Some(rect) => {
+                        eye = true;
+                        device.cmd_set_viewport(
+                            cmd,
+                            0,
+                            &[vk::Viewport {
+                                x: rect.x as f32,
+                                y: rect.y as f32,
+                                width: rect.width as f32,
+                                height: rect.height as f32,
+                                min_depth: 0.0,
+                                max_depth: 1.0,
+                            }],
+                        );
+                    }
+                    None if eye => {
+                        eye = false;
+                        device.cmd_set_viewport(cmd, 0, &[whole]);
+                    }
+                    None => {}
+                }
+                if target.depth && draw.variant.stenciled() {
+                    device.cmd_set_stencil_reference(
+                        cmd,
+                        vk::StencilFaceFlags::FRONT_AND_BACK,
+                        u32::from(draw.variant.reference),
+                    );
                 }
                 device.cmd_set_scissor(cmd, 0, &[scissor(draw.scissor)]);
                 device.cmd_bind_descriptor_sets(
@@ -1091,7 +1527,7 @@ impl Vulkan {
     }
 
     /// Moves an image a pass drew into to the layout a later pass samples it in.
-    fn to_sampled(&self, image: vk::Image) {
+    pub(super) fn to_sampled(&self, image: vk::Image) {
         self.slot().barrier(
             image,
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
@@ -1105,7 +1541,7 @@ impl Vulkan {
     }
 
     /// Moves an image to be drawn into, dropping what it held. The image may have been sampled by an earlier pass of this frame.
-    fn to_drawn(&self, image: vk::Image) {
+    pub(super) fn to_drawn(&self, image: vk::Image) {
         self.slot().barrier(
             image,
             vk::ImageLayout::UNDEFINED,
@@ -1118,11 +1554,40 @@ impl Vulkan {
         );
     }
 
+    /// Moves an image that was sampled back to being drawn into, keeping what it holds.
+    pub(super) fn to_attached(&self, image: vk::Image) {
+        self.slot().barrier(
+            image,
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            (vk::PipelineStageFlags::FRAGMENT_SHADER, vk::AccessFlags::empty()),
+            (
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            ),
+        );
+    }
+
     /// Reads the target back, with the cursor's pixels put back when `!with_cursor`.
     ///
     /// The read is a submission of its own, and the call waits for it, which is also every frame submitted before it.
     pub(super) fn read_target(&mut self, with_cursor: bool) -> Result<Image, vk::Result> {
         let size = self.physical;
+        let image = self.target.image.raw();
+        let mut pixels = self.read_back(image, size, Resting::attachment())?;
+        let stride = size.width as usize * 4;
+        // The cursor is drawn last, so its pixels go back first.
+        if !with_cursor && let (Some(rect), Some(saved)) = (self.cursor_under.rect, self.cursor_under.bytes()) {
+            paste(&mut pixels, stride, rect, saved);
+        }
+        Image::new(size, stride, pixels).ok_or(vk::Result::ERROR_UNKNOWN)
+    }
+
+    /// Copies `image`, `size` pixels that rest as `resting` says, into the readback buffer and returns its bytes, packed.
+    ///
+    /// The read is a submission of its own, and the call waits for it, which is also every frame submitted before it. The
+    /// image is left as it was found.
+    pub(super) fn read_back(&mut self, image: vk::Image, size: Size, resting: Resting) -> Result<Vec<u8>, vk::Result> {
         let bytes = size.width as usize * size.height as usize * 4;
         let context = Rc::clone(&self.device.context);
         if self.readback.size() < bytes {
@@ -1136,16 +1601,12 @@ impl Vulkan {
         }
         self.active = self.ring.acquire();
         self.ring.slot_mut(self.active).begin()?;
-        let image = self.target.image.raw();
         let slot = self.slot();
         slot.barrier(
             image,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            resting.layout,
             vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-            (
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            ),
+            (resting.stage, resting.written),
             (vk::PipelineStageFlags::TRANSFER, vk::AccessFlags::TRANSFER_READ),
         );
         let region = vk::BufferImageCopy::default()
@@ -1163,8 +1624,7 @@ impl Vulkan {
             .buffer(self.readback.raw())
             .offset(0)
             .size(vk::WHOLE_SIZE);
-        // SAFETY: the readback buffer holds `bytes` bytes and the target is in
-        // `TRANSFER_SRC_OPTIMAL` after the barrier above.
+        // SAFETY: the readback buffer holds `bytes` bytes and the image is in `TRANSFER_SRC_OPTIMAL` after the barrier above.
         unsafe {
             context.device.cmd_copy_image_to_buffer(
                 slot.cmd,
@@ -1186,25 +1646,16 @@ impl Vulkan {
         slot.barrier(
             image,
             vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            resting.layout,
             (vk::PipelineStageFlags::TRANSFER, vk::AccessFlags::empty()),
-            (
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            ),
+            (resting.stage, resting.restored),
         );
         let value = self.ring.slot_mut(self.active).submit()?;
         context.wait(value)?;
         let Some(pixels) = self.readback.read(0, bytes) else {
             return Err(vk::Result::ERROR_MEMORY_MAP_FAILED);
         };
-        let mut pixels = pixels.to_vec();
-        let stride = size.width as usize * 4;
-        // The cursor is drawn last, so its pixels go back first.
-        if !with_cursor && let (Some(rect), Some(saved)) = (self.cursor_under.rect, self.cursor_under.bytes()) {
-            paste(&mut pixels, stride, rect, saved);
-        }
-        Image::new(size, stride, pixels).ok_or(vk::Result::ERROR_UNKNOWN)
+        Ok(pixels.to_vec())
     }
 
     /// The renderer error a failed call becomes; a lost device is remembered by the device and every output on it.
@@ -1251,35 +1702,14 @@ fn wanted<'a>(frame: &'a OutputFrame, shaders: &Shaders) -> Vec<Wanted<'a>> {
             }
             Layer::Overlay(_) => continue,
         };
-        if surface.model.is_some() {
+        let Some(source) = surface_source(surface) else {
             continue;
-        }
-        let key = surface.content.as_deref();
-        match &surface.source {
-            SurfaceSource::Buffer(buffer) => found.push(Wanted {
-                slot: TextureSlot::Layer(index),
-                source: Source::Shm(buffer),
-                key,
-            }),
-            // A snapshot is premultiplied pixels already, the same as the overlay bitmap.
-            SurfaceSource::Snapshot(image) => found.push(Wanted {
-                slot: TextureSlot::Layer(index),
-                source: Source::Bitmap(image),
-                key,
-            }),
-            // A linear dmabuf is mapped and read (`dmabuf.rs`); one the renderer cannot read is skipped when its shape is asked.
-            SurfaceSource::Dmabuf(dmabuf) => found.push(Wanted {
-                slot: TextureSlot::Layer(index),
-                source: Source::Dmabuf(dmabuf),
-                key,
-            }),
-            SurfaceSource::View(_) => {
-                log::warn!(
-                    area = "render",
-                    "a View's GPU texture reached the Vulkan renderer, which draws a View on the CPU; the layer is skipped"
-                );
-            }
-        }
+        };
+        found.push(Wanted {
+            slot: TextureSlot::Layer(index),
+            source,
+            key: surface.content.as_deref(),
+        });
     }
     if let Some(overlay) = overlay_of(frame) {
         found.push(Wanted {
@@ -1296,6 +1726,39 @@ fn wanted<'a>(frame: &'a OutputFrame, shaders: &Shaders) -> Vec<Wanted<'a>> {
         });
     }
     found
+}
+
+/// What a surface layer's texture is made from, or `None` for a View's, which the renderer drew itself.
+pub(super) fn surface_source(surface: &Surface) -> Option<Source<'_>> {
+    match &surface.source {
+        SurfaceSource::Buffer(buffer) => Some(Source::Shm(buffer)),
+        // A snapshot is premultiplied pixels already, the same as the overlay bitmap.
+        SurfaceSource::Snapshot(image) => Some(Source::Bitmap(image)),
+        // A linear dmabuf is mapped and read (`dmabuf.rs`); one the renderer cannot read is skipped when its shape is asked.
+        SurfaceSource::Dmabuf(dmabuf) => Some(Source::Dmabuf(dmabuf)),
+        SurfaceSource::View(_) => None,
+    }
+}
+
+/// Every View whose picture the frame's layers or the scenes it draws sample, each once.
+fn sampled_views(frame: &OutputFrame, requests: &[ViewRequest<'_>]) -> Vec<u64> {
+    let mut ids: Vec<u64> = frame
+        .layers()
+        .iter()
+        .filter_map(|layer| match layer {
+            Layer::Surface(Surface {
+                source: SurfaceSource::View(view),
+                ..
+            }) => Some(view.id),
+            _ => None,
+        })
+        .collect();
+    for request in requests {
+        ids.extend(scene_views(request.scene.eyes(request.capture)));
+    }
+    ids.sort_unstable();
+    ids.dedup();
+    ids
 }
 
 /// A straight colour as the premultiplied floats a clear takes.

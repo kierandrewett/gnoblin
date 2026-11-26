@@ -32,7 +32,8 @@ use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 use smithay::utils::{Physical, Rectangle};
 
 use super::pipeline::{INSTANCE_FLOATS, UNIFORM_BYTES};
-use gnoblin_render_frame::frame::{Layer, OutputFrame, Overlay, Surface};
+use super::spatial::{DrawVariant, Placed, plan_models};
+use gnoblin_render_frame::frame::{Layer, OutputFrame, Overlay, Surface, SurfaceSource};
 use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::grade::{self, Grade};
 use gnoblin_render_frame::shader::uniforms::{Uniforms, UserBlock};
@@ -70,6 +71,10 @@ pub(super) enum TextureSlot {
     Chain(usize, usize),
     /// The backdrop of the layer at this index: what is behind it, with secure layers black.
     Backdrop(usize),
+    /// The picture of a View, which the renderer drew from the scene the frame carries.
+    View(u64),
+    /// A layer of a View's scene: the scene's number among the ones this frame draws, and the layer's number in it.
+    Scene(usize, usize),
 }
 
 impl TextureSlot {
@@ -100,6 +105,10 @@ pub(super) struct PlannedDraw {
     pub user_offset: u32,
     /// The draw's quad, as an index into [`FramePlan::instances`].
     pub instance: u32,
+    /// How the draw takes part in the depth and stencil tests, which decides its pipeline in a pass that has them.
+    pub variant: DrawVariant,
+    /// The part of the target a View's eye covers, when the draw is one; `None` is the whole target.
+    pub viewport: Option<Rect>,
 }
 
 /// The sizes of the textures that exist for a frame, by slot.
@@ -166,8 +175,8 @@ pub(super) struct FramePlan {
     pub user: Vec<u8>,
     /// The quads, [`INSTANCE_FLOATS`] floats each.
     pub instances: Vec<f32>,
-    /// Layers left out because they carry a 3D model.
-    pub skipped_models: usize,
+    /// The draws from `layers_end` to this index are the layers a matrix places (3D layers), drawn in a pass with a depth buffer.
+    pub models_end: usize,
     /// Whether a layer carries a filter that blurs, which is drawn graded and not blurred.
     pub filter_blur: bool,
 }
@@ -257,7 +266,6 @@ pub(super) fn plan_into(
             match layer {
                 Layer::Solid(solid) => {
                     if solid.model.is_some() {
-                        built.skipped_models += 1;
                         continue;
                     }
                     let quad = to_rect(physical_rect(solid.dst, scale));
@@ -301,7 +309,6 @@ pub(super) fn plan_into(
                 }
                 Layer::Surface(surface) => {
                     if surface.model.is_some() {
-                        built.skipped_models += 1;
                         continue;
                     }
                     let Some(Some(size)) = sizes.layers.get(index) else {
@@ -339,7 +346,7 @@ pub(super) fn plan_into(
                             draws.push(
                                 &mut built,
                                 PassKind::Surface,
-                                Some(TextureSlot::Layer(index)),
+                                Some(slot_of(surface, index)),
                                 damage,
                                 quad,
                                 &uniforms,
@@ -355,6 +362,11 @@ pub(super) fn plan_into(
         }
     }
     built.layers_end = built.draws.len();
+    // A backdrop is drawn in the plain pass, which has no depth: only the output's own frame places layers.
+    if target.origin == (0, 0) && target.size == physical {
+        plan_models(frame, scale, physical, sizes, &damage, &mut draws, &mut built);
+    }
+    built.models_end = built.draws.len();
     let overlay = overlay_of(frame)
         .zip(sizes.overlay)
         .map(|(overlay, _)| to_rect(physical_rect(overlay.dst(), scale)));
@@ -489,18 +501,21 @@ fn bitmap(built: &mut FramePlan, draws: &mut Draws, damage: &[Rect], slot: Textu
 }
 
 /// The buffers the draws are packed into.
-struct Draws {
+pub(super) struct Draws {
     target: PlanTarget,
     viewport: [f32; 2],
     block: Vec<u8>,
+    /// How the quad being appended is placed, when a matrix does it.
+    placed: Option<Placed>,
 }
 
 impl Draws {
-    fn new(target: PlanTarget) -> Self {
+    pub(super) fn new(target: PlanTarget) -> Self {
         Self {
             target,
             viewport: [target.size.width as f32, target.size.height as f32],
             block: Vec::with_capacity(UNIFORM_BYTES),
+            placed: None,
         }
     }
 
@@ -524,6 +539,22 @@ impl Draws {
         quad: Rect,
         uniforms: &Uniforms,
     ) {
+        self.append(built, kind, slot, None, None, scissor, quad, uniforms);
+    }
+
+    /// Appends one quad that a matrix places: a 3D layer of an output, or a layer or clip of a View's picture.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn push_placed(
+        &mut self,
+        built: &mut FramePlan,
+        kind: PassKind,
+        slot: Option<TextureSlot>,
+        scissor: Rect,
+        quad: Rect,
+        uniforms: &Uniforms,
+        placed: Placed,
+    ) {
+        self.placed = Some(placed);
         self.append(built, kind, slot, None, None, scissor, quad, uniforms);
     }
 
@@ -604,6 +635,7 @@ impl Draws {
             }
             None => 0,
         };
+        let placed = self.placed.take();
         let instance = built.draws.len();
         built.instances.extend_from_slice(&[
             quad.x as f32,
@@ -614,7 +646,13 @@ impl Draws {
             self.viewport[1],
         ]);
         // The projection's columns and parameters stay zero for a flat quad.
-        built.instances.extend([0.0; INSTANCE_FLOATS - 6]);
+        built.instances.extend(match placed {
+            Some(placed) => {
+                let [column0, column1, column3] = placed.columns;
+                [column0, column1, column3, [1.0, placed.depth, 0.0, 0.0]].concat()
+            }
+            None => vec![0.0; INSTANCE_FLOATS - 6],
+        });
         built.draws.push(PlannedDraw {
             kind,
             slot,
@@ -623,6 +661,8 @@ impl Draws {
             uniform_offset: offset as u32,
             user_offset: user_offset as u32,
             instance: instance as u32,
+            variant: placed.map(|placed| placed.variant).unwrap_or_default(),
+            viewport: placed.and_then(|placed| placed.viewport),
         });
     }
 }
@@ -854,6 +894,14 @@ impl Draws {
     }
 }
 
+/// The slot a surface layer's texture is in: the picture of a View, or the texture the cache made for the layer.
+pub(super) fn slot_of(surface: &Surface, index: usize) -> TextureSlot {
+    match &surface.source {
+        SurfaceSource::View(view) => TextureSlot::View(view.id),
+        _ => TextureSlot::Layer(index),
+    }
+}
+
 /// A logical rectangle of the frame as physical pixels of the output, by the rule every renderer shares.
 pub(super) fn quad_of(rect: Rect, scale: Scale) -> Rect {
     to_rect(physical_rect(rect, scale))
@@ -870,7 +918,7 @@ fn to_rect(rect: Rectangle<i32, Physical>) -> Rect {
 }
 
 /// Where a surface's crop sits in its texture, as origin and scale in texture coordinates.
-fn texture_mapping(surface: &Surface, (width, height): (u32, u32)) -> [f32; 4] {
+pub(super) fn texture_mapping(surface: &Surface, (width, height): (u32, u32)) -> [f32; 4] {
     let crop: RectF = surface.src;
     [
         crop.x as f32 / width as f32,
@@ -1007,7 +1055,7 @@ mod tests {
     }
 
     #[test]
-    fn a_layer_with_a_model_is_counted_and_left_out() {
+    fn a_layer_with_a_model_is_planned_as_a_placed_quad_after_the_flat_layers() {
         let mut frame = solid_frame(&[Rect::new(0, 0, 8, 8)], &[]);
         let mut solid = Solid::new(Rect::new(0, 0, 4, 4), Color::from_rgba8(0, 255, 0, 255));
         solid.model = Some(gnoblin_render_frame::frame::Model {
@@ -1022,8 +1070,13 @@ mod tests {
             &TextureSizes::default(),
             &Shaders::default(),
         );
-        assert_eq!(planned.skipped_models, 1);
-        assert!(planned.draws.is_empty());
+        assert_eq!(planned.layers_end, 0, "no flat layer is drawn");
+        assert_eq!(
+            planned.models_end, 1,
+            "the placed layer is the one draw before the overlay"
+        );
+        assert_eq!(planned.draws[0].variant.class, super::super::spatial::Class::Opaque);
+        assert_eq!(planned.instances[18], 1.0, "its quad is flagged as projected");
     }
 
     /// A frame whose one layer is a solid with `count` shader passes, and the shaders and sizes that make them drawable.

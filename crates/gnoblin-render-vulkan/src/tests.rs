@@ -27,7 +27,7 @@ use smithay::utils::Transform;
 use super::harness::{BufferSpec, ShmClient};
 use super::pipeline::ShaderSources;
 use super::*;
-use gnoblin_render_frame::frame::{Layer, Model, Overlay, Solid, Surface, SurfaceSource};
+use gnoblin_render_frame::frame::{Layer, Overlay, Solid, Surface, SurfaceSource};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_software::Software;
 
@@ -35,6 +35,7 @@ mod device;
 mod dmabuf;
 mod effects;
 mod shader;
+mod views;
 
 /// The largest per-channel difference accepted where a blend rounds.
 const BLEND: u8 = 1;
@@ -565,26 +566,6 @@ fn a_resize_replaces_the_target() {
     assert_eq!(
         vulkan.resize(Size::new(0, 4)),
         Err(RenderError::Degenerate { width: 0, height: 4 })
-    );
-    clean(&vulkan);
-}
-
-#[test]
-fn a_layer_with_a_model_is_not_drawn() {
-    let Some(mut vulkan) = renderer(SIZE) else { return };
-    let mut frame = frame(Color::BLACK, SIZE);
-    let mut tilted = Solid::new(Rect::new(0, 0, 16, 16), colour(255, 0, 0, 255));
-    tilted.model = Some(Model {
-        matrix: gnoblin_render::Mat4::IDENTITY,
-        opaque: true,
-    });
-    frame.push_layer(Layer::Solid(tilted));
-    vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
-    let image = vulkan.screenshot().expect("a readback");
-    assert_eq!(
-        image.colour_at(4, 4),
-        Some([0, 0, 0, 255]),
-        "the depth pass is not here, so the layer is left out"
     );
     clean(&vulkan);
 }

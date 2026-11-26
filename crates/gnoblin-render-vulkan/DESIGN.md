@@ -484,6 +484,28 @@ liveness changes, and draws a capture variant on demand. Vulkan V4 mirrors it:
 The window picture of the window-node design is this same machinery with an explicit source and rig, so it needs
 nothing more from the renderer. Window captures, portal window casts and XR all read it.
 
+**As built (V4).** The store of pictures is the device's, in `subtree.rs`, so two outputs showing one View share one picture and
+a revision is drawn once; an image is retired with the timeline value of the last frame that sampled it. A scene's draws join
+the frame's buffers like a backdrop's and its render pass is recorded before any pass that samples a View; a read
+(`Vulkan::view_pixels`, `read_view`) is a frame with no layers that draws the scene, then one copy into the readback buffer.
+A frame that fails drops the pictures it meant to draw. Two differences from the sketch above: a View's layers are drawn in
+painter's order, as the GLES renderer draws them, so only the stencil is used inside a View (the depth buffer is used by the
+layers of an output), and the depth-stencil image of an output is made when its first frame has a placed layer. The pipelines
+of the depth-stencil pass are made the first time a draw needs one (`spatial.rs`, `Extras`): `Flat`, `Opaque`, `Transparent`,
+`Test`, `Push` and `Pop` for `solid` and `surface`, and the stencil reference is a dynamic state. An effect on a placed layer
+is not drawn, as on GLES (`unsupported-effect-on-3d`).
+
+The magnifier and colour matrix (`view.rs`) copy the finished output into a scratch image and draw it back through the shared
+`view.wgsl` with blending off, repainting the whole output while the filter is on and once after it goes off. `downsampled(shown)`
+(`downsample.rs`) averages the target into a `shown`-size image with the shared `downsample.wgsl` and reads it back. Both
+shaders gained a "source is top-down" flag (`view.wgsl` `flags.y`; `downsample.wgsl` already had `taps.z`), which GLES leaves zero.
+
+**What B1 must do** when it wires the backend: `RendererKind::draws_views` is true for `Vulkan`; `AnyRenderer::view_pixels` calls
+`Vulkan::read_view(scene, capture, live)` and `release_views` calls `Vulkan::retire_views(&[])`; a supersampled Vulkan output
+calls `Vulkan::downsampled(shown)` where GLES calls `downsampled`; `Backend::gpu_views` then follows `draws_views`. A device whose
+`VulkanDevice` has no depth-stencil format draws no View, so B1 should answer `draws_views` from the device
+(`VulkanDevice::draws_views`) and not from the kind alone.
+
 ### 7.4 XR
 
 XR reads View and window pictures through `ext-image-copy-capture` into `wl_shm` (`extensions/gnoblin-xr/crates/xr-gpu`).

@@ -18,14 +18,16 @@
 // change, as the software path does. The matrix only runs when `flags.x` is one.
 //
 // Textures are bottom-up in GL, so a top-down pixel row `y` is read at v = 1 - (y + 0.5) / h,
-// the same flip `flipped_mapping` states for the blur.
+// the same flip `flipped_mapping` states for the blur. A Vulkan image is top-down already: `flags.y` is one for such a
+// source and the row is read as it is. It is zero for GL's bottom-up one.
 //
 // Layout (all `vec4`, so the block is 128 bytes in WGSL and std140 alike):
 //   centre:  centre x, centre y, zoom, unused
 //   size:    output width, height in physical pixels, unused, unused
 //   row0..3: the matrix's four weights per output channel
 //   offsets: the matrix's offset per output channel
-//   flags:   x is one when the matrix applies, otherwise zero
+//   flags:   x is one when the matrix applies, otherwise zero; y is one when the source is top-down (Vulkan), zero when it
+//            is bottom-up (GL)
 // `ViewUniforms` in `gnoblin-render-gles` packs exactly this layout.
 
 struct GnoblinView {
@@ -86,8 +88,9 @@ fn gnoblin_entry(@location(0) local: vec2<f32>) -> GnoblinViewOut {
         gnoblin_view_index(at.x, centre.x, centre.z, size.x),
         gnoblin_view_index(at.y, centre.y, centre.z, size.y),
     );
-    // Bottom-up texture: flip v so a top-down source row is read at its own texel.
-    let uv = vec2<f32>((source.x + 0.5) / size.x, 1.0 - (source.y + 0.5) / size.y);
+    // Bottom-up texture: flip v so a top-down source row is read at its own texel. A top-down one is read as it is.
+    let row = (source.y + 0.5) / size.y;
+    let uv = vec2<f32>((source.x + 0.5) / size.x, select(1.0 - row, row, gnoblin_view.flags.y > 0.5));
     var pixel = textureSample(gnoblin_tex, gnoblin_sampler, uv);
     if gnoblin_view.flags.x > 0.5 {
         pixel = gnoblin_tint(pixel);

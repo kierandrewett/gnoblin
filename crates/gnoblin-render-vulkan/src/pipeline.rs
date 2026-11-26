@@ -363,6 +363,42 @@ impl Pipelines {
     }
 }
 
+/// The depth and stencil state of a pipeline drawn into a render pass that has a depth-stencil attachment.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Depth {
+    /// Whether a fragment is tested against the depth buffer.
+    pub test: bool,
+    /// Whether a fragment that passes writes its depth.
+    pub write: bool,
+    /// How the depth test compares.
+    pub compare: vk::CompareOp,
+    /// The stencil operation on a pass of a test that the stencil equals the dynamic reference, or `None` for no stencil test.
+    pub stencil: Option<vk::StencilOp>,
+}
+
+/// What a pipeline differs in from the shipped ones: the render pass it draws in, whether it blends and writes colour, and the
+/// depth and stencil state.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Variant {
+    pub render_pass: vk::RenderPass,
+    pub blend: bool,
+    pub write_colour: bool,
+    /// `Some` when `render_pass` has a depth-stencil attachment.
+    pub depth: Option<Depth>,
+}
+
+impl Variant {
+    /// The shipped state: premultiplied blending into `render_pass`, which has only colour.
+    pub(super) fn colour(render_pass: vk::RenderPass) -> Self {
+        Self {
+            render_pass,
+            blend: true,
+            write_colour: true,
+            depth: None,
+        }
+    }
+}
+
 /// What a graphics pipeline is built from: the device, the shared vertex stage, the layout, the render pass and the driver's
 /// cache. All are handles, so the worker thread that builds a shell's pipeline holds a copy. The cache is externally
 /// synchronised and only the worker uses it once the renderer has started.
@@ -382,6 +418,16 @@ pub(super) struct GraphicsContext {
 impl GraphicsContext {
     /// One pipeline for each of `fragments`; see [`Pipelines::graphics`].
     pub(super) fn build(&self, fragments: &[vk::ShaderModule]) -> Result<Vec<vk::Pipeline>, VulkanError> {
+        self.build_with(fragments, &Variant::colour(self.render_pass))
+    }
+
+    /// One pipeline for each of `fragments` in the state `variant` says: another render pass, no blending, a depth or stencil
+    /// test. The vertex stage, the layout and the vertex input are the shared ones.
+    pub(super) fn build_with(
+        &self,
+        fragments: &[vk::ShaderModule],
+        variant: &Variant,
+    ) -> Result<Vec<vk::Pipeline>, VulkanError> {
         let device = &self.device;
         let entry = c"gnoblin_entry";
         let stage_sets: Vec<[vk::PipelineShaderStageCreateInfo; 2]> = fragments
@@ -443,22 +489,48 @@ impl GraphicsContext {
             .line_width(1.0);
         let multisample =
             vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
+        let mask = if variant.write_colour {
+            vk::ColorComponentFlags::RGBA
+        } else {
+            vk::ColorComponentFlags::empty()
+        };
         let blend_attachments = [vk::PipelineColorBlendAttachmentState::default()
-            .blend_enable(true)
+            .blend_enable(variant.blend)
             .src_color_blend_factor(vk::BlendFactor::ONE)
             .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
             .color_blend_op(vk::BlendOp::ADD)
             .src_alpha_blend_factor(vk::BlendFactor::ONE)
             .dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
             .alpha_blend_op(vk::BlendOp::ADD)
-            .color_write_mask(vk::ColorComponentFlags::RGBA)];
+            .color_write_mask(mask)];
         let blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend_attachments);
-        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let mut dynamic_states = vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let stencil_state = variant.depth.map(|depth| {
+            let stencil = depth.stencil.map(|operation| {
+                vk::StencilOpState::default()
+                    .fail_op(vk::StencilOp::KEEP)
+                    .pass_op(operation)
+                    .depth_fail_op(vk::StencilOp::KEEP)
+                    .compare_op(vk::CompareOp::EQUAL)
+                    .compare_mask(0xff)
+                    .write_mask(0xff)
+            });
+            vk::PipelineDepthStencilStateCreateInfo::default()
+                .depth_test_enable(depth.test)
+                .depth_write_enable(depth.write)
+                .depth_compare_op(depth.compare)
+                .stencil_test_enable(stencil.is_some())
+                .front(stencil.unwrap_or_default())
+                .back(stencil.unwrap_or_default())
+        });
+        if variant.depth.is_some_and(|depth| depth.stencil.is_some()) {
+            dynamic_states.push(vk::DynamicState::STENCIL_REFERENCE);
+        }
         let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
         let infos: Vec<vk::GraphicsPipelineCreateInfo> = stage_sets
             .iter()
             .map(|stages| {
-                vk::GraphicsPipelineCreateInfo::default()
+                let info = vk::GraphicsPipelineCreateInfo::default()
                     .stages(stages)
                     .vertex_input_state(&vertex_input)
                     .input_assembly_state(&assembly)
@@ -468,8 +540,12 @@ impl GraphicsContext {
                     .color_blend_state(&blend)
                     .dynamic_state(&dynamic)
                     .layout(self.layout)
-                    .render_pass(self.render_pass)
-                    .subpass(0)
+                    .render_pass(variant.render_pass)
+                    .subpass(0);
+                match &stencil_state {
+                    Some(state) => info.depth_stencil_state(state),
+                    None => info,
+                }
             })
             .collect();
         // SAFETY: every state structure above outlives the call and matches the render pass.
@@ -570,7 +646,7 @@ impl Drop for ShaderModules {
 }
 
 /// One shader module from SPIR-V words.
-fn module(context: &VkContext, pass: &'static str, words: &[u32]) -> Result<vk::ShaderModule, VulkanError> {
+pub(super) fn module(context: &VkContext, pass: &'static str, words: &[u32]) -> Result<vk::ShaderModule, VulkanError> {
     let info = vk::ShaderModuleCreateInfo::default().code(words);
     // SAFETY: `words` is a SPIR-V module `naga` wrote and validated.
     unsafe { context.device.create_shader_module(&info, None) }.map_err(|result| VulkanError::Shader {
@@ -661,8 +737,9 @@ impl Drop for DescriptorArena {
     }
 }
 
-/// The size of the shared uniform block a descriptor binds, in bytes.
-pub(super) const BLOCK_RANGE: u64 = UNIFORM_BYTES as u64;
+/// The size of the shared uniform block a descriptor binds, in bytes: room for the largest block any pass reads, the 128
+/// bytes of the view pass; the layers' own is 112.
+pub(super) const BLOCK_RANGE: u64 = 128;
 
 /// The size of a shell's shader pass's own block a descriptor binds, in bytes: `GnoblinUser` in `user_block.wgsl`.
 pub(super) const USER_BLOCK_RANGE: u64 = USER_BLOCK_BYTES as u64;

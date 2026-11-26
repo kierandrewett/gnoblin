@@ -30,10 +30,17 @@
 //!   with the one rounding rule all renderers share ([`physical_rect`](gnoblin_render_frame::geometry)).
 //! - **Damage**: only the damage is repainted. Each rectangle is a scissor, and overlapping
 //!   rectangles are made disjoint first so a translucent layer is never blended twice.
+//! - **Layers placed in three dimensions**: a layer with a [`Model`](gnoblin_render_frame::frame::Model) is drawn through its
+//!   matrix against a depth buffer, after the flat layers and before the overlay (`spatial.rs`).
+//! - **Views**: a View's source subtree is drawn once per revision into an image of its own, with a stencil for its clipping
+//!   ancestors, and the layer that shows it samples that image ([`Vulkan::view_pixels`], `subtree.rs`).
+//! - **The magnifier and the colour matrix**: a frame's view and matrix are applied to the finished output in a pass of
+//!   their own (`view.rs`).
+//! - **Supersampling**: [`Vulkan::downsampled`] averages a target composed at `mode * s` down to the mode and reads it
+//!   back (`downsample.rs`).
 //!
-//! Layers carrying a 3D model, the backdrop blur, a filter's blur and a buffer's
-//! `set_buffer_transform` are not drawn, which is what the GLES renderer does for the last of
-//! them and what the design note schedules for the others. The `shader` pass is drawn (below).
+//! A buffer's `set_buffer_transform` is not drawn, which is what the GLES renderer does too. The
+//! `shader` pass is drawn (below).
 //!
 //! # Frames in flight, textures and memory
 //!
@@ -124,6 +131,15 @@
 //!     `tests::a_commit_that_was_not_drawn_is_uploaded_whole`.
 //! 13. **A corrupt pipeline cache file takes the renderer down.** A file that fails a check is deleted and ignored:
 //!     `tests::a_corrupt_pipeline_cache_is_ignored_and_replaced`.
+//! 14. **A View's picture cannot be had** (a size no device makes, no memory, no depth-stencil format) or **its frame fails
+//!     before it is submitted.** The layer samples nothing and the rest of the frame is drawn; a frame that failed drops the
+//!     pictures it meant to draw, so the next one draws them: `tests::views::a_view_the_device_refuses_leaves_the_frame_alone`,
+//!     `tests::views::a_frame_that_fails_before_it_is_submitted_does_not_leave_a_view_believed_drawn`.
+//! 15. **A secure node shows in a capture of a View.** A capture reads the scene's capture variant, a picture of its own,
+//!     and the picture a frame samples stays the display's: `tests::views::a_capture_reads_the_scenes_redacted_eyes`.
+//! 16. **A device has no depth-stencil format.** A layer with a model is not drawn and `unsupported-3d` is logged once; no
+//!     View is drawn (its layer is skipped, as in 14); the view pass and the downsample are not drawn either, because their
+//!     pipelines are made with the depth pass's (`Extras`). Every device the renderer has been run on has `D24S8` or `D32S8`.
 //!
 //! # Byte order
 //!
@@ -133,6 +149,7 @@
 mod capture;
 mod context;
 mod dmabuf;
+mod downsample;
 #[cfg(test)]
 mod driver_probe;
 mod error;
@@ -145,10 +162,13 @@ mod memory;
 mod pipeline;
 mod plan;
 mod shader;
+mod spatial;
+mod subtree;
 mod sync;
 #[cfg(test)]
 mod tests;
 mod textures;
+mod view;
 
 gnoblin_log::logger!(log = "render");
 
@@ -167,8 +187,10 @@ pub use pipeline::PipelineCacheLocation;
 
 use context::VkContext;
 use frame::{RenderTarget, Saved};
-use memory::VkBuffer;
+use memory::{VkBuffer, VkImage};
 use pipeline::{Compiled, Pipelines, ShaderPipelines, ShaderSources};
+use spatial::{DepthTarget, Extras};
+use subtree::ViewStore;
 use sync::{FrameRing, MIN_BUFFER, RetireQueue};
 use textures::TextureCache;
 
@@ -222,9 +244,14 @@ pub struct VulkanDevice {
     retire: RefCell<RetireQueue>,
     /// The textures of client buffers, by surface.
     textures: RefCell<TextureCache>,
+    /// The pictures of Views, drawn from the scenes frames carry.
+    views: RefCell<ViewStore>,
     /// The pipelines of the shell's shader passes, made when a frame first draws a source.
     shaders: RefCell<ShaderPipelines>,
     pipelines: Pipelines,
+    /// The depth-stencil pass and the pipelines of 3D layers, Views and the whole-target passes; `None` on a device with no
+    /// depth-stencil format to draw into.
+    extras: Option<Extras>,
     /// The unit quad every draw scales to its rectangle.
     quad: VkBuffer,
     /// Set when the device was lost; every output on it returns [`RenderError::Lost`].
@@ -266,10 +293,16 @@ impl VulkanDevice {
         let corners: [f32; 8] = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0];
         let bytes: Vec<u8> = corners.iter().flat_map(|value| value.to_ne_bytes()).collect();
         quad.write(0, &bytes);
+        let extras = match context.depth_format {
+            Some(format) => Some(Extras::new(&context, format)?),
+            None => None,
+        };
         Ok(Rc::new(Self {
             retire: RefCell::new(RetireQueue::default()),
             textures: RefCell::new(TextureCache::default()),
+            views: RefCell::new(ViewStore::default()),
             shaders: RefCell::new(ShaderPipelines::new(&context, &pipelines)),
+            extras,
             pipelines,
             quad,
             lost: Cell::new(false),
@@ -332,7 +365,11 @@ impl VulkanDevice {
     #[must_use]
     pub fn footprint(&self) -> Footprint {
         Footprint {
-            scratch: self.textures.borrow().bytes(),
+            scratch: self
+                .textures
+                .borrow()
+                .bytes()
+                .saturating_add(self.views.borrow().bytes()),
             ..Footprint::default()
         }
     }
@@ -341,6 +378,13 @@ impl VulkanDevice {
     #[must_use]
     pub fn max_image_edge(&self) -> u32 {
         self.context.limits.max_image_dimension2_d
+    }
+
+    /// Whether the device draws a View's subtree into an image: it has a depth-stencil format to draw them with. A backend
+    /// answers `draws_views` from this, because a device without one skips every View layer.
+    #[must_use]
+    pub fn draws_views(&self) -> bool {
+        self.extras.is_some()
     }
 
     /// Whether the validation layer is on for this device.
@@ -405,10 +449,18 @@ pub struct Vulkan {
     physical: Size,
     /// Set when the device was lost; every call after that returns [`RenderError::Lost`].
     lost: bool,
-    /// Whether the 3D warning has been logged, so a steady session logs it once.
+    /// Whether the warning that this device draws no 3D layer has been logged, so a steady session logs it once.
     warned_models: bool,
     /// Whether the filter-blur warning has been logged.
     warned_filter_blur: bool,
+    /// Whether the last frame drew the magnifier or the colour matrix, which makes the next one repaint the whole output.
+    filtered: bool,
+    /// The depth-stencil image the output's 3D layers are tested against, made when a frame first has one.
+    depth: Option<DepthTarget>,
+    /// The copy of the finished output the view pass samples.
+    scratch: Option<VkImage>,
+    /// The target [`Vulkan::downsampled`] averages into.
+    shown: Option<RenderTarget>,
     /// The signal the shell's shader worker asks this output for another frame on.
     redraw: RedrawSignal,
     device: Rc<VulkanDevice>,
@@ -480,6 +532,10 @@ impl Vulkan {
             lost: false,
             warned_models: false,
             warned_filter_blur: false,
+            filtered: false,
+            depth: None,
+            scratch: None,
+            shown: None,
             redraw,
             device: Rc::clone(device),
         };
@@ -642,7 +698,15 @@ impl Vulkan {
             return Err(self.fail(result));
         }
         let old = std::mem::replace(&mut self.target, target);
-        self.device.retire.borrow_mut().push(before, old);
+        let mut retire = self.device.retire.borrow_mut();
+        retire.push(before, old);
+        // The depth image's framebuffer is over the old target's view, and the scratch copy is the old size.
+        if let Some(depth) = self.depth.take() {
+            retire.push(before, depth);
+        }
+        if let Some(scratch) = self.scratch.take() {
+            retire.push(before, scratch);
+        }
         self.physical = physical;
         self.cursor_under.rect = None;
         Ok(())

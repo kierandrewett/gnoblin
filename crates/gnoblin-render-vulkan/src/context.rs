@@ -220,6 +220,9 @@ pub(super) struct VkContext {
     pub(super) timeline: Timeline,
     /// The dmabuf extensions the device has and the context enabled (`DMABUF_EXTENSIONS`).
     pub(super) extensions: Vec<&'static CStr>,
+    /// The depth-stencil format a View's picture and a 3D layer's depth test use: `D24S8` where the device draws into it,
+    /// else `D32S8`, and `None` on a device with neither (which then draws no View and no 3D layer).
+    pub(super) depth_format: Option<vk::Format>,
     #[cfg(test)]
     pub(super) faults: Faults,
 }
@@ -573,6 +576,7 @@ fn build(
             return Err(Box::new((error, entry, instance, messenger)));
         }
     };
+    let depth_format = depth_format(&instance, candidate.device);
     Ok(VkContext {
         _entry: entry,
         instance,
@@ -589,6 +593,7 @@ fn build(
         memory,
         timeline,
         extensions,
+        depth_format,
         #[cfg(test)]
         faults: Faults::default(),
     })
@@ -711,6 +716,19 @@ fn formats_supported(instance: &Instance, device: vk::PhysicalDevice) -> Result<
         }
     }
     Ok(())
+}
+
+/// The depth-stencil format the device can draw into, `D24S8` first.
+fn depth_format(instance: &Instance, device: vk::PhysicalDevice) -> Option<vk::Format> {
+    [vk::Format::D24_UNORM_S8_UINT, vk::Format::D32_SFLOAT_S8_UINT]
+        .into_iter()
+        .find(|format| {
+            // SAFETY: a plain query of a device this instance listed.
+            let properties = unsafe { instance.get_physical_device_format_properties(device, *format) };
+            properties
+                .optimal_tiling_features
+                .contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT)
+        })
 }
 
 /// The extensions of [`DMABUF_EXTENSIONS`] the device has, in that order.
