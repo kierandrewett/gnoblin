@@ -876,7 +876,6 @@ fn the_clock_follows_the_time() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the room of a Bar taken from Workspaces.area and the layouts (Bar.insets() reports it, the area stays the whole screen)"]
 fn a_bar_takes_its_room_from_the_windows_and_gives_it_back_when_it_goes() {
     let mut rig = world(1, "export {};");
     assert_eq!(
@@ -1207,7 +1206,6 @@ fn a_bar_that_comes_to_a_window_at_the_bottom_of_the_area_keeps_the_whole_frame_
 }
 
 #[test]
-#[ignore = "vrnw: needs unmaximise to return the frame with the content a bar higher when the bar went while maximised (the content stays at y 28)"]
 fn a_maximised_window_fills_the_area_again_when_its_bar_comes_or_goes_and_unmaximises_to_the_moved_rectangle() {
     let mut rig = world(0, DECORATED_REQUESTS);
     rig.comp.create_window_decorated(3, "term", "foot", "server");

@@ -314,12 +314,14 @@ impl Ui {
         }
         let subtree = w.subtree(cid);
         let mut ended = Vec::new();
+        let mut bar_ended = false;
         for one in subtree {
             let node = match w.get_mut(one) {
                 Some(widget) if widget.alive => {
                     widget.alive = false;
                     widget.parent = None;
                     widget.children.clear();
+                    bar_ended |= widget.kind == WidgetKind::Bar;
                     widget.node
                 }
                 _ => continue,
@@ -329,6 +331,11 @@ impl Ui {
         }
         if w.focus_seen.is_some_and(|seen| ended.contains(&seen)) {
             w.focus_seen = None;
+        }
+        drop(w);
+        if bar_ended {
+            // The room a bar took goes back to the windows: the toolkit's frame tells the library.
+            self.schedule();
         }
         ended
     }

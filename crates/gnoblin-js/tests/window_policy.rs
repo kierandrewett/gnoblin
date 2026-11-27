@@ -810,7 +810,6 @@ fn a_press_on_a_titlebar_focuses_and_raises_its_window() {
 // ---- the bars change under maximised and snapped windows -----------------------------------------------------------
 
 #[test]
-#[ignore = "vrnw: needs Bar to reserve the work area so a maximised window refits below it"]
 fn a_maximised_window_refits_when_a_bar_reserves_space_at_the_top() {
     // Before: "a maximised window refits when a bar reserves space at the top (failure mode 9, maximised)".
     let mut rig = world(1, false, "new Layout()", "Bar.onOutputs();");
@@ -834,7 +833,6 @@ fn a_maximised_window_refits_when_a_bar_reserves_space_at_the_top() {
 }
 
 #[test]
-#[ignore = "vrnw: needs Bar to reserve the work area so a snapped window refits below it"]
 fn a_snapped_window_refits_when_a_bar_reserves_space_at_the_top() {
     // Before: "a snapped window refits when a bar reserves space at the top (failure mode 9, snapped)".
     let mut rig = world(1, false, "new Layout()", "Bar.onOutputs();");
@@ -861,7 +859,6 @@ fn a_snapped_window_refits_when_a_bar_reserves_space_at_the_top() {
 }
 
 #[test]
-#[ignore = "vrnw: needs Bar to reserve the work area so a floating window is brought below it"]
 fn a_floating_window_is_brought_inside_the_smaller_work_area() {
     // Before: `Desk:arrange` refits every window, a floating one included: `w:refit(self:work_area())`.
     let mut rig = world(1, false, "new Layout()", "Bar.onOutputs();");
