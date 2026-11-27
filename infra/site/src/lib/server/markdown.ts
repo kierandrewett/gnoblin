@@ -330,7 +330,7 @@ function rehypeGnoblin(ctx: RenderContext) {
                 const pre = highlighted.children[0] as Element;
                 const head = el("div", { className: ["code-head"] }, [
                     el("span", { className: ["lang"] }, LANG_LABELS[lang] ? [text(LANG_LABELS[lang])] : []),
-                    el("button", { type: "button", className: ["copy"], dataCopy: "" }, [
+                    el("button", { type: "button", className: ["copy"], dataCopy: "", ariaLabel: "Copy code" }, [
                         icon("copy", 15),
                         el("span", {}, [text("Copy")]),
                     ]),
@@ -438,12 +438,17 @@ function rehypeGnoblin(ctx: RenderContext) {
                             ariaLabelledBy: [id],
                             dataLang: lang,
                         },
-                        [panel],
+                        // The panel keeps only its code: the group has one header, with the tabs and Copy.
+                        [panel.children[1] as Element],
                     ),
                 );
             });
-            parent.children[index] = el("div", { className: ["lang-tabs"], dataLangTabs: "" }, [
-                el("div", { className: ["seg"], role: "tablist", ariaLabel: "Language" }, buttons),
+            const copy = ((panels[0]?.children[0] as Element).children[1] as Element) ?? undefined;
+            parent.children[index] = el("div", { className: ["lang-tabs", "code"], dataLangTabs: "" }, [
+                el("div", { className: ["code-head"] }, [
+                    el("div", { className: ["seg"], role: "tablist", ariaLabel: "Language" }, buttons),
+                    copy,
+                ]),
                 ...bodies,
             ]);
             return "skip";
