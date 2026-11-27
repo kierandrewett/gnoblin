@@ -159,10 +159,11 @@ impl Visit for Collector {
 /// log through it (the `capture` feature).
 #[cfg(any(test, feature = "capture"))]
 pub mod capture {
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, LazyLock, Mutex};
 
     use tracing::span::{Attributes, Id, Record};
-    use tracing::{Event, Level, Metadata, Subscriber};
+    use tracing::subscriber::NoSubscriber;
+    use tracing::{Dispatch, Event, Level, Metadata, Subscriber};
 
     use super::Logged;
 
@@ -195,6 +196,14 @@ pub mod capture {
         fn exit(&self, _: &Id) {}
     }
 
+    /// Registered once per process and never dropped, so it stays a second dispatcher while any capture is live.
+    ///
+    /// tracing-core caches a callsite's interest from the dispatchers registered when it is first hit. With only one
+    /// registered it asks just the hitting thread's default, so a callsite first hit on a thread with no capture is
+    /// cached as never enabled and a capture on another thread never sees it. With this anchor a capture is the
+    /// second dispatcher, so the interest is combined and each thread's default decides per event.
+    static ANCHOR: LazyLock<Dispatch> = LazyLock::new(|| Dispatch::new(NoSubscriber::default()));
+
     /// The parts of the events `run` logs, in order.
     pub fn logged(run: impl FnOnce()) -> Vec<Logged> {
         logged_with_levels(run).into_iter().map(|(_, event)| event).collect()
@@ -202,6 +211,7 @@ pub mod capture {
 
     /// The events `run` logs, in order, each with the level it was logged at.
     pub fn logged_with_levels(run: impl FnOnce()) -> Vec<(Level, Logged)> {
+        LazyLock::force(&ANCHOR);
         let recorder = Recorder::default();
         tracing::subscriber::with_default(recorder.clone(), run);
         let events = recorder.0.lock().expect("the capture lock");
@@ -242,6 +252,26 @@ mod tests {
                 ("retries".to_owned(), "2".to_owned()),
                 (TARGET_FIELD.to_owned(), module_path!().to_owned()),
             ]
+        );
+    }
+
+    /// A callsite first reached on a thread with no subscriber, while a capture runs on another thread, must still
+    /// reach that capture. tracing-core resolves a callsite's interest from the first hit, and with a single
+    /// dispatcher registered it resolves it from the hitting thread alone, so the callsite would be cached as never
+    /// enabled for every thread.
+    #[test]
+    fn a_callsite_first_reached_off_the_capturing_thread_is_still_captured() {
+        fn emit() {
+            tracing::warn!(component = "capture", "the shared callsite");
+        }
+        let events = logged(|| {
+            std::thread::scope(|scope| scope.spawn(emit).join().expect("the emitting thread"));
+            emit();
+        });
+        assert_eq!(
+            events.len(),
+            1,
+            "the capture on this thread records the event: {events:?}"
         );
     }
 
