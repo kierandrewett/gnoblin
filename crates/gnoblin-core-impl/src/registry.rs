@@ -423,11 +423,28 @@ pub(crate) fn log_line(ctx: GnoblinCtx, level: u32, message: &str) -> i32 {
     match level {
         abi::LOG_ERROR => log::error!(generation = index, "{message}"),
         abi::LOG_WARN => log::warn!(generation = index, "{message}"),
+        abi::LOG_NOTICE => notice(index, message),
         abi::LOG_DEBUG => log::debug!(generation = index, "{message}"),
         abi::LOG_TRACE => log::trace!(generation = index, "{message}"),
         _ => log::info!(generation = index, "{message}"),
     }
     abi::E_OK
+}
+
+/// A sentence for the shell's diagnostics, from a library (`LOG_NOTICE`) or the core: kept once per site for the shell to take, and
+/// logged as a warning only while no shell takes notices.
+pub(crate) fn notice(generation: u64, message: &str) {
+    if crate::notices::say(generation, message) {
+        log::warn!(generation = generation, "{message}");
+    } else {
+        log::debug!(generation = generation, "{message}");
+    }
+}
+
+/// `take_notices`: the sentences of `ctx` the shell has not taken, joined by a zero byte.
+pub(crate) fn take_notices(ctx: GnoblinCtx) -> Result<String, i32> {
+    let index = check_ctx(ctx, "take_notices", true)?;
+    Ok(crate::notices::take(index))
 }
 
 /// `set_last_error`: sets this thread's error text on behalf of a shell whose `init` is returning a failure.
@@ -475,6 +492,11 @@ pub(crate) fn discard_events() {
 /// The tree link failed or a change batch was missed. The tree is dropped (the shell must attach again).
 fn pump_into_host(ctx: GnoblinCtx) -> Result<(), String> {
     let events = session::with(session::Session::pump)?;
+    if let Some(generation) = decode(KIND_CTX, ctx) {
+        for line in session::with(|session| std::mem::take(&mut session.told)) {
+            notice(generation, &line);
+        }
+    }
     crate::model::pumped(ctx, &events);
     for event in events {
         HOST.publish(event);

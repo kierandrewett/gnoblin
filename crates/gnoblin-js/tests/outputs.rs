@@ -1152,7 +1152,6 @@ fn the_profiles_of_the_config_are_applied_by_connector_and_a_refusal_names_the_k
 }
 
 #[test]
-#[ignore = "vrnw: needs the config notice a refused profile request carries (outputs.profiles.<connector>.<key>: <words>) in the shell's diagnostics"]
 fn a_refused_profile_request_names_the_key_path_in_a_notice() {
     let mut rig = world_with_connectors(
         "gnoblin.outputs.profiles.add(new OutputProfile({ connector: 'HDMI-1' }, { settings: new ProfileSettings({ scale: 1.25, position: new OutputPosition({ kind: 'absolute', x: 0, y: 800 }) }) }));",

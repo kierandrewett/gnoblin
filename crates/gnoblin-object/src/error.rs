@@ -231,6 +231,17 @@ impl Fail {
     pub fn target(&self) -> Option<&str> {
         self.target.as_deref()
     }
+
+    /// The log level for the line a library says when a callback of a shell failed with this failure: a notice for the shell's
+    /// diagnostics (`LOG_NOTICE`, once per site), except when the callee ran out its budget (`E_TIMEOUT`). A runtime that stops a call
+    /// reports it itself and counts it, so the library says it as a plain warning.
+    pub fn callback_level(&self) -> u32 {
+        if self.code == abi::E_TIMEOUT {
+            abi::LOG_WARN
+        } else {
+            abi::LOG_NOTICE
+        }
+    }
 }
 
 impl std::fmt::Display for Fail {

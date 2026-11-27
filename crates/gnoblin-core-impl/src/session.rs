@@ -145,6 +145,9 @@ pub(crate) struct Session {
     next_flush: u64,
     /// What the compositor refused since the oldest flush waiter asked.
     refusals: Vec<String>,
+    /// What the tree's gate said since the last turn (a refused transaction, a write given up): the turn hands it to the generation
+    /// that runs as a notice.
+    pub(crate) told: Vec<String>,
     state: BTreeMap<String, Stored>,
     state_bytes: usize,
     /// The nodes generations made under a name, by class and name: what `node_adopt` finds again.
@@ -182,6 +185,7 @@ impl Default for Session {
             flush_waiters: Vec::new(),
             next_flush: 0,
             refusals: Vec::new(),
+            told: Vec::new(),
             state: BTreeMap::new(),
             state_bytes: 0,
             named: BTreeMap::new(),
@@ -486,9 +490,8 @@ impl Session {
                     return Err(error.to_string());
                 }
             };
-            for line in &pumped.effects.diagnostics {
-                log::warn!("tree: {line}");
-            }
+            self.told
+                .extend(pumped.effects.diagnostics.iter().map(|line| format!("tree: {line}")));
             if !self.flush_waiters.is_empty() {
                 self.refusals.extend(pumped.effects.diagnostics.iter().cloned());
             }
@@ -950,6 +953,7 @@ impl LifecycleObserver for Lifecycle {
     }
 
     fn retired(&self, id: GenerationId, was: GenerationState, on_shell_thread: bool) {
+        crate::notices::forget(id);
         if on_shell_thread {
             with(|session| session.retired(id, was));
         }

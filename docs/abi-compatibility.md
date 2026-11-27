@@ -151,7 +151,7 @@ The rules a shell and a library keep, which the table's documentation states in 
 
 - `cargo xtask gen-sdks --check` proves the catalogs of the two libraries and their locks.
 - The golden shells prove the tables did not move what they were built against. B1 appended `object_api` to `GnoblinApi` and
-  `GnoblinStdApi`, and `set_write_stage` and `node_effects_serial` were appended to `GnoblinApi` later. Later changes appended fields to `GnoblinObjectApi` (`track` in
+  `GnoblinStdApi`, and `set_write_stage`, `node_effects_serial` and `take_notices` were appended to `GnoblinApi` later. Later changes appended fields to `GnoblinObjectApi` (`track` in
   B1.1, then `last_error_code` and `retain`), and no function was moved.
 
 ### The effects serial field
@@ -164,6 +164,22 @@ The rules a shell and a library keep, which the table's documentation states in 
 - A library that wrote a list reads the serial after its write and compares it later: the same serial means nothing has written the list since.
 - A write a failed reload's stage made is not counted: its serial goes back with the stage, and a serial is never taken twice.
 - A client asks `table_has` before it calls the function. A core built before it cannot say, and a library treats the list as still its own.
+
+### The notices function
+
+`GnoblinApi` has a function `take_notices(ctx, out)` and the log level `LOG_NOTICE`, appended after `node_effects_serial` within ABI 1.0.
+The table grew from 488 to 496 bytes. A line a library logs at `LOG_NOTICE` is a warning the shell's author must read: a callback of the shell
+threw, a style was not applied, the compositor refused a transaction.
+
+- The core says a notice once per site of the generation. The site of a sentence that carries a stack is its first frame, so a listener
+  that fails on every event is one site whatever it threw. A sentence with no stack is a site of its own text.
+- `take_notices(ctx, out)` writes the sentences since the last call to `out` as UTF-8 text joined by a zero byte, empty when there are
+  none. The shell frees the buffer with `buf_free`.
+- A shell that calls it says the sentences itself, in its own diagnostics, so the core leaves them out of its log. A shell that never
+  calls it finds the first line of each site in the core's log as a warning, which is what a Python or Rust shell gets.
+- A callback that failed because the shell stopped it for its budget fails with `E_TIMEOUT`, and the library logs it as a plain warning:
+  the shell reports a stopped call itself, with its strike.
+- A client asks `table_has` before it calls the function. A core built before it logs every notice.
 
 ## What a shell sees
 

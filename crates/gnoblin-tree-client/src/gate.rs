@@ -22,7 +22,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::tree_mirror::{NodeId, TreeMirror, TreeTx, TxBuilder, TxOp, TxReply};
+use crate::tree_mirror::{MirrorValue, NIL, NodeId, TreeMirror, TreeTx, TxBuilder, TxOp, TxReply};
 
 gnoblin_log::logger!(log = "tree");
 
@@ -165,6 +165,26 @@ fn describe_op(index: usize, op: &TxOp, mirror: &TreeMirror) -> String {
         TxOp::Destroy { node } => format!("op {index}: destroy node {node} ({})", class_of(*node)),
         TxOp::Call { node, method, .. } => format!("op {index}: call {method} on node {node} ({})", class_of(*node)),
     }
+}
+
+/// Whether the op a `bad-value` refusal names writes a reference to a node that is not in the mirror and was not made by the same
+/// transaction. The compositor's changes up to the reply have been read, so such a node was destroyed before the write arrived.
+fn names_an_ended_node(reply: &TxReply, ops: &[SentOp], mirror: &TreeMirror) -> bool {
+    if reply.code != "bad-value" {
+        return false;
+    }
+    let Some(SentOp::Keep(TxOp::Set {
+        value: MirrorValue::Node(target),
+        ..
+    })) = usize::try_from(reply.failed_op).ok().and_then(|i| ops.get(i))
+    else {
+        return false;
+    };
+    *target != NIL
+        && mirror.node(*target).is_none()
+        && !ops
+            .iter()
+            .any(|op| matches!(op, SentOp::Keep(TxOp::New { id, .. }) if id == target))
 }
 
 /// What a refusal no newer base cures does to the ops it refused.
@@ -335,10 +355,23 @@ impl TxGate {
                     })
                 })
                 .unwrap_or_else(|| "op not recorded".to_owned());
-            effects.diagnostics.push(format!(
-                "transaction {} refused at op {}: {}; {}",
-                reply.serial, reply.failed_op, reply.code, op
-            ));
+            if names_an_ended_node(reply, &ops, mirror) {
+                // The shell wrote a reference to a node the compositor ended before the write arrived (a window that closed as the
+                // shell gave it the focus). The shell cannot know, and the write has nothing left to do: the op is given up, as one
+                // on a destroyed node is, and the shell is not told of a mistake it did not make.
+                log::debug!(
+                    area = "tx",
+                    "transaction {} refused at op {}: the node it names has ended; {}",
+                    reply.serial,
+                    reply.failed_op,
+                    op
+                );
+            } else {
+                effects.diagnostics.push(format!(
+                    "transaction {} refused at op {}: {}; {}",
+                    reply.serial, reply.failed_op, reply.code, op
+                ));
+            }
             self.give_up_refused(tick, reply, ops, effects);
         }
     }
@@ -836,6 +869,39 @@ mod tests {
             .expect("the other write goes again");
         assert_eq!(again.ops.len(), 1);
         assert!(matches!(&again.ops[0], TxOp::Set { key, .. } if key == "y"));
+    }
+
+    #[test]
+    fn a_write_naming_a_node_that_ended_is_given_up_without_a_diagnostic() {
+        let (mut gate, mut tick, mut mirror) = (TxGate::new(), TxBuilder::new(), mirror());
+        let mut effects = GateEffects::default();
+        tick.set(&mirror, 4, "focus", MirrorValue::Node(9), None, None).unwrap();
+        tick.set(&mirror, 4, "y", MirrorValue::Double(2.0), None, None).unwrap();
+        gate.next_transaction(&mirror, &mut tick, &mut effects)
+            .expect("two writes go");
+        // Node 9 is not in the mirror, whose changes up to the reply have been read: it ended before the write arrived.
+        gate.handle_reply(&mut mirror, &mut tick, &reply(1, false, 0, "bad-value"), &mut effects);
+        assert!(effects.diagnostics.is_empty(), "{:?}", effects.diagnostics);
+        let again = gate
+            .next_transaction(&mirror, &mut tick, &mut effects)
+            .expect("the other write goes again");
+        assert_eq!(again.ops.len(), 1);
+        assert!(matches!(&again.ops[0], TxOp::Set { key, .. } if key == "y"));
+    }
+
+    #[test]
+    fn a_write_naming_a_node_the_mirror_holds_is_reported_when_refused() {
+        let (mut gate, mut tick, mut mirror) = (TxGate::new(), TxBuilder::new(), mirror());
+        let mut effects = GateEffects::default();
+        tick.set(&mirror, 4, "focus", MirrorValue::Node(3), None, None).unwrap();
+        gate.next_transaction(&mirror, &mut tick, &mut effects)
+            .expect("the write goes");
+        gate.handle_reply(&mut mirror, &mut tick, &reply(1, false, 0, "bad-value"), &mut effects);
+        assert!(
+            effects.diagnostics[0].contains("refused at op 0: bad-value"),
+            "{:?}",
+            effects.diagnostics
+        );
     }
 
     #[test]

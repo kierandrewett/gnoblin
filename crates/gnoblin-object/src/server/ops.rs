@@ -722,7 +722,7 @@ impl Library {
                                 continue;
                             }
                             if let Err(fail) = closure.call(member, &args) {
-                                cx.log(abi::LOG_WARN, &format!("a listener failed: {fail}"));
+                                cx.log(fail.callback_level(), &format!("a listener failed: {fail}"));
                             }
                         }
                     }),
@@ -924,7 +924,7 @@ impl Library {
                 continue;
             }
             if let Err(fail) = listener.closure.call(member, args) {
-                (self.hooks.log)(st.ctx, abi::LOG_WARN, &format!("a listener failed: {fail}"));
+                (self.hooks.log)(st.ctx, fail.callback_level(), &format!("a listener failed: {fail}"));
             }
         }
     }

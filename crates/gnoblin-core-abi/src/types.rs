@@ -133,6 +133,10 @@ abi_consts! {
     pub const LOG_DEBUG: u32 = 4;
     /// `log` level: trace.
     pub const LOG_TRACE: u32 = 5;
+    /// `log` level: a warning that is also a sentence for the shell's diagnostics (a script's callback threw, a style was not
+    /// applied, a transaction was refused). The core says it once per site of the generation, and keeps the sentence for the shell to
+    /// take with `take_notices`. A shell that takes notices says them itself, so the core logs a notice only while none does.
+    pub const LOG_NOTICE: u32 = 6;
 
     /// `GnoblinValue.kind`: a boolean, in `bits` (0 or 1).
     pub const VALUE_BOOL: u32 = 1;
@@ -1468,6 +1472,15 @@ abi_structs! {
         /// read of them. `E_NO_SUCH_NODE` for a node the tree does not hold. A table too short to hold this field (`table_has`)
         /// belongs to a core built before it, which cannot say. Shell thread.
         pub node_effects_serial: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, out: *mut u64) -> i32,
+
+        /// Takes the notices of the generation `ctx` since the last call: the sentences the libraries and the core logged at `LOG_NOTICE`
+        /// (a callback of the shell threw, something a library was asked for was not applied, the compositor refused a transaction),
+        /// each said once per site of the generation. `out` receives UTF-8 text, the sentences joined by a zero byte, empty when there
+        /// are none; free it with `buf_free`. A shell calls it every turn and keeps the sentences with its own diagnostics: from the
+        /// first call on the core takes the shell to say them and no longer logs them, so a shell that never calls it still finds
+        /// them in the log. A table too short to hold this field (`table_has`) belongs to a core built before it, which logs every
+        /// notice. Shell thread.
+        pub take_notices: unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinBuf) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the core started.
         #[cfg(feature = "next-minor")]

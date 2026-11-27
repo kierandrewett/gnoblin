@@ -46,6 +46,7 @@ fn boot(init: Option<&str>) -> Rig {
         load_diagnostics,
         clock,
         core: Some(core),
+        tell_notices: true,
         _dir: dir,
     }
 }

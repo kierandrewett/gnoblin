@@ -37,7 +37,7 @@ use gnoblin_object::client::Api;
 use gnoblin_object::{Callable, ClassId, Closure, Fail, MemberId, Obj, Res, Timing, Val};
 
 use crate::core_native::{ScriptCallback, keep};
-use crate::std_native::{context, entered, library, mark_used, token_of, within_call};
+use crate::std_native::{NO_SHELL, context, entered, library, mark_used, token_of, within_call};
 use crate::table::{CoreTable, remembered};
 
 /// The namespaces the core serves; every other is the std library's.
@@ -248,23 +248,25 @@ impl Callable for JsClosure {
             }
             Ok(ended)
         })
-        .map_err(|message| Fail::new(abi::E_PANIC, message))?;
+        // What could not run the call at all has no words of the script's: a call that was stopped is a timeout, which the shell
+        // reports itself (`JsShell::call_script`).
+        .map_err(|message| {
+            let code = if message == NO_SHELL {
+                abi::E_PANIC
+            } else {
+                abi::E_TIMEOUT
+            };
+            Fail::new(code, message)
+        })?;
         match ended {
             CallEnded::Answered(answer) => Ok(answer),
             CallEnded::Replaced => Err(Fail::new(
                 abi::E_RETIRED,
                 "the function belongs to a generation that was replaced",
             )),
-            CallEnded::Raised(message) => {
-                if let Some(core) = remembered() {
-                    core.log(
-                        context(),
-                        abi::LOG_WARN,
-                        &format!("js: an object callback raised: {message}"),
-                    );
-                }
-                Err(Fail::new(abi::E_PANIC, message))
-            }
+            // A throw is the caller's to say: the library that called the closure puts its words in a notice with the context it has
+            // (the listener, the menu entry, the layout), which the shell's diagnostics carry once per site.
+            CallEnded::Raised(message) => Err(Fail::new(abi::E_PANIC, message)),
         }
     }
 }

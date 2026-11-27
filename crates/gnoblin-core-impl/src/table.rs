@@ -89,6 +89,7 @@ pub(crate) static API: GnoblinApi = GnoblinApi {
     object_api: api_object_api,
     set_write_stage: api_set_write_stage,
     node_effects_serial: api_node_effects_serial,
+    take_notices: api_take_notices,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };
@@ -829,6 +830,16 @@ unsafe extern "C" fn api_node_effects_serial(ctx: GnoblinCtx, node: GnoblinNode,
         match tree::effects_serial(ctx, node) {
             // SAFETY: the table's contract passes `out` as a writable `u64`.
             Ok(serial) => unsafe { put(out, serial, "node_effects_serial") },
+            Err(code) => code,
+        }
+    })
+}
+
+unsafe extern "C" fn api_take_notices(ctx: GnoblinCtx, out: *mut GnoblinBuf) -> i32 {
+    guard(abi::E_PANIC, "take_notices", || {
+        match registry::take_notices(ctx) {
+            // SAFETY: the table's contract passes `out` as a writable buffer.
+            Ok(notices) => unsafe { put(out, memory::lend_bytes(notices.into_bytes()), "take_notices") },
             Err(code) => code,
         }
     })

@@ -121,12 +121,22 @@ fn set_last(fail: &Fail) {
 
 fn log(ctx: GnoblinCtx, level: u32, message: &str) {
     if let Ok(g) = gnoblin_core::private::gnoblin_for(ctx) {
-        let level = if level <= abi::LOG_ERROR {
-            LogLevel::CoreError
-        } else {
-            LogLevel::Warn
+        let level = match level {
+            level if level <= abi::LOG_ERROR => LogLevel::CoreError,
+            abi::LOG_NOTICE => LogLevel::Notice,
+            _ => LogLevel::Warn,
         };
         g.log_at(level, &format!("gnoblin-std: {message}"));
+    }
+}
+
+/// The level to say a failed callback of the shell at, from the ABI code it failed with: a notice for the shell's diagnostics, unless
+/// the shell stopped the call for its budget (`E_TIMEOUT`), which it reports itself.
+pub(crate) fn failure_level(code: i32) -> LogLevel {
+    if code == abi::E_TIMEOUT {
+        LogLevel::Warn
+    } else {
+        LogLevel::Notice
     }
 }
 

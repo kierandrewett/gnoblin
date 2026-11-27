@@ -120,6 +120,9 @@ pub struct Rig {
     /// The core and the std library the shell runs over, for a rig made by [`rig_native`]. A frame of the rig is then the engine's
     /// and the core's.
     pub core: Option<native::NativeCore>,
+    /// Whether the core's notices reach the shell's diagnostics, as in a session. A scenario that records the diagnostics of another
+    /// library (the oracle's TypeScript std) turns it off, so the native library's own are not added to them.
+    pub tell_notices: bool,
     pub _dir: TempDir,
 }
 
@@ -152,7 +155,11 @@ impl Rig {
     pub fn frame(&mut self) -> Vec<String> {
         let diagnostics = self.shell.frame().expect("a frame").diagnostics;
         if let Some(core) = &self.core {
-            core.dispatch(&self.shell);
+            if self.tell_notices {
+                core.dispatch(&self.shell);
+            } else {
+                core.dispatch_untold(&self.shell);
+            }
         }
         diagnostics
     }
@@ -235,6 +242,7 @@ pub fn rig_prepared(
         load_diagnostics,
         clock,
         core: Some(core),
+        tell_notices: true,
         _dir: dir,
     }
 }
@@ -255,6 +263,7 @@ pub fn rig_native(imports: &str, init_body: &str, setup: impl FnOnce(&FakeCompos
         load_diagnostics,
         clock,
         core: Some(core),
+        tell_notices: true,
         _dir: dir,
     }
 }

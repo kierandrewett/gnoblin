@@ -80,6 +80,39 @@ impl CoreTable {
         unsafe { (self.api.log)(ctx, level, text.as_ptr(), text.len()) };
     }
 
+    /// The notices of the generation `ctx` since the last call (`take_notices`): the sentences the libraries and the core have for the
+    /// shell's diagnostics. From the first call on the core leaves saying them to the shell. A core built before the function has
+    /// none to give.
+    pub(crate) fn take_notices(self, ctx: GnoblinCtx) -> Vec<String> {
+        let end = core::mem::offset_of!(GnoblinApi, take_notices) + size_of::<usize>();
+        if !abi::table_has(self.api.size, end) {
+            return Vec::new();
+        }
+        let mut buf = GnoblinBuf {
+            ptr: core::ptr::null_mut(),
+            len: 0,
+            cap: 0,
+        };
+        // SAFETY: `buf` is a live local the call fills in.
+        if unsafe { (self.api.take_notices)(ctx, &raw mut buf) } != abi::E_OK {
+            return Vec::new();
+        }
+        let notices = if buf.ptr.is_null() {
+            Vec::new()
+        } else {
+            // SAFETY: the core filled `buf` with `len` readable bytes it allocated.
+            let bytes = unsafe { std::slice::from_raw_parts(buf.ptr, buf.len) };
+            String::from_utf8_lossy(bytes)
+                .split('\0')
+                .filter(|notice| !notice.is_empty())
+                .map(str::to_owned)
+                .collect()
+        };
+        // SAFETY: `buf` is the buffer the core returned, freed once through its own function.
+        unsafe { (self.api.buf_free)(&raw mut buf) };
+        notices
+    }
+
     /// Sets the text `gnoblin_last_error` returns, so the loader can say why a `start` failed.
     pub(crate) fn set_last_error(self, ctx: GnoblinCtx, text: &str) {
         // SAFETY: `text` is a live string for the call.

@@ -137,9 +137,9 @@ impl JsShell {
         }
         let mut backlog = self.take_backlog();
         let mut diagnostics = std::mem::take(&mut backlog.diagnostics);
-        // What the libraries' callbacks did between frames (the core's dispatch) is reported here: a call that ran out its budget was
-        // stopped and counted as a strike where it ran, and is named beside the frame's own.
-        diagnostics.extend(self.take_stopped_calls());
+        // What the libraries' callbacks did between frames (the core's dispatch) is reported here: what the core and the libraries told
+        // the shell (`tell`), and a call that ran out its budget, which was stopped and counted as a strike where it ran.
+        diagnostics.extend(self.take_told());
         let worked = self.take_script_ran()
             || !incoming.is_empty()
             || !backlog.api.is_empty()

@@ -142,6 +142,8 @@ pub(crate) fn start(table: CoreTable, ctx: GnoblinCtx, script: &Path) -> Result<
     // Every line the engine logs from here is tagged with the generation being started.
     let previous = crate::table::log_context();
     set_log_context(ctx);
+    // The shell says this generation's notices from its first line, so the core leaves them out of its log.
+    drop(table.take_notices(ctx));
     let outcome = INSTANCE.with(|slot| {
         let mut slot = slot.borrow_mut();
         match slot.as_mut() {
@@ -296,6 +298,9 @@ pub(crate) fn turn(ctx: GnoblinCtx, timeout_ms: u32) -> Result<i32, String> {
         if instance.wake.is_none() && crate::std_native::used() {
             instance.wake = instance.table.wake_fd(instance.serving.get());
         }
+        // What the core and the libraries noticed since the last turn (the core's dispatch, which the host runs after a turn, called a
+        // listener of the shell that threw) is for this turn's frame to report.
+        instance.role.tell(instance.table.take_notices(instance.serving.get()));
         let limit = Duration::from_millis(u64::from(timeout_ms));
         let wait = instance
             .role

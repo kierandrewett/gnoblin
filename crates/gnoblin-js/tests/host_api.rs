@@ -168,6 +168,7 @@ fn rig(init_body: &str) -> (Rig, Owner) {
         load_diagnostics,
         clock,
         core: Some(core),
+        tell_notices: true,
         _dir: dir,
     };
     rig.settle();

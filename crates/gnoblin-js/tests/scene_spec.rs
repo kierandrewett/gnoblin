@@ -705,7 +705,6 @@ fn a_binding_on_a_property_that_does_not_exist_is_reported_once_and_the_others_s
 }
 
 #[test]
-#[ignore = "vrnw: needs the notice of a binding that throws (the message, once) in the shell's diagnostics"]
 fn a_throwing_binding_is_reported_once() {
     let mut rig = world(1, "");
     rig.eval(
@@ -741,7 +740,6 @@ fn a_binding_on_a_property_that_does_not_exist_is_reported() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the notice 'still changing after 8 passes' naming what the bindings read in the shell's diagnostics"]
 fn bindings_that_feed_each_other_stop_after_a_bounded_number_of_passes_and_name_what_they_read() {
     let mut rig = world(1, "");
     rig.eval(

@@ -31,6 +31,8 @@ impl Embedded {
         table::remember(table);
         table::set_log_context(ctx);
         std_native::set_context(ctx);
+        // The shell says this generation's notices from now on, so the core leaves them out of its log.
+        drop(table.take_notices(ctx));
         Self {
             table,
             ctx,
@@ -80,9 +82,20 @@ impl Embedded {
     }
 
     /// Runs what the core queued for the generation: what the library announces and what a layout is asked, with the library's
-    /// callbacks entering `shell` as they do in the runtime's turn. Returns the number of callbacks run.
+    /// callbacks entering `shell` as they do in the runtime's turn, and tells the shell what the core and the libraries noticed meanwhile
+    /// for its diagnostics. Returns the number of callbacks run.
     pub fn dispatch(&self, shell: &JsShell) -> i32 {
-        std_native::with_enter(&ShellEnter(shell), || self.table.dispatch(self.ctx))
+        let called = std_native::with_enter(&ShellEnter(shell), || self.table.dispatch(self.ctx));
+        shell.tell(self.table.take_notices(self.ctx));
+        called
+    }
+
+    /// [`dispatch`](Self::dispatch) for a test that records what another library says and must not have this one's added: what the core
+    /// and the libraries noticed is dropped, not told.
+    pub fn dispatch_untold(&self, shell: &JsShell) -> i32 {
+        let called = std_native::with_enter(&ShellEnter(shell), || self.table.dispatch(self.ctx));
+        drop(self.table.take_notices(self.ctx));
+        called
     }
 
     /// Scripts the engine evaluates from now belong to the generation `ctx`, as the runtime's `start` sets for a reload before the
@@ -90,6 +103,8 @@ impl Embedded {
     pub fn belong_to(&self, ctx: GnoblinCtx) {
         std_native::set_context(ctx);
         table::set_log_context(ctx);
+        // The shell says the generation's notices from the first it takes: the staged one's are its own from its first line.
+        drop(self.table.take_notices(ctx));
     }
 
     /// The generation `ctx` serves from now: the engine's link and [`dispatch`](Self::dispatch) speak for it, as the runtime moves

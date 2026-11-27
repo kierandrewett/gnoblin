@@ -250,7 +250,10 @@ fn call_all(cx: &Cx<'_>, run: Vec<Rc<dyn Callable>>, outcome: &Settlement) {
     };
     for closure in run {
         if let Err(fail) = closure.call(0, &args) {
-            cx.log(abi::LOG_WARN, &format!("an operation's listener failed: {fail}"));
+            cx.log(
+                fail.callback_level(),
+                &format!("an operation's listener failed: {fail}"),
+            );
         }
     }
 }
@@ -485,7 +488,7 @@ fn start(cx: &Cx<'_>, ms: f64, run: Rc<dyn Callable>, pending: &Rc<Cell<usize>>)
         Some(pending),
         Box::new(move |cx| {
             if let Err(fail) = run.call(0, &[]) {
-                cx.log(abi::LOG_WARN, &format!("a timer's function failed: {fail}"));
+                cx.log(fail.callback_level(), &format!("a timer's function failed: {fail}"));
             }
         }),
     )?;

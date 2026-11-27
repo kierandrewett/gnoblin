@@ -112,11 +112,11 @@ impl Ui {
         self.g.node(NodeId(id))
     }
 
-    /// Writes a line to the generation's log.
+    /// Says a sentence the shell's author must read: a notice, once per site (see `LogLevel::Notice`).
     pub(crate) fn warn(&self, message: &str) {
         #[cfg(any(test, feature = "testing"))]
         super::testing::note(message);
-        self.g.log_at(LogLevel::Warn, &format!("gnoblin-std: {message}"));
+        self.g.log_at(LogLevel::Notice, &format!("gnoblin-std: {message}"));
     }
 
     /// The ids of the object library's classes and members that the toolkit calls by name.

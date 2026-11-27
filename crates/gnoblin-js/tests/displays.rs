@@ -507,7 +507,6 @@ fn a_profile_applies_again_when_its_monitor_returns_and_a_refusal_is_reported_by
 }
 
 #[test]
-#[ignore = "vrnw: needs the config notice a refused profile request carries (outputs.profiles.<connector>.<key>: <words>) in the shell's diagnostics"]
 fn a_refused_profile_request_is_reported_by_key() {
     let mut rig = world(
         true,
@@ -624,7 +623,6 @@ fn profiles_match_by_make_model_and_serial_and_report_vrr_as_not_applied() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the 'not applied: OutputProfile \"<make>/<model>/<serial>\" vrr' notice in the shell's diagnostics"]
 fn a_profile_reports_vrr_as_not_applied() {
     let mut rig = world(true, "");
     rig.comp.external_set(B, "make", text("BOE"));
@@ -715,7 +713,7 @@ fn the_profile_collection_and_profile_arguments_are_checked() {
 // ---- Cameras -------------------------------------------------------------------------------------------------------
 
 #[test]
-#[ignore = "vrnw: needs the 'not applied: camera3d (needs a projected workspace)' notice in the shell's diagnostics"]
+#[ignore = "vrnw: the notice is in the diagnostics; needs Camera2D.rotation to read as a number (a flat camera's rotation reads as an object)"]
 fn a_camera3d_on_a_viewport_is_kept_and_reported_once_as_not_applied_and_a_flat_camera_is_read_back() {
     let mut rig = world(true, "");
     exec(
@@ -856,7 +854,6 @@ fn a_supersample_that_is_not_a_number_in_range_throws_naming_the_key() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the 'supersample <n> is not recommended: use 1, 2 or 4' notice in the shell's diagnostics"]
 fn a_factor_that_is_not_recommended_is_accepted_with_one_diagnostic() {
     let mut rig = world(false, "");
     exec(&mut rig, "g.dp1().apply({ supersample: 2 });");

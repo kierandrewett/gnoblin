@@ -150,6 +150,12 @@ impl NativeCore {
         self.embedded.dispatch(shell)
     }
 
+    /// [`dispatch`](Self::dispatch) without telling the shell what the core and the library noticed: for a scenario that records another
+    /// library's diagnostics (the oracle's TypeScript std), which the native library's own would be added to.
+    pub fn dispatch_untold(&self, shell: &JsShell) -> i32 {
+        self.embedded.dispatch_untold(shell)
+    }
+
     /// The runtime's pieces for a host that holds libraries of its own.
     pub fn embedded(&self) -> &Embedded {
         &self.embedded

@@ -58,6 +58,7 @@ fn served_rig(body: &str) -> Rig {
         load_diagnostics,
         clock,
         core: Some(core),
+        tell_notices: true,
         _dir: dir,
     };
     rig.settle();

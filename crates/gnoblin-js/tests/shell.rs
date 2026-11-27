@@ -562,7 +562,6 @@ fn where_takes_a_list_of_values_for_a_member() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the generated listeners' throws and budget stops reported in the frame's diagnostics and counted as strikes"]
 fn a_listener_that_throws_does_not_stop_its_siblings_and_is_reported_once_per_site() {
     let comp = two_windows();
     let init = "import { ClientListener } from \"gnoblin-core\";\n\
@@ -584,10 +583,16 @@ fn a_listener_that_throws_does_not_stop_its_siblings_and_is_reported_once_per_si
     let mut rig = rig(&comp, init);
     comp_title(&comp, 3, "a");
     comp_title(&comp, 4, "b");
+    // The core's dispatch runs the listeners after the engine's frame, so the frame that follows names what they said.
+    rig.frame();
     let first = rig.frame();
     assert_eq!(rig.eval("log.join()"), "a,b", "the sibling ran for both clients");
     assert_eq!(first.len(), 1, "one site, reported once: {first:?}");
-    assert!(first[0].contains("Bad.onTitleChanged threw"), "{}", first[0]);
+    assert!(
+        first[0].contains("a listener failed") && first[0].contains("onTitleChanged"),
+        "{}",
+        first[0]
+    );
     assert!(
         first[0].contains("shell.ts:6:"),
         "the .ts line of the throw: {}",
@@ -595,6 +600,7 @@ fn a_listener_that_throws_does_not_stop_its_siblings_and_is_reported_once_per_si
     );
     assert!(first[0].contains("bad a"), "{}", first[0]);
     comp_title(&comp, 3, "c");
+    rig.frame();
     let second = rig.frame();
     assert!(second.is_empty(), "the same site is not reported again: {second:?}");
     assert_eq!(rig.eval("log.join()"), "a,b,c");
@@ -780,7 +786,6 @@ fn a_stale_base_refusal_sends_every_write_again_on_the_new_base_and_the_scripts_
 }
 
 #[test]
-#[ignore = "vrnw: needs the drop of a write refused after its retries reported in the frame's diagnostics"]
 fn a_write_refused_stale_base_every_time_is_dropped_after_its_retries_and_the_others_land() {
     let comp = two_windows();
     comp.hold();
@@ -795,6 +800,8 @@ fn a_write_refused_stale_base_every_time_is_dropped_after_its_retries_and_the_ot
         comp.release();
         told.extend(rig.frame());
     }
+    // The last refusal is the core's to see in its dispatch, which follows the engine's frame: the next frame names the drop.
+    told.extend(rig.frame());
     assert_eq!(told.len(), 1, "the drop is reported once: {told:?}");
     assert!(told[0].contains("dropped after"), "{told:?}");
     let last: Vec<(u64, String)> = sent(&comp)
@@ -832,7 +839,6 @@ fn an_unknown_node_refusal_sends_the_writes_on_nodes_that_are_still_there() {
 }
 
 #[test]
-#[ignore = "vrnw: needs a refused transaction of the generated library reported in the frame's diagnostics"]
 fn a_refused_transaction_is_reported_naming_the_op_and_opens_the_gate() {
     let comp = two_windows();
     comp.fault(Fault::Refuse {
@@ -842,6 +848,8 @@ fn a_refused_transaction_is_reported_naming_the_op_and_opens_the_gate() {
     let mut rig = rig(&comp, "export {};\n");
     rig.frame();
     rig.eval("gnoblin.clients.get('3').x = 7; 0");
+    rig.frame();
+    // The core's dispatch sees the refusal after the engine's frame has gone by: the frame after it names it.
     rig.frame();
     let report = rig.frame();
     assert_eq!(report.len(), 1, "{report:?}");

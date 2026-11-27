@@ -598,6 +598,11 @@ impl State {
             write_number(&g, client, "corner_radius", mapping.corner_radius);
         }
         applied.corner = Some(mapping.corner_radius);
+        // What the style asks for and the window does not get is said once per generation, as every sentence the library has for the
+        // shell's diagnostics is (`note`); `style_warnings` keeps the list for the window it is about.
+        for note in &notes {
+            self.note(format!("not applied: style.{note}"));
+        }
         applied.notes = notes;
         applied.computed = Some(computed);
         self.styles.clients.insert(client, applied);

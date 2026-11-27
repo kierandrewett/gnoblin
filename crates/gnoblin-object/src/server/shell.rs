@@ -60,7 +60,18 @@ impl ShellImpl {
         .unwrap_or(abi::E_PANIC);
         arena.finish(false);
         if code != abi::E_OK {
-            return Err(Fail::new(code, "an implemented method of the shell failed"));
+            // A shell that gives its words writes them to `out` as text (a script's throw, with its stack); one that does not leaves
+            // the none the call set.
+            // SAFETY: `out` is what the shell wrote, valid until the next call into it, and the text is copied here.
+            let words = if out.kind == abi::VALUE_TEXT {
+                unsafe { crate::wire::text_at(out.ptr, out.len) }.ok()
+            } else {
+                None
+            };
+            return Err(Fail::new(
+                code,
+                words.unwrap_or_else(|| "an implemented method of the shell failed".to_owned()),
+            ));
         }
         // SAFETY: the shell wrote `out`, and it stays valid until the next call into the shell, which comes after this copy.
         unsafe { from_raw(&out, false) }

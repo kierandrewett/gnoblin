@@ -177,6 +177,7 @@ pub fn next_generation(rig: Rig, config: &str) -> Rig {
         load_diagnostics,
         clock,
         core: Some(core),
+        tell_notices: true,
         _dir: dir,
     }
 }

@@ -618,7 +618,6 @@ fn rules_pick_the_frame_by_application_and_title_and_a_callback_can_give_a_windo
 }
 
 #[test]
-#[ignore = "vrnw: needs the throw of a frame fill reported in the frame's diagnostics"]
 fn a_fill_that_throws_leaves_no_frame_and_no_room_behind() {
     let mut rig = world(
         0,

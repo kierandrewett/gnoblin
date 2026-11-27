@@ -244,8 +244,9 @@ struct Rig {
     _dir: TempDir,
 }
 
-/// What `run` returned and what the library logged as a warning or an error while it ran: a listener of the object runtime that throws is
-/// logged by the core, not returned by the engine's frame.
+/// What `run` returned and what the core logged as a warning or an error while it ran. A listener of the shell that throws is a notice
+/// the shell says in its frames (the core leaves it out of its log), once per site; a call the shell stopped for its budget is a warning
+/// the core logs.
 fn told(run: impl FnOnce() -> Vec<String>) -> Vec<String> {
     let mut told = Vec::new();
     let logged = gnoblin_log::event::capture::logged_with_levels(|| told = run());
@@ -643,7 +644,6 @@ fn a_client_listener_that_throws_is_reported_once_and_the_next_still_runs() {
 }
 
 #[test]
-#[ignore = "vrnw: needs a throwing client listener reported once per site (the core logs every throw, with a second line `a listener failed`)"]
 fn a_client_listener_that_throws_is_reported_once_not_once_per_event() {
     let mut rig = rig(&init(
         "const breaks = new ClientCollectionListener();\n\
@@ -686,6 +686,8 @@ fn until(rig: &mut Rig, what: &str, mut done: impl FnMut(&mut Rig) -> bool) -> V
     loop {
         all.extend(rig.frame());
         if done(rig) {
+            // What the core's dispatch said in the turn that did it is the shell's to report in the frame after.
+            all.extend(rig.frame());
             return all;
         }
         assert!(std::time::Instant::now() < deadline, "never reached: {what}: {all:?}");
@@ -853,7 +855,6 @@ fn listener_errors_are_isolated() {
 }
 
 #[test]
-#[ignore = "vrnw: needs a throwing dialog listener reported once per site (the core logs every throw, with a second line `a listener failed`)"]
 fn listener_errors_are_logged_once() {
     let mut rig = rig(&init(
         "class Bad extends DialogListener {\n\

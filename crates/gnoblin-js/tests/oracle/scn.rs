@@ -394,7 +394,9 @@ impl Scn {
     pub fn new(name: &str, home: Home, world: &World, body: &str) -> Scn {
         let source = format!("{PRELUDE}{body}");
         let build = world.clone();
-        let rig = rig_setup(&typescript_globals(), &source, move |comp| build.build(comp));
+        let mut rig = rig_setup(&typescript_globals(), &source, move |comp| build.build(comp));
+        // What the oracle records is the TypeScript library's: the native library that runs beside it says its own notices, which are not.
+        rig.tell_notices = false;
         // The recorded library has no stock focus policy of its own; the shell stops the one the toolkit started on boot.
         gnoblin_std_impl::ui_testing::stop_stock_focus();
         let boot = rig.load_diagnostics.clone();

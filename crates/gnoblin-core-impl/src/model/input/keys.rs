@@ -87,7 +87,10 @@ fn asks(cx: &Cx<'_>, scope: &Closure, client: Obj) -> bool {
     match call_closure(cx, scope, vec![cx.object_value(client)]) {
         Ok(answer) => answer.bool().unwrap_or(false),
         Err(fail) => {
-            cx.log(abi::LOG_WARN, &format!("a binding's scope threw: {}", fail.message));
+            cx.log(
+                fail.callback_level(),
+                &format!("a binding's scope threw: {}", fail.message),
+            );
             false
         }
     }
@@ -205,7 +208,7 @@ fn run(cx: &Cx<'_>, context: Obj, spec_key: &str, device: &str, client: Option<O
             Ok(_) => return,
             Err(fail) => {
                 cx.log(
-                    abi::LOG_WARN,
+                    fail.callback_level(),
                     &format!("binding \"{id}\".on_press threw: {}", fail.message),
                 );
                 return;

@@ -126,6 +126,8 @@ impl SceneWorld {
     fn write_result(&self, owner: Obj, property: &str, shape: Shape, value: Val) -> Res<()> {
         let site = format!("the binding of `{property}`");
         let value = match (shape, value) {
+            // A whole number is a number: a script's `b.x + 1` crosses as an integer.
+            (Shape::Number, Val::Int(number)) => Val::Double(number as f64),
             (Shape::Number, value @ Val::Double(_))
             | (Shape::Flag, value @ Val::Bool(_))
             | (Shape::Text, value @ Val::Text(_)) => value,
