@@ -660,3 +660,42 @@ fn example_18_a_library_with_no_shell_entry_is_refused_by_reason_and_generation_
     run.client.roundtrip();
     assert!(run.session.exited().is_none(), "{}", run.session.log_text());
 }
+
+/// The shell fixture built against the SDK of a hypothetical ABI 2.0: its entry reports major 2, which the 1.x core refuses.
+fn major_shell() -> Result<PathBuf, String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("reload-major");
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let output = std::process::Command::new(cargo)
+        .current_dir(&root)
+        .args(["build", "--locked", "--manifest-path"])
+        .arg(root.join("Cargo.toml"))
+        .args(["-p", "gnoblin-fixture-shell-min", "--features", "next-major"])
+        .env("CARGO_TARGET_DIR", &target)
+        .output()
+        .map_err(|error| format!("cannot run cargo: {error}"))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+    }
+    Ok(target.join("debug/libshell_min.so"))
+}
+
+#[test]
+fn example_18_a_shell_built_for_another_abi_major_is_refused_by_reason_and_generation_one_keeps_serving() {
+    let major = major_shell().expect("the ABI 2.0 shell fixture builds");
+    let mut run = running(&["--watch"]);
+    swap_in(&major, &run.live);
+    wait_count(&mut run.session, "the ABI major is reported", 1, |line| {
+        line.contains("did not reload")
+            && line.contains("incompatible ABI")
+            && line.contains("built for gnoblin ABI 2.")
+    });
+    let (code, status, _) = ctl(&run.session, &["shell", "status"]);
+    assert_eq!(code, 0);
+    assert!(status.contains("generation 1 is running"), "{status}");
+    run.client.roundtrip();
+    assert!(run.session.exited().is_none(), "{}", run.session.log_text());
+}

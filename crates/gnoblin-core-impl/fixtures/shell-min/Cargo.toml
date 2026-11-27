@@ -14,6 +14,8 @@ crate-type = ["cdylib"]
 [features]
 # Test only: build against the SDK of a hypothetical ABI 1.1 (see `gnoblin-core-abi`).
 next-minor = ["gnoblin-core/next-minor"]
+# Test only: build against the SDK of a hypothetical ABI 2.0, a shell the 1.x core must refuse.
+next-major = ["gnoblin-core/next-major"]
 
 [dependencies]
 gnoblin-core = { path = "../../../gnoblin-core" }
