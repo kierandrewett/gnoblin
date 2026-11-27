@@ -82,12 +82,18 @@ Member names below are TypeScript spellings. Python uses the same names in snake
 | Member                                | Meaning                                                                         |
 | ------------------------------------- | ------------------------------------------------------------------------------- |
 | `contexts`                            | The seats, each an `InputContext`, then the ones a script added, as an array.   |
-| `primary`                             | The first seat, or none when the compositor reports no seat.                    |
+| `primary`                             | The first seat. Reading it is an error when the compositor reports no seat.     |
 | `devices`                             | Every device of every seat, as an array.                                        |
 | `focusedClient`                       | The window that holds the keyboard focus, or none.                              |
 | `addContext(context)`                 | Adds a context you made. See [Your own input context](#your-own-input-context). |
 | `removeContext(context)`              | Removes it. Returns `true` when it was there.                                   |
 | `findDevice(id)`, `findContext(name)` | The device or context with that id or name, or none.                            |
+
+`primary` is never none, so `gnoblin.input.primary.bind(...)` needs no check. When the compositor reports no seat, the read fails:
+
+- TypeScript throws.
+- Python raises a `GnoblinError`.
+- Rust returns an error from `primary()`.
 
 An `InputContext` is one seat:
 
