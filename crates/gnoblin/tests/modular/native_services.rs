@@ -7,6 +7,8 @@
 //! may take the lock is the compositor's decision, and the operation settles either way). The dialog policy, the reload gap and the rest of the
 //! services are tested against fake connections in `crates/gnoblin-core-impl/tests/services.rs`.
 
+use std::fs;
+
 use crate::support::native_shell::{Gnoblin, KEY_E, Start, Typist, shells, start_script};
 use crate::{copy_example, serving};
 
@@ -60,6 +62,37 @@ fn example_23_a_typescript_shell_is_told_of_a_program_a_launch_idleness_and_the_
 #[test]
 fn example_23_a_python_shell_is_told_of_a_program_a_launch_idleness_and_the_lock() {
     let (_dir, mut session) = script_session("23-native-services", "shell.py");
+    assert_the_services_are_told(&mut session);
+    assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
+}
+
+/// The shell of `file` in the example, started late: `delay` runs before its first line and holds the script for longer than the idle
+/// time its watch asks for (300 ms) and than the compositor needs to publish a reading with that much idle time in it. The script
+/// makes its watch against a reading that already has the session idle for longer than the watch asks, which is what a shell does that
+/// starts slowly, as the Python shell does on any machine and the others do on a busy one.
+fn late_script_session(name: &str, file: &str, delay: &str) -> (tempfile::TempDir, Gnoblin) {
+    let dir = copy_example(name);
+    let path = dir.path().join(file);
+    let text = fs::read_to_string(&path).expect("the example's shell");
+    fs::write(&path, format!("{delay}\n{text}")).expect("the delayed shell");
+    let mut session = start_script(Start::Compositor, &path, &[]);
+    serving(&mut session);
+    (dir, session)
+}
+
+#[test]
+fn example_23_a_typescript_shell_that_starts_late_is_still_told_the_session_is_idle() {
+    let (_dir, mut session) = late_script_session(
+        "23-native-services",
+        "shell.ts",
+        "const resume = Date.now() + 1500; while (Date.now() < resume) {}",
+    );
+    assert_the_services_are_told(&mut session);
+}
+
+#[test]
+fn example_23_a_python_shell_that_starts_late_is_still_told_the_session_is_idle() {
+    let (_dir, mut session) = late_script_session("23-native-services", "shell.py", "import time; time.sleep(1.5)");
     assert_the_services_are_told(&mut session);
     assert!(!session.log_text().contains("Traceback"), "{}", session.log_text());
 }

@@ -244,8 +244,10 @@ fn watch(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
         let mut regs = Vec::new();
         listener::add(cx, obj, &mut regs, given)?;
     }
-    // A reading the library already has decides the first state at once, so a watch made while the session is idle does not wait for
-    // the next change of the counter.
+    // A reading the library already has decides the first state, so a watch made while the session is idle does not wait for the next
+    // change of the counter. It is decided from the turn and not in this call: the script adds its listeners to the handle this call
+    // returns, and a signal that nothing hears when it is queued is not queued at all. An `idle` told here would be lost for good, because
+    // the watch would be idle already and tells it once.
     let reading = reading_now(ctx);
     IDLE.with(|idle| {
         idle.with(ctx, |table| {
@@ -255,7 +257,7 @@ fn watch(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
             }
         });
     });
-    evaluate(cx, obj, reading);
+    cx.later_on(obj, move |cx| evaluate(cx, obj, reading_now(cx.ctx())));
     cx.handout(obj)
 }
 

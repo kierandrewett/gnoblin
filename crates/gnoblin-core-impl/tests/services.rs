@@ -882,6 +882,29 @@ fn a_watch_made_after_a_hold_does_not_hear_idle_before_the_compositor_counts_the
 }
 
 #[test]
+fn a_watch_made_while_the_session_is_idle_tells_idle_to_a_listener_added_after_the_call() {
+    // A script makes the watch and then adds its listeners to the handle it got back, so nothing hears the watch while `watch` runs. The
+    // reading has the session idle for longer than the watch asks, and that watch is not told idle until the turn: the one `idle` it ever
+    // tells for this stretch must still reach the listeners the script added in the meantime.
+    let rig = Rig::new();
+    let idle = rig.service("idle");
+    let log = Rc::new(RefCell::new(Vec::new()));
+    rig.owner.idle(5000, 0);
+    let watch = rig.object(rig.call(idle, "watch", &[Val::Double(300.0)]));
+    rig.hear(watch, "idle", &log, "idle");
+    rig.hear(watch, "resume", &log, "resume");
+    rig.settle();
+    assert_eq!(*log.borrow(), vec!["idle:object".to_owned()]);
+    assert!(rig.flag(watch, "is_idle"));
+    rig.owner.idle(10, 0);
+    rig.settle();
+    assert_eq!(
+        *log.borrow(),
+        vec!["idle:object".to_owned(), "resume:object".to_owned()]
+    );
+}
+
+#[test]
 fn a_hold_is_sent_once_per_holder_given_back_with_release_and_a_refused_one_is_not_a_hold() {
     let rig = Rig::new();
     let idle = rig.service("idle");
