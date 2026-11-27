@@ -582,7 +582,6 @@ fn a_timer_delay_outside_one_day_or_not_a_number_is_refused() {
 }
 
 #[test]
-#[ignore = "vrnw: needs Timers to refuse the 1025th pending timer (the cap of 1024 is not enforced)"]
 fn the_pending_timer_count_is_capped_at_1024() {
     // Before: `the_pending_timer_count_is_capped_at_1024`. `timers.size` is not a member, so the cap is found by making timers.
     let (mut rig, _owner) = rig("export {};");
@@ -803,7 +802,6 @@ fn the_string_named_bus_is_gone_and_a_bad_listener_is_refused() {
 }
 
 #[test]
-#[ignore = "vrnw: needs addListener to refuse a listener whose handler is not a function (`{ onBell: 5 }` is accepted)"]
 fn a_listener_member_that_is_not_a_function_is_refused() {
     let (mut rig, _owner) = rig("export {};");
     let outcome = thrown(&mut rig, "gnoblin.session!.addListener({ onBell: 5 } as any)");
@@ -889,7 +887,6 @@ fn find_refuses_an_unknown_field_kind_or_value_and_names_what_works() {
 }
 
 #[test]
-#[ignore = "vrnw: needs FocusHistory.history to refuse a filter field it does not know (`{ colour: 1 }` is accepted)"]
 fn focus_history_refuses_an_unknown_filter_field() {
     let (mut rig, _owner) = rig("export {};");
     let outcome = thrown(&mut rig, "gnoblin.focus!.history({ colour: 1 } as any)");
@@ -1078,7 +1075,6 @@ fn spawn_options_reach_the_program_and_a_bad_option_is_a_type_error_naming_it() 
 }
 
 #[test]
-#[ignore = "vrnw: needs spawn to refuse an option it does not know (`{ nonsense: 1 }` is accepted)"]
 fn spawn_refuses_an_unknown_option_naming_it() {
     let (mut rig, _owner) = rig("export {};");
     let message = thrown(&mut rig, "gnoblin.process!.spawn(['true'], { nonsense: 1 } as any)");
@@ -1123,7 +1119,6 @@ fn version_is_a_frozen_record_of_the_build_identity_with_unknown_for_what_the_bu
 }
 
 #[test]
-#[ignore = "vrnw: needs BuildVersion frozen (Object.isFrozen(gnoblin.version()) is false and a write is not refused)"]
 fn the_version_record_is_immutable() {
     let (mut rig, _owner) = rig("export {};");
     assert_eq!(rig.ts("Object.isFrozen(gnoblin.version())"), "true");

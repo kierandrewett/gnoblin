@@ -27,8 +27,8 @@ impl BindingAction {
     }
 }
 
-/// Refuses a trigger the action cannot serve: an object that handles a press is not for a drag or a gesture, and the object of a drag or of
-/// a gesture is for that kind of trigger only. A function serves every trigger the compositor can claim.
+/// Refuses a trigger the action cannot serve: an object that handles a press is not for a drag or a gesture, and the object of a drag or
+/// of a gesture is for that kind of trigger only. A function serves every trigger the compositor can claim.
 fn check_action(what: &str, action: &BindingAction, parsed: &ParsedTrigger) -> Res<()> {
     let drag = parsed.kind == TriggerClass::Pointer && parsed.action == Some("drag");
     let gesture = parsed.kind == TriggerClass::Gesture;

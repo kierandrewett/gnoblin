@@ -812,10 +812,9 @@ fn scene_root_and_views() {
         .expect("a list")
         .iter()
         .any(|child| child.object().is_ok_and(|obj| obj == room.obj));
-    // The tree's root is the compositor's: ending the object that holds it takes nothing from the tree, and the root is there to be
-    // held again.
+    // The tree's root is the compositor's: a shell cannot end the object that holds it, and the root stays in the tree to be held again.
     let root_node = root.node();
-    root.destroy();
+    let destroy_root = fail_of(root.try_destroy());
     assert!(comp_has(&rig, root_node), "the root stays in the tree");
     let held_again = object_of(&scene, "root").expect("the root again");
     assert_eq!(held_again.node(), root_node);
@@ -824,7 +823,7 @@ fn scene_root_and_views() {
         json!({
             "parent": same(&object_of(&room, "parent"), &held_again),
             "listed": listed,
-            "destroy_root": "SceneRoot#N: the scene's root is the compositor's and cannot be destroyed",
+            "destroy_root": destroy_root,
         }),
     );
     scene.set("metres_per_unit", d(0.001));

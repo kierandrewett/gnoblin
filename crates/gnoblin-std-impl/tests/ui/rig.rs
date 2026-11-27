@@ -296,7 +296,12 @@ impl W {
 
     /// Ends the object and what it holds, as a shell's `destroy` does.
     pub fn destroy(&self) {
-        self.api.destroy(self.obj).expect("the object ends");
+        self.try_destroy().expect("the object ends");
+    }
+
+    /// The same, for an object that may refuse to end.
+    pub fn try_destroy(&self) -> Result<(), gnoblin_object::Fail> {
+        self.api.destroy(self.obj)
     }
 }
 
