@@ -644,3 +644,19 @@ fn the_retired_libraries_are_bounded_at_32_and_the_reload_past_the_limit_is_refu
     assert!(status.contains("generation 31 is running"), "{status}");
     assert!(run.session.exited().is_none(), "{}", run.session.log_text());
 }
+
+#[test]
+fn example_18_a_library_with_no_shell_entry_is_refused_by_reason_and_generation_one_keeps_serving() {
+    // The staged std library is a real library that exports no `gnoshell_entry_v1`: the loader refuses it by name.
+    let not_a_shell = PathBuf::from(staged_library_path()).join("libgnoblin-std.so.1");
+    let mut run = running(&["--watch"]);
+    swap_in(&not_a_shell, &run.live);
+    wait_count(&mut run.session, "the missing entry is reported", 1, |line| {
+        line.contains("did not reload") && line.contains("not a gnoblin shell") && line.contains("gnoshell_entry_v1")
+    });
+    let (code, status, _) = ctl(&run.session, &["shell", "status"]);
+    assert_eq!(code, 0);
+    assert!(status.contains("generation 1 is running"), "{status}");
+    run.client.roundtrip();
+    assert!(run.session.exited().is_none(), "{}", run.session.log_text());
+}

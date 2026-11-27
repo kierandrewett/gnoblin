@@ -132,6 +132,22 @@ fn a_core_only_shell_runs_from_the_same_prefix_and_maps_no_std_though_std_is_ins
 }
 
 #[test]
+fn a_core_only_shell_runs_on_a_prefix_with_no_std_and_names_no_std() {
+    let install = Install::new(false);
+    assert!(!install.lib().join("libgnoblin-std.so.1").exists());
+    support::elf::assert_shell_dependencies(&shells().minimal, false);
+    let mut session = install.start(&shells().minimal);
+    wait_serving_shell(&mut session);
+
+    assert!(
+        !ours(&session).iter().any(|path| is_std(path)),
+        "no std is mapped: {:#?}",
+        session.mapped_files()
+    );
+    assert!(session.exited().is_none(), "{}", session.log_text());
+}
+
+#[test]
 fn a_std_shell_on_a_prefix_with_no_std_is_refused_by_name_and_the_compositor_runs_on() {
     if loader_finds_std() {
         eprintln!(
