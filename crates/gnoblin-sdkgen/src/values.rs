@@ -340,7 +340,12 @@ mod tests {
         block(dts, &format!("export class {name} {{"), "}")
             .into_iter()
             .filter(|line| !line.trim().starts_with("constructor"))
-            .map(|line| line.trim().split(['?', ':']).next().unwrap_or_default().to_owned())
+            .map(|line| {
+                let line = line.trim();
+                // A readonly field (a frozen record's) is still the field.
+                let line = line.strip_prefix("readonly ").unwrap_or(line);
+                line.split(['?', ':']).next().unwrap_or_default().to_owned()
+            })
             .collect()
     }
 

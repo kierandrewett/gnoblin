@@ -363,7 +363,11 @@ fn display_arguments_are_checked() {
 #[test]
 fn a_single_display_presents_one_output() {
     let mut rig = world(true, "");
-    let text = rig.eval("try { g.display('x', [g.a, g.b]); 'ok' } catch (e) { e.constructor.name + ': ' + e.message }");
+    // A native display is made with its selectors and its mode is set after, so the refusal is where the display is added, as for a write
+    // of `mode` to a display that is listed.
+    let text = rig.eval(
+        "try { gnoblin.displays.add(g.display('x', [g.a, g.b])); 'ok' } catch (e) { e.constructor.name + ': ' + e.message }",
+    );
     assert!(text.contains("\"single\" presents one output"), "{text}");
 }
 

@@ -107,25 +107,10 @@ pub(super) fn register(builder: &mut Builder) {
                     }
                 });
             }
-            // The mode is checked against the selectors here, as a write to `mode` is, since a display made single with two selectors would
-            // present one and ignore the other.
-            let mode = match inits.take("mode") {
-                Some(value) => value
-                    .enum_value()?
-                    .checked_sub(1)
-                    .ok_or_else(|| Fail::type_error("Display.mode: must be \"single\", \"mirror\" or \"span\""))?,
-                None => abi::STD_PRESENT_SINGLE,
-            };
-            if mode == abi::STD_PRESENT_SINGLE && selectors.len() > 1 {
-                return Err(Fail::type_error(format!(
-                    "Display.mode: \"single\" presents one output; use \"mirror\" or \"span\" for {}",
-                    selectors.len()
-                )));
-            }
             let (hid, vid) = edit(ctx, |st| {
                 st.disp.numbered += 1;
                 let id = format!("display-{}", st.disp.numbered);
-                let hid = st.new_display(id, mode, selectors, None);
+                let hid = st.new_display(id, abi::STD_PRESENT_SINGLE, selectors, None);
                 let vid = new_rec(st, Some(hid));
                 if let Some(rec) = st.disp.displays.get_mut(&hid) {
                     rec.viewport = Some(vid);
