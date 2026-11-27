@@ -41,7 +41,7 @@ pub use error::SchemaError;
 pub use gnoblin_types::{InvalidVersion, Version};
 pub use model::{
     Augment, CORE_NAMESPACE, CallbackDecl, Catalog, DefaultValue, EnumDecl, ErrorDecl, Export, Extras, Field, Method,
-    Namespace, ObjectKind, ObjectType, Property, Schema, Signal, TaggedVariant, Type, augment_class_name, is_class_ref,
-    is_error_code, is_lower_name,
+    Namespace, Notes, ObjectKind, ObjectType, Property, Range, Schema, SchemaExample, Signal, TaggedVariant, Type,
+    augment_class_name, is_class_ref, is_error_code, is_lower_name,
 };
 pub use parse::parse_schema;

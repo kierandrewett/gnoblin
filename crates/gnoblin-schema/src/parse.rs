@@ -101,8 +101,9 @@ use serde::Deserialize;
 
 use crate::error::SchemaError;
 use crate::model::{
-    Augment, CallbackDecl, DefaultValue, EnumDecl, ErrorDecl, Export, Extras, Field, Method, Namespace, ObjectKind,
-    ObjectType, Property, Schema, Signal, TaggedVariant, Type, is_class_ref, is_error_code, is_lower_name,
+    Augment, CallbackDecl, DefaultValue, EnumDecl, ErrorDecl, Export, Extras, Field, Method, Namespace, Notes,
+    ObjectKind, ObjectType, Property, Range, Schema, SchemaExample, Signal, TaggedVariant, Type, is_class_ref,
+    is_error_code, is_lower_name,
 };
 use gnoblin_types::Version;
 
@@ -136,6 +137,8 @@ struct RawSchema {
     callbacks: Vec<RawCallback>,
     #[serde(default, rename = "augment")]
     augments: Vec<RawAugment>,
+    #[serde(default)]
+    title: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -190,6 +193,8 @@ struct RawObject {
     methods: Vec<RawMethod>,
     #[serde(default, rename = "signal")]
     signals: Vec<RawSignal>,
+    #[serde(default)]
+    example: Option<RawExample>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -209,6 +214,14 @@ struct RawVariant {
 struct RawExport {
     js: Option<String>,
     py: Option<String>,
+    rust: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawExample {
+    typescript: Option<String>,
+    python: Option<String>,
     rust: Option<String>,
 }
 
@@ -244,6 +257,14 @@ struct RawProperty {
     abi: Option<String>,
     #[serde(default)]
     export: Option<RawExport>,
+    #[serde(default)]
+    range: Option<Vec<f64>>,
+    #[serde(default)]
+    unit: Option<String>,
+    #[serde(default)]
+    raises: Vec<String>,
+    #[serde(default)]
+    example: Option<RawExample>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -278,6 +299,10 @@ struct RawMethod {
     export: Option<RawExport>,
     #[serde(default)]
     find: Option<String>,
+    #[serde(default)]
+    raises: Vec<String>,
+    #[serde(default)]
+    example: Option<RawExample>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -295,6 +320,8 @@ struct RawSignal {
     abi: Option<String>,
     #[serde(default)]
     export: Option<RawExport>,
+    #[serde(default)]
+    example: Option<RawExample>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -308,6 +335,12 @@ struct RawField {
     secret: bool,
     #[serde(default)]
     optional: bool,
+    #[serde(default)]
+    default: Option<toml::Value>,
+    #[serde(default)]
+    range: Option<Vec<f64>>,
+    #[serde(default)]
+    unit: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -373,6 +406,10 @@ pub fn parse_schema(origin: &str, text: &str) -> Result<Schema, SchemaError> {
     let enums = parse_enums(&raw.enums, scope, &mut problems);
     let callbacks = parse_callbacks(&raw.callbacks, scope, &mut problems);
     let augments = parse_augments(&raw.augments, scope, &mut problems);
+    local_only(scope, &mut problems, "schema", "title", raw.title.is_some());
+    if raw.title.as_deref().is_some_and(|title| title.trim().is_empty()) {
+        problems.push("schema: `title` is empty".to_owned());
+    }
 
     if !problems.is_empty() {
         return Err(SchemaError::Invalid {
@@ -391,6 +428,7 @@ pub fn parse_schema(origin: &str, text: &str) -> Result<Schema, SchemaError> {
             enums,
             callbacks,
             augments,
+            title: raw.title.clone(),
         }),
         // Unreachable in practice: a bad namespace or version already pushed a
         // problem, so the branch above returned. Reported rather than panicked so
@@ -423,6 +461,86 @@ fn export_of(raw: Option<&RawExport>) -> Export {
         py: raw.py.clone(),
         rust: raw.rust.clone(),
     })
+}
+
+/// The keys of a table that only the reference reads, as the file wrote them.
+struct NoteKeys<'a> {
+    range: Option<&'a [f64]>,
+    unit: Option<&'a str>,
+    raises: &'a [String],
+    example: Option<&'a RawExample>,
+}
+
+/// A number, or a list of numbers: what a `range` and a `unit` describe.
+fn is_numeric(ty: &Type) -> bool {
+    match ty {
+        Type::Int | Type::Uint | Type::Double => true,
+        Type::List(inner) => is_numeric(inner),
+        _ => false,
+    }
+}
+
+/// Reads and checks `range`, `unit`, `raises` and `example`. `ty` is the member's value type, when it has one. The keys are for the
+/// reference alone, so a file of the compositor's catalog may not carry them.
+fn notes_of(scope: Scope, problems: &mut Vec<String>, owner: &str, ty: Option<&Type>, keys: &NoteKeys<'_>) -> Notes {
+    let mut notes = Notes::default();
+    local_only(scope, problems, owner, "range", keys.range.is_some());
+    local_only(scope, problems, owner, "unit", keys.unit.is_some());
+    local_only(scope, problems, owner, "raises", !keys.raises.is_empty());
+    local_only(scope, problems, owner, "example", keys.example.is_some());
+    let numeric = ty.is_some_and(is_numeric);
+    if let Some(range) = keys.range {
+        match range {
+            [min, max] if min.is_finite() && max.is_finite() && min <= max && numeric => {
+                notes.range = Some(Range { min: *min, max: *max });
+            }
+            [_, _] if !numeric => problems.push(format!("{owner}: `range` belongs to a number or a list of numbers")),
+            _ => problems.push(format!(
+                "{owner}: `range` is `[min, max]`, two numbers with min not above max"
+            )),
+        }
+    }
+    if let Some(unit) = keys.unit {
+        if !numeric {
+            problems.push(format!("{owner}: `unit` belongs to a number or a list of numbers"));
+        } else if unit.trim().is_empty() || unit.contains('\n') {
+            problems.push(format!("{owner}: `unit` is one short word such as `px` or `ms`"));
+        } else {
+            notes.unit = Some(unit.to_owned());
+        }
+    }
+    let mut seen = BTreeSet::new();
+    for code in keys.raises {
+        if !is_lower_name(code) {
+            problems.push(format!(
+                "{owner}: `raises` names error codes written [a-z][a-z0-9_]*, not `{code}`"
+            ));
+        }
+        if !seen.insert(code.as_str()) {
+            problems.push(format!("{owner}: `raises` names `{code}` twice"));
+        }
+    }
+    notes.raises = keys.raises.to_vec();
+    if let Some(example) = keys.example {
+        let programs = [&example.typescript, &example.python, &example.rust];
+        if programs.iter().all(|program| program.is_none()) {
+            problems.push(format!(
+                "{owner}: an `example` needs a `typescript`, `python` or `rust` program"
+            ));
+        }
+        if programs
+            .iter()
+            .any(|program| program.as_deref().is_some_and(|text| text.trim().is_empty()))
+        {
+            problems.push(format!("{owner}: an `example` program is empty"));
+        }
+        notes.example = Some(SchemaExample {
+            typescript: example.typescript.clone(),
+            python: example.python.clone(),
+            rust: example.rust.clone(),
+        });
+    }
+    notes
 }
 
 /// The keys every kind of member shares.
@@ -515,14 +633,7 @@ fn parse_callbacks(raw_callbacks: &[RawCallback], scope: Scope, problems: &mut V
         let Some(since) = since_of(problems, raw_callback.since.as_deref(), &owner, scope.version) else {
             continue;
         };
-        let params = parse_fields(
-            &raw_callback.params,
-            "parameter",
-            &owner,
-            since,
-            scope.version,
-            problems,
-        );
+        let params = parse_fields(&raw_callback.params, "parameter", &owner, since, scope, problems);
         let returns = raw_callback
             .returns
             .as_deref()
@@ -736,6 +847,18 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
                 kind.as_str()
             ));
         }
+        let notes = notes_of(
+            scope,
+            problems,
+            &owner,
+            None,
+            &NoteKeys {
+                range: None,
+                unit: None,
+                raises: &[],
+                example: raw_object.example.as_ref(),
+            },
+        );
         objects.push(ObjectType {
             name: raw_object.name.clone(),
             base: raw_object.base.clone(),
@@ -758,6 +881,7 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
             properties,
             methods,
             signals,
+            notes,
         });
     }
     objects
@@ -911,6 +1035,23 @@ fn parse_properties(
                 continue;
             }
         };
+        if raw_property.readonly && !raw_property.raises.is_empty() {
+            problems.push(format!(
+                "{owner}: a read-only property is never written, so it `raises` nothing"
+            ));
+        }
+        let notes = notes_of(
+            scope,
+            problems,
+            &owner,
+            Some(&ty),
+            &NoteKeys {
+                range: raw_property.range.as_deref(),
+                unit: raw_property.unit.as_deref(),
+                raises: &raw_property.raises,
+                example: raw_property.example.as_ref(),
+            },
+        );
         properties.push(Property {
             name: raw_property.name.clone(),
             ty,
@@ -923,6 +1064,7 @@ fn parse_properties(
             always: raw_property.always,
             field: raw_property.field.clone(),
             extras,
+            notes,
         });
     }
     properties
@@ -983,7 +1125,7 @@ fn parse_methods(
         ) else {
             continue;
         };
-        let params = parse_fields(&raw_method.params, "parameter", &owner, since, scope.version, problems);
+        let params = parse_fields(&raw_method.params, "parameter", &owner, since, scope, problems);
         let returns = raw_method
             .returns
             .as_deref()
@@ -1024,6 +1166,23 @@ fn parse_methods(
                 ));
             }
         }
+        if kind == ObjectKind::Interface && !raw_method.raises.is_empty() {
+            problems.push(format!(
+                "{owner}: the shell implements an interface's method, so the library `raises` nothing from it"
+            ));
+        }
+        let notes = notes_of(
+            scope,
+            problems,
+            &owner,
+            None,
+            &NoteKeys {
+                range: None,
+                unit: None,
+                raises: &raw_method.raises,
+                example: raw_method.example.as_ref(),
+            },
+        );
         methods.push(Method {
             name: raw_method.name.clone(),
             since,
@@ -1036,6 +1195,7 @@ fn parse_methods(
             native_default: raw_method.default.is_some(),
             dunder: raw_method.python.as_ref().and_then(|python| python.dunder.clone()),
             extras,
+            notes,
         });
     }
     methods
@@ -1075,13 +1235,26 @@ fn parse_signals(
         ) else {
             continue;
         };
-        let fields = parse_fields(&raw_signal.fields, "field", &owner, since, scope.version, problems);
+        let fields = parse_fields(&raw_signal.fields, "field", &owner, since, scope, problems);
+        let notes = notes_of(
+            scope,
+            problems,
+            &owner,
+            None,
+            &NoteKeys {
+                range: None,
+                unit: None,
+                raises: &[],
+                example: raw_signal.example.as_ref(),
+            },
+        );
         signals.push(Signal {
             name: raw_signal.name.clone(),
             since,
             secret: raw_signal.secret,
             fields,
             extras,
+            notes,
         });
     }
     signals
@@ -1092,7 +1265,7 @@ fn parse_fields(
     role: &str,
     member: &str,
     member_version: Version,
-    version: Option<Version>,
+    scope: Scope,
     problems: &mut Vec<String>,
 ) -> Vec<Field> {
     let mut fields = Vec::new();
@@ -1112,7 +1285,7 @@ fn parse_fields(
         let since = match raw_field.since.as_deref() {
             None => member_version,
             Some(text) => {
-                let Some(since) = member_since(problems, Some(text), &owner, member_version, version) else {
+                let Some(since) = member_since(problems, Some(text), &owner, member_version, scope.version) else {
                     continue;
                 };
                 since
@@ -1121,6 +1294,33 @@ fn parse_fields(
         if raw_field.optional && role != "parameter" {
             problems.push(format!("{owner}: only a method parameter can be `optional`"));
         }
+        let notes = notes_of(
+            scope,
+            problems,
+            &owner,
+            Some(&ty),
+            &NoteKeys {
+                range: raw_field.range.as_deref(),
+                unit: raw_field.unit.as_deref(),
+                raises: &[],
+                example: None,
+            },
+        );
+        local_only(scope, problems, &owner, "default", raw_field.default.is_some());
+        let default = match &raw_field.default {
+            None => None,
+            Some(_) if !raw_field.optional => {
+                problems.push(format!("{owner}: a `default` belongs to an optional parameter"));
+                None
+            }
+            Some(value) => match default_value(&ty, value) {
+                Ok(default) => Some(default),
+                Err(reason) => {
+                    problems.push(format!("{owner}: {reason}"));
+                    None
+                }
+            },
+        };
         if !raw_field.optional && fields.last().is_some_and(|before: &Field| before.optional) {
             problems.push(format!(
                 "{owner}: a required {role} cannot follow an optional one, so the optional ones come last"
@@ -1132,6 +1332,8 @@ fn parse_fields(
             since,
             secret: raw_field.secret,
             optional: raw_field.optional,
+            default,
+            notes,
         });
     }
     fields

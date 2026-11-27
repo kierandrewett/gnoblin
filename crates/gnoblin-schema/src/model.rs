@@ -245,6 +245,42 @@ pub struct Extras {
     pub find: Option<String>,
 }
 
+/// The accepted values of a numeric parameter, field or property: `range = [min, max]`, both ends included. Documentation only: nothing
+/// checks a value against it, and it is in no catalog hash.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Range {
+    /// The lowest accepted value.
+    pub min: f64,
+    /// The highest accepted value.
+    pub max: f64,
+}
+
+/// A short program that uses a member, in each language that has one: `example = { typescript = "..", python = "..", rust = ".." }`.
+/// `cargo xtask docs-examples` checks every one against the SDK it is written for.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SchemaExample {
+    /// The TypeScript program.
+    pub typescript: Option<String>,
+    /// The Python program.
+    pub python: Option<String>,
+    /// The Rust program.
+    pub rust: Option<String>,
+}
+
+/// What a member says to the reader of the reference and to nothing else: no wire, no generator and no catalog hash reads it. The text
+/// of a description is the comment above the table (`gnoblin-sdkgen`'s `docs.rs` reads it); these are the keys of the table.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Notes {
+    /// The accepted values of a number.
+    pub range: Option<Range>,
+    /// What a number counts: `px`, `ms`, `s`, `deg`.
+    pub unit: Option<String>,
+    /// The error codes of the script API (`not_found`) a call or a write can fail with, in the order the file lists them.
+    pub raises: Vec<String>,
+    /// A program that uses the member.
+    pub example: Option<SchemaExample>,
+}
+
 /// A closed set of named values: `[[enum]]`. The value's id is its place in `values`, counted from 1.
 #[derive(Clone, Debug)]
 pub struct EnumDecl {
@@ -327,6 +363,8 @@ pub struct Schema {
     pub callbacks: Vec<CallbackDecl>,
     /// The augments declared, in file order.
     pub augments: Vec<Augment>,
+    /// What the file's area is called in the reference (`Input`); a local namespace's file only.
+    pub title: Option<String>,
 }
 
 /// An object type: an identity with typed properties, methods and signals.
@@ -387,6 +425,8 @@ pub struct ObjectType {
     pub methods: Vec<Method>,
     /// Notifications the object sends to its clients.
     pub signals: Vec<Signal>,
+    /// What the reference says besides the description.
+    pub notes: Notes,
 }
 
 impl ObjectType {
@@ -444,6 +484,7 @@ impl ObjectType {
                 .filter(|signal| !signal.is_sensitive())
                 .cloned()
                 .collect(),
+            notes: self.notes.clone(),
         })
     }
 
@@ -535,6 +576,8 @@ pub struct Property {
     pub field: Option<String>,
     /// What only a local namespace's property carries: `inert`, `abi` and the names in each language.
     pub extras: Extras,
+    /// What the reference says besides the description.
+    pub notes: Notes,
 }
 
 impl Property {
@@ -574,6 +617,8 @@ pub struct Method {
     pub dunder: Option<String>,
     /// What only a local namespace's method carries: `inert`, `abi` and the names in each language.
     pub extras: Extras,
+    /// What the reference says besides the description.
+    pub notes: Notes,
 }
 
 impl Method {
@@ -599,6 +644,8 @@ pub struct Signal {
     pub fields: Vec<Field>,
     /// What only a local namespace's signal carries: `inert`, `abi` and the names in each language.
     pub extras: Extras,
+    /// What the reference says besides the description.
+    pub notes: Notes,
 }
 
 impl Signal {
@@ -622,6 +669,10 @@ pub struct Field {
     /// True when a call may leave the parameter out; the method's own comment says what a missing one means. Only a
     /// method parameter is ever optional, and the optional ones are the last of a method's.
     pub optional: bool,
+    /// The value a call that leaves an optional parameter out stands for. Documentation only: the library applies its own.
+    pub default: Option<DefaultValue>,
+    /// What the reference says besides the description (`range`, `unit`).
+    pub notes: Notes,
 }
 
 /// A declared error code a namespace can return in an error frame.
@@ -1214,6 +1265,8 @@ fn receiver_param(class: &str, since: Version) -> Field {
         since,
         secret: false,
         optional: false,
+        default: None,
+        notes: Notes::default(),
     }
 }
 
@@ -1343,6 +1396,8 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
                             since: property.since,
                             secret: property.secret,
                             optional: property.optional,
+                            default: None,
+                            notes: Notes::default(),
                         },
                     ],
                     name: format!("set_{}", property.name),
@@ -1355,6 +1410,7 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
                     native_default: false,
                     dunder: None,
                     extras: Extras::default(),
+                    notes: Notes::default(),
                 })
                 .collect();
             let methods = group
@@ -1372,6 +1428,7 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
                     native_default: false,
                     dunder: None,
                     extras: property.extras,
+                    notes: property.notes,
                 })
                 .chain(setter_methods)
                 .chain(group.methods.into_iter().map(|mut method| {
@@ -1405,6 +1462,7 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
             properties,
             methods,
             signals: Vec::new(),
+            notes: Notes::default(),
         });
     }
 }
