@@ -4,65 +4,98 @@
 //! automatic grid, `Super+4` a grid of three columns filled by column, `Super+5` a monocle and `Super+6` a master and stack with the
 //! master on top.
 
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{
+    Gaps, GridFill, GridLayout, GridLayoutOptions, Layout, MasterStackLayout, MasterStackLayoutOptions,
+    MasterStackOrientation, MonocleLayout, Objects, SwapBinding, Workspace, WorkspaceOptions, Workspaces,
+};
 use gnoblin_std::prelude::*;
 
-/// What a chord does to the workspace.
-type Switch = Box<dyn Fn() -> gnoblin_std::Result<()>>;
-
-/// `Super+Button1` swaps a tiled window with the tile it is dropped on.
-fn std_swap(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    g.std()?.bind_drag(gnoblin_std::ClientSwapBinding::new())?;
-    Ok(())
-}
+/// What a chord does to the workspace: the layout it gives it.
+type Make = Box<dyn Fn(&Objects) -> gnoblin_std::Result<Layout>>;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let main = Workspace::builder("main")?
-        .layout(MasterStackLayout::new())
-        .gaps(6.0, 12.0)
-        .add()?;
-    let chords: Vec<(&str, Switch)> = vec![
-        ("Super+1", {
-            let main = main.clone();
-            Box::new(move || main.set_layout(MasterStackLayout::new()))
-        }),
-        ("Super+2", {
-            let main = main.clone();
-            Box::new(move || {
-                main.set_layout(
-                    MasterStackLayout::new()
-                        .ratio(0.6)
-                        .master_count(2)
-                        .gap(4.0)
-                        .orientation(Orientation::Right),
-                )
-            })
-        }),
-        ("Super+3", {
-            let main = main.clone();
-            Box::new(move || main.set_layout(GridLayout::new()))
-        }),
-        ("Super+4", {
-            let main = main.clone();
-            Box::new(move || main.set_layout(GridLayout::new().columns(Columns::Fixed(3)).fill(GridFill::Column)))
-        }),
-        ("Super+5", {
-            let main = main.clone();
-            Box::new(move || main.set_layout(MonocleLayout::new()))
-        }),
-        ("Super+6", {
-            let main = main.clone();
-            Box::new(move || main.set_layout(MasterStackLayout::new().orientation(Orientation::Top)))
-        }),
+    let objects = g.std()?.objects()?;
+    let main = Workspace::new_with(
+        &objects,
+        "main",
+        WorkspaceOptions {
+            layout: Some(MasterStackLayout::new(&objects)?.as_layout()?),
+            gaps: Some(Gaps {
+                inner: 6.0,
+                outer: 12.0,
+            }),
+            ..WorkspaceOptions::default()
+        },
+    )?;
+    Workspaces::get(&objects)?.add(&main)?;
+    let chords: Vec<(&str, Make)> = vec![
+        ("Super+1", Box::new(|o| Ok(MasterStackLayout::new(o)?.as_layout()?))),
+        (
+            "Super+2",
+            Box::new(|o| {
+                Ok(MasterStackLayout::new_with(
+                    o,
+                    MasterStackLayoutOptions {
+                        ratio: Some(0.6),
+                        master_count: Some(2),
+                        gap: Some(4.0),
+                        orientation: Some(MasterStackOrientation::Right),
+                        ..MasterStackLayoutOptions::default()
+                    },
+                )?
+                .as_layout()?)
+            }),
+        ),
+        ("Super+3", Box::new(|o| Ok(GridLayout::new(o)?.as_layout()?))),
+        (
+            "Super+4",
+            Box::new(|o| {
+                Ok(GridLayout::new_with(
+                    o,
+                    GridLayoutOptions {
+                        columns: Some(3),
+                        fill: Some(GridFill::Column),
+                        ..GridLayoutOptions::default()
+                    },
+                )?
+                .as_layout()?)
+            }),
+        ),
+        ("Super+5", Box::new(|o| Ok(MonocleLayout::new(o)?.as_layout()?))),
+        (
+            "Super+6",
+            Box::new(|o| {
+                Ok(MasterStackLayout::new_with(
+                    o,
+                    MasterStackLayoutOptions {
+                        orientation: Some(MasterStackOrientation::Top),
+                        ..MasterStackLayoutOptions::default()
+                    },
+                )?
+                .as_layout()?)
+            }),
+        ),
     ];
-    for (chord, switch) in chords {
-        g.bind(chord, move || {
-            if let Err(error) = switch() {
-                g.log(&format!("cannot switch the layout: {error}"));
-            }
-        })?;
+    let context = ModelRoot::get(&g.objects()?)?.input()?.primary()?;
+    for (chord, make) in chords {
+        let (main, objects, shell) = (main.clone(), objects.clone(), g.clone());
+        context.bind(
+            chord,
+            Some(move |_| {
+                if let Err(error) = make(&objects).and_then(|layout| Ok(main.set_layout(&layout)?)) {
+                    shell.log(&format!("cannot switch the layout: {error}"));
+                }
+                Ok(true)
+            }),
+            None,
+        )?;
     }
-    std_swap(g)?;
+    // `Super+Button1` swaps a tiled window with the tile it is dropped on; the service holds the binding from here on.
+    let swap = SwapBinding::new(&objects)?;
+    swap.install(None)?;
+    std::mem::forget(swap);
     g.log("layouts shell is running");
     Ok(())
 }
