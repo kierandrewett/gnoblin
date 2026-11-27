@@ -24,6 +24,10 @@ pub(super) struct ValueClass<'a> {
     pub properties: &'a [Property],
     /// For a variant: the family and the variant.
     pub of: Option<(&'a ObjectType, &'a TaggedVariant)>,
+    /// The names a script may be tempted to give that are not fields, each with its reason: a record's own, none for a variant.
+    pub refuses: &'a [(String, String)],
+    /// The value is frozen where the language can freeze it: a record's own, never a variant's.
+    pub immutable: bool,
 }
 
 impl<'a> ValueClass<'a> {
@@ -55,6 +59,8 @@ pub(super) fn value_classes<'a>(objects: impl IntoIterator<Item = &'a ObjectType
                 name: &object.name,
                 export: &object.export,
                 properties: &object.properties,
+                refuses: &object.refuses,
+                immutable: object.immutable,
                 of: None,
             });
         }
@@ -63,6 +69,8 @@ pub(super) fn value_classes<'a>(objects: impl IntoIterator<Item = &'a ObjectType
                 name: &variant.name,
                 export: &variant.export,
                 properties: &variant.properties,
+                refuses: &[],
+                immutable: false,
                 of: Some((object, variant)),
             });
         }
@@ -332,7 +340,12 @@ mod tests {
         block(dts, &format!("export class {name} {{"), "}")
             .into_iter()
             .filter(|line| !line.trim().starts_with("constructor"))
-            .map(|line| line.trim().split(['?', ':']).next().unwrap_or_default().to_owned())
+            .map(|line| {
+                let line = line.trim();
+                // A readonly field (a frozen record's) is still the field.
+                let line = line.strip_prefix("readonly ").unwrap_or(line);
+                line.split(['?', ':']).next().unwrap_or_default().to_owned()
+            })
             .collect()
     }
 

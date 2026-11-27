@@ -78,6 +78,10 @@
 //!   one key, its tag: `{ blur: 24 }` for a variant of one property, `{ shader: { source, params } }` for the others.
 //! - `number = "<field>"` on a record that is not a family: a bare number stands for the record with only that field
 //!   (`corner_radius` says `all`, so `12` is every corner).
+//! - `refuses = { name = "reason" }` on a record: names a script may be tempted to give that are not fields. One is refused with its
+//!   reason (`primary`, because the layout derives the primary output) where any other name that is not a field is refused as unknown.
+//! - `immutable = true` on a record: a value the library answers or takes and a script does not change; its value classes are frozen in
+//!   the script languages whose values can be.
 //! - `optional = true` on a property: a record may leave the field out (the same key a method parameter has). A field with neither a
 //!   default nor this is always there.
 //! - `find = "Kind"` on a method of a service that returns a list of objects and takes one optional record, its filter: a shell reads the
@@ -174,6 +178,10 @@ struct RawObject {
     tag: Option<String>,
     #[serde(default)]
     number: Option<String>,
+    #[serde(default)]
+    refuses: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    immutable: bool,
     #[serde(default, rename = "variant")]
     variants: Vec<RawVariant>,
     #[serde(default, rename = "property")]
@@ -689,6 +697,27 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
         }
         let variants = parse_variants(&raw_object.variants, &owner, since, scope, problems);
         local_only(scope, problems, &owner, "number", raw_object.number.is_some());
+        local_only(scope, problems, &owner, "refuses", !raw_object.refuses.is_empty());
+        local_only(scope, problems, &owner, "immutable", raw_object.immutable);
+        if (!raw_object.refuses.is_empty() || raw_object.immutable)
+            && (kind != ObjectKind::Record || raw_object.tag.is_some())
+        {
+            problems.push(format!(
+                "{owner}: `refuses` and `immutable` belong to a record that is not a family of variants"
+            ));
+        }
+        for (name, reason) in &raw_object.refuses {
+            if properties.iter().any(|property| &property.name == name) {
+                problems.push(format!(
+                    "{owner}: `refuses` names `{name}`, which is a field of the record"
+                ));
+            }
+            if !is_lower_name(name) || reason.trim().is_empty() {
+                problems.push(format!(
+                    "{owner}: `refuses` takes a lower snake_case name and the reason it is refused, not `{name}`"
+                ));
+            }
+        }
         if let Some(field) = &raw_object.number {
             let numeric = properties
                 .iter()
@@ -723,6 +752,8 @@ fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<Str
             export: export_of(raw_object.export.as_ref()),
             tag: raw_object.tag.clone(),
             number: raw_object.number.clone(),
+            refuses: raw_object.refuses.clone().into_iter().collect(),
+            immutable: raw_object.immutable,
             variants,
             properties,
             methods,

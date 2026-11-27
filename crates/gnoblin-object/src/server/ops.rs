@@ -220,10 +220,19 @@ impl Library {
         Ok(obj)
     }
 
-    /// Ends an object and its children: what they hold is dropped, their listeners go and every handle to them is stale.
+    /// Ends an object and its children: what they hold is dropped, their listeners go and every handle to them is stale. An object of a
+    /// class that guards its end ([`ClassBuilder::guard_destroy`]) that refuses stays, with the words the guard gave.
+    ///
+    /// [`ClassBuilder::guard_destroy`]: super::ClassBuilder::guard_destroy
     pub fn destroy(&self, ctx: GnoblinCtx, obj: Obj) -> Res<()> {
         let st = self.state(ctx, false)?;
-        self.target(&st, obj)?;
+        let target = self.target(&st, obj)?;
+        if let Some(guard) = &self.classes[target.class as usize - 1].guard_destroy {
+            let mut cx = Cx::new(self, &st, obj, target.class);
+            self.with_native(target.class, &target.state, false, |native| {
+                guarded("destroy", || guard(native.shared(), &mut cx))
+            })?;
+        }
         self.drop_object(&st, obj);
         Ok(())
     }

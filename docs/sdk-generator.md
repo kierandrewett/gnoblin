@@ -116,6 +116,15 @@ A local file may use keys a compositor file may not:
 - `number = "<field>"` on a record that is not a family of variants: a bare number stands for the record with only that number field.
   `corner_radius` says `all`, so a script may write `style.cornerRadius = 12`. TypeScript types the input `CornerRadiusInit | number`
   and Python `CornerRadius | float`; Rust takes the record.
+- `refuses = { name = "reason" }` on a record that is not a family of variants: a name that is not a field and that a script may try.
+  The script languages refuse it with the reason, so `output.apply({ primary: true })` says the layout derives the primary output.
+  Any other name that is not a field is refused as unknown.
+- `immutable = true` on such a record: its value classes are frozen in TypeScript and Python, so a write is refused where it is made.
+  `gnoblin.version()` answers one.
+- The generated JavaScript refuses three more things, for every class:
+    - a key that is not a field of a record or of a constructor's options, as in `spawn(["true"], { nonsense: 1 })`;
+    - a member of a script object that implements an interface and is not a function, as in `addListener({ onBell: 5 })`;
+    - `new` on a service, which says where to read it: `new Scene()` points to `gnoblin.scene`.
 - A family of variants (`tag` with `[[object.variant]]`) also takes an object with one key, a variant's tag: the value is the variant's
   one property (`{ blur: 24 }`), or its options when it has more (`{ shader: { source, params } }`). TypeScript declares the forms as
   `<Family>Literal` (`FilterLiteral`); Python takes a dict with one key; Rust takes the variant.
