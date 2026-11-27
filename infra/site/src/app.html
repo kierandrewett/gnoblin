@@ -25,6 +25,27 @@
                 query.addEventListener("change", apply);
             })();
         </script>
+        <script>
+            // The language of the examples, applied before the first paint like the scheme: `?lang=python` picks it
+            // (and keeps it), otherwise the stored choice. src/lib/styles/content.css shows `data-lang` on <html>.
+            (function () {
+                var languages = ["typescript", "python", "rust"];
+                var lang = null;
+                try {
+                    var asked = new URLSearchParams(location.search).get("lang");
+                    if (languages.indexOf(asked) !== -1) {
+                        lang = asked;
+                        localStorage.setItem("gnoblin-language", asked);
+                    } else {
+                        var stored = localStorage.getItem("gnoblin-language");
+                        if (languages.indexOf(stored) !== -1) lang = stored;
+                    }
+                } catch (error) {
+                    // Storage is off: the choice in the address still applies.
+                }
+                if (lang) document.documentElement.dataset.lang = lang;
+            })();
+        </script>
         %sveltekit.head%
     </head>
     <body data-sveltekit-preload-data="hover">

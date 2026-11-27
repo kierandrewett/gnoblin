@@ -15,7 +15,7 @@
         <tbody>
             {#each rows as row, r (r)}
                 <tr>
-                    {#each row as cell, c (c)}<td>{@render cell()}</td>{/each}
+                    {#each row as cell, c (c)}<td data-label={head[c] || undefined}>{@render cell()}</td>{/each}
                 </tr>
             {/each}
         </tbody>

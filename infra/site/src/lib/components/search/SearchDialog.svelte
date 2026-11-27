@@ -255,7 +255,13 @@
                 {/if}
             </div>
             {#if status === "unavailable"}
-                <p class="note">Search works in the built site. Run yarn build, then yarn preview.</p>
+                <p class="note" role="alert">
+                    {#if import.meta.env.DEV}
+                        Search works in the built site. Run yarn build, then yarn preview.
+                    {:else}
+                        Search could not load its index. Check your connection, then reload the page.
+                    {/if}
+                </p>
             {:else if status === "idle" || (status === "done" && !total)}
                 <div class="note">
                     {#if status === "done"}

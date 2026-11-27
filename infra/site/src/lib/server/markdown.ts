@@ -348,6 +348,16 @@ function rehypeGnoblin(ctx: RenderContext) {
                 visit(node, "element", (cell) => {
                     if (cell.tagName === "th") heads.push(hastToString(cell).trim());
                 });
+                // Below 734 px a row is stacked, and each cell shows its column heading from this attribute.
+                visit(node, "element", (row) => {
+                    if (row.tagName !== "tr") return;
+                    let column = 0;
+                    for (const cell of row.children) {
+                        if (cell.type !== "element" || cell.tagName !== "td") continue;
+                        const head = heads[column++];
+                        if (head) cell.properties.dataLabel = head;
+                    }
+                });
                 const label = heads.length ? `Table: ${heads.join(", ")}` : "Table";
                 parent.children[index] = el(
                     "div",
@@ -387,8 +397,8 @@ function rehypeGnoblin(ctx: RenderContext) {
         });
 
         // Tab groups last, once their code blocks are highlighted: each block becomes a panel, and a button of the tab list
-        // names it. Every panel but the first is hidden until the page's script (actions/lang-tabs.ts) shows the reader's
-        // language; with no script the first language is the whole page.
+        // names it. Every panel but the first is hidden by CSS (not by the `hidden` attribute, so Pagefind indexes all of
+        // them), and content.css shows the reader's language from <html data-lang>; with none, the first language is the page.
         visit(tree, "element", (node, index, parent) => {
             if (node.tagName !== "tabs-container" || !parent || index === undefined) return;
             const group = ++ctx.tabGroups;
@@ -423,11 +433,10 @@ function rehypeGnoblin(ctx: RenderContext) {
                         "div",
                         {
                             role: "tabpanel",
-                            className: ["lang-panel"],
+                            className: selected ? ["lang-panel", "first"] : ["lang-panel"],
                             id: `${id}-panel`,
                             ariaLabelledBy: [id],
                             dataLang: lang,
-                            hidden: !selected,
                         },
                         [panel],
                     ),

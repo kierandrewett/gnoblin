@@ -1,5 +1,5 @@
 // Site-wide data: project links, the setup command, the systems with an install guide and the build information.
-import { docsHref } from "./nav.ts";
+import { docsHref, NAV, type NavItem, type NavSection } from "./nav.ts";
 
 export const REPO = "https://github.com/kierandrewett/gnoblin";
 export const BINGUX_REPO = "https://github.com/kierandrewett/bingux";
@@ -15,14 +15,25 @@ export const PROJECT_LINKS = [
     { label: "Releases", href: `${REPO}/releases` },
 ];
 
-export type SiteArea = "docs" | "install" | "configure" | "shells" | "develop" | "reference";
+/** The header's areas are the sidebar's sections (the same ids and words), plus the reference. */
+export type SiteArea = NavSection["id"] | "reference";
+
+/** The first page of a section, in sidebar order: where its header link goes. */
+function firstSlug(items: NavItem[]): string | undefined {
+    for (const item of items) {
+        if (item.slug !== undefined) return item.slug;
+        const inner = item.items && firstSlug(item.items);
+        if (inner !== undefined) return inner;
+    }
+    return undefined;
+}
 
 export const SITE_NAV: { label: string; href: string; area: SiteArea }[] = [
-    { label: "Docs", href: docsHref(""), area: "docs" },
-    { label: "Install", href: "/install", area: "install" },
-    { label: "Configure", href: docsHref("config"), area: "configure" },
-    { label: "Shells", href: docsHref("bring-your-own-shell"), area: "shells" },
-    { label: "Develop", href: docsHref("shell-integration"), area: "develop" },
+    ...NAV.map((section) => ({
+        label: section.label,
+        href: docsHref(firstSlug(section.items) ?? ""),
+        area: section.id,
+    })),
     { label: "Reference", href: docsHref("reference"), area: "reference" },
 ];
 
