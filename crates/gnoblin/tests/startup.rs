@@ -445,8 +445,10 @@ fn pid_of(session: &Gnoblin, name: &str) -> i32 {
         .unwrap_or_else(|| panic!("no `started {name}` in:\n{}", session.log_text()))
 }
 
+/// An unreadable maps file fails the test: an empty string would let the "does not map" assertion pass unseen.
 fn maps_of(pid: i32) -> String {
-    std::fs::read_to_string(format!("/proc/{pid}/maps")).unwrap_or_default()
+    std::fs::read_to_string(format!("/proc/{pid}/maps"))
+        .unwrap_or_else(|error| panic!("cannot read /proc/{pid}/maps: {error}"))
 }
 
 #[test]
