@@ -388,12 +388,11 @@ impl<'a> ReferenceContext<'a> {
         let package = package_of(self.namespace)?;
         let stem = stem_of(self.namespace)?;
         let crate_name = rust_crate(self.namespace)?;
-        // The root of each language's package re-exports the classes of the core; the std library's Python classes stay under
-        // `gnoblin.objects.std` until the root re-exports them.
+        // The root of each language's package re-exports the classes: `gnoblin` for the core, `gnoblin.std` for the std library.
         let python_module = if stem == "model" {
             "gnoblin".to_owned()
         } else {
-            format!("gnoblin.objects.{stem}")
+            format!("gnoblin.{stem}")
         };
         let import = Json::obj(vec![
             (
