@@ -176,7 +176,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 `timeout(ms)` and `map(fn)` each return a new operation that follows the one they were called on, so a call chains. `cancel()` stops
 waiting for an operation.
 
-The example waits for a program to end for five seconds, and turns the answer into a text on the way. A failure, whether it is the
+The example waits for a program to end for 5000 milliseconds, and turns the answer into a text on the way. A failure, whether it is the
 program's, the timeout's or the cancel's, reaches `catch` with its code. The value of a `map` is none, a boolean, a number, text or a
 list of those: any other answer fails the new operation.
 

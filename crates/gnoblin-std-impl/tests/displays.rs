@@ -1313,8 +1313,8 @@ fn a_transition_may_assign_a_display_its_workspace_and_camera_and_a_failed_one_p
     };
     let fail = refused(request(&w.rig, failing));
     assert!(
-        fail.message.contains("the callback failed"),
-        "a closure that fails is reported by the library as `the callback failed`: {}",
+        fail.message.contains("no") && !fail.message.contains("the callback failed"),
+        "a closure that fails is reported by the library with its own words: {}",
         fail.message
     );
     w.settle();

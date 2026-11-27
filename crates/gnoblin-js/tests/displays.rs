@@ -776,7 +776,10 @@ fn a_transition_may_assign_a_display_its_workspace_and_camera_and_a_failed_one_p
     let failed = rig.eval(
         "try { gnoblin.requestTransition(() => { g.d.viewport.content = g.ws.one; g.d.viewport.camera = g.flat ?? new Camera2D(); throw new Error('no'); }); 'ran' } catch (e) { e.message }",
     );
-    assert!(failed.contains("callback failed"), "{failed}");
+    assert!(
+        failed.contains("no") && !failed.contains("callback failed"),
+        "the callback's own words: {failed}"
+    );
     settle(&mut rig);
     assert_eq!(
         shown(&mut rig),
