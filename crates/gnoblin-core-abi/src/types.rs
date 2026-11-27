@@ -68,8 +68,10 @@ abi_callbacks! {
     /// member id of the method (or property read) for an object the shell implements, and the signal or property id for a listener.
     /// `args` are borrowed for the call. The callee writes its answer to `out`, which the caller has set to `VALUE_NONE`; the answer's
     /// memory belongs to the callee and the caller copies it before it makes another call into the callee. Returns `E_OK`, or an
-    /// error code (`E_PANIC` when a trampoline caught a panic); on an error `out` is not read. It runs on the shell thread, from the
-    /// turn of the dispatch, never inside a call of the library that serves the object.
+    /// error code (`E_PANIC` when a trampoline caught a panic); on an error `out` is not an answer, but a callee may write its own words
+    /// for the failure to it as `VALUE_TEXT`, which a caller reads when it is text and otherwise ignores (a callee that writes none leaves
+    /// the `VALUE_NONE` the caller set). It runs on the shell thread, from the turn of the dispatch, never inside a call of the library
+    /// that serves the object.
     pub type GnoblinInvokeFn = unsafe extern "C" fn(user: *mut c_void, member: GnoblinMemberId, args: *const GnoblinValue, n_args: usize, out: *mut GnoblinValue) -> i32;
     /// One entry of an object-protocol catalog, from `catalog_each`: a class, then its members, class by class in id order.
     /// `entry` is valid until the callback returns. A nonzero return stops the walk and is returned by `catalog_each`.

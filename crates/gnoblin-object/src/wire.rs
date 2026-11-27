@@ -194,7 +194,14 @@ unsafe extern "C" fn invoke_rust_closure(
                 }
                 abi::E_OK
             }
-            Err(fail) => fail.code,
+            Err(fail) => {
+                // The callee's own words for the failure, where the caller may read them: the code says only which kind it was.
+                // SAFETY: `out` is the writable value the caller set to none.
+                if let Some(out) = unsafe { out.as_mut() } {
+                    lend(Val::Text(fail.message), out);
+                }
+                fail.code
+            }
         }
     }))
     .unwrap_or(abi::E_PANIC)
@@ -378,7 +385,17 @@ impl Callable for RawClosure {
         let code = unsafe { (self.invoke)(self.user, member, raws.as_ptr(), raws.len(), &raw mut out) };
         arena.finish(false);
         if code != abi::E_OK {
-            return Err(Fail::new(code, "the callback failed"));
+            // A callee that gives its words writes them to `out` as text; one that does not leaves the none the call set.
+            // SAFETY: `out` is what the callee wrote, valid until our next call into it, and the text is copied here.
+            let words = if out.kind == abi::VALUE_TEXT {
+                unsafe { text_at(out.ptr, out.len) }.ok()
+            } else {
+                None
+            };
+            return Err(Fail::new(
+                code,
+                words.unwrap_or_else(|| "the callback failed".to_owned()),
+            ));
         }
         // SAFETY: `out` was written by the callee and stays valid until our next call into it, which is after this copy.
         unsafe { from_raw(&out, false) }
