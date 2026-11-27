@@ -24,9 +24,7 @@ impl Composer {
 /// How long a visual bell's flash takes to fade out, in milliseconds.
 pub(super) const FLASH_MS: u32 = 150;
 
-/// The most an animation moves on the first turn after it starts: one frame at 60 Hz. The loop reports the time since
-/// its previous turn, and after an idle stretch that is up to 100 ms that passed before the request which started the
-/// animation was handled, so the animation's clock starts at its request instead of that stretch.
+/// The most an animation moves on the first loop turn after it starts: one frame at 60 Hz.
 pub(super) const FIRST_STEP_MS: u32 = 16;
 
 /// The alpha a visual bell's flash starts at, before it fades.
@@ -90,12 +88,26 @@ impl Composer {
     ///
     /// It also moves a visual bell's flash on, so the next frame shows its fade.
     pub fn advance_motion(&mut self, elapsed_ms: u32) {
+        self.advance_motion_capping_new(elapsed_ms, u32::MAX);
+    }
+
+    /// [`advance_motion`](Self::advance_motion) for the loop's turn: an animation started since the previous turn
+    /// moves by at most one frame ([`FIRST_STEP_MS`]) on this one.
+    ///
+    /// The loop reports the time since its previous turn, and after an idle stretch that is up to 100 ms that passed
+    /// before the request which started the animation was handled, so the animation's clock starts at its request
+    /// instead of that stretch and a fade lasts its full duration.
+    pub fn advance_motion_from_turn(&mut self, elapsed_ms: u32) {
+        self.advance_motion_capping_new(elapsed_ms, FIRST_STEP_MS);
+    }
+
+    fn advance_motion_capping_new(&mut self, elapsed_ms: u32, first_step_ms: u32) {
         self.view_clock_ms = self.view_clock_ms.saturating_add(u64::from(elapsed_ms));
         self.rearm_shaders();
         self.motion
-            .advance_capping_new(&mut self.scene, elapsed_ms, FIRST_STEP_MS);
+            .advance_capping_new(&mut self.scene, elapsed_ms, first_step_ms);
         self.reap_motion_ends();
-        self.advance_flash(elapsed_ms);
+        self.advance_flash(elapsed_ms, first_step_ms);
     }
 
     /// Forgets the tracks the player ended, finishing a closing window's fade and noting the end of each shell write.
@@ -339,7 +351,7 @@ impl Composer {
     /// Moves the flash on by `elapsed_ms`, damaging the area it covers so the next frame repaints
     /// it. A reduced-motion flash does not move: it is ended by the frame that draws it, in
     /// [`Composer::end_frame`].
-    pub(super) fn advance_flash(&mut self, elapsed_ms: u32) {
+    pub(super) fn advance_flash(&mut self, elapsed_ms: u32, first_step_ms: u32) {
         let Some(mut flash) = self.flash else {
             return;
         };
@@ -349,7 +361,7 @@ impl Composer {
         self.damage_flash(flash);
         // A flash that has not moved yet was started this turn, after the idle stretch the turn reports.
         let elapsed_ms = if flash.elapsed_ms == 0 {
-            elapsed_ms.min(FIRST_STEP_MS)
+            elapsed_ms.min(first_step_ms)
         } else {
             elapsed_ms
         };

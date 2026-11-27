@@ -2619,7 +2619,7 @@ impl State {
 
     /// Advances the window animations by the real time one loop turn took.
     pub(crate) fn advance_motion(&mut self, elapsed_ms: u32) {
-        self.composer.advance_motion(elapsed_ms);
+        self.composer.advance_motion_from_turn(elapsed_ms);
     }
 
     /// Advances the session clock.
