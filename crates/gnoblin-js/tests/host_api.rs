@@ -443,17 +443,15 @@ fn a_callback_that_was_unsubscribed_never_runs() {
 }
 
 #[test]
-#[ignore = "vrnw: needs Operation.map"]
 fn map_transforms_the_value_and_a_throw_in_it_fails_the_new_operation_internal() {
     // Before: `an_operation_map_transforms_its_completion_value`, `an_operation_map_error_fails_the_derived_operation`,
-    // `an_operation_map_propagates_a_source_failure_without_calling_the_mapper`. The generated operation has no value either:
-    // the case needs `map` and an operation value.
+    // `an_operation_map_propagates_a_source_failure_without_calling_the_mapper`.
     let (mut rig, owner) = rig("const first = gnoblin.session!.suspend();
          const second = gnoblin.session!.suspend();
          const third = gnoblin.session!.suspend();
-         g.mapped = (first as any).map(() => 'yes');
-         g.thrower = (second as any).map(() => { throw new Error('mapper broke'); });
-         g.untouched = (third as any).map(() => { g.log.push('mapper ran'); return 1; });");
+         g.mapped = first.map(() => 'yes');
+         g.thrower = second.map(() => { throw new Error('mapper broke'); });
+         g.untouched = third.map(() => { g.log.push('mapper ran'); return 1; });");
     owner.finish(1, Ok(""));
     owner.finish(2, Ok(""));
     owner.finish(3, Err(("busy", "another action runs")));
@@ -475,12 +473,11 @@ fn map_transforms_the_value_and_a_throw_in_it_fails_the_new_operation_internal()
 }
 
 #[test]
-#[ignore = "vrnw: needs Operation.timeout"]
 fn timeout_fails_timed_out_after_its_deadline_and_is_cleared_when_the_source_finishes() {
     // Before: `an_operation_timeout_fails_after_its_deadline`, `an_operation_timeout_is_cleared_when_its_source_finishes`.
-    let (mut rig, owner) = rig("g.slow = (gnoblin.session!.suspend() as any).timeout(50);
+    let (mut rig, owner) = rig("g.slow = gnoblin.session!.suspend().timeout(50);
          g.quick = gnoblin.session!.suspend();
-         g.limited = (g.quick as any).timeout(50);");
+         g.limited = g.quick.timeout(50);");
     owner.finish(2, Ok(""));
     rig.settle();
     assert_eq!(rig.ts("g.slow.status"), "pending", "its deadline has not come");
@@ -497,7 +494,6 @@ fn timeout_fails_timed_out_after_its_deadline_and_is_cleared_when_the_source_fin
 }
 
 #[test]
-#[ignore = "vrnw: needs Operation.cancel"]
 fn cancel_fails_cancelled_and_ignores_the_late_completion_and_a_settled_operation_cannot_be_cancelled() {
     // Before: `cancelling_an_operation_ignores_its_late_completion`, `cancelling_a_completed_operation_is_a_noop`.
     let (mut rig, owner) = rig("g.cancelled = gnoblin.session!.suspend();

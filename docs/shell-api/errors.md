@@ -86,6 +86,10 @@ budget as every listener: one that throws is reported, and the next callback sti
 | `then(fn)`                                | Calls `fn()` once, when the operation succeeds.                                                                                          |
 | `catch(fn)`                               | Calls `fn(error, code)` once, when the operation fails.                                                                                  |
 | `on("settled", fn)`                       | Calls `fn(operation)` once, when it settles either way. Returns a `Listener`.                                                            |
+| `value`                                   | What it succeeded with: none until then, and none for most operations. A string, number, boolean, none or a list. `map` sets it.         |
+| `map(fn)`                                 | A new operation: `fn(value)` runs when this one succeeds and its answer is the new `value`. A failure passes on; a throw is `internal`.  |
+| `timeout(ms)`                             | A new operation that settles as this one does, or fails `timed_out` if this is pending after `ms` (0 to a day). It cancels nothing.      |
+| `cancel()`                                | A pending operation fails `cancelled` and this returns `true`; `false` if it had settled. Work already sent still runs, unheard.         |
 
 A call that has a result, such as `Process.wait()`, leaves it on the object that made the operation: read `process.exit`
 when it settles (`then`). To stop waiting for an operation after a time, start a timer:
@@ -166,6 +170,98 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 ```
 
 :::
+
+### Following, limiting and cancelling an operation
+
+`timeout(ms)` and `map(fn)` each return a new operation that follows the one they were called on, so a call chains. `cancel()` stops
+waiting for an operation.
+
+The example waits for a program to end for five seconds, and turns the answer into a text on the way. A failure, whether it is the
+program's, the timeout's or the cancel's, reaches `catch` with its code. The value of a `map` is none, a boolean, a number, text or a
+list of those: any other answer fails the new operation.
+
+::: tabs
+
+```typescript
+import { Gnoblin } from "gnoblin-core/generated/objects";
+
+const gnoblin = Gnoblin.get();
+const sleep = gnoblin.process.spawn(["sleep", "30"]);
+const label = sleep
+    .wait()
+    .timeout(5000)
+    .map(() => "sleep ended");
+label.then(() => gnoblin.spawn(["notify-send", String(label.value)]));
+label.catch((error, code) => gnoblin.spawn(["notify-send", `Gave up: ${code}: ${error}`]));
+gnoblin.input.primary.bind("Super+Escape", () => {
+    label.cancel();
+});
+```
+
+```python
+from gnoblin.objects.model import BindingEvent, Gnoblin
+
+gnoblin = Gnoblin.get()
+sleep = gnoblin.process.spawn(["sleep", "30"])
+label = sleep.wait().timeout(5000.0).map(lambda _value: "sleep ended")
+
+
+def ended() -> None:
+    gnoblin.spawn(["notify-send", str(label.value)])
+
+
+def gave_up(error: str, code: str) -> None:
+    gnoblin.spawn(["notify-send", f"Gave up: {code}: {error}"])
+
+
+def stop(event: BindingEvent) -> None:
+    label.cancel()
+
+
+label.then(ended)
+label.catch(gave_up)
+gnoblin.input.primary.bind("Super+Escape", stop)
+```
+
+```rust
+use std::rc::Rc;
+
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Gnoblin};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let sleep = model.process()?.spawn(&["sleep".to_owned(), "30".to_owned()], None)?;
+    let label = Rc::new(sleep.wait()?.timeout(5000.0)?.map(|_value| Ok("sleep ended".into()))?);
+    let (ended, answer) = (Rc::clone(&model), Rc::clone(&label));
+    label.then(move || {
+        let text = format!("{:?}", answer.value()?);
+        ended.spawn(&["notify-send".to_owned(), text], None)?;
+        Ok(())
+    })?;
+    let gave_up = Rc::clone(&model);
+    label.catch(move |error, code| {
+        gave_up.spawn(&["notify-send".to_owned(), format!("Gave up: {code}: {error}")], None)?;
+        Ok(())
+    })?;
+    let stop = Rc::clone(&label);
+    model.input()?.primary()?.bind(
+        "Super+Escape",
+        Some(move |_event| {
+            stop.cancel()?;
+            Ok(true)
+        }),
+        None,
+    )?;
+    Ok(())
+}
+```
+
+:::
+
+`timeout` does not cancel the operation it waits on: a request already sent still happens and its result is ignored. `cancel` is the
+same, except for a request the library can drop, which it drops.
 
 A bad argument is not an operation failure: the call throws a `TypeError` or a `RangeError` at once.
 
@@ -289,8 +385,8 @@ For example, a layout's `findSplit` or `setSplit` may read the `Workspace` that 
 The members the std library adds to `gnoblin` hold no state, so they are never in use. The callback of `gnoblin.requestTransition` may
 read `gnoblin.workspaces` or `gnoblin.displays`.
 
-`cancelled` and `config_rejected` come from `Operation` and the configuration, and `timed_out` from logind. A call on an object
-does not raise them.
+`cancelled` comes from `Operation.cancel()`, `timed_out` from `Operation.timeout()` and from logind, and `config_rejected` from the
+configuration. A call on an object does not raise them.
 
 The `target` is `Class#id.member`, such as `Client#7.close`, where `id` is the object's `id` property. A class function, a
 constructor or an object with no readable `id` gives `Class.member`, such as `InputContext.new`. The message begins with the

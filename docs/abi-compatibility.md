@@ -71,6 +71,17 @@ shell. `bits` is the handle in that library and `ptr`/`len` is that library's na
 - A client asks `table_has` before it calls `retain`. A library built before the field has no `retain`, and another library cannot pass its
   objects on.
 
+### The `any` kind and the words of a failed closure
+
+`VALUE_ANY` (18) is a kind of a declared type, never of a value on the wire. A member of a local namespace that takes or gives `any`
+(`operation.value`, and the function `operation.map` runs) carries none, a boolean, a number, text or a list of those.
+
+The library checks a value it receives for such a member, and refuses an object, a record, a closure or bytes with `E_TYPE`.
+
+The `invoke` of a closure, an interface method or a listener may write its words for a failure to `out` as `VALUE_TEXT` when it returns an
+error code. A caller reads them when `out` holds text and ignores `out` otherwise, so a callee built before this keeps working and its
+failure reads `the callback failed`.
+
 ### The write stage field
 
 `GnoblinApi` has a function `set_write_stage(ctx, stage, peek, user)`, appended after `object_api` within ABI 1.0. The table grew from 472 to

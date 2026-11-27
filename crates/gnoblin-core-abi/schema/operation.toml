@@ -27,14 +27,27 @@ type = "string"
 name = "code"
 type = "string"
 
+# What `map` makes of the value of an operation that succeeded: the function gets the value and what it answers is the value of the
+# new operation. Whatever it answers must be none, a boolean, a number, text or a list of those; a throw, or any other answer, fails
+# the new operation.
+[[callback]]
+name = "operation_map"
+since = "0.2.0"
+returns = "any"
+
+[[callback.param]]
+name = "value"
+type = "any"
+
 # What a timer runs.
 [[callback]]
 name = "timer_fn"
 since = "0.2.0"
 
 # A request the compositor answers later. It settles once: it succeeds, or fails with the compositor's own words and a code
-# (`denied`, `unsupported` or `not_found`). A shell hears it with `then`, `catch` or the `settled` signal; each is told from the
-# turn after it settled.
+# (`denied`, `unsupported`, `not_found`, `cancelled`, `timed_out` and so on). A shell hears it with `then`, `catch` or the `settled`
+# signal; each is told from the turn after it settled. `map` and `timeout` make a new operation that follows this one, and `cancel`
+# stops waiting for it.
 [[object]]
 name = "operation"
 since = "0.2.0"
@@ -54,10 +67,18 @@ type = "string"
 since = "0.2.0"
 readonly = true
 
-# The failure's code: `denied`, `unsupported` or `not_found`; empty until it fails.
+# The failure's code, such as `denied`, `unsupported`, `not_found`, `cancelled`, `timed_out` or `internal`; empty until it fails.
 [[object.property]]
 name = "error_code"
 type = "string"
+since = "0.2.0"
+readonly = true
+
+# What the operation succeeded with: none until it succeeds, and none for an operation that carries no value. The operation `map`
+# returns carries the value its function answered.
+[[object.property]]
+name = "value"
+type = "any"
 since = "0.2.0"
 readonly = true
 
@@ -79,6 +100,38 @@ since = "0.2.0"
 [[object.method.param]]
 name = "run"
 type = "callback:operation_failed"
+
+# A new operation that follows this one. When this one succeeds, `run` gets its value and what `run` answers is the value of the
+# new operation. When this one fails, the new one fails the same way and `run` never runs. A throw in `run` fails the new operation
+# with code `internal` and the throw's message. A `cancel` of the new operation settles only the new one.
+[[object.method]]
+name = "map"
+since = "0.2.0"
+returns = "object:operation"
+
+[[object.method.param]]
+name = "run"
+type = "callback:operation_map"
+
+# A new operation that settles as this one does, unless this one is still pending after `ms` milliseconds (0 to a day): then it fails
+# with code `timed_out`. The deadline's timer ends when this operation settles, or the new operation is cancelled. It never cancels
+# this operation: the work it stands for goes on and its result is ignored.
+[[object.method]]
+name = "timeout"
+since = "0.2.0"
+returns = "object:operation"
+
+[[object.method.param]]
+name = "ms"
+type = "double"
+
+# Stops waiting: a pending operation fails with code `cancelled` and its listeners are told from the next turn. Returns true when it
+# did, and false when the operation had settled already. It does not undo the request: work already sent to the compositor still
+# happens and its result is ignored, except for a request the library can drop, which it drops.
+[[object.method]]
+name = "cancel"
+since = "0.2.0"
+returns = "bool"
 
 # The operation settled: it succeeded or failed.
 [[object.signal]]

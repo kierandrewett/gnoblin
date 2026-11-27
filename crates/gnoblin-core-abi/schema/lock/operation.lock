@@ -11,23 +11,32 @@ released none
 
 callback | operation_done | () | 0.2.0
 callback | operation_failed | (error:string, code:string) | 0.2.0
+callback | operation_map | (value:any) -> any | 0.2.0
 callback | timer_fn | () | 0.2.0
 
 enum | operation_status | values pending succeeded failed | 0.2.0
 
+member | operation.cancel | method () -> bool | 0.2.0
 member | operation.catch | method (run:callback:operation_failed) | 0.2.0
 member | operation.error | property string ro | 0.2.0
 member | operation.error_code | property string ro | 0.2.0
+member | operation.map | method (run:callback:operation_map) -> object:operation | 0.2.0
 member | operation.settled | signal (operation:object:operation) | 0.2.0
 member | operation.status | property enum:operation_status ro | 0.2.0
 member | operation.then | method (run:callback:operation_done) | 0.2.0
+member | operation.timeout | method (ms:double) -> object:operation | 0.2.0
+member | operation.value | property any ro | 0.2.0
+member | output_operation.cancel | method () -> bool | 0.2.0
 member | output_operation.catch | method (run:callback:operation_failed) | 0.2.0
 member | output_operation.error | property string ro | 0.2.0
 member | output_operation.error_code | property string ro | 0.2.0
+member | output_operation.map | method (run:callback:operation_map) -> object:operation | 0.2.0
 member | output_operation.output | property object:output ro | 0.2.0
 member | output_operation.settled | signal (operation:object:operation) | 0.2.0
 member | output_operation.status | property enum:operation_status ro | 0.2.0
 member | output_operation.then | method (run:callback:operation_done) | 0.2.0
+member | output_operation.timeout | method (ms:double) -> object:operation | 0.2.0
+member | output_operation.value | property any ro | 0.2.0
 member | timer.cancel | method () | 0.2.0
 member | timer.pending | property bool ro | 0.2.0
 member | timers.after | method (ms:double, run:callback:timer_fn) -> object:timer | 0.2.0
