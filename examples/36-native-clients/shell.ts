@@ -8,9 +8,9 @@
 // object of another class and a window that has closed are each refused, and the log says how. It then reads the members the library adds to
 // a window, an output and the root once it is loaded: the window's `workspace`, `moveToWorkspace`, `style`, `styleWarnings`, `moveWithKeys`,
 // `output`, `moveToOutput` and `frameInset`, the output's `workspace`, `area` and `show`, and the root's `show`.
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import type { Client } from "gnoblin-core/generated/objects";
-import { Decorations, WindowMenus, Workspace, Workspaces } from "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
+import { Decorations, WindowMenus, Workspace, Workspaces } from "gnoblin-std";
 import type {} from "gnoblin-std";
 
 const say = (text: string) => console.log(`clients: ${text}`);

@@ -24,7 +24,7 @@ before you start it:
 ::: tabs
 
 ```typescript
-import { Decorations, Titlebar } from "gnoblin-std/generated/objects";
+import { Decorations, Titlebar } from "gnoblin-std";
 
 const decorations = Decorations.get();
 decorations.resizeHandles = 6;
@@ -91,7 +91,7 @@ A rule picks a frame for the windows it matches:
 ::: tabs
 
 ```typescript
-import { Decorations } from "gnoblin-std/generated/objects";
+import { Decorations } from "gnoblin-std";
 
 const decorations = Decorations.get();
 decorations.rule(
@@ -196,7 +196,7 @@ An outlet is hidden while the window is fullscreen.
 ::: tabs
 
 ```typescript
-import { Decorations, Titlebar } from "gnoblin-std/generated/objects";
+import { Decorations, Titlebar } from "gnoblin-std";
 
 const decorations = Decorations.get();
 decorations.frame = (client, frame) => {
@@ -298,8 +298,8 @@ The room a frame takes is one rectangle, `FrameInset`: `{ top, right, bottom, le
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { Decorations } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { Decorations } from "gnoblin-std";
 
 const client = gnoblin.clients.focused;
 if (client) {
@@ -391,7 +391,7 @@ other. It is the default `frame`. A callback of your own can call it, then add o
 ::: tabs
 
 ```typescript
-import { Decorations, Titlebar } from "gnoblin-std/generated/objects";
+import { Decorations, Titlebar } from "gnoblin-std";
 
 const decorations = Decorations.get();
 decorations.frame = (client, frame) => {

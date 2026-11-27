@@ -6,7 +6,7 @@ window by writing its properties or calling its methods, and attach a listener t
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Gnoblin } from "gnoblin-core";
 
 const gnoblin = Gnoblin.get();
 
@@ -88,7 +88,7 @@ The table uses TypeScript spellings. Python and Rust use snake_case for the same
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Gnoblin } from "gnoblin-core";
 
 const all = Gnoblin.get().clients?.toList() ?? [];
 const terminals = all.filter((client) => client.appId === "org.gnome.Console");

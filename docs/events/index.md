@@ -16,9 +16,9 @@ A listener that counts terminal bells, in each language:
 ::: tabs
 
 ```typescript
-import { Gnoblin, SessionListener } from "gnoblin-core/generated/objects";
-import type { Session } from "gnoblin-core/generated/objects";
-import { Toast } from "gnoblin-std/generated/objects";
+import { Gnoblin, SessionListener } from "gnoblin-core";
+import type { Session } from "gnoblin-core";
+import { Toast } from "gnoblin-std";
 
 class Bell extends SessionListener {
     onBell(_session: Session, count: number) {
@@ -101,8 +101,8 @@ attached. Its `on_added` method runs for each one, and `on_title_changed` runs w
 ::: tabs
 
 ```typescript
-import { Gnoblin, ClientCollectionListener } from "gnoblin-core/generated/objects";
-import type { Client, ClientCollection } from "gnoblin-core/generated/objects";
+import { Gnoblin, ClientCollectionListener } from "gnoblin-core";
+import type { Client, ClientCollection } from "gnoblin-core";
 
 class Titles extends ClientCollectionListener {
     onAdded(client: Client, _collection: ClientCollection) {
@@ -162,7 +162,7 @@ also has a method that subscribes to that single event:
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Gnoblin } from "gnoblin-core";
 
 const gnoblin = Gnoblin.get();
 

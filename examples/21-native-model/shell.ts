@@ -5,7 +5,7 @@
 // Does what the Rust shell of the same example (`21-native-model`) does and logs the same lines, which start with `model:`: reads the
 // windows there, looks up one that is not there (`undefined`, not an error) and one that is, follows the windows of one application with
 // `where`, and listens to titles and to closings.
-import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Gnoblin } from "gnoblin-core";
 
 const model = Gnoblin.get();
 const clients = model.clients;

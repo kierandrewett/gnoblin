@@ -4,7 +4,7 @@
 //
 // Starts a command line, watches the session for idleness, begins a launch that no window answers and asks for the session lock with
 // `Super+e`. Every line starts with `services:`, as the Rust shell of the same example spells it.
-import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Gnoblin } from "gnoblin-core";
 import { gnoblin } from "gnoblin-core";
 
 const model = Gnoblin.get();

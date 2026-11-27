@@ -12,7 +12,7 @@
 //
 // Every line starts with `displays:`, spelt as the Rust shell of the same example (`33-native-displays`) spells it, so that one test reads
 // all three.
-import { Display, DisplayManager, OutputProfile, Viewport, Workspace, Workspaces } from "gnoblin-std/generated/objects";
+import { Display, DisplayManager, OutputProfile, Viewport, Workspace, Workspaces } from "gnoblin-std";
 import type {} from "gnoblin-std";
 
 function say(text: string): void {

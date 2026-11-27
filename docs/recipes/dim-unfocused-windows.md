@@ -6,7 +6,7 @@ Set the opacity of windows that do not have the keyboard. Put the script in the 
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 gnoblin.clients.addListener({
     onFocusChanged(client, focused) {
@@ -60,8 +60,8 @@ To fade the change instead of cutting it, run the assignment inside a transition
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import type {} from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import type {} from "gnoblin-std";
 
 gnoblin.clients.addListener({
     onFocusChanged(client, focused) {

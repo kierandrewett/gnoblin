@@ -7,8 +7,8 @@ so it survives unplugging and hotplug.
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { OutputProfile } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { OutputProfile } from "gnoblin-std";
 
 const main = new OutputProfile(
     { connector: "DP-1" },

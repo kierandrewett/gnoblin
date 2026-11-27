@@ -15,8 +15,8 @@ The tables on this page use the TypeScript spelling of a name:
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { ClientAugment, ClientStyle } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { ClientAugment, ClientStyle } from "gnoblin-std";
 
 const clients = ClientStyle.ofClients();
 clients.opacity = 0.95;
@@ -103,8 +103,8 @@ inherits. `computedStyle` gives the resolved value for a window:
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { ClientAugment } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { ClientAugment } from "gnoblin-std";
 
 const client = gnoblin.clients.focused;
 if (client) {
@@ -160,8 +160,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { ClientAugment } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { ClientAugment } from "gnoblin-std";
 
 const client = gnoblin.clients.focused;
 if (client) {
@@ -272,7 +272,7 @@ the kind of the filter. Rust writes the class and calls `.into()`.
 ::: tabs
 
 ```typescript
-import { BlurFilter, ClientStyle, SaturateFilter } from "gnoblin-std/generated/objects";
+import { BlurFilter, ClientStyle, SaturateFilter } from "gnoblin-std";
 
 const style = ClientStyle.ofClients();
 style.backdropFilter = [{ blur: 18 }, { saturate: 1.25 }]; // the shorthand
@@ -315,7 +315,7 @@ A list and a record you read from a style are copies. Change one and write it ba
 ::: tabs
 
 ```typescript
-import { ClientStyle } from "gnoblin-std/generated/objects";
+import { ClientStyle } from "gnoblin-std";
 
 const style = ClientStyle.ofClients();
 style.shadows = [{ blur: 10 }];
@@ -370,7 +370,7 @@ For example:
 ::: tabs
 
 ```typescript
-import { BlurFilter, Border, ClientStyle } from "gnoblin-std/generated/objects";
+import { BlurFilter, Border, ClientStyle } from "gnoblin-std";
 
 const style = ClientStyle.ofClients();
 style.cornerRadius = 12;
@@ -509,7 +509,7 @@ A window holds at most 16 effects in all, whatever their kinds.
 ::: tabs
 
 ```typescript
-import { ClientStyle } from "gnoblin-std/generated/objects";
+import { ClientStyle } from "gnoblin-std";
 
 const style = ClientStyle.ofClients();
 style.cornerRadius = { all: 12 };

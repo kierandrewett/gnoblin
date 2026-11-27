@@ -5,8 +5,8 @@
 // Makes a workspace with the library's master and stack layout. When the third window joins, the workspace gets a layout this shell
 // implements (equal columns); when the fourth joins it goes back to the library's layout and the shell moves the divider as a drag would
 // (`findSplit`, `setSplit`). Every line starts with `objects:`, as the Rust shell of the same example spells it.
-import { Desks, Layout, MasterStackLayout, Workspace, Workspaces } from "gnoblin-std/generated/objects";
-import type { LayoutContextInit, LayoutPlacementInit } from "gnoblin-std/generated/objects";
+import { Desks, Layout, MasterStackLayout, Workspace, Workspaces } from "gnoblin-std";
+import type { LayoutContextInit, LayoutPlacementInit } from "gnoblin-std";
 import type {} from "gnoblin-std";
 
 class Columns extends Layout {

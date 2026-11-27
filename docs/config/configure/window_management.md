@@ -25,7 +25,7 @@ shell installs both. To bind another drag, give the binding a `trigger` and inst
 ::: tabs
 
 ```typescript
-import { FloatingLayout, MoveBinding, ResizeBinding, Workspace, Workspaces } from "gnoblin-std/generated/objects";
+import { FloatingLayout, MoveBinding, ResizeBinding, Workspace, Workspaces } from "gnoblin-std";
 
 Workspaces.get().add(new Workspace("main", { layout: new FloatingLayout() }));
 new MoveBinding({ trigger: "Alt+MouseLeft+Drag" }).install();

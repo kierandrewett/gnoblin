@@ -7,9 +7,9 @@ with the values reported by `gnoblinctl window list --json`.
 ::: tabs
 
 ```typescript
-import { ClientCollectionListener, gnoblin } from "gnoblin-core/generated/objects";
-import type { Client } from "gnoblin-core/generated/objects";
-import { FloatingLayout, Workspace, Workspaces } from "gnoblin-std/generated/objects";
+import { ClientCollectionListener, gnoblin } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
+import { FloatingLayout, Workspace, Workspaces } from "gnoblin-std";
 
 const workspaces = Workspaces.get();
 for (const id of ["code", "web", "chat"]) {

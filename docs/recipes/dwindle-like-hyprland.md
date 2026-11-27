@@ -13,8 +13,8 @@ object the same way, with each language's naming: `forceSplit` in TypeScript is 
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { DwindleLayout, Workspace, Workspaces } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { DwindleLayout, Workspace, Workspaces } from "gnoblin-std";
 
 const input = gnoblin.input.primary;
 

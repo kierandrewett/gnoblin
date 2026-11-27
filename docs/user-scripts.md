@@ -15,8 +15,8 @@ The module logs each new window through `journalctl`:
 ::: tabs
 
 ```typescript
-import { ClientCollectionListener, gnoblin } from "gnoblin-core/generated/objects";
-import type { Client } from "gnoblin-core/generated/objects";
+import { ClientCollectionListener, gnoblin } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
 
 class WindowLog extends ClientCollectionListener {
     onAdded(client: Client) {

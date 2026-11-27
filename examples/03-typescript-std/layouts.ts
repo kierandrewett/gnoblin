@@ -1,4 +1,4 @@
-// The built-in layouts of `gnoblin-std/generated/objects` from TypeScript: one workspace and a chord for each tiling layout the library runs.
+// The built-in layouts of `gnoblin-std` from TypeScript: one workspace and a chord for each tiling layout the library runs.
 //
 //     gnoblin ./layouts.ts
 //
@@ -8,16 +8,9 @@
 //
 // Every class here is generated from the library's table of layout kinds (`gnoblin-std-abi`'s `LAYOUT_KINDS`): the options, their
 // defaults and their enumerations are the library's, and so is the algorithm. The shell only names a kind and its options.
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import {
-    GridLayout,
-    MasterStackLayout,
-    MonocleLayout,
-    SwapBinding,
-    Workspace,
-    Workspaces,
-} from "gnoblin-std/generated/objects";
-import type { Layout } from "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import { GridLayout, MasterStackLayout, MonocleLayout, SwapBinding, Workspace, Workspaces } from "gnoblin-std";
+import type { Layout } from "gnoblin-std";
 
 const context = Gnoblin.get().input?.primary;
 if (context === undefined) {

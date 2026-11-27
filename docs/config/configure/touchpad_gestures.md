@@ -14,8 +14,8 @@ lift past `commit`, a fraction from 0 to 1 that defaults to 0.25.
 ::: tabs
 
 ```typescript
-import { GestureBinding, gnoblin } from "gnoblin-core/generated/objects";
-import { WorkspaceSlideBinding } from "gnoblin-std/generated/objects";
+import { GestureBinding, gnoblin } from "gnoblin-core";
+import { WorkspaceSlideBinding } from "gnoblin-std";
 
 class CloseOnSwipe extends GestureBinding {
     onBegin(): boolean {

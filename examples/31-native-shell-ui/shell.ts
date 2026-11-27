@@ -2,7 +2,7 @@
 //
 //     gnoblin ./shell.ts
 //
-// The classes are generated from the catalog the library serves, so `gnoblin-std/generated/objects` has one for each of them. This shell:
+// The classes are generated from the catalog the library serves, so `gnoblin-std` has one for each of them. This shell:
 //
 // - starts the not-responding alert, which looks at the windows and opens a card for one that stops answering the compositor's pings: Escape
 //   waits, Tab moves to Force quit, and Force quit takes a press only after `armMs`;
@@ -15,7 +15,7 @@
 // Every line it logs starts with `shell-ui:`, spelt as the Rust shell of the same example (`31-native-shell-ui`) spells it, so that one test
 // reads all three.
 import { gnoblin } from "gnoblin-core";
-import { Launcher, LockScreen, NotRespondingAlerts, Overview, Toast, Ui } from "gnoblin-std/generated/objects";
+import { Launcher, LockScreen, NotRespondingAlerts, Overview, Toast, Ui } from "gnoblin-std";
 import type {} from "gnoblin-std";
 
 // A long delay, so that a Return pressed at once finds Force quit still off.

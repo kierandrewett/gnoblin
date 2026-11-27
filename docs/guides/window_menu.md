@@ -15,8 +15,8 @@ A menu request is one kind of request a client makes of its window. A `RequestLi
 ::: tabs
 
 ```typescript
-import { RequestListener, WindowState } from "gnoblin-std/generated/objects";
-import type { ClientRequest } from "gnoblin-std/generated/objects";
+import { RequestListener, WindowState } from "gnoblin-std";
+import type { ClientRequest } from "gnoblin-std";
 import type {} from "gnoblin-std";
 
 class OwnMenu extends RequestListener {

@@ -12,8 +12,8 @@ optional.
 ::: tabs
 
 ```typescript
-import { Gnoblin, ClientCollectionListener } from "gnoblin-core/generated/objects";
-import type { Client } from "gnoblin-core/generated/objects";
+import { Gnoblin, ClientCollectionListener } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
 
 const gnoblin = Gnoblin.get();
 
@@ -97,7 +97,7 @@ Each method is also available as a single subscription that returns a `Listener`
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Gnoblin } from "gnoblin-core";
 
 const gnoblin = Gnoblin.get();
 
@@ -163,9 +163,9 @@ The workspace collection has `added` and `removed` events of its own: `workspace
 ::: tabs
 
 ```typescript
-import { Gnoblin, ClientCollectionListener } from "gnoblin-core/generated/objects";
-import type { Client } from "gnoblin-core/generated/objects";
-import { Toast } from "gnoblin-std/generated/objects";
+import { Gnoblin, ClientCollectionListener } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
+import { Toast } from "gnoblin-std";
 
 const gnoblin = Gnoblin.get();
 
@@ -238,7 +238,7 @@ A listener on the collection does not hear `onConnected` for an output that was 
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Gnoblin } from "gnoblin-core";
 
 const gnoblin = Gnoblin.get();
 

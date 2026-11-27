@@ -43,9 +43,9 @@ The `state` argument of `onLockStateChanged` is one of these:
 ::: tabs
 
 ```typescript
-import { Gnoblin, SessionListener } from "gnoblin-core/generated/objects";
-import type { LockState, Session } from "gnoblin-core/generated/objects";
-import { Toast } from "gnoblin-std/generated/objects";
+import { Gnoblin, SessionListener } from "gnoblin-core";
+import type { LockState, Session } from "gnoblin-core";
+import { Toast } from "gnoblin-std";
 
 class LockToast extends SessionListener {
     onLockStateChanged(_session: Session, state: LockState) {

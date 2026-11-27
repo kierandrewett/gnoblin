@@ -14,8 +14,8 @@ Rust `move_with_keys()?`.
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import "gnoblin-std";
 
 const client = gnoblin.clients.at(0);
 client?.moveWithKeys();
@@ -68,7 +68,7 @@ The window menu's Move and Resize start these.
 ::: tabs
 
 ```typescript
-import { PinchActionBinding, SwipeActionBinding } from "gnoblin-std/generated/objects";
+import { PinchActionBinding, SwipeActionBinding } from "gnoblin-std";
 
 const swipe = new SwipeActionBinding({ trigger: "Swipe4" });
 swipe.setAction("up", "window.toggle-maximise");
@@ -165,8 +165,8 @@ While the seat's `reduced_motion` is true, `gnoblin.motion(duration)` is 0. Pass
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import "gnoblin-std";
 
 const duration = gnoblin.motion(250); // 0 while the seat asks for reduced motion
 gnoblin.requestTransition(() => {}, { duration });
@@ -295,7 +295,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 ::: tabs
 
 ```typescript
-import { Workspaces } from "gnoblin-std/generated/objects";
+import { Workspaces } from "gnoblin-std";
 
 const workspaces = Workspaces.get();
 const dev = workspaces.byId("dev");

@@ -14,7 +14,7 @@ This moves every editor window to workspace `dev` and maximises it:
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 gnoblin.clients.on("added", (client) => {
     if (client.appId === "org.example.Editor") {
@@ -78,8 +78,8 @@ Declare a workspace and move a window to it. Look the workspace up by id, and ha
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { Workspace, Workspaces } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { Workspace, Workspaces } from "gnoblin-std";
 
 Workspaces.get().add(new Workspace("code"));
 
@@ -149,7 +149,7 @@ screen captures:
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 gnoblin.clients.on("added", (client) => {
     if (client.appId === "org.example.Player") {

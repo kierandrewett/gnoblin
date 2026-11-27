@@ -6,7 +6,7 @@
 // build identity with `version()`, sets a timer with `timers.after` and cancels another, lists the windows and outputs with `find`, and when a
 // window appears reads `motion(200)` and `compositor.userShaders`. `find` also refuses a kind the core does not list, and a field a window has
 // no filter for, and says what works.
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 const say = (text: string) => console.log(`root: ${text}`);
 

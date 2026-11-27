@@ -244,11 +244,11 @@ A shell imports from two packages, and each is a library installed with Gnoblin:
 | `gnoblin-core` | `libgnoblin-core.so.1` | Windows, outputs, input, programs, timers and the session. Starts with `gnoblin`. |
 | `gnoblin-std`  | `libgnoblin-std.so.1`  | Workspaces, layouts, styles, bindings, transitions and the UI toolkit.            |
 
-The package entries `gnoblin-core` and `gnoblin-std` and their `generated/` modules are built into the runtime library: the
+The package entries `gnoblin-core` and `gnoblin-std` are built into the runtime library: the
 schema's classes, the ABI constants, the verbs, and the std classes and records. They are written when the runtime is
 built, so they always describe the libraries it was built with.
 
-An installed copy of a generated module (`dist` writes them for editors) is never read in its place.
+An installed copy of these modules (`dist` writes them for editors) is never read in their place.
 
 The rest of the TypeScript library, the deep modules such as `gnoblin-std/layout` and the XR extension, are TypeScript
 files installed under `share/gnoblin/js/`. Only a shell that imports one of them reads them. The runtime looks for them, in
@@ -274,15 +274,14 @@ install and what `gnoblinctl config init` writes.
 
 Gnoblin reads the shell's imports before it runs any of them, and runs the whole shell on one library:
 
-- **The native library:** a shell whose gnoblin imports are only `gnoblin-core`, `gnoblin-std`,
-  `gnoblin-core/generated/objects`, `gnoblin-core/generated/object_base` and `gnoblin-std/generated/objects`. The package
-  entries `gnoblin-core` and `gnoblin-std` re-export the generated classes, and the global `gnoblin` is the native root, so a
+- **The native library:** a shell whose gnoblin imports are only `gnoblin-core` and `gnoblin-std`. The package
+  entries re-export the object classes, and the global `gnoblin` is the native root, so a
   shell that imports nothing from gnoblin runs here too.
 - **The TypeScript library:** a shell where some module imports any other module of `gnoblin-core` or `gnoblin-std` (for
   example `gnoblin-std/layout` or `gnoblin-std/focus`), reaches `gnoblin-std/extensions/xr`, or uses a dynamic `import()`.
   A type-only import does not count.
 
-The generated modules import the same way on both, so a shell that mixes them with a deep module keeps working on the TypeScript library. A reload that
+A shell that mixes a bare entry with a deep module runs on the TypeScript library, where `gnoblin-core` and `gnoblin-std` are that library's own entries. A reload that
 would move the shell to the other library is refused: the error ends `restart gnoblin to change the stock library`, and the
 running shell keeps serving. Restart gnoblin to load the new code.
 
@@ -304,12 +303,12 @@ Some settings of the older configuration have no object in the API, so a file ca
 object](js-settings.md#dropped-settings) lists them. [Settings in your shell](js-settings.md) shows one example for each
 object, in all three languages.
 
-### The object classes: `gnoblin-std/generated/objects`
+### The object classes: `gnoblin-std`
 
-- The catalog of `libgnoblin-std` (an entry model, the focus policy, and the records and enums they take) is served through the object protocol, and `gnoblin-std/generated/objects` has a class for each of its types.
+- The catalog of `libgnoblin-std` (an entry model, the focus policy, and the records and enums they take) is served through the object protocol, and `gnoblin-std` has a class for each of its types.
 - They are **generated** from the catalog the library serves (`gnoblin-sdkgen`, at build time and never committed; [the generator](sdk-generator.md)) and embedded in the runtime library, and so are their declarations, which `gnoblinctl types init` and `gnoblinctl check --types` give the editor.
 - A class added to the catalog is a class here with no change to the runtime.
-- `gnoblin-core/generated/objects` is the same for the core's `gnoblin.model`.
+- `gnoblin-core` is the same for the core's `gnoblin.model`.
 - A member that takes a window takes the core's `Client`. `examples/36-native-clients/shell.ts` shows these calls:
     - `Decorations.get().insetOf(client)`
     - `WindowMenus.get().show(client, x, y)`
@@ -325,7 +324,7 @@ object, in all three languages.
   one placement for each window), a listener on `gnoblin.clients`, and a chord that trades two windows with `workspace.clients.swap`.
 
 ```ts
-import { EntryModel, FocusPolicy } from "gnoblin-std/generated/objects";
+import { EntryModel, FocusPolicy } from "gnoblin-std";
 
 const entry = new EntryModel("héllo"); // a handle: the library holds the object, the script holds a reference
 entry.insert(", world"); // a method changes it at once
@@ -367,7 +366,7 @@ const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", he
   an exception a listener throws is logged with its stack and does not stop the listeners after it.
 - Importing the module opens `libgnoblin-std.so.1` and throws `gnoblin-std is not installed (looked in: ...)` without it, as
   `gnoblin-std` does.
-- `gnoblin-core/generated/objects` exports `gnoblin`, the root of the core's object model, made once. Each of its signals also has a
+- `gnoblin-core` exports `gnoblin`, the root of the core's object model, made once. Each of its signals also has a
   named subscription: `gnoblin.onClientCreated(handler)` is the same as `gnoblin.on("clientCreated", handler)` and returns the same
   `Listener`.
 - The root has the members the TypeScript library's `gnoblin` has for the core. `examples/35-native-root` uses each of them:
@@ -382,7 +381,7 @@ const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", he
   shell's own, so it applies at the next login. The property reads what you wrote until then, and `gnoblin.compositor.reset("user_shaders")`
   takes it back to the default and reads what the running compositor holds (`true` unless the setting is off). A value that is not a
   boolean throws a `TypeError`.
-- Importing `gnoblin-std/generated/objects` gives `gnoblin` the members the library adds, which the core has no class for.
+- Importing `gnoblin-std` gives `gnoblin` the members the library adds, which the core has no class for.
   `examples/37-native-std-root` uses each of them:
     - `workspaces`: the list (`list`, `length`, `add`, `remove`, `clear`, `byId`), `area` (where windows are laid out; `undefined` while
       there is no output), `show(workspace, options)` and `showById(id, options)`.
@@ -407,7 +406,7 @@ and Python shells of the same example, and checked with `gnoblinctl check --type
 A bare function of `gnoblin-std` is a function of a class here, with the same behaviour. The record arguments are plain objects, and an
 argument the TypeScript function took in an options object follows the others, in the order of the catalog.
 
-| `gnoblin-std`                        | `gnoblin-std/generated/objects`                                                                                       |
+| `gnoblin-std`                        | `gnoblin-std`                                                                                                         |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
 | `openLauncher({ spawn })`            | `Launcher.open(spawn?)`: one launcher lives at a time, and a second call focuses it and returns it                    |
 | `toast(text, { fadeIn, hold, ... })` | `Toast.show(text, fadeIn?, hold?, fadeOut?, clock?)`: the card removes itself after 4420 ms unless a time is given    |
@@ -473,7 +472,7 @@ A shell may therefore use `gnoblin-core`'s objects and `gnoblin-std/native` toge
 - A shell on `gnoblin-std/native` alone gets the same behaviour from `Profile` and `Display`.
 
 Example 3 (`examples/03-typescript-std/`) does not use this binding. It uses the classes of
-[`gnoblin-std/generated/objects`](#the-object-classes-gnoblin-std-generated-objects).
+[`gnoblin-std`](#the-object-classes-gnoblin-std).
 
 The binding keeps a test for as long as it ships: `crates/gnoblin-runtime-js/tests/fixtures/typed_table/` holds example 3 as it
 was on this binding.
@@ -615,7 +614,7 @@ request with the stock behaviour of another kind:
 
 ### A failed call
 
-A call the library refuses throws a `GnoblinError`, which `gnoblin-core/generated/objects` and `gnoblin-std/generated/objects` export.
+A call the library refuses throws a `GnoblinError`, which `gnoblin-core` and `gnoblin-std` export.
 
 - `error.code` says why.
 - `error.target` names the object and member, such as `Client#7.close`.
@@ -624,7 +623,7 @@ A call the library refuses throws a `GnoblinError`, which `gnoblin-core/generate
 [Errors](shell-api/errors.md) lists the codes.
 
 ```ts
-import { GnoblinError } from "gnoblin-core/generated/objects";
+import { GnoblinError } from "gnoblin-core";
 
 try {
     client.close();

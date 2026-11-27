@@ -5,7 +5,7 @@
 // The decorations give every window a frame and call `frame` to fill it. A window with a server-drawn frame gets the stock titlebar; the
 // window titled `close me` is closed the way its close button closes it. Every line starts with `frame:`, as the Rust shell of the same
 // example spells it.
-import { Decorations, Titlebar } from "gnoblin-std/generated/objects";
+import { Decorations, Titlebar } from "gnoblin-std";
 import type {} from "gnoblin-std";
 
 const decorations = Decorations.get();

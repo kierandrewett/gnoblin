@@ -6,7 +6,7 @@ shell, whether a listener, a handler or a timer, runs under a time budget and ma
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Gnoblin } from "gnoblin-core";
 
 const gnoblin = Gnoblin.get();
 
@@ -97,7 +97,7 @@ when it settles (`then`). To stop waiting for an operation after a time, start a
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Gnoblin } from "gnoblin-core";
 
 const gnoblin = Gnoblin.get();
 const sleep = gnoblin.process.spawn(["sleep", "30"]);
@@ -301,8 +301,8 @@ Rust has no string code: a failed call returns an error that says what failed, a
 ::: tabs
 
 ```typescript
-import { GnoblinError } from "gnoblin-core/generated/objects";
-import { Workspace, Workspaces } from "gnoblin-std/generated/objects";
+import { GnoblinError } from "gnoblin-core";
+import { Workspace, Workspaces } from "gnoblin-std";
 
 try {
     Workspaces.get().add(new Workspace("main"));
@@ -437,8 +437,8 @@ The ABI integer is not part of the script API. A shell that needs it reads `abi`
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import { Workspaces } from "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import { Workspaces } from "gnoblin-std";
 
 const gnoblin = Gnoblin.get();
 const timer = gnoblin.timers.after(2000, () => Workspaces.get().showById("2"));

@@ -7,8 +7,8 @@ script does not run per frame.
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import "gnoblin-std";
 
 const gnoblin = Gnoblin.get();
 
@@ -198,8 +198,8 @@ The curves are the CSS timing functions of the same names:
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import "gnoblin-std";
 
 const gnoblin = Gnoblin.get();
 const client = gnoblin.input?.primary?.focusedClient;
@@ -314,8 +314,8 @@ The transition call returns a `Transition`. Its `finished` event runs when the a
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import "gnoblin-std";
 
 const gnoblin = Gnoblin.get();
 const client = gnoblin.input?.primary?.focusedClient;

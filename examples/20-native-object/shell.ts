@@ -3,7 +3,7 @@
 //     gnoblin ./shell.ts
 //
 // The classes of the `gnoblin.std` catalog (an entry model, the focus policy, the records and enums they take) are not written by hand: they
-// are generated from the catalog the library serves and call it through one object table, so `gnoblin-std/generated/objects` has a class
+// are generated from the catalog the library serves and call it through one object table, so `gnoblin-std` has a class
 // for each of them and the editor's declarations come from the same catalog. This shell uses them the way a toolkit would:
 //
 // - makes an `EntryModel` and reads its properties (`text`, `length`, `caret`, `selection`);
@@ -16,7 +16,7 @@
 // Every line it logs starts with `object:`, spelt as the Rust shell of the same example (`20-native-object`) spells it, so that one test
 // reads all three.
 import { gnoblin } from "gnoblin-core";
-import { EntryModel, FocusPolicy } from "gnoblin-std/generated/objects";
+import { EntryModel, FocusPolicy } from "gnoblin-std";
 // The core's types are completed by `gnoblin-std` (it adds `workspace` to a client), so a shell that is checked against them names it.
 // Nothing of it runs: the import is erased.
 import type {} from "gnoblin-std";

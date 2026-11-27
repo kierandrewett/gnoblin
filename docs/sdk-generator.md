@@ -217,8 +217,8 @@ The rules:
   locks, and the core's locks and `abi-check` hold none of them.
 - Each generator installs the members on the core's class when the library's module is loaded, and reads each through that service for
   the generation that is running, so a member never binds to a library of another generation:
-    - TypeScript: importing `gnoblin-std/generated/objects` defines the members on the prototype of the core's class, and its
-      declarations merge them into it (`declare module "gnoblin-core/generated/objects"`).
+    - TypeScript: importing `gnoblin-std` defines the members on the prototype of the core's class, and its
+      declarations merge them into it (`declare module "gnoblin-core"`).
     - Python: importing `gnoblin.objects.std` sets them on the core's class. The stub of the core extends a stub-only class for each
       target (`GnoblinStdMembers`, `ClientStdMembers`, `InputContextStdMembers` and the others, written by `gnoblin.objects.std`), so a
       checker finds the members as in TypeScript. The lowered classes (`GnoblinAugment` and the others) stay for calls through the service.
@@ -303,7 +303,7 @@ protocol that `gnoblin-runtime-js` (`__gnoblinObjects`) and `gnoblin-runtime-pyt
 A class, a property, a method, a signal and the conversion of every value are rendered. Nothing is written by hand per class, and a
 class added to a catalog is a class in all three languages with no change to a runtime.
 
-The root of the object model, `gnoblin` of `gnoblin.model`, is reached as `gnoblin` in TypeScript (`gnoblin-core/generated/objects`), as
+The root of the object model, `gnoblin` of `gnoblin.model`, is reached as `gnoblin` in TypeScript (`gnoblin-core`), as
 `ModelRoot::get` in Rust and as `Gnoblin.get()` in Python. Python has a second way, `from gnoblin import gnoblin`, the shell's own object:
 
 - The stub writes the root's members once, as `GnoblinRoot` in `gnoblin.objects.model`. Both `Gnoblin` and the stub of the shell's
@@ -334,7 +334,7 @@ A refusal words the member as the language spells it ([Member names in a refusal
 - Python: `Class.member_name`, from the table `_spell_<class>` that `_B.named` reads.
 - Rust: the schema's `member_name`, unchanged.
 
-| Catalog type | TypeScript (`gnoblin-std/generated/objects`)                   | Python (`gnoblin.objects.std`)                       |
+| Catalog type | TypeScript (`gnoblin-std`)                                     | Python (`gnoblin.objects.std`)                       |
 | ------------ | -------------------------------------------------------------- | ---------------------------------------------------- |
 | enum         | a string-literal union (`"click" \| "sloppy"`)                 | an `IntEnum`; a name is accepted where one is read   |
 | record       | a class, and an `Init` option bag for its constructor          | a `dataclass`                                        |
@@ -480,7 +480,7 @@ The declarations are what an editor and `gnoblinctl check --types` read. `gnobli
 (`editor_library_in`, which leaves the JavaScript out), and `cargo xtask dist install` writes them to `share/gnoblin/js` and
 `share/gnoblin/types/python`.
 
-Importing `gnoblin-std/generated/objects` opens `libgnoblin-std.so.1` and throws `gnoblin-std is not installed (looked in: ...)`
+Importing `gnoblin-std` opens `libgnoblin-std.so.1` and throws `gnoblin-std is not installed (looked in: ...)`
 without it, as `gnoblin-std` does; `gnoblin.objects.std` raises `ImportError` the same way.
 
 A crate that serves a catalog of its own, as a test fixture, renders the same two files with `gnoblin_sdkgen::emit_catalog_for_build`

@@ -5,7 +5,7 @@
 // Does what the Rust shell of the same example (`39-native-errors`) does and logs the same lines, which start with `errors:`. A call the
 // library refuses throws a `GnoblinError` with a `code` (`already_exists`, `not_found`) and a `target`, the object and member of the call
 // (`Client#7.close`). A bad argument is not one: it throws a `TypeError` and has no code.
-import { Gnoblin, GnoblinError, InputContext } from "gnoblin-core/generated/objects";
+import { Gnoblin, GnoblinError, InputContext } from "gnoblin-core";
 
 const say = (text: string) => console.log(`errors: ${text}`);
 const refused = (error: unknown) =>
