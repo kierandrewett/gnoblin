@@ -4,7 +4,7 @@
 //!
 //! The script is played to `shell-policy` in the launcher, over the real core and the real `libgnoblin-std.so.1`. The shell binds the drags
 //! each layout brings through `swap_binding`, `split_resize_binding`, `move_binding` and `resize_binding` of the policy catalog, which are
-//! installed on the core's input context, and the probe bindings of its own that `shell-tiling` has. After each step the rectangles and the
+//! installed on the core's input context, and the probe bindings of its own. After each step the rectangles and the
 //! placement properties a layout writes must be the fixture's, number for number.
 //!
 //! **Allowance of the replay**: a number is the fixture's within 1e-9 of its size, as in `tests/objects.rs`.

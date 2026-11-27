@@ -1699,14 +1699,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-fixture-shell-tiling"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-core",
- "gnoblin-std",
-]
-
-[[package]]
 name = "gnoblin-fixture-shell-verbs"
 version = "0.2.0-alpha.0"
 dependencies = [
