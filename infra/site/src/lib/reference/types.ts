@@ -113,6 +113,31 @@ export interface Variant {
 
 export type ClassKind = "handle" | "service" | "record" | "interface";
 
+export interface ReturnedBy {
+    namespace: string;
+    class: string;
+    member: string;
+    via: "property" | "method";
+}
+
+export interface Constructor {
+    positional: Field[];
+    options: Field[];
+    declarations: Declared;
+}
+
+/** A `<property>Changed` event the SDKs write for a property: the schema has no signal for it. */
+export interface GeneratedEvent {
+    name: string;
+    generated: true;
+    property: string;
+    listener: Signal["listener"];
+    payload: { name: string; type: TypeSpelling }[];
+    declarations: Declared;
+}
+
+export type CreatedBy = "constructor" | "service" | "shell" | "value" | null;
+
 export interface RawClass {
     name: string;
     names: Spelled;
@@ -124,10 +149,14 @@ export interface RawClass {
     secret: boolean;
     import: Spelled;
     example: Example | null;
+    created_by: CreatedBy;
+    returned_by: ReturnedBy[];
+    constructor: Constructor | null;
     properties: Property[];
     methods: Method[];
     signals: Signal[];
     variants: Variant[];
+    events: GeneratedEvent[];
 }
 
 export interface RawAugment {
@@ -158,6 +187,8 @@ export interface RawEnum {
 
 export interface RawCallback {
     name: string;
+    /** The function type in each language. */
+    type: Record<LanguageId, string>;
     area: string;
     since: string;
     description: string;

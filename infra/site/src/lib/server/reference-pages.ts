@@ -24,6 +24,9 @@ import {
     LANGUAGE_IDS,
     type Example,
     type LanguageId,
+    type Declared,
+    type Field,
+    type GeneratedEvent,
     type Method,
     type Property,
     type RawAugment,
@@ -287,6 +290,21 @@ async function methodRow(pkg: Pkg, m: Method): Promise<MethodRow> {
     };
 }
 
+/** The arguments a handler receives, as the SDK declares them: a TypeScript tuple and a Python `Callable`. Rust shows the whole method. */
+function eventArgs(declared: Declared, fallback: Field[]): Declared {
+    const ts = /: \[(.*)\];$/.exec(declared.typescript[0] ?? "")?.[1];
+    const py = /handler: Callable\[\[(.*?)\], /.exec(declared.python[0] ?? "")?.[1];
+    return {
+        typescript: [
+            ts !== undefined
+                ? `(${ts})`
+                : `(${fallback.map((f) => `${f.names.typescript}: ${f.type.typescript}`).join(", ")})`,
+        ],
+        python: [py !== undefined ? `(${py})` : `(${fallback.map((f) => f.type.python).join(", ")})`],
+        rust: [],
+    };
+}
+
 function eventRow(pkg: Pkg, s: Signal): EventRow {
     const text = split(s.description);
     const name = {
@@ -294,27 +312,71 @@ function eventRow(pkg: Pkg, s: Signal): EventRow {
         python: `"${s.listener.python.event}"`,
         rust: s.listener.rust.method,
     };
-    const args = {} as Record<LanguageId, string>;
-    for (const lang of LANGUAGE_IDS) {
-        args[lang] = s.payload.length
-            ? lang === "rust"
-                ? `(${s.payload.map((f) => esc(f.type.rust)).join(", ")})`
-                : `(${s.payload.map((f) => `${esc(f.names[lang])}: ${esc(f.type[lang])}`).join(", ")})`
-            : "()";
-    }
+    const rustName = { typescript: "", python: "", rust: s.listener.rust.method };
     return {
         id: `event-${s.name}`,
         nameHtml: spelled(name),
-        declHtml: declHtml(
-            pkg,
-            s.declarations,
-            { typescript: "", python: "", rust: s.listener.rust.method },
-            fieldRefs(s.payload),
-            `event-${s.name}`,
-        ),
-        argsHtml: spell(args),
+        declHtml: declHtml(pkg, s.declarations, rustName, fieldRefs(s.payload), `event-${s.name}`),
+        argsHtml: declHtml(pkg, eventArgs(s.declarations, s.payload), null, fieldRefs(s.payload)),
         descHtml: text.first,
         moreHtml: text.rest,
+    };
+}
+
+/** The `<property>Changed` event of a property: one row, like the events the schema declares. */
+function generatedEventRow(pkg: Pkg, e: GeneratedEvent): EventRow {
+    const name = {
+        typescript: `"${e.listener.typescript.event}"`,
+        python: `"${e.listener.python.event}"`,
+        rust: e.listener.rust.method,
+    };
+    const refs = e.payload.flatMap((f) => f.type.refs);
+    const rustName = { typescript: "", python: "", rust: e.listener.rust.method };
+    const fields = e.payload.map(
+        (f) => ({ names: { typescript: f.name, python: f.name, rust: f.name }, type: f.type }) as Field,
+    );
+    return {
+        id: `event-${e.name}`,
+        nameHtml: spelled(name),
+        declHtml: declHtml(pkg, e.declarations, rustName, refs, `event-${e.name}`),
+        argsHtml: declHtml(pkg, eventArgs(e.declarations, fields), null, refs),
+        descHtml: `The value of ${inline(`\`${e.property}\``)} changed; the handler receives the new value.`,
+        moreHtml: "",
+    };
+}
+
+/** The constructor of a class that has one: its signature in each language, the parameters it takes and the options after them. */
+function constructorRow(pkg: Pkg, c: RawClass): MethodRow | null {
+    const ctor = c.constructor;
+    if (!ctor) return null;
+    const refs = fieldRefs([...ctor.positional, ...ctor.options]);
+    const out: string[] = [];
+    const list = (head: string, fields: Field[], note: string) =>
+        table(
+            head,
+            [{ head: "Parameter" }, { head: "Type" }, { head: "Notes" }],
+            fields.map((f) => {
+                const extra = facts(f, f.type, pkg)
+                    .map((x) => `<span class="df">${x}</span>`)
+                    .join("");
+                return {
+                    cells: [
+                        `<b class="nm">${spelled(f.names)}</b>`,
+                        typeHtml(pkg, f.type),
+                        `${note}${split(f.description).first}${extra}`,
+                    ],
+                };
+            }),
+        );
+    if (ctor.positional.length) out.push(heading(4, "Parameters"), list("Parameters", ctor.positional, "Required. "));
+    if (ctor.options.length) out.push(heading(4, "Options"), list("Options", ctor.options, "Optional. "));
+    return {
+        id: "constructor",
+        open: true,
+        nameHtml: "constructor",
+        sigHtml: declHtml(pkg, ctor.declarations, null, refs),
+        summaryHtml: "",
+        bodyHtml: out.join(""),
     };
 }
 
@@ -526,44 +588,33 @@ const ERROR_PROSE: Record<LanguageId, string> = {
     rust: "In Rust, a call that cannot be made returns <code>Err(Fail)</code>: <code>fail.code()</code> and <code>fail.target()</code> say what failed.",
 };
 
-/** Every property or method, in any class or augment, whose type is the class: how a reader gets one. */
-function returnedBy(pkg: Pkg, c: RawClass): MemberLink[] {
+/** The members that answer an object of the class (reference.json says which): how a reader gets one. */
+function returnedBy(c: RawClass): MemberLink[] {
     const data = reference();
     const out: MemberLink[] = [];
-    const note = (owner: RawClass, ownerHref: string, member: Property | Method) => {
-        const type = "type" in member ? member.type : member.returns?.type;
-        if (!type) return;
-        const match = type.refs.some((r) => {
-            const target = resolve(owner === c ? pkg : ownerPkg(owner), r.name);
-            return r.kind === "class" && target?.pkg === pkg && target.name === c.name;
-        });
-        if (!match) return;
+    for (const r of c.returned_by) {
+        const owner: Pkg = r.namespace.endsWith(".model") ? "core" : "std";
+        const ownerClass = data.classes.get(key(owner, r.class));
+        const entity = data.entities.get(key(owner, r.class));
+        if (!ownerClass || !entity) continue;
+        const member = (r.via === "property" ? ownerClass.properties : ownerClass.methods).find(
+            (m) => m.name === r.member,
+        );
+        if (!member) continue;
         out.push({
-            html: `${spelled(owner.names)}.${spelled(member.names)}${"type" in member ? "" : "()"}`,
-            href: `${ownerHref}#${member.name}`,
+            html: `${spelled(ownerClass.names)}.${spelled(member.names)}${r.via === "method" ? "()" : ""}`,
+            href: isPage(ownerClass) ? `${entity.href}#${member.name}` : entity.href,
         });
-    };
-    for (const p of PKGS) {
-        const namespace = data.namespaces[p];
-        for (const owner of namespace.classes.filter(isPage)) {
-            const href = data.entities.get(key(p, owner.name))!.href;
-            for (const m of owner.properties) note(owner, href, m);
-            for (const m of owner.methods) note(owner, href, m);
-        }
-        for (const augment of namespace.augments) {
-            const owner = data.classes.get(key("core", augment.target));
-            const href = data.entities.get(key("core", augment.target))?.href;
-            if (!owner || !href) continue;
-            for (const m of augment.properties) note(owner, href, m);
-            for (const m of augment.methods) note(owner, href, m);
-        }
     }
     return out;
 }
 
-function ownerPkg(owner: RawClass): Pkg {
-    return reference().namespaces.core.classes.includes(owner) ? "core" : "std";
-}
+const CREATED_BY = {
+    constructor: "A shell makes one with its constructor.",
+    service: "A service: the library provides it, and a shell never creates one.",
+    shell: "A shell implements it, and the library calls it.",
+    value: "A value: a shell builds one where a call takes it.",
+} as const;
 
 /** The members that raise a code, as many as a cell holds, and how many more there are. */
 const BY_SHOWN = 6;
@@ -604,13 +655,17 @@ export async function classPage(pkg: Pkg, c: RawClass): Promise<ClassPage> {
 
     const properties = unique(c.properties.map((p) => propertyRow(pkg, p)));
     const methods = unique(await Promise.all(c.methods.map((m) => methodRow(pkg, m))));
-    const events = unique(c.signals.map((s) => eventRow(pkg, s)));
+    const events = unique([
+        ...c.signals.map((s) => eventRow(pkg, s)),
+        ...c.events.map((e) => generatedEventRow(pkg, e)),
+    ]);
+    const ctor = constructorRow(pkg, c);
     const addedProperties = unique(added.flatMap((a) => a.augment.properties.map((p) => propertyRow(a.from, p))));
     const addedMethods = unique(
         await Promise.all(added.flatMap((a) => a.augment.methods.map((m) => methodRow(a.from, m)))),
     );
 
-    const returned = returnedBy(pkg, c);
+    const returned = returnedBy(c);
     const shownReturned = returned.slice(0, 4);
     const everyMember = [
         ...c.properties.map((p) => ({ name: p.name, names: p.names, raises: p.raises, method: false })),
@@ -648,6 +703,7 @@ export async function classPage(pkg: Pkg, c: RawClass): Promise<ClassPage> {
     const outline: OutlineItem[] = [
         ...(example ? [{ id: "sec-example", label: "Example" }] : []),
         { id: "sec-members", label: "Members" },
+        ...(ctor ? [{ id: "sec-constructor", label: "Constructor" }] : []),
         { id: "sec-properties", label: "Properties", count: count(properties.length) },
         { id: "sec-methods", label: "Methods", count: count(methods.length) },
         { id: "sec-events", label: "Events", count: count(events.length) },
@@ -679,6 +735,8 @@ export async function classPage(pkg: Pkg, c: RawClass): Promise<ClassPage> {
         bodyHtml: afterFirstSentence(c.description),
         importHtml: spelled(c.import),
         importText: c.import,
+        createdBy: c.created_by ? CREATED_BY[c.created_by] : null,
+        ctor,
         extendsHtml: base?.names ? `<a class="ty" href="${base.href}">${spelled(base.names)}</a>` : null,
         returnedBy: { shown: shownReturned, more: returned.length - shownReturned.length },
         exampleHtml: example,
@@ -770,19 +828,17 @@ export async function typesPage(pkg: string, areaSlug: string): Promise<{ pkg: P
             nameHtml: `<code>${esc(cb.name)}</code>`,
             since: cb.since,
             descHtml: describe(cb.description),
-            bodyHtml: cb.params.length
-                ? table(
-                      "Parameters",
-                      [{ head: "Parameter" }, { head: "Type" }, { head: "Notes" }],
-                      cb.params.map((p) => ({
-                          cells: [
-                              `<b class="nm">${esc(p.name)}</b>`,
-                              `<code>${esc(p.type)}</code>`,
-                              inline(p.description),
-                          ],
-                      })),
-                  )
-                : "",
+            bodyHtml:
+                `<p class="ret"><code>${spelled(cb.type)}</code></p>` +
+                (cb.params.length
+                    ? table(
+                          "Parameters",
+                          [{ head: "Parameter" }, { head: "Notes" }],
+                          cb.params.map((p) => ({
+                              cells: [`<b class="nm">${esc(p.name)}</b>`, inline(p.description)],
+                          })),
+                      )
+                    : ""),
         });
     }
     const title = areaTitle(pkg, area.id);

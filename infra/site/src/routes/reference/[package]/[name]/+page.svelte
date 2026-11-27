@@ -31,13 +31,20 @@
     {#if c.bodyHtml}<div class="ref-prose">{@html c.bodyHtml}</div>{/if}
     <ImportLine text={c.importText} />
 
-    {#if c.returnedBy.shown.length}
+    {#if c.createdBy || c.returnedBy.shown.length}
         <dl class="ref-facts">
-            <dt>Returned by</dt>
-            <dd>
-                {#each c.returnedBy.shown as member (member.href)}<a href={member.href}>{@html member.html}</a>{/each}
-                {#if c.returnedBy.more > 0}<span class="mute">and {c.returnedBy.more} more</span>{/if}
-            </dd>
+            {#if c.createdBy}
+                <dt>Created by</dt>
+                <dd>{c.createdBy}</dd>
+            {/if}
+            {#if c.returnedBy.shown.length}
+                <dt>Returned by</dt>
+                <dd>
+                    {#each c.returnedBy.shown as member (member.href)}<a href={member.href}>{@html member.html}</a
+                        >{/each}
+                    {#if c.returnedBy.more > 0}<span class="mute">and {c.returnedBy.more} more</span>{/if}
+                </dd>
+            {/if}
         </dl>
     {/if}
 
@@ -55,6 +62,11 @@
             </dd>
         {/each}
     </dl>
+
+    {#if c.ctor}
+        <h2 id="sec-constructor">Constructor</h2>
+        <MethodList rows={[c.ctor]} />
+    {/if}
 
     {#if c.properties.length}
         <h2 id="sec-properties">Properties <span class="cnt">{c.properties.length}</span></h2>

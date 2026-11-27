@@ -20,7 +20,7 @@
 
 <div class="ref-methods" bind:this={list}>
     {#each rows as row (row.id)}
-        <details id={row.id}>
+        <details id={row.id} open={row.open}>
             <summary>
                 <h3 class="sig">{@html row.sigHtml}</h3>
                 {#if row.summaryHtml}<p class="sum">{@html row.summaryHtml}</p>{/if}

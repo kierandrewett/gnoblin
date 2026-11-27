@@ -101,6 +101,8 @@ export interface EventRow {
 
 export interface MethodRow {
     id: string;
+    /** Open when the page is: a constructor is not hidden. */
+    open?: boolean;
     /** `apply()`: the name, for the list of members. */
     nameHtml: Html;
     /** The signature each language declares. */
@@ -167,6 +169,9 @@ export interface ClassPage {
     importHtml: Html;
     importText: Record<"typescript" | "python" | "rust", string>;
     extendsHtml: Html | null;
+    /** How an object of the class comes to be, in a sentence; null when the schema does not say. */
+    createdBy: Html | null;
+    ctor: MethodRow | null;
     returnedBy: { shown: MemberLink[]; more: number };
     exampleHtml: Html;
     glance: GlanceGroup[];
