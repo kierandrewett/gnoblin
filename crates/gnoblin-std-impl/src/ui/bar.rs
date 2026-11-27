@@ -1,14 +1,16 @@
 //! `bar`: a strip along the top or the bottom of an output, over the windows, that takes its room from the windows there.
 //!
-//! The layouts place windows in what the bars leave (`insets`). A bar is a row of boxes as wide as its output; bars on one edge of one
-//! output stack in the order they were made. A bar hides, and takes no room, while a fullscreen window covers its output (the shell's
-//! `give_way_to`) or its own `hide_when` says so.
+//! The layouts place windows in what the bars leave (`insets`, which `sync_bars` hands the library as each output's room). A bar is a
+//! row of boxes as wide as its output; bars on one edge of one output stack in the order they were made. A bar hides, and takes no
+//! room, while a fullscreen window covers its output (the library's own answer, or the shell's `give_way_to`) or its own `hide_when`
+//! says so.
 
 use std::rc::Rc;
 
 use gnoblin_core::Rect;
 
 use super::widget::{BarPart, Cid, Special, Ui, WidgetKind, en};
+use crate::state::State;
 
 /// The bar's part of a canvas.
 fn part(ui: &Ui, cid: Cid) -> Option<BarPart> {
@@ -58,16 +60,25 @@ impl Ui {
         self.primary_output()
     }
 
-    /// The primary output, as the shell says it. `None` when it says none.
+    /// The primary output: the one the shell's `on_outputs` says, else the library's (the one flagged primary, or the first). `None`
+    /// when there is none.
     fn primary_output(&self) -> Result<Option<u64>, String> {
-        let Some(source) = self.w.borrow().bars_primary.clone() else {
-            return Ok(None);
+        let source = self.w.borrow().bars_primary.clone();
+        let Some(source) = source else {
+            return Ok(self.with_state(State::primary_output).flatten());
         };
         let node = source
             .call(0, &[])
             .and_then(|value| value.uint())
             .map_err(|fail| fail.message)?;
         Ok((node != 0).then_some(node))
+    }
+
+    /// Reads the library's state of the generation, when it is open and free. `None` otherwise.
+    fn with_state<R>(&self, read: impl FnOnce(&State) -> R) -> Option<R> {
+        let std = crate::state::find(self.ctx)?;
+        let st = std.st.try_borrow().ok()?;
+        Some(read(&st))
     }
 
     /// Whether the bar is on show, and so takes room.
@@ -88,9 +99,11 @@ impl Ui {
             return Ok(false);
         }
         let covered = self.w.borrow().bars_cover.clone();
-        if let Some(covered) = covered
-            && ask(&covered, &[gnoblin_object::Val::Uint(output.unwrap_or(0))])?
-        {
+        let covering = match covered {
+            Some(covered) => ask(&covered, &[gnoblin_object::Val::Uint(output.unwrap_or(0))])?,
+            None => output.is_some_and(|node| self.with_state(|st| st.output_covered(node)).unwrap_or(false)),
+        };
+        if covering {
             return Ok(false);
         }
         Ok(true)
@@ -120,6 +133,65 @@ impl Ui {
             }
         }
         Ok((top, bottom))
+    }
+
+    /// Hands the library the room the bars take from each output, so the layouts place windows in what is left, and has the toolkit
+    /// draw again when a bar came on show or gave way. It runs at the end of the toolkit's frame and at the start of the library's turn
+    /// (`in_turn`): a window going fullscreen, a workspace shown or an output coming or going reaches the layouts in the same turn.
+    pub(crate) fn sync_bars(self: &Rc<Self>, in_turn: bool) {
+        let Some(std) = crate::state::find(self.ctx) else {
+            return;
+        };
+        let Ok(outputs) = std.st.try_borrow().map(|st| st.outputs.clone()) else {
+            return;
+        };
+        let mut shown = Vec::new();
+        for cid in self.live_bars() {
+            shown.push((
+                cid,
+                self.bar_shown(cid).unwrap_or_else(|message| {
+                    self.warn(&format!("a bar's question threw: {message}"));
+                    false
+                }),
+            ));
+        }
+        let mut changed = false;
+        let handed = self.w.borrow().bars_room.clone();
+        let mut room_now = handed.clone();
+        room_now.retain(|output, _| outputs.contains(output));
+        for output in outputs {
+            let (top, bottom) = match self.bar_insets(output) {
+                Ok(room) => room,
+                Err(message) => {
+                    self.warn(&format!("a bar's question threw: {message}"));
+                    continue;
+                }
+            };
+            // An output no bar takes room from, and none did, is the shell's own: its insets stay.
+            if (top, bottom) == (0.0, 0.0) && !handed.contains_key(&output) {
+                continue;
+            }
+            let Ok(mut st) = std.st.try_borrow_mut() else {
+                continue;
+            };
+            if st.insets.get(&output).copied().unwrap_or((0.0, 0.0)) != (top, bottom) {
+                st.set_insets(output, top, bottom);
+                changed = true;
+            }
+            if (top, bottom) == (0.0, 0.0) {
+                room_now.remove(&output);
+            } else {
+                room_now.insert(output, (top, bottom));
+            }
+        }
+        self.w.borrow_mut().bars_room = room_now;
+        if changed && !in_turn {
+            crate::turn::schedule(&std);
+        }
+        let seen = std::mem::replace(&mut self.w.borrow_mut().bars_seen, shown.clone());
+        if in_turn && seen != shown {
+            self.schedule();
+        }
     }
 }
 

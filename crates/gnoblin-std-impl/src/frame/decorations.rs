@@ -316,7 +316,8 @@ fn send(ui: &Rc<Ui>) {
             },
             None => Inset::default(),
         };
-        let was = ui.frames.borrow().sent.get(&node).copied().unwrap_or_default();
+        let sent = ui.frames.borrow().sent.get(&node).copied();
+        let was = sent.unwrap_or_default();
         if wanted == was {
             continue;
         }
@@ -326,6 +327,10 @@ fn send(ui: &Rc<Ui>) {
         }
         if write_inset(ui, node, &wanted) {
             ui.frames.borrow_mut().sent.insert(node, wanted);
+            // The frame keeps its place: what the window returns to moves with the content (a window that was never told has none).
+            if sent.is_some() {
+                crate::policy::frame_moved(ui, node, &was, &wanted);
+            }
             if let Some(frame) = frame {
                 announce(ui, frame, &wanted);
             }

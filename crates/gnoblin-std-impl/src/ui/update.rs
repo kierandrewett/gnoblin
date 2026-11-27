@@ -111,6 +111,7 @@ impl Ui {
             self.update(root);
         }
         crate::frame::after_update(self);
+        self.sync_bars(false);
         crate::lock::after_update(self);
         self.plan_wake();
     }
