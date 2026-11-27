@@ -2,7 +2,7 @@
 //! writes the node through the checked path of the scene (`SceneState`), so a write is what the TypeScript scene wrote.
 
 use gnoblin_object::server::{Builder, ClassBuilder, Cx, Inits};
-use gnoblin_object::{Fail, Res, Val};
+use gnoblin_object::{ErrorCode, Fail, Res, Val};
 
 use super::bindings::bindings_val;
 use super::registry::{NodeHandle, SceneWorld, world_of};
@@ -342,18 +342,33 @@ pub(crate) fn node_class_with<'a>(
     kind: Kind,
     init: impl Fn(&NodeHandle, &mut Cx<'_>, &mut Inits) -> Res<()> + 'static,
 ) -> Class<'a> {
-    let made = builder.class::<NodeHandle>(name).ctor(move |cx, inits| {
-        let world = world_of(cx)?;
-        let node = world.make(kind)?;
-        world.adopt(node, cx.me(), kind, false);
-        let handle = NodeHandle {
-            world,
-            node,
-            root: false,
-        };
-        init(&handle, cx, inits)?;
-        Ok(handle)
-    });
+    let made = builder
+        .class::<NodeHandle>(name)
+        .ctor(move |cx, inits| {
+            let world = world_of(cx)?;
+            let node = world.make(kind)?;
+            world.adopt(node, cx.me(), kind, false);
+            let handle = NodeHandle {
+                world,
+                node,
+                root: false,
+            };
+            init(&handle, cx, inits)?;
+            Ok(handle)
+        })
+        .guard_destroy(|h, _| {
+            if h.root {
+                Err(Fail::refused(
+                    ErrorCode::Denied,
+                    format!(
+                        "{}: the scene's root is the compositor's and cannot be destroyed",
+                        h.label()
+                    ),
+                ))
+            } else {
+                Ok(())
+            }
+        });
     node_members(made)
 }
 

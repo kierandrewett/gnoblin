@@ -431,6 +431,8 @@ The ABI integer is not part of the script API. A shell that needs it reads `abi`
 
 - A timer that throws is reported, and the next one still runs.
 - A reload cancels the timers of the old configuration, and they do not delay it.
+- At most 1024 timers a shell made are pending at once. The 1025th `after` is refused with a `GnoblinError` of code `busy`, which says
+  how many are pending; a timer that ran or was cancelled makes room.
 
 ::: tabs
 

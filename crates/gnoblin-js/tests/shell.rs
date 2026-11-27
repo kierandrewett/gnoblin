@@ -541,7 +541,6 @@ fn where_is_a_live_selection_that_follows_appid_changes_and_tells_its_listeners(
 }
 
 #[test]
-#[ignore = "vrnw: needs ClientCollection.where to refuse a member a client does not have (colour: 'red'): it does not throw"]
 fn where_refuses_a_member_a_client_does_not_have() {
     let comp = two_windows();
     let mut rig = rig(&comp, "export {};\n");

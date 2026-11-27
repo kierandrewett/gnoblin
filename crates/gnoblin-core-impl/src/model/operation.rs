@@ -365,7 +365,7 @@ fn base<'a>(class: ClassBuilder<'a, OperationState>) -> ClassBuilder<'a, Operati
                     let words = format!("the operation took over {ms} ms");
                     settle_with(cx, derived, Err(("timed_out", &words)));
                 };
-                match start_with(cx, ms, Box::new(late)) {
+                match start_with(cx, ms, None, Box::new(late)) {
                     Ok(started) => {
                         on_cancel(cx, derived, Box::new(move |cx| stop_timer(cx, started)));
                         timer = Some(started);
@@ -392,9 +392,27 @@ fn base<'a>(class: ClassBuilder<'a, OperationState>) -> ClassBuilder<'a, Operati
         })
 }
 
+/// Whether a timer still waits, and the count of the pending timers a shell made, which it gives back when the timer ends.
+struct Pending {
+    waiting: Cell<bool>,
+    /// The count of `gnoblin.timers.after`'s pending timers this one is part of; none for a timer the library made for itself.
+    counted: Option<Rc<Cell<usize>>>,
+}
+
+impl Pending {
+    /// Ends the wait. True when the timer was waiting.
+    fn end(&self) -> bool {
+        let was = self.waiting.replace(false);
+        if was && let Some(count) = &self.counted {
+            count.set(count.get().saturating_sub(1));
+        }
+        was
+    }
+}
+
 /// A call that runs later.
 pub(super) struct TimerState {
-    pending: Rc<Cell<bool>>,
+    pending: Rc<Pending>,
     /// The registration that fires it.
     reg: u64,
 }
@@ -404,13 +422,13 @@ struct TimerFire {
     ctx: abi::GnoblinCtx,
     timer: Obj,
     work: Cell<Option<Hook>>,
-    pending: Rc<Cell<bool>>,
+    pending: Rc<Pending>,
 }
 
 unsafe extern "C" fn fire(user: *mut c_void) -> i32 {
     // SAFETY: `user` is the box `start_with` made; the registration calls this once and then drops it.
     let fire = unsafe { &*(user as *const TimerFire) };
-    if !fire.pending.replace(false) {
+    if !fire.pending.end() {
         return abi::E_OK;
     }
     let work = fire.work.take();
@@ -433,6 +451,14 @@ unsafe extern "C" fn forget(user: *mut c_void) {
 /// The most a timer may wait: a day, in milliseconds.
 const MAX_TIMER_MS: f64 = 86_400_000.0;
 
+/// The most timers a shell may have pending at once: a configuration past it is looping.
+const MAX_PENDING_TIMERS: usize = 1024;
+
+/// The state of the `timers` service: how many of the timers a shell made are pending.
+struct Timers {
+    pending: Rc<Cell<usize>>,
+}
+
 /// Refuses a wait that is not a finite number of milliseconds from 0 to a day.
 fn check_ms(call: &str, ms: f64) -> Res<()> {
     if ms.is_finite() && (0.0..=MAX_TIMER_MS).contains(&ms) {
@@ -444,12 +470,19 @@ fn check_ms(call: &str, ms: f64) -> Res<()> {
     }
 }
 
-/// Starts a timer for `run` in `ms` milliseconds and returns the object that stands for it.
-pub(super) fn start(cx: &Cx<'_>, ms: f64, run: Rc<dyn Callable>) -> Res<Val> {
+/// Starts a timer for `run` in `ms` milliseconds and returns the object that stands for it. `pending` counts the shell's pending timers.
+fn start(cx: &Cx<'_>, ms: f64, run: Rc<dyn Callable>, pending: &Rc<Cell<usize>>) -> Res<Val> {
     check_ms("gnoblin.timers.after", ms)?;
+    if pending.get() >= MAX_PENDING_TIMERS {
+        return Err(Fail::refused(
+            ErrorCode::Busy,
+            format!("gnoblin.timers.after: {MAX_PENDING_TIMERS} timers are already pending"),
+        ));
+    }
     let timer = start_with(
         cx,
         ms,
+        Some(pending),
         Box::new(move |cx| {
             if let Err(fail) = run.call(0, &[]) {
                 cx.log(abi::LOG_WARN, &format!("a timer's function failed: {fail}"));
@@ -460,8 +493,12 @@ pub(super) fn start(cx: &Cx<'_>, ms: f64, run: Rc<dyn Callable>) -> Res<Val> {
 }
 
 /// Starts a timer that runs `work` in `ms` milliseconds, in a call about the timer. The library holds the timer until it ran or ended.
-fn start_with(cx: &Cx<'_>, ms: f64, work: Hook) -> Res<Obj> {
-    let pending = Rc::new(Cell::new(true));
+/// A timer given a `counted` count is one of a shell's, and the count holds it until it ends.
+fn start_with(cx: &Cx<'_>, ms: f64, counted: Option<&Rc<Cell<usize>>>, work: Hook) -> Res<Obj> {
+    let pending = Rc::new(Pending {
+        waiting: Cell::new(true),
+        counted: counted.map(Rc::clone),
+    });
     let timer = cx.spawn(
         "timer",
         TimerState {
@@ -483,12 +520,15 @@ fn start_with(cx: &Cx<'_>, ms: f64, work: Hook) -> Res<Obj> {
         return Err(Fail::err("the timer could not be started"));
     }
     cx.with_state::<TimerState, _>(timer, |state| state.reg = reg)?;
+    if let Some(count) = counted {
+        count.set(count.get() + 1);
+    }
     Ok(timer)
 }
 
 /// Stops a timer: it never runs after this. One that ran or ended already is ignored.
 fn halt(cx: &Cx<'_>, state: &mut TimerState, timer: Obj) {
-    if state.pending.replace(false) {
+    if state.pending.end() {
         registry::remove(state.reg);
         cx.unhold(timer);
     }
@@ -515,18 +555,22 @@ pub(super) fn register(builder: &mut Builder) {
                 "a timer is made with `gnoblin.timers.after`",
             ))
         })
-        .get("pending", |state, _| Ok(Val::Bool(state.pending.get())))
+        .get("pending", |state, _| Ok(Val::Bool(state.pending.waiting.get())))
         .method("cancel", |state, cx, _| {
             halt(cx, state, cx.me());
             Ok(Val::None)
         });
     let _ = builder
-        .class::<()>("timers")
-        .ctor(|_, _| Ok(()))
-        .method("after", |_, cx, args| {
-            start(cx, args[0].double()?, Rc::clone(args[1].closure()?))
+        .class::<Timers>("timers")
+        .ctor(|_, _| {
+            Ok(Timers {
+                pending: Rc::new(Cell::new(0)),
+            })
         })
-        .method("now", |_, _, _| {
+        .method_ref("after", |timers, cx, args| {
+            start(cx, args[0].double()?, Rc::clone(args[1].closure()?), &timers.pending)
+        })
+        .method_ref("now", |_, _, _| {
             Ok(Val::Double(session::with(|session| session.now_ms())))
         });
 }

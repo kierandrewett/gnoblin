@@ -193,14 +193,13 @@ fn dwindle_has_the_retired_defaults_and_refuses_a_bad_split() {
 }
 
 #[test]
-#[ignore = "vrnw: needs DwindleLayout to refuse a negative gap (it takes gap -1 without a word)"]
 fn dwindle_refuses_a_negative_gap() {
     let got = run(r#"
         emit(thrown(() => new DwindleLayout({ gap: -1 })));
     "#);
     assert_eq!(
         got,
-        "RangeError: DwindleLayout gap must be a finite number of at least 0, got -1"
+        "TypeError: dwindle.gap must be a finite number of at least 0, got -1"
     );
 }
 

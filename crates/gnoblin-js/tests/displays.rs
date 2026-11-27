@@ -361,7 +361,6 @@ fn display_arguments_are_checked() {
 }
 
 #[test]
-#[ignore = "vrnw: needs Display (mode single) to refuse two outputs: '\"single\" presents one output'"]
 fn a_single_display_presents_one_output() {
     let mut rig = world(true, "");
     let text = rig.eval("try { g.display('x', [g.a, g.b]); 'ok' } catch (e) { e.constructor.name + ': ' + e.message }");
@@ -369,7 +368,6 @@ fn a_single_display_presents_one_output() {
 }
 
 #[test]
-#[ignore = "vrnw: needs Display to refuse an option it has not (`colour` is dropped silently)"]
 fn a_display_refuses_an_unknown_option() {
     let mut rig = world(true, "");
     let text = rig.eval(
@@ -676,9 +674,15 @@ fn the_profile_collection_and_profile_arguments_are_checked() {
         "new OutputProfile({})",
         "OutputProfile.match: needs at least one",
     );
+    // A key the match lacks is refused by the record; an empty match is refused by the profile.
     check(
         &mut rig,
         "new OutputProfile({ port: 'DP-1' })",
+        "OutputMatch: no field \"port\"",
+    );
+    check(
+        &mut rig,
+        "new OutputProfile({})",
         "OutputProfile.match: needs at least one of connector, make, model, serial",
     );
     check(

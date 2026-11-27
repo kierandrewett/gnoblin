@@ -154,6 +154,14 @@ const fn at_least(ty: ValueShape, min: f64) -> ValueDesc {
     }
 }
 
+const fn maybe_at_least(ty: ValueShape, min: f64) -> ValueDesc {
+    ValueDesc {
+        ty,
+        optional: true,
+        min: LowerBound::AtLeast(min),
+    }
+}
+
 const fn above(ty: ValueShape, min: f64) -> ValueDesc {
     ValueDesc {
         ty,
@@ -258,7 +266,7 @@ pub const PRESELECT: &[EnumMember] = &[
 
 const WINDOW_OPTION_GAP: OptionDesc = option(
     "gap",
-    maybe(ValueShape::Number),
+    maybe_at_least(ValueShape::Number, 0.0),
     Initial::None,
     "The gap between tiles, replacing the workspace's inner gap; at least 0.",
 );

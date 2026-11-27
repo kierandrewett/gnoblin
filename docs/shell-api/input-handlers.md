@@ -4,6 +4,9 @@ A key press or a click is a function. A pointer drag and a touchpad gesture take
 objects with hooks that run as the input starts, moves and ends. The stock shell moves and resizes windows, switches
 workspaces and acts on gestures with these.
 
+A function given to `bind` for a drag trigger is called at each phase of the drag, with `event.phase`. A `PointerDragBinding` is the
+way to own the drag and keep state between its phases.
+
 ::: tabs
 
 ```typescript

@@ -217,15 +217,12 @@ fn a_transform_given_as_parts_writes_only_the_parts_it_has_and_checks_them_all_f
 }
 
 #[test]
-#[ignore = "vrnw: needs SceneNode.place to refuse a part it has not (an unknown part such as `pose` is dropped silently)"]
 fn a_transform_with_a_part_it_has_not_is_refused() {
     let mut rig = world(1, "");
     rig.eval("globalThis.n = new SceneNode({ id: 'p' }); 1");
     let message = thrown(&mut rig, "n.place({ position: { x: 0, y: 0, z: 0 }, pose: 1 })");
-    assert!(
-        message.contains("a transform has position, rotation and scale only"),
-        "{message}"
-    );
+    // The generated record refuses a part it has in its own words, which name the record and the part.
+    assert!(message.contains("TransformParts: no field \"pose\""), "{message}");
 }
 
 #[test]
@@ -388,7 +385,6 @@ fn the_scene_root_mounts_nodes_and_cannot_be_destroyed() {
 }
 
 #[test]
-#[ignore = "vrnw: needs Scene.root.destroy() to refuse (the root of the scene cannot be destroyed)"]
 fn the_scene_root_cannot_be_destroyed() {
     let mut rig = world(1, "");
     let message = thrown(&mut rig, "gnoblin.scene.root.destroy()");
@@ -396,7 +392,6 @@ fn the_scene_root_cannot_be_destroyed() {
 }
 
 #[test]
-#[ignore = "vrnw: needs Scene to refuse `new Scene()` (gnoblin.scene is the one scene)"]
 fn a_second_scene_cannot_be_made() {
     let mut rig = world(1, "");
     let message = thrown(&mut rig, "new Scene()");

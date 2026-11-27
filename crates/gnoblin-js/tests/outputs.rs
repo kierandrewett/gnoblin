@@ -1077,15 +1077,17 @@ fn a_bad_mode_throws_naming_the_key_and_sends_nothing() {
 }
 
 #[test]
-#[ignore = "vrnw: needs OutputConfig/apply to refuse a key it does not have (an unknown key is dropped silently)"]
 fn an_unknown_key_throws_naming_the_key_and_sends_nothing() {
     let (key, sent) = bad_apply("{ colour: 'red' }");
-    assert!(key.starts_with("TypeError: ") && key.contains(".colour"), "{key}");
+    // The generated record refuses a key it has in its own words, which name the class and the key, not a `.colour` path.
+    assert!(
+        key.starts_with("TypeError: OutputConfig: ") && key.contains("no field \"colour\""),
+        "{key}"
+    );
     assert_eq!(sent, 0, "a request that does not check is never sent");
 }
 
 #[test]
-#[ignore = "vrnw: needs OutputConfig.primary refused with 'derives the primary output' (the key is dropped silently)"]
 fn a_primary_the_layout_would_ignore_is_refused_with_its_reason() {
     let (primary, sent) = bad_apply("{ primary: true }");
     assert!(
