@@ -236,13 +236,31 @@ export function need(value, what) {
   return value;
 }
 
-/** Checks the option bag of a value class: an object, and no field the class lacks. */
-export function fields(init, label, known) {
+/** Whether a script object answers the method `name` of the interface `label`: it does with a function, and an object that holds anything else there is refused. */
+export function defines(object, name, label) {
+  const member = object[name];
+  if (typeof member === "function") {
+    return true;
+  }
+  if (member !== undefined && member !== null) {
+    throw new TypeError(`${label}.${name}: expected a function, got ${typeof member}`);
+  }
+  return false;
+}
+
+/**
+ * Checks the option bag of a value class: an object, and no field the class lacks. `refused` maps a name that is not a field to the reason
+ * the class refuses it, which is said in place of the list of fields.
+ */
+export function fields(init, label, known, refused) {
   if (init === null || typeof init !== "object" || Array.isArray(init)) {
     throw new TypeError(`${label}: expects an object of fields`);
   }
   for (const key of Object.keys(init)) {
     if (!known.includes(key)) {
+      if (refused !== undefined && Object.hasOwn(refused, key)) {
+        throw new TypeError(`${label}.${key} is not a field: ${refused[key]}`);
+      }
       throw new TypeError(`${label}: no field "${key}" (known: ${known.join(", ")})`);
     }
   }
@@ -754,7 +772,12 @@ impl<'a> Js<'a> {
         c.indent();
         c.line("constructor(init = {}) {");
         c.indent();
-        c.line(format!("B.fields(init, {}, [{}]);", quote(&name), known.join(", ")));
+        c.line(format!(
+            "B.fields(init, {}, [{}]{});",
+            quote(&name),
+            known.join(", "),
+            Self::refused_arg(class.refuses)
+        ));
         for property in class.properties {
             let field = js_field(property);
             let value = match absent(property) {
@@ -764,11 +787,26 @@ impl<'a> Js<'a> {
             };
             c.line(format!("this.{field} = {value};"));
         }
+        if class.immutable {
+            c.line("Object.freeze(this);");
+        }
         c.dedent();
         c.line("}");
         c.dedent();
         c.line("}");
         c.blank();
+    }
+
+    /// The reasons a class refuses a name that is not a field, as the trailing argument of `B.fields`: nothing for a class that has none.
+    fn refused_arg(refuses: &[(String, String)]) -> String {
+        if refuses.is_empty() {
+            return String::new();
+        }
+        let reasons: Vec<String> = refuses
+            .iter()
+            .map(|(name, reason)| format!("{}: {}", quote(&camel(name)), quote(reason)))
+            .collect();
+        format!(", {{ {} }}", reasons.join(", "))
     }
 
     /// The expression that makes the library's value of `property` from the script's `given`.
@@ -823,6 +861,18 @@ impl<'a> Js<'a> {
             "  throw new TypeError(`expected a {class} object, got ${{record === null ? \"null\" : typeof record}}`);"
         ));
         c.line("}");
+        // A bag a script wrote is checked as the class's constructor checks it: a field the class lacks is refused, not dropped.
+        let known: Vec<String> = object
+            .properties
+            .iter()
+            .map(|property| quote(&js_field(property)))
+            .collect();
+        c.line(format!(
+            "if (!(record instanceof {class})) B.fields(record, {}, [{}]{});",
+            quote(&class),
+            known.join(", "),
+            Self::refused_arg(&object.refuses)
+        ));
         c.line(format!("return B.rec([{}]);", writes.join(", ")));
         c.dedent();
         c.line("}");
@@ -1319,6 +1369,25 @@ impl<'a> Js<'a> {
         Ok(())
     }
 
+    /// Where a shell reads the service `object`, for the words of a refusal: the property of `gnoblin` that holds it, `gnoblin` for the
+    /// root itself, and the class's own `get` for a service that nothing holds.
+    fn service_source(&self, object: &ObjectType) -> String {
+        if object.name == "gnoblin" {
+            return "`gnoblin`".to_owned();
+        }
+        let held = self
+            .view
+            .objects
+            .values()
+            .filter(|holder| holder.name == "gnoblin" || holder.augment_of.as_deref() == Some("gnoblin"))
+            .flat_map(|holder| holder.properties.iter())
+            .find(|property| matches!(&property.ty, Type::ObjectRef(name) if *name == object.name));
+        match held {
+            Some(property) => format!("`gnoblin.{}`", member_name(&property.name, &property.extras.export.js)),
+            None => format!("`{}.get()`", class_name(object)),
+        }
+    }
+
     fn constructor_source(
         &self,
         c: &mut CodeWriter,
@@ -1329,6 +1398,18 @@ impl<'a> Js<'a> {
         let snake_name = snake(&object.name);
         let spell = format!("spell_{snake_name}");
         if object.kind == ObjectKind::Service {
+            // A service is one object of its generation, which `get` and the root that holds it answer: a script that makes its own has
+            // an object that is no service's, so `new` is refused and says where the service is.
+            let message = format!(
+                "`{}` is a service: a shell does not make one, it reads {}",
+                class_name(object),
+                self.service_source(object)
+            );
+            c.block(
+                "constructor() {",
+                |c| c.line(format!("throw new TypeError({});", quote(&message))),
+                "}",
+            );
             c.line("/** The service. */");
             c.block(
                 "static get() {",
@@ -1368,6 +1449,19 @@ impl<'a> Js<'a> {
             params.push("options = {}".to_owned());
         }
         let mut lines = vec![format!("const i = ids_{snake_name}();")];
+        if params.iter().any(|param| param == "options = {}") {
+            // The options are the properties the constructor sets; a key that is none of them is refused, not dropped.
+            let known: Vec<String> = ctor
+                .options
+                .iter()
+                .map(|property| quote(&member_name(&property.name, &property.extras.export.js)))
+                .collect();
+            lines.push(format!(
+                "B.fields(options, {}, [{}]);",
+                quote(&class_name(object)),
+                known.join(", ")
+            ));
+        }
         if ctor.options.is_empty() {
             lines.push(format!("B.adopt(this, N.create(NS, i[0], [{}]));", inits.join(", ")));
         } else {
@@ -1540,7 +1634,9 @@ impl<'a> Js<'a> {
             let ident = member_name(&method.name, &method.extras.export.js);
             let at = Self::at(&lookups, 'm', &method.name);
             c.line(format!(
-                "if (typeof object.{ident} === \"function\") implemented.push(i[{at}]);"
+                "if (B.defines(object, {}, {})) implemented.push(i[{at}]);",
+                quote(&ident),
+                quote(&name)
             ));
             let reads: Vec<String> = method
                 .params
@@ -1959,10 +2055,11 @@ impl Js<'_> {
             c.jsdoc(self.view.member_doc(class.name, &property.name));
             let field = js_field(property);
             let ty = self.ts(&property.ty, false)?;
+            let readonly = if class.immutable { "readonly " } else { "" };
             if property.optional {
-                c.line(format!("{field}?: {ty} | undefined;"));
+                c.line(format!("{readonly}{field}?: {ty} | undefined;"));
             } else {
-                c.line(format!("{field}: {ty};"));
+                c.line(format!("{readonly}{field}: {ty};"));
             }
         }
         let all_optional = class
@@ -2114,6 +2211,9 @@ impl Js<'_> {
         });
         c.line(format!("export declare class {name} {{"));
         c.indent();
+        if object.kind == ObjectKind::Service {
+            c.line("private constructor();");
+        }
         if has_instance_members {
             if object.kind == ObjectKind::Service {
                 c.line(format!("static get(): {name};"));

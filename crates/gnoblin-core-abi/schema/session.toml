@@ -58,6 +58,7 @@ readonly = true
 name = "build_version"
 since = "0.2.0"
 kind = "record"
+immutable = true
 
 # Gnoblin version.
 [[object.property]]

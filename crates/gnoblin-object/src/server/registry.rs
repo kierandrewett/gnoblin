@@ -94,6 +94,8 @@ pub(crate) type RedirectFn = Rc<dyn Fn(&mut Cx<'_>) -> Res<(Obj, &'static str)>>
 /// What a new listener of a signal is told at once: the payloads of the calls it missed, taken when it was added and delivered from the
 /// next turn.
 pub(crate) type ReplayFn = Rc<dyn Fn(&mut Cx<'_>) -> Vec<Vec<Val>>>;
+/// Whether an object may end when a shell destroys it: the object's native state and the context; an error keeps the object.
+pub(crate) type GuardFn = Rc<dyn Fn(&dyn Any, &mut Cx<'_>) -> Res<()>>;
 
 /// The implementation of one class: a table per kind of member, indexed by member id minus one.
 pub(crate) struct ClassImpl {
@@ -110,6 +112,8 @@ pub(crate) struct ClassImpl {
     pub(crate) stat: Vec<Option<StaticFn>>,
     pub(crate) redirect: Vec<Option<RedirectFn>>,
     pub(crate) replay: Vec<Option<ReplayFn>>,
+    /// Whether an object of the class may be ended by `destroy`: an error keeps it.
+    pub(crate) guard_destroy: Option<GuardFn>,
 }
 
 impl ClassImpl {
@@ -123,6 +127,7 @@ impl ClassImpl {
             stat: vec![None; members],
             redirect: vec![None; members],
             replay: vec![None; members],
+            guard_destroy: None,
         }
     }
 }
@@ -362,6 +367,23 @@ impl<T: Any> ClassBuilder<'_, T> {
             && let Some(slot) = self.slot.as_deref_mut()
         {
             slot.replay[index] = Some(Rc::new(run));
+        }
+        self
+    }
+
+    /// Has `destroy` ask `allow` before it ends an object of the class: an error keeps the object, and the call that asked fails with it.
+    /// The state is held shared, as for a getter. What ends the object any other way (its parent, a `release` of the last reference, the
+    /// end of the generation) is not asked.
+    #[must_use]
+    pub fn guard_destroy(mut self, allow: impl Fn(&T, &mut Cx<'_>) -> Res<()> + 'static) -> Self {
+        let class = self.def.map_or("", |def| def.name);
+        if let Some(slot) = self.slot.as_deref_mut() {
+            slot.guard_destroy = Some(Rc::new(move |state, cx| {
+                let state = state
+                    .downcast_ref::<T>()
+                    .ok_or_else(|| Fail::err(format!("an object of `{class}` holds the wrong state")))?;
+                allow(state, cx)
+            }));
         }
         self
     }
