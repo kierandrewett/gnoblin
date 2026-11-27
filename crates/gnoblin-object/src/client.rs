@@ -465,17 +465,28 @@ impl Api {
 }
 
 /// An object, held by one reference that is released when the value is dropped.
+///
+/// Cloning takes a reference of its own ([`Api::retain`]), so each clone releases exactly the reference it took and the object lives until
+/// the last of them is dropped.
 #[derive(Debug)]
 pub struct Object {
     api: Api,
     class: ClassId,
     obj: Obj,
+    /// Whether this value holds a reference to release. A clone whose `retain` failed (the object is gone, or the library's table has no
+    /// `retain`) holds none, so dropping it releases nothing it never took.
+    held: bool,
 }
 
 impl Object {
     /// Takes over the reference a call returned for `obj`.
     pub fn adopt(api: Api, class: ClassId, obj: Obj) -> Object {
-        Object { api, class, obj }
+        Object {
+            api,
+            class,
+            obj,
+            held: true,
+        }
     }
 
     /// Takes over the reference an object value carries, as a call's result or a callback's argument hands it out. A value that
@@ -502,7 +513,7 @@ impl Object {
     /// As for [`Api::create`].
     pub fn create(api: Api, class: ClassId, inits: &[(MemberId, Val)]) -> Res<Object> {
         let obj = api.create(class, inits)?;
-        Ok(Object { api, class, obj })
+        Ok(Object::adopt(api, class, obj))
     }
 
     /// The protocol the object is served through.
@@ -572,9 +583,24 @@ impl Object {
     }
 }
 
+impl Clone for Object {
+    /// The same object, held through a reference of its own. A clone cannot fail: when the reference cannot be taken (the object is gone,
+    /// or the library is too old to have `retain`) the clone holds none, and its calls fail as the original's do.
+    fn clone(&self) -> Object {
+        Object {
+            api: self.api,
+            class: self.class,
+            obj: self.obj,
+            held: self.api.retain(self.obj).is_ok(),
+        }
+    }
+}
+
 impl Drop for Object {
     fn drop(&mut self) {
-        let _ = self.api.release(self.obj);
+        if self.held {
+            let _ = self.api.release(self.obj);
+        }
     }
 }
 

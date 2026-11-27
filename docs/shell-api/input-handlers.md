@@ -454,7 +454,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             }])
         }
     };
-    let move_split = {
+    let set_split = {
         let halves = Rc::clone(&halves);
         move |_token: u64, ratio: f64, _cross_ratio: Option<f64>| {
             let mut state = halves.borrow_mut();
@@ -477,15 +477,11 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         move || Ok(halves.borrow().changes)
     };
     let layout = LayoutHandlers {
-        compute: Box::new(compute),
-        client_added: None,
-        client_removed: None,
-        area_changed: None,
-        clients_swapped: None,
         revision: Some(Box::new(revision)),
         find_split: Some(Box::new(find_split)),
-        move_split: Some(Box::new(move_split)),
+        set_split: Some(Box::new(set_split)),
         reset_split: Some(Box::new(reset_split)),
+        ..LayoutHandlers::new(compute)
     }
     .implement(&std)?;
     let workspace = Workspace::new(&std, "halves")?;
@@ -627,13 +623,7 @@ use gnoblin_core::objects::{BindingEvent, InputManager, PointerDragBindingHandle
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let primary = InputManager::get(&objects)?.primary()?;
-    let handler = PointerDragBindingHandlers {
-        on_start: Box::new(|_event: BindingEvent| Ok(false)),
-        on_update: None,
-        on_end: None,
-        on_cancel: None,
-    }
-    .implement(&objects)?;
+    let handler = PointerDragBindingHandlers::new(|_event: BindingEvent| Ok(false)).implement(&objects)?;
     let nudge = primary.bind_drag("Alt+MouseMiddle+Drag", &handler, None)?;
     nudge.unbind()?;
     Ok(())

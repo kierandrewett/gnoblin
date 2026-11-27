@@ -366,17 +366,15 @@ seat.bind("Swipe4Up", close_focused)
 ```
 
 ```rust
-use std::rc::Rc;
-
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let model = ModelRoot::get(&g.objects()?)?;
     let context = model.input()?.primary()?;
-    let launcher = Rc::clone(&model);
+    let launcher = model.clone();
     context.bind(
         "Super+Return",
         Some(move |_| {
@@ -385,7 +383,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         }),
         None,
     )?;
-    let closer = Rc::clone(&model);
+    let closer = model.clone();
     context.bind(
         "Swipe4Up",
         Some(move |_| {
@@ -455,7 +453,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
             }
             Ok(())
         })),
-        on_secret_request: None,
+        ..Default::default()
     }
     .implement(&objects)?;
     dialogs.add_listener(&listener)?;

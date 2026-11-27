@@ -38,23 +38,11 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let model = ModelRoot::get(&objects)?;
     let clients = model.clients()?;
     let listener = ClientCollectionListenerHandlers {
-        on_added: None,
-        on_removed: None,
-        on_title_changed: None,
-        on_app_id_changed: None,
-        on_decoration_changed: None,
-        on_pointer_enter: None,
-        on_pointer_motion: None,
-        on_pointer_leave: None,
-        on_pointer_press: None,
-        on_pointer_release: None,
         on_focus_changed: Some(Box::new(|client, focused| {
             client.set_opacity(if focused { 1.0 } else { 0.95 })?;
             Ok(())
         })),
-        on_geometry_changed: None,
-        on_closed: None,
-        on_ready: None,
+        ..Default::default()
     }
     .implement(&objects)?;
     clients.add_listener(&listener)?;
@@ -119,16 +107,6 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let clients = model.clients()?;
     let transitioner = Rc::clone(&model);
     let listener = ClientCollectionListenerHandlers {
-        on_added: None,
-        on_removed: None,
-        on_title_changed: None,
-        on_app_id_changed: None,
-        on_decoration_changed: None,
-        on_pointer_enter: None,
-        on_pointer_motion: None,
-        on_pointer_leave: None,
-        on_pointer_press: None,
-        on_pointer_release: None,
         on_focus_changed: Some(Box::new(move |client, focused| {
             let options = TransitionOptions {
                 duration: 180.0,
@@ -146,9 +124,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             )?;
             Ok(())
         })),
-        on_geometry_changed: None,
-        on_closed: None,
-        on_ready: None,
+        ..Default::default()
     }
     .implement(&objects)?;
     clients.add_listener(&listener)?;

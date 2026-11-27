@@ -1115,9 +1115,6 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let outputs = model.outputs()?;
     let (plugged, unplugged) = (Rc::clone(&model), Rc::clone(&model));
     let listener = OutputCollectionListenerHandlers {
-        on_added: None,
-        on_removed: None,
-        on_applied: None,
         on_connected: Some(Box::new(move |output: Output| {
             let text = format!("{} plugged in", output.name()?);
             plugged.spawn(&["notify-send".to_owned(), text], None)?;
@@ -1128,9 +1125,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
             unplugged.spawn(&["notify-send".to_owned(), text], None)?;
             Ok(())
         })),
-        on_mode_changed: None,
-        on_scale_changed: None,
-        on_geometry_changed: None,
+        ..Default::default()
     }
     .implement(&objects)?;
     outputs.add_listener(&listener)?;

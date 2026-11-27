@@ -95,8 +95,6 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 
     let (surface, shown) = (Rc::clone(&canvas), Rc::clone(&level));
     let meter = WidgetHandlers {
-        refresh: None,
-        arrange: None,
         paint: Some(Box::new(move || {
             let (width, height) = (surface.width()?, surface.height()?);
             Ok(vec![
@@ -120,10 +118,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
                 },
             ])
         })),
-        natural_width: None,
-        natural_height: None,
-        on_pointer: None,
-        on_key: None,
+        ..Default::default()
     }
     .implement(&objects)?;
     canvas.set_behaviour(&meter)?;

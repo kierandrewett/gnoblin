@@ -122,9 +122,11 @@ A local file may use keys a compositor file may not:
 - `find = "Kind"` on a method of a service that returns a list of objects and takes one optional record (its filter). Each method of a
   service names a kind of its own. In the core, `find_clients` is `find = "Window"` and `find_outputs` is `find = "Output"`. The service
   then gets:
-    - `find(kind, filter)` in JavaScript, TypeScript and Python. It calls the method of the kind, and refuses a kind it has no method for
-      with an error that lists the kinds that work.
-    - `find::<T>(filter)` in Rust, over the trait `Finds` that each kind implements.
+    - `find(kind, filter)` in JavaScript, TypeScript and Python, where `filter` is a record, a table of field values or a function. It
+      calls the method of the kind, and refuses a kind it has no method for with an error that lists the kinds that work.
+    - `find::<T>(filter)` and `find_matching::<T>(function)` in Rust, over the trait `Finds` that each kind implements. The method
+      of the kind takes only the record, because the object protocol moves values and not closures into a call that answers a list, so
+      `find_matching` lists the kind and keeps the objects the closure accepts, as the script runtimes do for a function.
 - A `base` of another namespace's class.
 
 The wire never carries such a namespace and the `gnoblin` catalog hash (`gnoblin_catalog_hash`) does not include it. The namespace has
@@ -216,17 +218,25 @@ Rust type for each catalog type:
   has `Default`. The record of a family (see [Value classes](#value-classes)) is an enum of structs, one for each variant;
 - a **handle** or a **service** is a struct that holds a reference and releases it when dropped. It has a constructor (`new`, or `get`
   for a service), a getter and a setter for each property, a method for each method, and an associated function for each `function`.
-  An object or a record reads as an `Option` unless the property is marked `always`, and so does the result of a method marked `optional`. A listener ends when the returned
-  guard is dropped; `keep` lets it last until the generation ends;
+    - An object or a record reads as an `Option` unless the property is marked `always`, and so does the result of a method marked
+      `optional`.
+    - A listener ends when the returned guard is dropped; `keep` lets it last until the generation ends.
+    - A handle is `Clone`: a clone takes a reference of its own, so the object lives until the last clone is dropped;
 - an **interface** is a struct of handlers, one boxed closure per method. A method the library has a native default for is an
-  `Option` of one, and `implement` makes the object the library calls them through;
+  `Option` of one, and `implement` makes the object the library calls them through.
+    - A field has the method's name in the catalog. The `export` name a method has in Rust is for the handle, where `set_split` would
+      be the setter of a `split` property.
+    - A struct with no method the shell must implement has `Default`, so `Handlers { hook: Some(..), ..Default::default() }` names one hook.
+    - A struct with such a method has `new`, which takes those and starts the rest at `None`;
 - a **callback** type is a Rust closure wherever a property, a constructor or a method takes one.
 
 The ids of a class are looked up by name the first time a call needs them. A shell built against an older catalog runs against a newer
 library and fails only on a name the library lacks.
 
 A member whose type names a class of another namespace is refused at build time with a
-message that says so: a typed reference across two libraries needs both libraries' `Objects`, which no catalog needs yet.
+message that says so: a typed reference across two libraries needs both libraries' `Objects`, which no catalog needs yet. A shell that
+makes classes of both libraries reaches the std `Objects` from the core's: `g.objects()?.std()?` or `g.std_objects()?`, both in
+`gnoblin_std::prelude`.
 
 ### Check which class an object is
 
@@ -277,7 +287,9 @@ A failed call raises the language's own error:
 - TypeScript: every generated getter, setter, method, constructor, `on` and `destroy` is wrapped to throw `GnoblinError`. The
   class and the `ErrorCode` union are exported beside the generated classes.
 - Python: the same members are decorated to raise `gnoblin.errors.GnoblinError`, with `code` and `target` set.
-- Rust: a generated member returns `Res<T>`, and its `Fail` carries `code()`, `reason()` and `target()`.
+- Rust: a generated member returns `Res<T>`, and its `Fail` (`gnoblin_core::Fail`, also in `gnoblin_std::prelude`) carries `code()`,
+  `reason()` and `target()`. The errors of the core and of the std library convert into `Fail`, so `?` works on any of their calls inside
+  a handler.
 
 A refusal words the member as the language spells it ([Member names in a refusal](shell-api/errors.md#member-names-in-a-refusal)):
 
@@ -408,7 +420,8 @@ One library object is one script object in each language, so a shell can compare
   delivery answers that script object and releases the reference it carried; the entry of a collected object is dropped when its identity is
   handed over again, and by a sweep when the map has doubled.
 - Python files each object in a `weakref.WeakValueDictionary`, keyed by namespace, generation and handle, with the same effect.
-- Rust's handle types implement `PartialEq`, `Eq` and `Hash` by the object they hold, so two values of one object are equal.
+- Rust's handle types implement `PartialEq`, `Eq` and `Hash` by the object they hold, so two values of one object are equal. They are
+  `Clone` too, and a clone is another value of the same object, held through a reference of its own.
 
 An event is a signal, or `<property>Changed` (`<property>_changed` in Python) for each property, and a listener lasts until it is stopped
 or the generation ends, not until it is collected.

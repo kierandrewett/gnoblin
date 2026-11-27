@@ -279,36 +279,26 @@ use gnoblin_std::objects::{
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let std = g.std()?.objects()?;
-    let columns = LayoutHandlers {
-        compute: Box::new(|context| {
-            let LayoutRect { x, y, width, height } = context.area;
-            let count = context.children.len().max(1) as f64;
-            Ok(context
-                .children
-                .into_iter()
-                .enumerate()
-                .map(|(index, node)| {
-                    let mut placement = LayoutPlacement::new(node);
-                    placement.tiled = true;
-                    placement.bounds = Some(LayoutRect {
-                        x: (x + index as f64 * width / count).floor(),
-                        y,
-                        width: (width / count).floor(),
-                        height,
-                    });
-                    placement
-                })
-                .collect())
-        }),
-        client_added: None,
-        client_removed: None,
-        area_changed: None,
-        clients_swapped: None,
-        revision: None,
-        find_split: None,
-        move_split: None,
-        reset_split: None,
-    }
+    let columns = LayoutHandlers::new(|context| {
+        let LayoutRect { x, y, width, height } = context.area;
+        let count = context.children.len().max(1) as f64;
+        Ok(context
+            .children
+            .into_iter()
+            .enumerate()
+            .map(|(index, node)| {
+                let mut placement = LayoutPlacement::new(node);
+                placement.tiled = true;
+                placement.bounds = Some(LayoutRect {
+                    x: (x + index as f64 * width / count).floor(),
+                    y,
+                    width: (width / count).floor(),
+                    height,
+                });
+                placement
+            })
+            .collect())
+    })
     .implement(&std)?;
 
     ModelRoot::get(&g.objects()?)?.workspaces()?.add(&Workspace::new_with(
@@ -347,16 +337,16 @@ A placement has the window as `node` and any of these, which it leaves unchanged
 A layout may also define these hooks. TypeScript names them in camelCase; Python defines the same names in snake_case as
 methods of its `Layout` subclass, and Rust sets them as the fields of `LayoutHandlers`, also in snake_case.
 
-| Hook                                  | Runs when                                                                                              |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `clientAdded(context, client)`        | A window joins the workspace.                                                                          |
-| `clientRemoved(context, client)`      | A window leaves the workspace.                                                                         |
-| `areaChanged(before, now)`            | The area changes.                                                                                      |
-| `clientsSwapped(a, b)`                | `workspace.clients.swap(a, b)` trades the places of two windows.                                       |
-| `findSplit(client, x, y)`             | A drag asks which dividers it would move. Returns a list, empty when there is none.                    |
-| `setSplit(token, ratio, crossRatio?)` | Moves a divider. Python and Rust call it `set_split`, and Rust's layout handler calls it `move_split`. |
-| `resetSplit(token)`                   | Puts a divider back where it was.                                                                      |
-| `revision()`                          | Returns a number that changes when the layout's own state changes, so the workspace lays out again.    |
+| Hook                                  | Runs when                                                                                           |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `clientAdded(context, client)`        | A window joins the workspace.                                                                       |
+| `clientRemoved(context, client)`      | A window leaves the workspace.                                                                      |
+| `areaChanged(before, now)`            | The area changes.                                                                                   |
+| `clientsSwapped(a, b)`                | `workspace.clients.swap(a, b)` trades the places of two windows.                                    |
+| `findSplit(client, x, y)`             | A drag asks which dividers it would move. Returns a list, empty when there is none.                 |
+| `setSplit(token, ratio, crossRatio?)` | Moves a divider.                                                                                    |
+| `resetSplit(token)`                   | Puts a divider back where it was.                                                                   |
+| `revision()`                          | Returns a number that changes when the layout's own state changes, so the workspace lays out again. |
 
 A layout's bindings are the drag bindings you install for the windows of its workspace, such as the drag that moves a
 floating window or swaps two tiles: see [Input handlers](input-handlers).

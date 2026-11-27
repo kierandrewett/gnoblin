@@ -25,12 +25,10 @@ fn report(g: &Gnoblin, root: &ModelRoot, client: &Client) -> gnoblin::Result<()>
             ..ClientQuery::default()
         }))?
         .len();
-    // `find` takes no function: the shell filters the list in its own language.
+    // The test a filter record cannot say is a closure, as `find(kind, function)` is in the other two languages.
     let titled = root
-        .find::<Client>(None)?
-        .iter()
-        .filter(|found| found.title().unwrap_or_default().starts_with("Term"))
-        .count();
+        .find_matching::<Client>(|found| Ok(found.title()?.starts_with("Term")))?
+        .len();
     let outputs = root.find::<Output>(None)?.len();
     let motion = root.motion(200.0)?;
     let shaders = root.compositor()?.user_shaders()?;

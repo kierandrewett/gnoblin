@@ -12,9 +12,13 @@
 //!   listeners that end when the returned guard is dropped. A property that holds an object or a record reads as an `Option`, because
 //!   the catalog does not say it is always there. A handle also has `as_<base>` for each class it extends and one `downcast(objects, value)`,
 //!   the checked cast the other way: `Some` when the object a value holds is of the class or of one that extends it (the ids of the
-//!   class and of every class of the namespace that extends it are looked up with the rest), `None` when it is of another;
+//!   class and of every class of the namespace that extends it are looked up with the rest), `None` when it is of another. A handle is
+//!   `Clone`: a clone takes a reference of its own, so the object lives until the last clone is dropped. A service that lists objects has
+//!   `find::<T>(filter)` and `find_matching::<T>(closure)`;
 //! - an interface is a struct of handlers, one boxed closure for each method (an `Option` of one for a method the library has a
-//!   native default for), and `implement` makes the object the library calls them through;
+//!   native default for), and `implement` makes the object the library calls them through. A struct with no method the shell must
+//!   implement is `Default`; one with some has `new`, which takes those and starts the others at `None`. A field is named as the method
+//!   is in the catalog, whatever name `export` gives the method on a handle;
 //! - a `callback` type is a Rust closure, wherever a property, a constructor or a method takes one.
 //!
 //! `Objects` is the handle on one library for one generation. The ids of a class are looked up by name the first time a call needs
@@ -852,10 +856,12 @@ impl @Ids@ {
             ],
         );
 
-        let mut taken: BTreeSet<String> = ["new", "new_with", "get", "handle", "destroy", "objects", "downcast"]
-            .iter()
-            .map(|s| (*s).to_owned())
-            .collect();
+        let mut taken: BTreeSet<String> = [
+            "new", "new_with", "get", "handle", "destroy", "objects", "downcast", "clone",
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
         let mut claim = |ident: &str| -> Result<(), String> {
             if taken.insert(ident.to_owned()) {
                 Ok(())
@@ -955,6 +961,7 @@ impl @Ids@ {
         let mut found_impls = String::new();
         if has_instance_members && !finds.is_empty() {
             claim("find")?;
+            claim("find_matching")?;
             let kinds: Vec<String> = finds.iter().map(|(kind, _)| format!("`{kind}`")).collect();
             let Some(Type::List(first)) = finds.first().and_then(|(_, method)| method.returns.as_ref()) else {
                 return Err(format!("`{}`: the first finder does not return a list", object.name));
@@ -964,6 +971,10 @@ impl @Ids@ {
                 methods,
                 "    /// The live objects of the kind `T` that match `filter`, in list order, or every one when it is left out. The kinds are {}: `find::<{first}>(None)`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library refuses the filter.\n    pub fn find<T: Finds<{name}>>(&self, filter: Option<&T::Filter>) -> go::Res<Vec<T>> {{\n        T::find_in(self, filter)\n    }}\n\n",
                 kinds.join(", ")
+            );
+            let _ = write!(
+                methods,
+                "    /// The live objects of the kind `T` for which `keep` answers `true`, in list order: the test a filter record cannot say, written\n    /// as a closure (TypeScript's and Python's `find(kind, function)`). `keep` sees each object of the kind once, and its first error ends\n    /// the call and is the call's error: `find_matching::<{first}>(|window| Ok(window.title()?.contains(\"draft\")))`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, the library refuses the listing, or `keep` fails.\n    pub fn find_matching<T: Finds<{name}>>(&self, mut keep: impl FnMut(&T) -> go::Res<bool>) -> go::Res<Vec<T>> {{\n        let mut found = Vec::new();\n        for item in T::find_in(self, None)? {{\n            if keep(&item)? {{\n                found.push(item);\n            }}\n        }}\n        Ok(found)\n    }}\n\n"
             );
             for (kind, method) in &finds {
                 let Some(Type::List(inner)) = &method.returns else {
@@ -1011,7 +1022,7 @@ impl @Ids@ {
                 );
             }
             text.push_str(&fill(
-                r#"#[derive(Debug)]
+                r#"#[derive(Clone, Debug)]
 pub struct @Name@ {
     object: go::client::Object,
     objects: Objects,
@@ -1456,9 +1467,16 @@ pub struct @Options@ {
         let mut copies = Vec::new();
         let mut marks = Vec::new();
         let mut arms = Vec::new();
+        // What a struct of handlers starts from: with no method the shell must implement it is `Default`, every hook `None`; otherwise `new`
+        // takes the required ones and starts the rest at `None`, so `Handlers { hook: Some(..), ..Handlers::new(run) }` names one hook.
+        let mut required = Vec::new();
+        let mut required_inits = Vec::new();
+        let mut starts = Vec::new();
         for method in &methods {
             let schema = &method.name;
-            let ident = member_ident(schema, &method.extras.export.rust);
+            // The field is the method's name in the catalog, in every language: the name `export` gives a method for Rust (`move_split` for
+            // `set_split`) keeps the methods of a handle clear of the setter of a property, and a handlers struct has no setters to clear.
+            let ident = rust_ident(&snake(schema));
             let field = format!("m_{}", snake(schema));
             id_fields.push(format!("    {field}: go::MemberId,"));
             id_reads.push(format!(
@@ -1492,6 +1510,15 @@ pub struct @Options@ {
                     closure
                 }
             ));
+            if optional {
+                starts.push(format!("{ident}: None"));
+            } else {
+                required.push(format!(
+                    "{ident}: impl FnMut({}) -> go::Res<{returns}> + 'static",
+                    params.join(", ")
+                ));
+                required_inits.push(format!("{ident}: Box::new({ident})"));
+            }
             let local = format!("h_{}", snake(schema));
             moves.push(format!("{ident}: mut {local}"));
             copies.push(format!("let {field} = ids.{field};"));
@@ -1511,6 +1538,29 @@ pub struct @Options@ {
                 ));
             }
         }
+        let (derive, start) = if required.is_empty() {
+            ("#[derive(Default)]\n".to_owned(), String::new())
+        } else {
+            (
+                String::new(),
+                format!(
+                    "impl {name}Handlers {{\n    /// The handlers with the method{s} the shell must implement ({names}) and every other one left to the library's own default.\n    /// Name more of them after it: `{name}Handlers {{ hook: Some(..), ..{name}Handlers::new(..) }}`.\n    pub fn new({params}) -> {name}Handlers {{\n        {name}Handlers {{ {inits} }}\n    }}\n}}\n\n",
+                    s = if required.len() == 1 { "" } else { "s" },
+                    names = required
+                        .iter()
+                        .map(|param| format!("`{}`", param.split(':').next().unwrap_or_default()))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    params = required.join(", "),
+                    inits = required_inits
+                        .iter()
+                        .chain(&starts)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                ),
+            )
+        };
         let handlers_name = format!("{name}Handlers");
         let mut ids = fill(
             r#"#[derive(Debug)]
@@ -1543,11 +1593,11 @@ impl @Ids@ {
         );
         ids.push('\n');
         let text = fill(
-            r#"@Doc@pub struct @Handlers@ {
+            r#"@Doc@@Derive@pub struct @Handlers@ {
 @Declared@
 }
 
-impl @Handlers@ {
+@Start@impl @Handlers@ {
     /// Makes the object the library calls these handlers through. The library calls them from its turn, never inside a call of yours.
     ///
     /// # Errors
@@ -1570,7 +1620,7 @@ impl @Handlers@ {
 }
 
 /// An object that implements the interface `@Schema@`.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct @Name@ {
     object: go::client::Object,
 }
@@ -1622,6 +1672,8 @@ impl go::typed::FromVal<Objects> for @Name@ {
                 ),
                 ("Name", &name),
                 ("NameLit", &format!("{name:?}")),
+                ("Derive", &derive),
+                ("Start", &start),
                 ("Handlers", &handlers_name),
                 ("Ids", &ids_name),
                 ("Declared", &handlers.join("\n")),

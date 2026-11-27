@@ -250,21 +250,19 @@ for device in gnoblin.input.devices:
 ```
 
 ```rust
-use std::rc::Rc;
-
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 use gnoblin_core::objects::{BindingOptions, ModelRoot};
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let model = ModelRoot::get(&g.objects()?)?;
     let input = model.input()?;
     for device in input.devices()? {
         if !device.name()?.contains("Macro") {
             continue;
         }
-        let shell = Rc::clone(&model);
+        let shell = model.clone();
         device.bind(
             "F13",
             Some(move |_| {

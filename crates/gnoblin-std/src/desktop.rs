@@ -175,6 +175,15 @@ pub trait GnoblinStdExt {
     ///
     /// The installed library refuses this SDK's ABI, or cannot attach to the tree.
     fn std(&self) -> Result<Std>;
+    /// The typed classes of `gnoblin.std` (see [`Std::objects`]): the handle the classes of the library are made from, which a shell that
+    /// also has the core's (`g.objects()?`) can reach as `g.objects()?.std()?` too.
+    ///
+    /// # Errors
+    ///
+    /// As for [`std`](GnoblinStdExt::std), or the library does not serve the classes.
+    fn std_objects(&self) -> Result<classes::Objects> {
+        self.std()?.objects()
+    }
 
     /// Every window of the compositor (see [`Std::clients`]).
     ///

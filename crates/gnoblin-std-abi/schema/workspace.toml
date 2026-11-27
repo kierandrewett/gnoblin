@@ -754,7 +754,7 @@ type = "double"
 name = "y"
 type = "double"
 
-# Moves the dividers `find_split` returned. (In Rust the method is `move_split`: `set_split` is the setter of the dwindle's `split` option.)
+# Moves the dividers `find_split` returned. (On a Rust handle the method is `move_split`, because `set_split` is the setter of the dwindle's `split` option; the field of `LayoutHandlers` is `set_split`.)
 [[object.method]]
 name = "set_split"
 since = "0.2.0"

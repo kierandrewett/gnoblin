@@ -819,8 +819,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             }
             Ok(())
         })),
-        on_end: None,
-        claims: None,
+        ..Default::default()
     }
     .implement(&objects)?;
     let binding = XrDragBinding::new_with(

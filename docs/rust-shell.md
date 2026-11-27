@@ -478,7 +478,15 @@ Gnoblin keeps the settings only for the shell the stored configuration belongs t
 while another shell is installed in the configuration directory commits nothing, and the log says so.
 
 `find` takes the kind as a type. A kind the core does not list has no `Finds<ModelRoot>` impl, so asking for it is an error when the
-shell is built and not when it runs. `find` takes no function: filter the list in Rust. `examples/35-native-root` is this.
+shell is built and not when it runs. `find` takes a filter record. For a test a record cannot say, `find_matching` takes a closure that
+answers `Ok(true)` for each object to keep, as `find(kind, function)` does in TypeScript and Python:
+
+```rust
+let drafts = model.find_matching::<Client>(|window| Ok(window.title()?.contains("draft")))?;
+```
+
+The closure returns `Result<bool, Fail>`, so `?` works in it, and its first error is the error of the call. `examples/35-native-root` is
+this.
 
 ### Read the std members of the root object
 
@@ -537,6 +545,91 @@ let half = Workspace::new_with(
 - A closure property is a boxed closure in the struct: `on_tick: Some(Box::new(|x| Ok(x * 10)))`.
 - The struct is `<Class>Options`, or `<Class>CreateOptions` where the catalog already has a type of the first name.
 - `examples/38-native-options` is this.
+
+### Name the hooks of a listener
+
+An interface is a struct of handlers, one closure for each method. A method the library has a default for is an `Option`, and a struct
+with no method the shell must implement has `Default`, so name the hooks you want and leave the rest:
+
+```rust
+let listener = ClientCollectionListenerHandlers {
+    on_focus_changed: Some(Box::new(|client, focused| {
+        client.set_opacity(if focused { 1.0 } else { 0.95 })?;
+        Ok(())
+    })),
+    ..Default::default()
+}
+.implement(&objects)?;
+```
+
+A struct with a method the shell must implement has no `Default`, because a default would have to invent that closure.
+
+- `compute` of `LayoutHandlers` and `on_request` of `RequestListenerHandlers` are such methods.
+- `new` takes the required closures and starts every other hook at `None`:
+
+```rust
+let columns = LayoutHandlers {
+    set_split: Some(Box::new(|token, ratio, _cross_ratio| {
+        println!("divider {token} moved to {ratio}");
+        Ok(())
+    })),
+    ..LayoutHandlers::new(|context| Ok(place_in_columns(context)))
+}
+.implement(&objects)?;
+```
+
+A field is named as its method is in the catalog, so `set_split` is the name in TypeScript, Python and Rust. A handle spells the same
+method `move_split`, because `set_split` is the setter of the `split` property of `DwindleLayout`.
+
+### Keep a handle in a closure
+
+Every handle and service is `Clone`. A clone is the same object, held through a reference of its own, so the object lives until the last
+clone is dropped, and a closure that outlives the entry function owns a clone and needs no `Rc`:
+
+```rust
+let model = ModelRoot::get(&g.objects()?)?;
+let closer = model.clone();
+model
+    .on_client_closed(move |_client| {
+        if let Ok(clients) = closer.clients() {
+            g.log(&format!("{} windows left", clients.length().unwrap_or(0)));
+        }
+    })?
+    .keep();
+```
+
+A clone made after the object ended is a handle of an object that is gone: its calls fail as the original's do. Two clones are equal, and
+hash alike, because they hold one object.
+
+### Use `?` in a handler
+
+A handler returns `Result<_, Fail>`. `?` works on a call of the core or of the std library inside a handler:
+
+- A `CoreError` or a `gnoblin_std::Error` converts into `Fail`, with its kind as the code and its text as the message.
+- `Fail` is `gnoblin_core::Fail`, and `use gnoblin_std::prelude::*;` brings it in.
+
+```rust
+on_added: Some(Box::new(move |client, _clients| {
+    let workspaces = g.std()?.workspaces()?; // gnoblin_std::Error
+    g.class("window")?; // CoreError
+    client.set_opacity(0.95)?; // Fail
+    Ok(())
+})),
+```
+
+A handler that fails is logged as a failed listener, and the next event is delivered.
+
+### Reach the classes of both libraries
+
+`g.objects()?` is the `Objects` of the core and `g.std()?.objects()?` the `Objects` of the std library. They are two types, because a class is
+made from the library that serves it. A shell that makes classes of both takes the second from the first, or from `g`:
+
+```rust
+let core = g.objects()?;
+let std = core.std()?; // the same as g.std_objects()?
+```
+
+`core.std()` is `ObjectsStdExt`, and `g.std_objects()` is `GnoblinStdExt`; both are in `gnoblin_std::prelude`.
 
 ### Check which class an object is
 

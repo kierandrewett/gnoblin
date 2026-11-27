@@ -66,10 +66,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let context = input.primary()?;
 
     let close = GestureBindingHandlers {
-        on_begin: Box::new(|_| Ok(true)),
-        on_update: None,
         on_end: Some(Box::new(|_| Ok(()))),
-        on_cancel: None,
+        ..GestureBindingHandlers::new(|_| Ok(true))
     }
     .implement(&objects)?;
     context.bind_gesture("Swipe4Up", &close, None)?;

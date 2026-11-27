@@ -61,7 +61,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
             }
             Ok(())
         })),
-        on_secret_request: None,
+        ..Default::default()
     }
     .implement(&objects)?;
     dialogs.add_listener(&listener)?;

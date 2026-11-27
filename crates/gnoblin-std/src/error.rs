@@ -62,3 +62,11 @@ impl From<Fail> for Error {
         Error::new(ErrorKind::from_code(fail.code), fail.message)
     }
 }
+
+/// What a handler of a typed class answers the library's errors as: `?` on a std call (`g.std()?`) inside a closure that returns
+/// `Result<_, Fail>` ends the handler with the library's failure, its kind as the code and its text as the message.
+impl From<Error> for Fail {
+    fn from(error: Error) -> Fail {
+        Fail::new(error.kind().code(), error.to_string())
+    }
+}

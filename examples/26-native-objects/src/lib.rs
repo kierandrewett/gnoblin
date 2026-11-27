@@ -15,38 +15,28 @@ use gnoblin_std::prelude::*;
 
 /// Equal columns: the layout the shell implements.
 fn columns() -> LayoutHandlers {
-    LayoutHandlers {
-        compute: Box::new(|context| {
-            let area = context.area.clone();
-            let gap = context.outer_gap;
-            let count = context.children.len().max(1) as f64;
-            let width = ((area.width - 2.0 * gap) / count).floor();
-            Ok(context
-                .children
-                .into_iter()
-                .enumerate()
-                .map(|(at, node)| {
-                    let mut placement = LayoutPlacement::new(node);
-                    placement.bounds = Some(LayoutRect {
-                        x: area.x + gap + width * at as f64,
-                        y: area.y + gap,
-                        width,
-                        height: area.height - 2.0 * gap,
-                    });
-                    placement.tiled = true;
-                    placement
-                })
-                .collect())
-        }),
-        client_added: None,
-        client_removed: None,
-        area_changed: None,
-        clients_swapped: None,
-        revision: None,
-        find_split: None,
-        move_split: None,
-        reset_split: None,
-    }
+    LayoutHandlers::new(|context| {
+        let area = context.area.clone();
+        let gap = context.outer_gap;
+        let count = context.children.len().max(1) as f64;
+        let width = ((area.width - 2.0 * gap) / count).floor();
+        Ok(context
+            .children
+            .into_iter()
+            .enumerate()
+            .map(|(at, node)| {
+                let mut placement = LayoutPlacement::new(node);
+                placement.bounds = Some(LayoutRect {
+                    x: area.x + gap + width * at as f64,
+                    y: area.y + gap,
+                    width,
+                    height: area.height - 2.0 * gap,
+                });
+                placement.tiled = true;
+                placement
+            })
+            .collect())
+    })
 }
 
 #[gnoblin::main]

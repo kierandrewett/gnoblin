@@ -105,19 +105,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             }
             Ok(())
         })),
-        on_removed: None,
-        on_title_changed: None,
-        on_app_id_changed: None,
-        on_decoration_changed: None,
-        on_pointer_enter: None,
-        on_pointer_motion: None,
-        on_pointer_leave: None,
-        on_pointer_press: None,
-        on_pointer_release: None,
-        on_focus_changed: None,
-        on_geometry_changed: None,
-        on_closed: None,
-        on_ready: None,
+        ..Default::default()
     }
     .implement(&core)?;
     clients.add_listener(&listener)?;

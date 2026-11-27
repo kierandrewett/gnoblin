@@ -162,7 +162,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             entries.insert(entries.len() - 1, copy);
             Ok(entries)
         })),
-        show: None,
+        ..Default::default()
     }
     .implement(&objects)?;
     menus.set_provider(&provider)?;
@@ -258,7 +258,6 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let core = Rc::new(g.objects()?);
     let made = objects.clone();
     let provider = MenuProviderHandlers {
-        items: None,
         show: Some(Box::new(move |id: String, x: f64, y: f64| {
             let query = ClientQuery { id: Some(id), ..Default::default() };
             let Some(window) = ModelRoot::get(&core)?.find_clients(Some(&query))?.into_iter().next() else {
@@ -294,6 +293,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             std::mem::forget(Rc::clone(&card));
             Ok(())
         })),
+        ..Default::default()
     }
     .implement(&objects)?;
     let menus = WindowMenus::get(&objects)?;

@@ -52,7 +52,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
             notifier.spawn(&["notify-send".to_owned(), "Welcome back".to_owned()], None)?;
             Ok(())
         })),
-        on_closed: None,
+        ..Default::default()
     }
     .implement(&objects)?;
     idle.watch(300_000.0, Some(&listener))?;

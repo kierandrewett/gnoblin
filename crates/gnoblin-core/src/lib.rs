@@ -83,6 +83,7 @@ pub use events::{NodeEvent, WindowRequest};
 pub use generated::*;
 pub use gnoblin::{CoreStats, Gnoblin, LogLevel, ModuleInfo, Poster, ScopedSubscription, Subscription};
 pub use gnoblin_macros::main;
+pub use gnoblin_object::Fail;
 pub use input::{ChordEvent, ChordState, DragPhase, GestureEvent, GestureKind, GrabScope, PointerButton, PointerDrag};
 pub use owned::Value;
 pub use process::{Command, Process, ProcessExit, Signal, Stream};

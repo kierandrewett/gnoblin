@@ -269,7 +269,11 @@ mod tests {
         let rust = text("rust-objects/std_api.rs");
         assert!(rust.contains("pub struct DwindleLayout"));
         assert!(rust.contains("pub struct LayoutHandlers"));
+        // The handle keeps clear of the setter of the dwindle's `split`; the handlers struct, which has no setters, names the method as the
+        // other languages do.
         assert!(rust.contains("pub fn move_split"));
+        assert!(rust.contains("pub set_split: Option<"));
+        assert!(!rust.contains("pub move_split: Option<"));
     }
 
     #[test]

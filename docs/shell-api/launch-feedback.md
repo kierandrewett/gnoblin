@@ -59,7 +59,6 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let context = input.primary()?;
     let (started, timed_out, opener) = (Rc::clone(&model), Rc::clone(&model), Rc::clone(&model));
     let listener = LaunchListenerHandlers {
-        on_changed: None,
         on_started: Some(Box::new(move |_launch| {
             started.spawn(&notify_argv("The terminal is open"), None)?;
             Ok(())
@@ -68,7 +67,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
             timed_out.spawn(&notify_argv("The terminal did not open"), None)?;
             Ok(())
         })),
-        on_closed: None,
+        ..Default::default()
     }
     .implement(&objects)?;
     let options = LaunchOptions {

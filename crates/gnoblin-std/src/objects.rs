@@ -86,3 +86,21 @@ pub(crate) fn std_objects(core: gnoblin_object::client::Api) -> gnoblin_object::
     let g = gnoblin_core::__private::gnoblin_for(core.ctx()).map_err(|error| fail(error.into()))?;
     Std::open(&g).map_err(fail)?.objects().map_err(fail)
 }
+
+/// The typed classes of `gnoblin.std` from the core's: a shell that has `g.objects()?` and makes classes of both libraries reaches the
+/// second from the first, and keeps one binding for the two (`let core = g.objects()?; let std = core.std()?;`). `use
+/// gnoblin_std::prelude::*` brings it in.
+pub trait ObjectsStdExt {
+    /// The typed classes of `gnoblin.std` for the generation these core classes are for: what [`Std::objects`] gives for it.
+    ///
+    /// # Errors
+    ///
+    /// The installed std library is not usable by this SDK, or the generation has retired.
+    fn std(&self) -> gnoblin_object::Res<Objects>;
+}
+
+impl ObjectsStdExt for gnoblin_core::objects::Objects {
+    fn std(&self) -> gnoblin_object::Res<Objects> {
+        std_objects(self.api())
+    }
+}

@@ -9,11 +9,13 @@
 use std::cell::RefCell;
 
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinObjectApi};
-use gnoblin_object::Fail;
 use gnoblin_object::client::Api;
 
 use crate::error::{CoreError, ErrorKind, Result};
 use crate::gnoblin::Gnoblin;
+
+/// The failure a closure of a typed class answers with (`Result<_, Fail>`). `?` on a call of the core converts into it.
+pub use gnoblin_object::Fail;
 
 #[allow(dead_code, missing_docs, unused_variables, clippy::all)]
 mod generated_api {
@@ -30,6 +32,14 @@ thread_local! {
 impl From<Fail> for CoreError {
     fn from(fail: Fail) -> CoreError {
         CoreError::new(ErrorKind::from_code(fail.code), fail.message)
+    }
+}
+
+/// What a handler of a typed class answers the core's errors as: `?` on a call of the core (`g.objects()?`) inside a closure that
+/// returns `Result<_, Fail>` ends the handler with the core's failure, its kind as the code and its text as the message.
+impl From<CoreError> for Fail {
+    fn from(error: CoreError) -> Fail {
+        Fail::new(error.kind().code(), error.to_string())
     }
 }
 
@@ -72,6 +82,7 @@ impl Gnoblin {
 /// The installed core is not usable by this SDK, or the generation has retired.
 #[doc(hidden)]
 pub fn for_generation(ctx: GnoblinCtx) -> gnoblin_object::Res<Objects> {
-    let fail = |error: CoreError| Fail::new(error.kind().code(), error.to_string());
-    crate::private::gnoblin_for(ctx).and_then(|g| g.objects()).map_err(fail)
+    crate::private::gnoblin_for(ctx)
+        .and_then(|g| g.objects())
+        .map_err(Fail::from)
 }

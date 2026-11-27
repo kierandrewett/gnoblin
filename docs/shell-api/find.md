@@ -64,7 +64,8 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 `find(kind, filter?)` returns the live objects of one kind in list order:
 
 - TypeScript and Python: `gnoblin.find`.
-- Rust: the typed calls `find_clients` and `find_outputs`, as the examples show.
+- Rust: the typed calls `find_clients` and `find_outputs`, as the examples show, and the generic `find::<Client>(filter)` and
+  `find_matching::<Client>(function)` that take the kind as a type.
 
 The objects are the same ones the collections hold, so a `Client` from `find` is the same `Client` you get from the
 `clients` collection.
@@ -137,7 +138,8 @@ the fields that work.
 ### Filter with a function
 
 A function receives each object and keeps it when the function returns a truthy value. Use it for anything but equality,
-such as a title that contains a word:
+such as a title that contains a word. In Rust it is `find_matching::<Client>`, and the closure answers `Ok(true)` to keep
+an object:
 
 ::: tabs
 
@@ -152,13 +154,27 @@ gnoblin = Gnoblin.get()
 drafts = gnoblin.find("Window", lambda window: "draft" in window.title)
 ```
 
-```rust skip="find_clients takes a typed ClientQuery, not a closure; a closure filter has no Rust equivalent in core.md"
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
+use gnoblin_core::objects::{Client, ModelRoot};
 
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let model = ModelRoot::get(&g.objects()?)?;
+    let drafts = model.find_matching::<Client>(|window| Ok(window.title()?.contains("draft")))?;
+    Ok(())
+}
 ```
 
 :::
 
-An error inside the function is an error of the `find` call.
+An error inside the function is an error of the `find` call. In Rust:
+
+- The closure returns `Result<bool, Fail>`, so `?` works inside it.
+- The first error ends `find_matching` and is its error.
+- The closure sees each object of the kind once, in list order.
+- A `ClientQuery` with `find_clients` is still the way to match field values.
 
 ## `where` on a collection
 

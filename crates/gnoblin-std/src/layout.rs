@@ -472,7 +472,7 @@ fn handlers(std: &Std, layout: Box<dyn Layout>, removal: bool) -> classes::Layou
             Ok(found.map(|split| split.to_class()).into_iter().collect())
         })
     };
-    let move_split = {
+    let set_split = {
         let layout = Rc::clone(&shared);
         Box::new(move |token: u64, ratio: f64, cross: Option<f64>| {
             guarded(|| layout.borrow_mut().set_split(token, ratio, cross))
@@ -490,7 +490,7 @@ fn handlers(std: &Std, layout: Box<dyn Layout>, removal: bool) -> classes::Layou
         clients_swapped: Some(clients_swapped),
         revision: Some(revision),
         find_split: Some(find_split),
-        move_split: Some(move_split),
+        set_split: Some(set_split),
         reset_split: Some(reset_split),
     }
 }

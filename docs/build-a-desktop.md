@@ -122,8 +122,6 @@ gnoblin.input.primary.bind("Super+Return", terminal)
 ```
 
 ```rust
-use std::rc::Rc;
-
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 use gnoblin_core::objects::{ModelRoot, Rect};
@@ -157,10 +155,10 @@ fn retile(model: &ModelRoot) -> gnoblin::Result<()> {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let model = ModelRoot::get(&g.objects()?)?;
     retile(&model)?;
 
-    let created = Rc::clone(&model);
+    let created = model.clone();
     model
         .on_client_created(move |_client, _clients| {
             if let Err(error) = retile(&created) {
@@ -168,7 +166,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
             }
         })?
         .keep();
-    let closed = Rc::clone(&model);
+    let closed = model.clone();
     model
         .on_client_closed(move |_client| {
             if let Err(error) = retile(&closed) {
@@ -414,21 +412,19 @@ seat.bind("Super+Return", terminal)
 ```
 
 ```rust
-use std::rc::Rc;
-
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let model = ModelRoot::get(&g.objects()?)?;
     model.spawn(&["waybar".to_owned()], None)?;
     model.spawn(&["mako".to_owned()], None)?;
 
     let seat = model.input()?.primary()?;
     for (trigger, program) in [("Super+d", "fuzzel"), ("Super+Return", "foot")] {
-        let shell = Rc::clone(&model);
+        let shell = model.clone();
         seat.bind(
             trigger,
             Some(move |_| {

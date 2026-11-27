@@ -83,6 +83,7 @@ pub use desktop::{GnoblinStdExt, OutputPolicy, PerOutput, WorkspacePolicy};
 pub use emitter::{Emitter, Listener};
 pub use error::{Error, ErrorKind, Result};
 pub use gesture::{GestureBinding, GestureDirection, GestureInfo, GestureStage, PINCH_COMMIT, SWIPE_COMMIT};
+pub use gnoblin_core::Fail;
 pub use layout::{FloatPlacement, FloatingLayout, IntoLayout, Layout, LayoutContext, Placement, inset_rect};
 pub use layouts::{
     ArcLayout, Carousel3dLayout, Columns, DwindleLayout, DwindleOptions, ForceSplit, GridFill, GridLayout, KioskLayout,
@@ -114,11 +115,12 @@ pub fn installed_abi() -> (u32, u32, u32) {
 /// The names a desktop shell wants in scope: `use gnoblin_std::prelude::*;`.
 ///
 /// It re-exports the core SDK under the name `gnoblin`, so `#[gnoblin::main]` works with nothing else imported, and the core's
-/// [`Gnoblin`](gnoblin_core::Gnoblin), [`Window`](gnoblin_core::Window), [`Rect`](gnoblin_core::Rect) and
-/// [`NodeId`](gnoblin_core::NodeId). The core's `Client` alias of `Window` is not re-exported: the prelude's [`Client`] is the std one.
+/// [`Gnoblin`](gnoblin_core::Gnoblin), [`Window`](gnoblin_core::Window), [`Rect`](gnoblin_core::Rect),
+/// [`NodeId`](gnoblin_core::NodeId) and [`Fail`](gnoblin_core::Fail), the error a handler of a typed class returns (`?` on a call of
+/// either library converts into it). The core's `Client` alias of `Window` is not re-exported: the prelude's [`Client`] is the std one.
 pub mod prelude {
     pub use gnoblin_core as gnoblin;
-    pub use gnoblin_core::{Gnoblin, NodeId, Rect, Window};
+    pub use gnoblin_core::{Fail, Gnoblin, NodeId, Rect, Window};
 
     pub use crate::{
         ArcLayout, AsClient, Carousel3dLayout, Client, ClientListener, ClientMoveBinding, ClientResizeBinding,
@@ -138,6 +140,7 @@ pub mod prelude {
     // `outputs.profiles()?`, `context.active_display()?`, `clients.style()?`, `client.workspace()?`, `output.show(..)`. A shell that
     // does not use this prelude has none of them.
     pub use crate::objects::{
-        ClientCollectionStdExt, ClientStdExt, InputContextStdExt, ModelRootStdExt, OutputCollectionStdExt, OutputStdExt,
+        ClientCollectionStdExt, ClientStdExt, InputContextStdExt, ModelRootStdExt, ObjectsStdExt,
+        OutputCollectionStdExt, OutputStdExt,
     };
 }

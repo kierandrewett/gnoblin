@@ -694,26 +694,6 @@ fn table_clients(std: &Std, origin: &Origin) -> Result<GnoblinStdCollection> {
 
 // ---- clients ------------------------------------------------------------------------------------------------------------------
 
-/// The handlers of the core's `client_collection_listener`, none set.
-fn no_handlers() -> model::ClientCollectionListenerHandlers {
-    model::ClientCollectionListenerHandlers {
-        on_added: None,
-        on_removed: None,
-        on_title_changed: None,
-        on_app_id_changed: None,
-        on_decoration_changed: None,
-        on_pointer_enter: None,
-        on_pointer_motion: None,
-        on_pointer_leave: None,
-        on_pointer_press: None,
-        on_pointer_release: None,
-        on_focus_changed: None,
-        on_geometry_changed: None,
-        on_closed: None,
-        on_ready: None,
-    }
-}
-
 /// Who is in a collection of clients as far as the events of a client are concerned: the members now, and the ones that just left
 /// (the core tells a client's own listeners first, so a window that closed may have left the collection already).
 #[derive(Default)]
@@ -740,7 +720,7 @@ fn listen_clients(
 ) -> Result<Subscription> {
     let objects = std.gnoblin().objects()?;
     let root = model::ModelRoot::get(&objects)?.clients()?;
-    let mut handlers = no_handlers();
+    let mut handlers = model::ClientCollectionListenerHandlers::default();
     install(&mut handlers, filter, std.clone());
     let listener = handlers.implement(&objects)?;
     root.add_listener(&listener)?;

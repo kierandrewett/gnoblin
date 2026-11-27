@@ -50,8 +50,6 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.std()?.objects()?;
 
     let widget = WidgetHandlers {
-        refresh: None,
-        arrange: None,
         paint: Some(Box::new(move || {
             Ok(vec![
                 PaintOp {
@@ -73,10 +71,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
                 },
             ])
         })),
-        natural_width: None,
-        natural_height: None,
-        on_pointer: None,
-        on_key: None,
+        ..Default::default()
     }
     .implement(&objects)?;
 
