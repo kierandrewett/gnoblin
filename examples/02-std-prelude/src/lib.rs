@@ -2,7 +2,7 @@
 //!
 //! What it does, in twenty lines:
 //!
-//! - one floating workspace for every output (`workspace_per_output`), made now for the outputs there are and again for each output
+//! - one floating workspace for every output (the desk's `per_output` workspace policy), made now for the outputs there are and again for each output
 //!   that appears; the library places each window the moment it joins a workspace, so no two windows open on the same spot;
 //! - a window that opens joins the workspace of the output that has the pointer (the library's own rule, which this shell does not
 //!   repeat: it only says so in the log);
@@ -16,25 +16,35 @@
 //!
 //! Build it with `cargo build -p gnoblin-example-std-prelude` and run it with `gnoblin ./target/debug/libstd_prelude.so`.
 
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{Desks, WorkspacePolicy, WorkspacePolicyMode};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?;
-    std.workspace_per_output()?;
-
-    std.clients()?.watch(|client| {
-        let workspace = client
-            .workspace()
-            .ok()
-            .flatten()
-            .and_then(|workspace| workspace.id().ok())
-            .unwrap_or_else(|| "none".to_owned());
-        client.window().gnoblin().log(&format!(
-            "client {} is on workspace {workspace}",
-            client.window().id().0
-        ));
+    let objects = g.std()?.objects()?;
+    Desks::get(&objects)?.set_workspaces(&WorkspacePolicy {
+        mode: WorkspacePolicyMode::PerOutput,
+        ..WorkspacePolicy::default()
     })?;
+
+    let model = ModelRoot::get(&g.objects()?)?;
+    let shell = g.clone();
+    model
+        .clients()?
+        .on_added(move |client, _| {
+            let workspace = client
+                .workspace()
+                .ok()
+                .flatten()
+                .and_then(|workspace| workspace.id().ok())
+                .unwrap_or_else(|| "none".to_owned());
+            shell.log(&format!(
+                "client {} is on workspace {workspace}",
+                client.id().unwrap_or_default()
+            ));
+        })?
+        .keep();
 
     g.bind("<Super>Return", move || {
         if let Err(error) = g.spawn("foot") {
@@ -45,7 +55,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     for (chord, step) in [("<Super>Right", 1), ("<Super>Left", -1)] {
         g.bind(chord, move || {
             let walked = (|| -> gnoblin_std::Result<()> {
-                let focused = g.clients()?.focused()?;
+                let focused = ModelRoot::get(&g.objects()?)?.clients()?.focused()?;
                 if let Some(workspace) = focused.and_then(|client| client.workspace().ok().flatten()) {
                     workspace.walk(step)?;
                 }

@@ -31,6 +31,8 @@
 use std::collections::BTreeSet;
 use std::fs;
 
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_std::objects::{Desks, WorkspacePolicy, WorkspacePolicyMode};
 use gnoblin_std::prelude::*;
 
 /// The `libgnoblin*` files and the shell's own file this process maps, by path, read from `/proc/self/maps`.
@@ -61,20 +63,27 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         g.log(&format!("linked: maps {path}"));
     }
 
-    let std = g.std()?;
-    std.workspace_per_output()?;
-    std.clients()?.watch(|client| {
-        let workspace = client
-            .workspace()
-            .ok()
-            .flatten()
-            .and_then(|workspace| workspace.id().ok())
-            .unwrap_or_else(|| "none".to_owned());
-        client.window().gnoblin().log(&format!(
-            "linked: client {} is on workspace {workspace}",
-            client.window().id().0
-        ));
+    let objects = g.std()?.objects()?;
+    Desks::get(&objects)?.set_workspaces(&WorkspacePolicy {
+        mode: WorkspacePolicyMode::PerOutput,
+        ..WorkspacePolicy::default()
     })?;
+    let shell = g.clone();
+    ModelRoot::get(&g.objects()?)?
+        .clients()?
+        .on_added(move |client, _| {
+            let workspace = client
+                .workspace()
+                .ok()
+                .flatten()
+                .and_then(|workspace| workspace.id().ok())
+                .unwrap_or_else(|| "none".to_owned());
+            shell.log(&format!(
+                "linked: client {} is on workspace {workspace}",
+                client.id().unwrap_or_default()
+            ));
+        })?
+        .keep();
 
     g.log("linked: running");
     Ok(())
