@@ -498,7 +498,6 @@ fn a_listener_on_one_client_hears_the_requests_of_that_client_before_the_collect
 }
 
 #[test]
-#[ignore = "vrnw: needs the throw of a request listener reported in the frame's diagnostics"]
 fn a_listener_that_throws_is_reported_and_the_built_in_policy_still_runs() {
     // New: a throw is the listener's failure, not the request's.
     let mut rig = world(1);

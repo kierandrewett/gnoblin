@@ -306,7 +306,7 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
             Err(fail) => {
                 std.st.borrow_mut().compute_failed = Some(fail.message.clone());
                 g.log_at(
-                    LogLevel::CoreError,
+                    crate::object::failure_level(fail.code),
                     &format!(
                         "gnoblin-std: workspace {workspace}: the layout's compute failed: {}",
                         fail.message

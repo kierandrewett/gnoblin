@@ -125,6 +125,8 @@ fn run(cx: &Cx<'_>, id: u64) {
     let site = format!("the binding of `{property}`");
     let written = computed.and_then(|value| {
         let value = match (shape, value) {
+            // A whole number is a number: a script's `c.x + 1` crosses as an integer.
+            (BindShape::Double, Val::Int(number)) => Val::Double(number as f64),
             (BindShape::Double, value @ Val::Double(_))
             | (BindShape::Bool, value @ Val::Bool(_))
             | (BindShape::Text, value @ Val::Text(_)) => value,
@@ -158,7 +160,7 @@ fn run(cx: &Cx<'_>, id: u64) {
         binding.reads = reads;
         if failure != binding.failure {
             if let Some(message) = &failure {
-                cx.log(abi::LOG_WARN, &format!("{site}: {message}"));
+                cx.log(abi::LOG_NOTICE, &format!("{site}: {message}"));
             }
             binding.failure = failure;
         }
@@ -198,7 +200,10 @@ pub(super) fn turn(cx: &Cx<'_>) {
                             "still changing after {MAX_PASSES} passes in one turn; a binding that writes what another reads, which writes what it reads, never settles"
                         );
                         if binding.failure.as_deref() != Some(&message) {
-                            cx.log(abi::LOG_WARN, &format!("the binding of `{}`: {message}", binding.property));
+                            cx.log(
+                                abi::LOG_NOTICE,
+                                &format!("the binding of `{}`: {message}", binding.property),
+                            );
                             binding.failure = Some(message);
                         }
                         // Left as it is: what it reads now is what it has seen.

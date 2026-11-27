@@ -233,7 +233,7 @@ pub unsafe fn read_args(args: *const GnoblinValue, n: usize, adopting: bool) -> 
 /// # Safety
 ///
 /// `ptr` must be null (with `len` zero) or point at `len` readable bytes.
-unsafe fn text_at(ptr: *const c_void, len: usize) -> Res<String> {
+pub(crate) unsafe fn text_at(ptr: *const c_void, len: usize) -> Res<String> {
     if len == 0 {
         return Ok(String::new());
     }

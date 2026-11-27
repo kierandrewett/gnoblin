@@ -190,7 +190,7 @@ pub(super) fn call(cx: &Cx<'_>, hook: &InputHook, member: &str, event: Val) -> H
         Ok(None) => HookAnswer::Absent,
         Err(fail) => {
             cx.log(
-                abi::LOG_WARN,
+                fail.callback_level(),
                 &format!("binding \"{}\".{member} threw: {}", hook.id, fail.message),
             );
             HookAnswer::Threw

@@ -740,6 +740,11 @@ impl JsRole {
         self.shell.call_script(f)
     }
 
+    /// Keeps the sentences the core and the libraries have for the shell's diagnostics: see [`JsShell::tell`].
+    pub fn tell(&self, notices: Vec<String>) {
+        self.shell.tell(notices);
+    }
+
     /// `stack` rewritten to the files and positions of the running generation's sources: see [`JsShell::remap_stack`].
     pub fn remap_stack(&self, stack: &str) -> String {
         self.shell.remap_stack(stack)

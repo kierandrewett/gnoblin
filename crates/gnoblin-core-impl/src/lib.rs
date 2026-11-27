@@ -46,6 +46,7 @@ mod listen;
 mod memory;
 mod model;
 mod native_shell;
+mod notices;
 mod object;
 mod procs;
 pub mod providers;

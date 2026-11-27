@@ -8,7 +8,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::{LogLevel, Rect};
+use gnoblin_core::Rect;
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::{Cx, ShellImpl};
 use gnoblin_object::{Fail, MemberId, Res, Val};
@@ -91,7 +91,7 @@ impl ObjectLayout {
             && let Ok(g) = gnoblin_core::private::gnoblin_for(self.ctx)
         {
             g.log_at(
-                LogLevel::Warn,
+                crate::object::failure_level(fail.code),
                 &format!("gnoblin-std: a layout's {what} failed: {}", fail.message),
             );
         }

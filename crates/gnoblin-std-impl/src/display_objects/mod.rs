@@ -98,9 +98,10 @@ pub(crate) fn announce(std: &Std, notice: &Notice) {
             }
         }
         abi::STD_EVENT_NOTE => {
-            // A shell of the TypeScript library hears the sentence through the table; one of the classes hears it here and in the log.
+            // The sentence is a notice for the shell's diagnostics whatever the shell uses; a shell that holds the display manager
+            // hears it as `noted` too.
+            std.g().log_at(LogLevel::Notice, &notice.text);
             if let Some(manager) = manager_of(ctx) {
-                std.g().log_at(LogLevel::Warn, &notice.text);
                 let fields = vec![Val::Text(notice.text.clone())];
                 let _ = with_lib(|lib| lib.with_cx(ctx, manager, |cx| cx.emit("noted", fields)));
             }

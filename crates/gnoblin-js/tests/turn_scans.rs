@@ -208,6 +208,9 @@ fn a_flag_a_failed_transition_staged_is_read_again_once_the_staging_is_gone() {
     assert!(message.contains("compute failed"), "{message}");
     assert_eq!(computes(&mut rig), before + 1, "the failed compute was the one attempt");
     assert_ne!(rig.comp.flag(4, "maximised"), Some(true), "nothing staged was sent");
+    // The layout's failure is in the diagnostics (once per site), a frame after the pass that failed.
+    let said = rig.settle();
+    assert!(said.iter().any(|line| line.contains("boom")), "{said:?}");
     // A title change and the frames after it: the pass looks at the window again and computes the workspace as it is.
     rig.comp.external_set(3, "title", text("renamed"));
     settle(&mut rig);

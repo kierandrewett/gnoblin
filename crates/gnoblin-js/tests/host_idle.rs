@@ -521,7 +521,6 @@ fn a_handler_that_throws_is_reported_once_and_the_next_watch_still_runs() {
 }
 
 #[test]
-#[ignore = "vrnw: needs a throwing watch handler reported once per site (the core logs every throw)"]
 fn a_handler_that_throws_is_reported_once_not_on_every_throw() {
     let mut rig = rig("gnoblin.idle.watch(100, { onIdle: () => { throw new Error('first broke'); } });");
     rig.hear(200, 0);

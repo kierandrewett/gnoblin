@@ -484,12 +484,71 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 
 ## Handler errors
 
-A listener, a key handler, an event handler or a timer that throws is reported once, with the file, line and column of the
-throw in your `.ts` source. The shell keeps the handler attached and goes on to the next one.
+A listener, a key handler, an event handler or a timer that throws is reported once per site, with the file, line and column of
+the throw in your `.ts` source. The shell keeps the handler attached and goes on to the next one.
 
 A call that runs past its time budget is interrupted, and the shell stages your config again from the files. After several
 interruptions in a short time it stops doing that until a cool-down has passed or you reload on purpose. The compositor
 keeps running throughout.
+
+### Where a failure is reported
+
+A failure of a handler, and the sentences the libraries have for you, are **notices**: warnings that say what failed or what was
+not applied. The core says a notice once per site, and the shell keeps it in its diagnostics, which it writes to the log as a
+warning.
+
+- A site is the place a handler threw, so a handler that fails on every event is reported on the first and not again.
+- A different message from the same place is not a new site.
+- A failure that carries no stack is a site of its own text.
+
+The handler here throws on every press:
+
+::: tabs
+
+```typescript
+import { Gnoblin } from "gnoblin-core/generated/objects";
+
+const gnoblin = Gnoblin.get();
+
+gnoblin.input.primary.bind("Super+Shift+q", () => {
+    throw new Error("not wired up yet");
+});
+```
+
+```python
+from gnoblin.objects.model import BindingEvent, Gnoblin
+
+gnoblin = Gnoblin.get()
+
+
+def broken(event: BindingEvent) -> None:
+    raise RuntimeError("not wired up yet")
+
+
+gnoblin.input.primary.bind("Super+Shift+q", broken)
+```
+
+```rust
+use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::{self as gnoblin, Fail, Gnoblin};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    let context = ModelRoot::get(&g.objects()?)?.input()?.primary()?;
+    context.bind("Super+Shift+q", Some(move |_event| Err(Fail::err("not wired up yet"))))?;
+    Ok(())
+}
+```
+
+:::
+
+Read the log with `gnoblinctl log --follow`. A TypeScript shell reports the first press as one warning that names the handler and
+carries the stack in your `.ts` source, and the later presses add nothing.
+
+A TypeScript shell also says what a library did not apply, once per reload, in the same place: `not applied: style.cornerRadius: ...`
+for a style, `not applied: OutputProfile "BOE/Panel/SN42" vrr ...` for a profile, and a compositor's refusal of a profile's request as
+`outputs.profiles.<connector>.<key>: <reason>`. A shell in another language does not take the notices, so the core writes the first
+of each site to its own log as a warning.
 
 ### Time budgets
 

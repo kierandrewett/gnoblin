@@ -117,7 +117,7 @@ fn send(cx: &Cx<'_>, state: &OutputNode, text: String, notice: Option<String>, t
     if let Some(notice) = notice {
         let fresh = with_world(cx, |world| world.noticed.insert(notice.clone()))?;
         if fresh {
-            cx.log(abi::LOG_WARN, &notice);
+            cx.log(abi::LOG_NOTICE, &notice);
         }
     }
     let token = session::with(|session| {

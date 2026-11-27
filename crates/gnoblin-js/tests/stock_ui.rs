@@ -513,7 +513,6 @@ fn a_script_that_replaces_items_changes_the_menu_and_one_that_replaces_show_draw
 }
 
 #[test]
-#[ignore = "vrnw: needs the throw of a callback of the generated library reported in the frame's diagnostics (a menu entry that throws)"]
 fn a_menu_entry_that_throws_is_reported_and_the_menu_is_already_closed() {
     let mut rig = world(
         1,
@@ -1331,7 +1330,6 @@ fn declared(rig: &Rig) -> bool {
 }
 
 #[test]
-#[ignore = "vrnw: needs the error of an unknown titlebar action (must name a titlebar action) reported in the frame's diagnostics"]
 fn the_titlebar_does_what_the_seat_says_a_double_a_middle_and_a_right_click_do() {
     let mut rig = world(1, DECORATED);
     let bar = titlebar(&rig, 3);

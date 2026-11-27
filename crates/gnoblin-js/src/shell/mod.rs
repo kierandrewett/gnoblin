@@ -219,9 +219,9 @@ pub struct JsShell {
     /// How many times a call ran past its wall-clock or memory budget in this generation. A cell because a call the libraries make
     /// into the script ([`call_script`](Self::call_script)) counts here too, and it runs on a shared shell.
     strikes: Cell<u32>,
-    /// The reports of the calls [`call_script`](Self::call_script) stopped, which no frame was running to report: the next frame
-    /// returns them with its diagnostics.
-    stopped: RefCell<Vec<String>>,
+    /// What the libraries told the shell between frames (`tell`) and the calls [`call_script`](Self::call_script) stopped, which no
+    /// frame was running to report: the next frame returns them with its diagnostics.
+    told: RefCell<Vec<String>>,
     /// How many queued listener calls ran (`dispatches`).
     dispatches: u64,
     /// The shell's connection for slots, and the observation of the compositor's own dialogs on it.
@@ -280,7 +280,7 @@ impl JsShell {
             tx: TxGate::new(),
             reported: HashMap::new(),
             strikes: Cell::new(0),
-            stopped: RefCell::new(Vec::new()),
+            told: RefCell::new(Vec::new()),
             dispatches: 0,
             dialogs: JsDialogs::new(),
             idle: JsIdle::new(),
@@ -412,16 +412,27 @@ impl JsShell {
         if let Err(error) = &outcome
             && self.count_strike(error)
         {
-            self.stopped
+            self.told
                 .borrow_mut()
                 .push(format!("a listener call was stopped: {error}"));
         }
         outcome
     }
 
-    /// The reports of the calls [`call_script`](Self::call_script) stopped since the last frame, oldest first.
-    pub(super) fn take_stopped_calls(&self) -> Vec<String> {
-        std::mem::take(&mut *self.stopped.borrow_mut())
+    /// Keeps `notices` for the next frame's diagnostics: the sentences the core and the libraries have for the shell (a listener of the
+    /// shell's threw, a style was not applied), as the core says them once per site (`take_notices`). The runtime that runs the core's
+    /// dispatch hands them over after each turn.
+    pub fn tell(&self, notices: Vec<String>) {
+        if notices.is_empty() {
+            return;
+        }
+        self.note_script_ran();
+        self.told.borrow_mut().extend(notices);
+    }
+
+    /// What the libraries told the shell and the calls [`call_script`](Self::call_script) stopped since the last frame, oldest first.
+    pub(super) fn take_told(&self) -> Vec<String> {
+        std::mem::take(&mut *self.told.borrow_mut())
     }
 
     /// `stack` with every frame of a module the running generation loaded rewritten to the file and position that wrote it (a

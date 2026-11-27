@@ -58,7 +58,7 @@ impl Replay {
                     continue;
                 }
                 if let Err(fail) = self.closure.call(0, &args) {
-                    cx.log(abi::LOG_WARN, &format!("a listener failed: {fail}"));
+                    cx.log(fail.callback_level(), &format!("a listener failed: {fail}"));
                 }
             }
         });

@@ -166,6 +166,9 @@ pub(crate) fn within_call<'js, R>(ctx: &Ctx<'js>, work: impl FnOnce() -> R) -> R
     with_enter(&CallEnter(ctx), work)
 }
 
+/// What `entered` fails with when no shell is running to enter: the call was not stopped, it never began.
+pub(crate) const NO_SHELL: &str = "a std callback ran while no JavaScript shell was running on this thread";
+
 /// Runs `f` with the way into the running generation: the turn's own (`with_enter`) when the dispatch that calls back is the
 /// runtime's, and the shell instance's when it is the host's (the host drains the core's queue after the runtime's turn).
 pub(crate) fn entered<R>(f: impl FnOnce(&dyn Enter) -> Result<R, String>) -> Result<R, String> {
@@ -173,8 +176,7 @@ pub(crate) fn entered<R>(f: impl FnOnce(&dyn Enter) -> Result<R, String>) -> Res
         // SAFETY: set by `with_enter` for the length of the dispatch that is running this callback.
         return f(unsafe { &*pointer });
     }
-    crate::instance::with_enter(f)
-        .unwrap_or_else(|| Err("a std callback ran while no JavaScript shell was running on this thread".to_owned()))
+    crate::instance::with_enter(f).unwrap_or_else(|| Err(NO_SHELL.to_owned()))
 }
 
 pub(crate) fn library() -> Result<Rc<StdLib>, String> {

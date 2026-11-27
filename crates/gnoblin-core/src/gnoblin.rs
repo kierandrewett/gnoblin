@@ -36,6 +36,9 @@ pub enum LogLevel {
     CoreError,
     /// Something is wrong but the shell carries on.
     Warn,
+    /// Something is wrong that the shell's author must read: a warning that is also a sentence for the shell's diagnostics, said once
+    /// per site of the generation.
+    Notice,
     /// Ordinary progress.
     Info,
     /// Detail for a developer.
@@ -49,6 +52,7 @@ impl LogLevel {
         match self {
             LogLevel::CoreError => abi::LOG_ERROR,
             LogLevel::Warn => abi::LOG_WARN,
+            LogLevel::Notice => abi::LOG_NOTICE,
             LogLevel::Info => abi::LOG_INFO,
             LogLevel::Debug => abi::LOG_DEBUG,
             LogLevel::Trace => abi::LOG_TRACE,

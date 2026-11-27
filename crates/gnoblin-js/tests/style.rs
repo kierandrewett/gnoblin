@@ -489,7 +489,6 @@ fn a_resolved_style_becomes_the_node_effects_and_opacity_and_is_rewritten_when_a
 }
 
 #[test]
-#[ignore = "vrnw: needs the 'not applied: style.cornerRadius ... largest of the four' notice in the shell's diagnostics"]
 fn borders_a_radius_and_a_frame_shadow_reach_the_window_node() {
     let mut rig = world("");
     js(
@@ -543,7 +542,7 @@ fn borders_a_radius_and_a_frame_shadow_reach_the_window_node() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the 'not applied: style.*' notices in the shell's diagnostics"]
+#[ignore = "vrnw: the notice is in the diagnostics; needs ComputedStyle.cornerRadius to read as a number (it reads {\"all\":12})"]
 fn what_a_limit_of_the_tree_changes_stays_in_computed_style_with_a_warning_and_a_notice() {
     let mut rig = world("");
     js(
@@ -609,7 +608,6 @@ fn a_border_the_renderer_does_not_draw_is_a_warning_from_the_compositors_skipped
 }
 
 #[test]
-#[ignore = "vrnw: needs the 'a window carries at most 16 effects' notice in the shell's diagnostics"]
 fn a_style_that_makes_more_than_sixteen_effects_is_reported_and_the_node_keeps_what_it_had() {
     let mut rig = world("");
     js(&mut rig, "gnoblin.clients.style.shadows = [{ blur: 1 }]; return 'ok';");
@@ -775,7 +773,6 @@ fn a_shader_filter_with_a_bad_source_or_numbers_is_refused_with_its_path_and_the
 }
 
 #[test]
-#[ignore = "vrnw: needs the 'not applied: style.filter: a ShaderFilter is not drawn' notice in the shell's diagnostics"]
 fn with_the_compositor_refusing_shaders_a_shader_filter_is_not_written_and_the_style_says_why_once() {
     for seat in [None, Some(false)] {
         let mut rig = world_with_seat("", seat);

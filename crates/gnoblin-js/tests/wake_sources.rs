@@ -389,14 +389,14 @@ const WINDOWS: [u64; 3] = [3, 4, 5];
 /// getters that hand over a library object, so each read makes a script object that is dropped as soon as the read ends.
 const READERS: &str = "class Reads extends Layout {\n\
     \x20   compute(c: any) {\n\
-    \x20       for (const client of gnoblin.clients) { void [client.title, client.workspace, client.workspace?.id]; }\n\
+    \x20       for (const client of gnoblin.clients.toList()) { void [client.title, client.workspace, client.workspace?.id]; }\n\
     \x20       return [];\n\
     \x20   }\n\
     }\n\
     class Watch extends ClientListener {\n\
     \x20   onTitleChanged(client: any, title: string) {\n\
     \x20       void gnoblin.clients.length;\n\
-    \x20       for (const other of gnoblin.clients) { void [other.title, other.workspace, other.workspace?.id]; }\n\
+    \x20       for (const other of gnoblin.clients.toList()) { void [other.title, other.workspace, other.workspace?.id]; }\n\
     \x20   }\n\
     }\n\
     for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace(id, { layout: new Reads() }));\n\

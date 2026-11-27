@@ -10,7 +10,6 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gnoblin_core::LogLevel;
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{Callable, ErrorCode, Fail, Obj, Res, Val};
@@ -222,7 +221,7 @@ fn roll_back(ctx: GnoblinCtx) {
         && let Err(fail) = rollback.call(0, &[])
     {
         std.g().log_at(
-            LogLevel::Warn,
+            crate::object::failure_level(fail.code),
             &format!("gnoblin-std: a transition's rollback failed: {}", fail.message),
         );
     }
