@@ -13,7 +13,7 @@
     }: { row: Row; query: string; id: string; selected: boolean; onselect: () => void; onhover: () => void } = $props();
 
     const title = $derived(highlight(row.title, query));
-    const trail = $derived(row.kind === "page" ? highlight(row.trail, query) : []);
+    const trail = $derived(row.kind === "heading" ? [] : highlight(row.trail, query));
 </script>
 
 <div
@@ -26,7 +26,12 @@
     onkeydown={(event) => event.key === "Enter" && onselect()}
     onmousemove={onhover}
 >
-    <span class="ri"><Icon name={row.kind === "page" ? "page" : "hash"} size={row.kind === "page" ? 17 : 15} /></span>
+    <span class="ri"
+        ><Icon
+            name={row.kind === "api" ? "code" : row.kind === "page" ? "page" : "hash"}
+            size={row.kind === "heading" ? 15 : 17}
+        /></span
+    >
     <span class="text">
         <span class="head">
             <span class="rt"
@@ -44,6 +49,7 @@
             >
         {/if}
     </span>
+    {#if row.label}<span class="kind">{row.label}</span>{/if}
     <span class="enter"><Icon name="enter" size={18} /></span>
 </div>
 
@@ -105,6 +111,28 @@
         line-height: 20px;
     }
 
+    /* An API reference row: the name is code, the trail sits under it, and the kind is at the right. */
+    .api .head {
+        flex-direction: column;
+    }
+
+    .api .rt {
+        font-family: var(--font-mono);
+        font-size: 14px;
+    }
+
+    .kind {
+        grid-column: 3;
+        grid-row: 1;
+        align-self: center;
+        font-size: 13px;
+        color: var(--ink-3);
+    }
+
+    .result[aria-selected="true"] .kind {
+        display: none;
+    }
+
     .rp {
         font-size: 13px;
         line-height: 20px;
@@ -130,6 +158,8 @@
     }
 
     .enter {
+        grid-column: 3;
+        grid-row: 1;
         opacity: 0;
         align-self: center;
     }

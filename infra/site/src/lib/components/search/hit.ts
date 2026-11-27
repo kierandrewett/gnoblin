@@ -6,13 +6,16 @@ export interface Part {
 
 /** One link in the results: a page, or a heading inside a page. */
 export interface Row {
-    kind: "page" | "heading";
+    /** An `api` row is a class or a member of the API reference: its title is code, and `label` says which kind. */
+    kind: "page" | "heading" | "api";
     title: string;
     /** Section path of the page, such as "Get started › Install". */
     trail: string;
     url: string;
     /** The text around the match. Empty when the page has nothing to show. */
     excerpt: Part[];
+    /** An `api` row: "property", "method", "class". */
+    label?: string;
 }
 
 /** A matching page and the headings in it that match. The first row is the page. */
@@ -20,6 +23,8 @@ export interface Group {
     url: string;
     title: string;
     rows: Row[];
+    /** Where the group is listed: the API reference above the pages. */
+    section: "reference" | "pages";
 }
 
 /** Suggestions for the empty state. Each one finds pages in the built index (checked by `yarn test:pages`). */

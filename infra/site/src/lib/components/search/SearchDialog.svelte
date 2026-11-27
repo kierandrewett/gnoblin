@@ -8,6 +8,7 @@
     import Icon from "../ui/Icon.svelte";
     import { SUGGESTIONS, type Group } from "./hit.ts";
     import { find, warm, type Found } from "./pagefind.ts";
+    import { languageLabel, pickedLanguage, SECTION_LABEL } from "./reference.ts";
     import SearchResult from "./SearchResult.svelte";
 
     /** Pages whose data is fetched for the first screen, and for each "Show more". */
@@ -26,15 +27,21 @@
     let status = $state<"idle" | "searching" | "done" | "unavailable">("idle");
 
     const rows = $derived(groups.flatMap((group) => group.rows));
-    // Each group with the index of its first row in the list of options.
+    // Each group with the index of its first row in the list of options. When the API reference has results, each section is named.
     const entries = $derived.by(() => {
+        const named = groups.some((group) => group.section === "reference");
         let start = 0;
-        return groups.map((group) => {
-            const entry = { group, start };
+        return groups.map((group, i) => {
+            const heading = named && group.section !== groups[i - 1]?.section ? SECTION_LABEL[group.section] : "";
+            const entry = { group, start, heading };
             start += group.rows.length;
             return entry;
         });
     });
+    // The reference's names are in the language the reader picked: the footer says which.
+    const names = $derived(
+        groups.some((group) => group.section === "reference") ? languageLabel(pickedLanguage()) : "",
+    );
     const hasMore = $derived(groups.length < total);
     const options = $derived(rows.length + (hasMore ? 1 : 0));
     const summary = $derived(
@@ -225,8 +232,13 @@
                 aria-busy={status === "searching"}
                 data-query={shown}
             >
-                {#each entries as { group, start } (group.url)}
-                    <div class="group" role="group" aria-label={group.title}>
+                {#each entries as { group, start, heading } (group.url)}
+                    {#if heading}<p class="section" role="presentation">{heading}</p>{/if}
+                    <div
+                        class={["group", group.section === "reference" && "api"]}
+                        role="group"
+                        aria-label={group.title}
+                    >
                         {#each group.rows as row, ri (row.url)}
                             <SearchResult
                                 {row}
@@ -284,6 +296,7 @@
             >
             <span><kbd class="kbd">Enter</kbd> Open</span>
             <span><kbd class="kbd">Esc</kbd> Close</span>
+            {#if names}<span class="names">Names in {names}</span>{/if}
         </div>
     </div>
 </dialog>
@@ -395,6 +408,24 @@
 
     .group + .group {
         border-top: 1px solid var(--line);
+    }
+
+    /* The API reference above the pages: a section's name, then its rows, with no rule between its groups. */
+    .section {
+        padding: var(--s-3) var(--s-3) var(--s-1);
+        font-size: 12px;
+        line-height: 16px;
+        font-weight: 600;
+        color: var(--ink-3);
+    }
+
+    .section + .group,
+    .group.api + .group.api {
+        border-top: 0;
+    }
+
+    .names {
+        margin-left: auto;
     }
 
     .more {

@@ -2,16 +2,23 @@
 // instance is shared by the page: `warm()` loads its script, its WebAssembly and its metadata, and `find()` runs a
 // query against it. Result data (the page title, trail and excerpts) is fetched only for the pages that are shown.
 import { parseExcerpt, stripLead, type Group, type Row } from "./hit.ts";
+import {
+    isReferenceRecord,
+    REFERENCE_LIMIT,
+    REFERENCE_ONLY,
+    referenceRow,
+    WITHOUT_REFERENCE,
+    type RecordData,
+} from "./reference.ts";
 
 interface RawSub {
     title: string;
     url: string;
     excerpt: string;
 }
-interface RawData {
-    url: string;
+interface RawData extends RecordData {
     excerpt: string;
-    meta: { title?: string; trail?: string };
+    meta: Record<string, string | undefined>;
     sub_results: RawSub[];
 }
 interface RawResult {
@@ -20,7 +27,7 @@ interface RawResult {
 interface PagefindModule {
     options(options: Record<string, unknown>): Promise<void>;
     init(): Promise<void>;
-    search(query: string): Promise<{ results: RawResult[] } | null>;
+    search(query: string, options?: { filters?: Record<string, unknown> }): Promise<{ results: RawResult[] } | null>;
 }
 
 /** Words in an excerpt. */
@@ -58,6 +65,10 @@ const clean = (url: string) => url.replace(/(\/index)?\.html(?=$|#)/, "").replac
 
 function toGroup(data: RawData): Group {
     const url = clean(data.url);
+    if (isReferenceRecord(data)) {
+        const row = referenceRow(data, url);
+        return { url, title: row.title, rows: [row], section: "reference" };
+    }
     const title = data.meta.title ?? url;
     const trail = data.meta.trail ?? "";
     // The first match without an anchor is in the page's own text; the others are under headings.
@@ -77,7 +88,7 @@ function toGroup(data: RawData): Group {
             excerpt: stripLead(parseExcerpt(sub.excerpt), sub.title),
         });
     }
-    return { url, title, rows };
+    return { url, title, rows, section: "pages" };
 }
 
 export interface Found {
@@ -93,8 +104,12 @@ export interface Found {
 export async function find(query: string): Promise<Found | null> {
     const module = await warm();
     if (!module) return null;
-    const response = await module.search(query);
-    const results = response?.results ?? [];
+    // The API reference first, then the pages.
+    const [api, pages] = await Promise.all([
+        module.search(query, { filters: REFERENCE_ONLY }),
+        module.search(query, { filters: WITHOUT_REFERENCE }),
+    ]);
+    const results = [...(api?.results ?? []).slice(0, REFERENCE_LIMIT), ...(pages?.results ?? [])];
     const found: Found = {
         total: results.length,
         loaded: 0,
