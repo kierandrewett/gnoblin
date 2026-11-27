@@ -781,7 +781,10 @@ fn synchronization_validation_reports_a_race() {
     }
     let messages = vulkan.take_validation_messages();
     assert!(
-        messages.iter().any(|message| message.contains("HAZARD")),
+        // Older layers wrote "HAZARD", newer ones "WRITE_AFTER_WRITE hazard detected".
+        messages
+            .iter()
+            .any(|message| message.to_ascii_lowercase().contains("hazard")),
         "synchronisation validation must report the race, or no test here can fail on one: {messages:#?}"
     );
 }
