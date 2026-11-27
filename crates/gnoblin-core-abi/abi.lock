@@ -62,6 +62,7 @@ const | VALUE_CLOSURE | u32 = 14 | 1.0
 const | VALUE_ENUM | u32 = 15 | 1.0
 const | VALUE_NONE | u32 = 16 | 1.0
 const | VALUE_FOREIGN_OBJECT | u32 = 17 | 1.0
+const | VALUE_ANY | u32 = 18 | 1.0
 const | VALUE_OWNED | u32 = 1 | 1.0
 const | MEMBER_PROPERTY | u32 = 1 | 1.0
 const | MEMBER_METHOD | u32 = 2 | 1.0

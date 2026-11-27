@@ -28,7 +28,7 @@ fn default_for(ty: &Type) -> Option<Value> {
         Type::Text => Value::Text(String::new()),
         Type::Bytes => Value::Bytes(Vec::new()),
         Type::List(_) => Value::List(Vec::new()),
-        Type::ObjectRef(_) | Type::Enum(_) | Type::Callback(_) => return None,
+        Type::ObjectRef(_) | Type::Enum(_) | Type::Callback(_) | Type::Any => return None,
     })
 }
 

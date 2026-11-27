@@ -301,6 +301,12 @@ fn proto_type(ty: &Type, records: &BTreeSet<String>) -> (Option<&'static str>, S
         Type::Double => (None, "double".to_owned(), None),
         Type::Text => (None, "string".to_owned(), None),
         Type::Bytes => (None, "bytes".to_owned(), None),
+        // Local namespaces have it, and the wire never carries those.
+        Type::Any => (
+            None,
+            "bytes".to_owned(),
+            Some("any value of a local namespace".to_owned()),
+        ),
         // An object identity is a string here: the wire carries the id and the
         // schema carries the type, so a reader without the schema still knows it
         // is an identity rather than a title.

@@ -202,6 +202,8 @@ fn value_kind(catalog: &Catalog, namespace: &Namespace, ty: &Type, secret: bool)
         Type::Double => abi::VALUE_DOUBLE,
         Type::Text => abi::VALUE_TEXT,
         Type::Bytes => abi::VALUE_BYTES,
+        // Only a local namespace has it, and a local namespace is not the compositor's catalog.
+        Type::Any => abi::VALUE_ANY,
         Type::ObjectRef(name) => {
             let record = catalog
                 .objects(namespace)

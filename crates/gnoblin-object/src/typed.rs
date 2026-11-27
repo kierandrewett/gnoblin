@@ -148,6 +148,20 @@ impl<C, T: FromVal<C>> FromVal<C> for Option<T> {
     }
 }
 
+/// `any` in a schema file: the value as it crossed. The library gives only values with no object in them (none, a boolean, a number,
+/// text, or a list of those), so reading one takes no reference over.
+impl ToVal for Val {
+    fn to_val(&self) -> Val {
+        self.clone()
+    }
+}
+
+impl<C> FromVal<C> for Val {
+    fn from_val(_: &C, value: &Val) -> Res<Val> {
+        Ok(value.clone())
+    }
+}
+
 /// Opaque bytes (`bytes` in a schema file).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Octets(pub Vec<u8>);

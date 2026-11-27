@@ -561,6 +561,7 @@ impl<'a> Py<'a> {
             Type::Double => "float".to_owned(),
             Type::Text => "str".to_owned(),
             Type::Bytes => "bytes".to_owned(),
+            Type::Any => "Any".to_owned(),
             Type::Enum(name) => {
                 let class = pascal(&self.view.enum_decl(name)?.name);
                 if input { format!("{class} | str") } else { class }
@@ -610,7 +611,7 @@ impl<'a> Py<'a> {
 
     fn enc(&self, ty: &Type, e: &str) -> Result<String, String> {
         Ok(match ty {
-            Type::Bool | Type::Int | Type::Uint | Type::Double | Type::Text | Type::Bytes => e.to_owned(),
+            Type::Bool | Type::Int | Type::Uint | Type::Double | Type::Text | Type::Bytes | Type::Any => e.to_owned(),
             Type::Enum(name) => format!("_enc_enum_{}({e})", snake(&self.view.enum_decl(name)?.name)),
             Type::ObjectRef(name) if name.contains('.') => {
                 let foreign = self.view.foreign(name)?;
@@ -644,7 +645,7 @@ impl<'a> Py<'a> {
     /// call's answer is not).
     fn dec(&self, ty: &Type, e: &str, absent: bool) -> Result<String, String> {
         Ok(match ty {
-            Type::Bool | Type::Int | Type::Uint | Type::Double | Type::Text | Type::Bytes => e.to_owned(),
+            Type::Bool | Type::Int | Type::Uint | Type::Double | Type::Text | Type::Bytes | Type::Any => e.to_owned(),
             Type::Enum(name) => format!("_dec_enum_{}({e})", snake(&self.view.enum_decl(name)?.name)),
             // An object of another library is read in that library's namespace, as an instance of its class there.
             Type::ObjectRef(name) if name.contains('.') => {

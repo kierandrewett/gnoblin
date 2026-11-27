@@ -142,7 +142,9 @@ fn value(rng: &mut Rng, ty: &Type, wrong: bool) -> Value {
         Type::Text => Value::Text(format!("value {}", rng.below(7))),
         Type::Bytes => Value::Bytes(vec![rng.below(256) as u8]),
         Type::ObjectRef(_) => Value::Object(ObjectId::new(u64::from(rng.below(4) + 1))),
-        Type::Enum(_) | Type::Callback(_) => unreachable!("the wire schemas have no enums or callbacks"),
+        Type::Enum(_) | Type::Callback(_) | Type::Any => {
+            unreachable!("the wire schemas have no enums, callbacks or `any`")
+        }
         Type::List(inner) => {
             let count = rng.below(3);
             Value::List((0..count).map(|_| value(rng, inner, false)).collect())

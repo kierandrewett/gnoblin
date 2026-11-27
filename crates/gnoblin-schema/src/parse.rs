@@ -800,7 +800,7 @@ fn default_value(ty: &Type, value: &toml::Value) -> Result<DefaultValue, String>
             .map(|item| default_value(inner, item))
             .collect::<Result<Vec<_>, _>>()
             .map(DefaultValue::List),
-        (Type::Bytes | Type::ObjectRef(_) | Type::Callback(_), _) => {
+        (Type::Bytes | Type::Any | Type::ObjectRef(_) | Type::Callback(_), _) => {
             Err(format!("default is refused: `{ty}` has no TOML literal"))
         }
         _ => Err(format!("default `{value}` is not a `{ty}`")),

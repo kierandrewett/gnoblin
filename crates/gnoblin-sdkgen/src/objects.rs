@@ -410,6 +410,7 @@ impl Types<'_> {
             Type::Text if secret => ("VALUE_SECRET", String::new(), None),
             Type::Text => ("VALUE_TEXT", String::new(), None),
             Type::Bytes => ("VALUE_BYTES", String::new(), None),
+            Type::Any => ("VALUE_ANY", String::new(), None),
             Type::ObjectRef(name) => {
                 let (home, bare) = name
                     .rsplit_once('.')

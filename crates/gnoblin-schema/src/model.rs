@@ -68,6 +68,9 @@ pub enum Type {
     Text,
     /// Opaque octets.
     Bytes,
+    /// Any value a script can hold and the library can carry: none, a boolean, a number, text, or a list of those. Local namespaces
+    /// only, and for the one value a member cannot name the type of (what `operation.map` makes of a value).
+    Any,
     /// The identity of another object type: one of the same namespace (`window`), or of another namespace's catalog, named in full
     /// (`gnoblin.model.client`).
     ObjectRef(String),
@@ -93,6 +96,7 @@ impl Type {
             "double" => Ok(Type::Double),
             "string" => Ok(Type::Text),
             "bytes" => Ok(Type::Bytes),
+            "any" => Ok(Type::Any),
             other => {
                 if let Some(name) = other.strip_prefix("object:") {
                     return if is_class_ref(name) {
@@ -154,6 +158,15 @@ impl Type {
         references
     }
 
+    /// Whether this type is `any`, or a list of it, at any depth.
+    pub fn contains_any(&self) -> bool {
+        match self {
+            Type::Any => true,
+            Type::List(inner) => inner.contains_any(),
+            _ => false,
+        }
+    }
+
     fn collect_references<'a>(&'a self, references: &mut Vec<&'a str>, pick: fn(&'a Type) -> Option<&'a String>) {
         if let Some(name) = pick(self) {
             references.push(name);
@@ -173,6 +186,7 @@ impl fmt::Display for Type {
             Type::Double => formatter.write_str("double"),
             Type::Text => formatter.write_str("string"),
             Type::Bytes => formatter.write_str("bytes"),
+            Type::Any => formatter.write_str("any"),
             Type::ObjectRef(name) => write!(formatter, "object:{name}"),
             Type::List(inner) => write!(formatter, "list<{inner}>"),
             Type::Enum(name) => write!(formatter, "enum:{name}"),
@@ -753,6 +767,9 @@ impl Catalog {
                             "{member} refers to callback `{reference}`, which namespace `{namespace}` does not declare"
                         ));
                     }
+                }
+                if ty.contains_any() && !schema.local {
+                    problems.push(format!("{member} is `any`: only a local namespace has it"));
                 }
             }
         }
@@ -1541,6 +1558,7 @@ mod tests {
             ("double", Type::Double),
             ("string", Type::Text),
             ("bytes", Type::Bytes),
+            ("any", Type::Any),
             ("object:window", Type::ObjectRef("window".to_owned())),
             ("list<string>", Type::List(Box::new(Type::Text))),
             (

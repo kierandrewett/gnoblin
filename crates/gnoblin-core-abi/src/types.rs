@@ -189,6 +189,10 @@ abi_consts! {
     pub const VALUE_FOREIGN_OBJECT: u32 = 17;
 
     /// `GnoblinValue.flags`: `ptr` was allocated by the core and is freed with `value_free`. The object protocol never sets it:
+    /// The kind of a declared type, never of a value: the member takes or gives any value a script holds (none, boolean, number, text,
+    /// or a list of those). The server refuses a value that holds an object, a record, a closure or bytes; a value on the wire carries
+    /// its own kind.
+    pub const VALUE_ANY: u32 = 18;
     /// a value its library returns is lent until the next call into that library on the thread.
     pub const VALUE_OWNED: u32 = 1;
 

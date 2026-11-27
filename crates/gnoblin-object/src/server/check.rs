@@ -29,6 +29,7 @@ fn describe(ty: &TypeDef) -> String {
         abi::VALUE_RECORD => format!("a `{}` record", ty.class),
         abi::VALUE_OBJECT => format!("a `{}` object", ty.class),
         abi::VALUE_ENUM => format!("a `{}` value", ty.class),
+        abi::VALUE_ANY => "none, a boolean, a number, text or a list of those".to_owned(),
         abi::VALUE_CLOSURE => "a closure".to_owned(),
         _ => "a value".to_owned(),
     }
@@ -85,6 +86,8 @@ impl Library {
             abi::VALUE_RECORD => self.coerce_record(st, ty, value, what),
             abi::VALUE_OBJECT => self.coerce_object(st, ty, value, what),
             abi::VALUE_ENUM => self.coerce_enum(ty, value, what),
+            abi::VALUE_ANY if value.is_plain() => Ok(value),
+            abi::VALUE_ANY => Err(wrong(&value)),
             _ => Ok(value),
         }
     }

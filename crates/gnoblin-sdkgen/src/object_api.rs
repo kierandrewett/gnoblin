@@ -236,6 +236,7 @@ impl<'a> Renderer<'a> {
             Type::Double => "f64".to_owned(),
             Type::Text => "String".to_owned(),
             Type::Bytes => "go::typed::Octets".to_owned(),
+            Type::Any => "go::Val".to_owned(),
             Type::ObjectRef(name) if name.contains('.') => self.foreign_path(name)?,
             Type::ObjectRef(name) => class_name(self.class(name)?),
             Type::Enum(name) => self.enum_name(name)?,
@@ -319,7 +320,8 @@ impl<'a> Renderer<'a> {
                     })
             }
             Type::List(inner) => self.plain(inner, depth + 1),
-            Type::Callback(_) => false,
+            // A `Val` is neither compared nor kept by a record: `any` is a value a call carries, not a field.
+            Type::Callback(_) | Type::Any => false,
             _ => true,
         }
     }

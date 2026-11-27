@@ -157,6 +157,16 @@ impl Val {
         matches!(self, Val::None)
     }
 
+    /// True for a value `any` carries: none, a boolean, a number, text, or a list of those. Nothing in it is an object, a record, a
+    /// closure or bytes, so it holds no reference and means the same to every receiver.
+    pub fn is_plain(&self) -> bool {
+        match self {
+            Val::None | Val::Bool(_) | Val::Int(_) | Val::Uint(_) | Val::Double(_) | Val::Text(_) => true,
+            Val::List(items) => items.iter().all(Val::is_plain),
+            _ => false,
+        }
+    }
+
     /// The boolean.
     ///
     /// # Errors
