@@ -29,8 +29,9 @@ type = "uint"
 since = "0.2.0"
 default = 0
 
-# One idle watch. It is not idle when it starts: the first `idle` comes when a reading shows the session idle for `ms`, and every idle
-# period after an input signals `idle` again until the watch is cancelled.
+# One idle watch. The first `idle` comes when a reading shows the session idle for `ms`, and every idle period after an input signals
+# `idle` again until the watch is cancelled. A watch made while the session is idle already is idle at once (`is_idle`), and its `idle`
+# is told from the next turn, to the listeners the script added after the call.
 [[object]]
 name = "idle_watch"
 since = "0.2.0"

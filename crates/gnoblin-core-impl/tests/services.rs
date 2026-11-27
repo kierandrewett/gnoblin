@@ -882,26 +882,81 @@ fn a_watch_made_after_a_hold_does_not_hear_idle_before_the_compositor_counts_the
 }
 
 #[test]
-fn a_watch_made_while_the_session_is_idle_tells_idle_to_a_listener_added_after_the_call() {
+fn a_watch_made_while_the_session_is_idle_is_idle_at_once_and_tells_idle_once_to_a_listener_added_after_the_call() {
     // A script makes the watch and then adds its listeners to the handle it got back, so nothing hears the watch while `watch` runs. The
-    // reading has the session idle for longer than the watch asks, and that watch is not told idle until the turn: the one `idle` it ever
-    // tells for this stretch must still reach the listeners the script added in the meantime.
+    // reading has the session idle for longer than the watch asks: `is_idle` says so when the call returns, and the one `idle` of the
+    // stretch is told from the next turn, to the listeners the script added in the meantime.
     let rig = Rig::new();
     let idle = rig.service("idle");
     let log = Rc::new(RefCell::new(Vec::new()));
     rig.owner.idle(5000, 0);
     let watch = rig.object(rig.call(idle, "watch", &[Val::Double(300.0)]));
+    assert!(rig.flag(watch, "is_idle"), "the state is right when the call returns");
     rig.hear(watch, "idle", &log, "idle");
     rig.hear(watch, "resume", &log, "resume");
+    assert!(log.borrow().is_empty(), "nothing is told inside a call");
+    rig.settle();
+    assert_eq!(*log.borrow(), vec!["idle:object".to_owned()]);
+    // More readings of the same stretch and more turns tell nothing more.
+    rig.owner.idle(6000, 0);
     rig.settle();
     assert_eq!(*log.borrow(), vec!["idle:object".to_owned()]);
     assert!(rig.flag(watch, "is_idle"));
+    // The first input ends the stretch, and the next one is told as every later one is.
     rig.owner.idle(10, 0);
+    rig.settle();
+    rig.owner.idle(400, 0);
     rig.settle();
     assert_eq!(
         *log.borrow(),
-        vec!["idle:object".to_owned(), "resume:object".to_owned()]
+        vec![
+            "idle:object".to_owned(),
+            "resume:object".to_owned(),
+            "idle:object".to_owned()
+        ]
     );
+}
+
+#[test]
+fn a_session_that_turns_active_before_the_first_turn_leaves_a_new_watch_with_no_idle_and_no_resume() {
+    // The watch was idle when the call returned. The compositor says input came before the turn that would tell `idle`: nothing was
+    // told that was true, so nothing is told that ended it either.
+    let rig = Rig::new();
+    let idle = rig.service("idle");
+    let log = Rc::new(RefCell::new(Vec::new()));
+    rig.owner.idle(5000, 0);
+    let watch = rig.object(rig.call(idle, "watch", &[Val::Double(300.0)]));
+    assert!(rig.flag(watch, "is_idle"));
+    rig.hear(watch, "idle", &log, "idle");
+    rig.hear(watch, "resume", &log, "resume");
+    rig.owner.idle(10, 0);
+    rig.settle();
+    assert!(log.borrow().is_empty(), "{:?}", log.borrow());
+    assert!(!rig.flag(watch, "is_idle"));
+    // The watch is as any other from here.
+    rig.owner.idle(500, 0);
+    rig.settle();
+    assert_eq!(*log.borrow(), vec!["idle:object".to_owned()]);
+    assert!(rig.flag(watch, "is_idle"));
+}
+
+#[test]
+fn a_hold_or_a_cancel_between_the_call_that_made_an_idle_watch_and_the_first_turn_leaves_it_untold() {
+    let rig = Rig::new();
+    let idle = rig.service("idle");
+    let log = Rc::new(RefCell::new(Vec::new()));
+    rig.owner.idle(5000, 0);
+    let held = rig.object(rig.call(idle, "watch", &[Val::Double(300.0)]));
+    let cancelled = rig.object(rig.call(idle, "watch", &[Val::Double(300.0)]));
+    assert!(rig.flag(held, "is_idle") && rig.flag(cancelled, "is_idle"));
+    rig.hear(held, "idle", &log, "held");
+    rig.hear(cancelled, "idle", &log, "cancelled");
+    rig.call(idle, "inhibit", &[Val::Text("movie".to_owned())]);
+    rig.call(cancelled, "cancel", &[]);
+    rig.settle();
+    assert!(log.borrow().is_empty(), "{:?}", log.borrow());
+    assert!(!rig.flag(held, "is_idle"), "the hold counts at the turn");
+    assert!(!rig.flag(cancelled, "alive"));
 }
 
 #[test]

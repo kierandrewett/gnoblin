@@ -4,7 +4,9 @@
 //! of its `gnoblin` namespace, and `inhibit` and `uninhibit` are its methods. The owner connection ([`crate::verbs`]) keeps the object's
 //! properties and says when one changed. A watch is a threshold over that reading and nothing else, so it behaves like the compositor's
 //! own idle notifications: an inhibitor delays `idle` as it delays a screen blank, and one that appears while the session is idle resumes
-//! it. Nothing is told inside a call: a watch's signals come from the turn after the reading that moved it.
+//! it. Nothing is told inside a call: a watch's signals come from the turn after the reading that moved it. A watch's state is decided
+//! in the call that makes it, so `is_idle` is true when `watch` returns for a session that is idle already, and its first `idle` is told
+//! from the next turn, to the listeners the script added to the handle after the call.
 //!
 //! The compositor records a hold by name and the connection that made it, so a generation that ends gives every hold back, and a
 //! connection that is lost has lost them already: the holds are no holds and the watches are active again.
@@ -27,8 +29,37 @@ const MAX_WATCHES: usize = 256;
 struct IdleWatchState {
     id: String,
     ms: f64,
+    /// Whether the session has been idle for `ms` with no hold: what `is_idle` reads.
     idle: bool,
+    /// Whether the listeners were told `idle` for the idle stretch the watch is in. A watch made while the session is idle is idle at
+    /// once and is told from the next turn, so for the length of the call it is idle and not told.
+    told: bool,
     alive: bool,
+}
+
+impl IdleWatchState {
+    /// Moves the watch to `idle`, and says what that tells its listeners. A stretch that was never told as idle is not told as over.
+    fn settle(&mut self, idle: bool) -> Option<&'static str> {
+        if !self.alive || idle == self.idle {
+            return None;
+        }
+        self.idle = idle;
+        if idle {
+            self.told = true;
+            Some("idle")
+        } else if std::mem::take(&mut self.told) {
+            Some("resume")
+        } else {
+            None
+        }
+    }
+
+    /// Takes the `idle` that is due: the watch is idle and its listeners have not been told so yet.
+    fn take_idle_due(&mut self) -> bool {
+        let due = self.alive && self.idle && !self.told;
+        self.told |= due;
+        due
+    }
 }
 
 /// One hold on the session's idle state.
@@ -128,30 +159,57 @@ fn connect(cx: &Cx<'_>) -> bool {
     true
 }
 
-/// Moves a watch to what the reading says, and tells it when that changed its state.
+/// Whether `reading` has the session idle for `ms` with nothing holding it awake, or `None` without a reading.
 ///
 /// The holds this generation made count even when the reading does not have them yet: a hold is sent to the compositor and is in the
 /// next reading, and a watch made after it in the same script must not hear the session go idle in between (and resume a turn later).
 /// A hold the compositor has counted is in the reading too, so the larger of the two is the number of holds.
+fn reads_idle(ctx: GnoblinCtx, ms: f64, reading: Option<(u64, u64)>) -> Option<bool> {
+    let (idle_ms, counted) = reading?;
+    let own = IDLE.with(|idle| idle.with(ctx, |table| table.holds.len())) as u64;
+    Some(counted.max(own) == 0 && idle_ms as f64 >= ms)
+}
+
+/// Tells the listeners of `watch` the signal `name`, from the next turn.
+fn tell(cx: &Cx<'_>, watch: Obj, name: &str) {
+    let me = cx.object_value(watch);
+    cx.emit_on(watch, name, vec![me]);
+}
+
+/// Moves a watch to what the reading says, and tells it when that changed what the listeners were told.
 fn evaluate(cx: &Cx<'_>, watch: Obj, reading: Option<(u64, u64)>) {
-    let Some((idle_ms, counted)) = reading else {
-        return;
-    };
-    let own = IDLE.with(|idle| idle.with(cx.ctx(), |table| table.holds.len())) as u64;
-    let inhibitors = counted.max(own);
-    let moved = cx
+    let told = cx
         .with_state::<IdleWatchState, _>(watch, |state| {
-            let idle = inhibitors == 0 && idle_ms as f64 >= state.ms;
-            (state.alive && idle != state.idle).then(|| {
-                state.idle = idle;
-                idle
-            })
+            reads_idle(cx.ctx(), state.ms, reading).and_then(|idle| state.settle(idle))
         })
         .ok()
         .flatten();
-    if let Some(idle) = moved {
-        let me = cx.object_value(watch);
-        cx.emit_on(watch, if idle { "idle" } else { "resume" }, vec![me]);
+    if let Some(name) = told {
+        tell(cx, watch, name);
+    }
+}
+
+/// What the compositor says now, for the turn that tells a new watch: the owner connection may hold a reading that its event has not
+/// brought to the library yet.
+fn reading_newest(ctx: GnoblinCtx) -> Option<(u64, u64)> {
+    let lost = IDLE.with(|idle| idle.with(ctx, |table| table.lost));
+    if lost {
+        None
+    } else {
+        reading_of_link().or_else(|| reading_now(ctx))
+    }
+}
+
+/// Tells the first `idle` of a watch that was made while the session was idle, from the turn after the call. The script has added its
+/// listeners by then. The session may have turned active since, or a hold been made: the watch looks at the newest reading first, and
+/// one that is no longer idle tells nothing, neither `idle` nor `resume`. An `idle` the reading told in the meantime is not told again.
+fn announce(cx: &Cx<'_>, watch: Obj) {
+    evaluate(cx, watch, reading_newest(cx.ctx()));
+    let due = cx
+        .with_state::<IdleWatchState, _>(watch, IdleWatchState::take_idle_due)
+        .unwrap_or(false);
+    if due {
+        tell(cx, watch, "idle");
     }
 }
 
@@ -193,11 +251,13 @@ fn lost(cx: &Cx<'_>, why: &str) {
     }
     for watch in watches {
         let resumed = cx
-            .with_state::<IdleWatchState, _>(watch, |state| std::mem::replace(&mut state.idle, false))
+            .with_state::<IdleWatchState, _>(watch, |state| {
+                state.idle = false;
+                std::mem::take(&mut state.told)
+            })
             .unwrap_or(false);
         if resumed {
-            let me = cx.object_value(watch);
-            cx.emit_on(watch, "resume", vec![me]);
+            tell(cx, watch, "resume");
         }
     }
     if first {
@@ -236,6 +296,7 @@ fn watch(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
             id,
             ms,
             idle: false,
+            told: false,
             alive: true,
         },
     )?;
@@ -245,9 +306,9 @@ fn watch(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
         listener::add(cx, obj, &mut regs, given)?;
     }
     // A reading the library already has decides the first state, so a watch made while the session is idle does not wait for the next
-    // change of the counter. It is decided from the turn and not in this call: the script adds its listeners to the handle this call
-    // returns, and a signal that nothing hears when it is queued is not queued at all. An `idle` told here would be lost for good, because
-    // the watch would be idle already and tells it once.
+    // change of the counter, and `is_idle` is right when this call returns. The `idle` is told from the next turn and not here: the
+    // script adds its listeners to the handle this call returns, and a signal that nothing hears when it is queued is not queued at all.
+    // Told here, the one `idle` would be lost for good, because the watch would be idle already and tells it once.
     let reading = reading_now(ctx);
     IDLE.with(|idle| {
         idle.with(ctx, |table| {
@@ -257,7 +318,15 @@ fn watch(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
             }
         });
     });
-    cx.later_on(obj, move |cx| evaluate(cx, obj, reading_now(cx.ctx())));
+    let idle = cx
+        .with_state::<IdleWatchState, _>(obj, |state| {
+            state.idle = reads_idle(ctx, state.ms, reading).unwrap_or(false);
+            state.idle
+        })
+        .unwrap_or(false);
+    if idle {
+        cx.later_on(obj, move |cx| announce(cx, obj));
+    }
     cx.handout(obj)
 }
 
@@ -268,6 +337,7 @@ fn cancel(cx: &Cx<'_>, watch: &mut IdleWatchState) {
     }
     watch.alive = false;
     watch.idle = false;
+    watch.told = false;
     let obj = cx.me();
     IDLE.with(|idle| idle.with(cx.ctx(), |table| table.watches.retain(|held| *held != obj)));
     let me = cx.object_value(obj);
