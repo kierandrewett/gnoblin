@@ -21,7 +21,6 @@ const arg = (name) => {
 
 const PAGES = [
     "/",
-    "/install",
     "/bingux",
     "/credits",
     "/docs",
@@ -475,15 +474,7 @@ for (const width of [320, 375, 480, 768, 1280]) {
 // One header: at each width, its height and the x of the mark, the site links, search and the right-hand controls
 // are the same on every page.
 {
-    const routes = [
-        "/",
-        "/install",
-        "/bingux",
-        "/docs",
-        "/docs/bridge/connection",
-        "/credits",
-        "/this-page-does-not-exist",
-    ];
+    const routes = ["/", "/bingux", "/docs", "/docs/bridge/connection", "/credits", "/this-page-does-not-exist"];
     for (const width of [1440, 1100, 900, 390]) {
         const page = await browser.newPage({ viewport: { width, height: 900 } });
         let reference = null;

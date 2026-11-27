@@ -113,6 +113,17 @@ function el(tagName: string, properties: Element["properties"], children: Elemen
     return { type: "element", tagName, properties, children };
 }
 const text = (value: string): Text => ({ type: "text", value });
+/** The icon of each card in a `::: systems` list, by the guide it links to. */
+const SYSTEM_GLYPHS: Record<string, string> = {
+    "install-fedora": "fedora",
+    "install-opensuse": "opensuse",
+    "install-debian": "debian",
+    "install-arch": "archlinux",
+    "install-alpine": "alpinelinux",
+    "install-source": "code",
+    "platform-support": "monitor",
+};
+
 const icon = (name: string, size = 16): Element =>
     el("svg", { className: ["icon"], width: size, height: size, ariaHidden: "true" }, [
         el("use", { href: `/icons.svg#i-${name}` }),
@@ -214,6 +225,8 @@ function remarkContainers(ctx: RenderContext) {
                 i = end;
                 if (kind === "details") {
                     out.push(container("details-container", { title: title || "Details" }, children));
+                } else if (kind === "systems") {
+                    out.push(container("systems-container", {}, children));
                 } else if (kind === "tabs") {
                     out.push(container("tabs-container", {}, checkTabs(children, ctx, node.position?.start.line)));
                 } else if (CALLOUTS[kind]) {
@@ -376,6 +389,41 @@ function rehypeGnoblin(ctx: RenderContext) {
                     ]),
                     el("div", { className: ["body"] }, node.children),
                 ]);
+                return;
+            }
+
+            // `::: systems`: a bullet list of `[Name](guide.md): detail` becomes a grid of cards. The list is plain
+            // Markdown to anything else that reads the page.
+            if (node.tagName === "systems-container") {
+                const cards: Element[] = [];
+                visit(node, "element", (li) => {
+                    if (li.tagName !== "li") return;
+                    const link = li.children.find((c): c is Element => c.type === "element" && c.tagName === "a");
+                    if (!link) {
+                        ctx.errors.push(`${ctx.file}: a ::: systems item needs a link`);
+                        return;
+                    }
+                    const name = hastToString(link).trim();
+                    const detail = hastToString(li)
+                        .replace(name, "")
+                        .replace(/^[\s:–—-]+/, "")
+                        .trim();
+                    const guide = String(link.properties.href ?? "").replace(/\.md.*$/, "");
+                    const glyph = SYSTEM_GLYPHS[guide];
+                    if (!glyph) ctx.errors.push(`${ctx.file}: no card icon for "${guide}"`);
+                    link.properties.className = glyph === "monitor" ? ["sys-card", "quiet"] : ["sys-card"];
+                    link.children = [
+                        el("span", { className: ["glyph"] }, [icon(glyph ?? "code", 40)]),
+                        el("span", { className: ["name"] }, [text(name)]),
+                        el("span", { className: ["detail"] }, [text(detail)]),
+                        el("span", { className: ["more"] }, [
+                            text(glyph === "monitor" ? "Details" : "Guide"),
+                            icon("chevron-right", 14),
+                        ]),
+                    ];
+                    cards.push(link);
+                });
+                parent.children[index] = el("div", { className: ["systems"] }, cards);
                 return;
             }
 

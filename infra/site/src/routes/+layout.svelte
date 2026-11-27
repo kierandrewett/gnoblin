@@ -18,7 +18,6 @@
     const route = $derived(page.route.id ?? "");
     const docsPage = $derived<DocsPage | undefined>(route.startsWith("/docs") ? page.data.page : undefined);
     const area = $derived.by((): SiteArea | null => {
-        if (route === "/install") return "start";
         if (route === "/bingux") return "shell";
         if (!docsPage) return null;
         if (docsPage.slug === "reference") return "reference";

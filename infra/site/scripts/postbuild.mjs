@@ -88,6 +88,7 @@ for (const slug of pages) {
 }
 // Pages that moved before the switch to /docs/ (from scripts/docs-vitepress-postbuild.mjs).
 const MOVED = {
+    install: "installation",
     configuration: "config",
     "configuration-reference": "config/configure",
     "configuration-recipes": "recipes",
