@@ -57,8 +57,7 @@
     }
 }
 
-.code .copy.done,
-.cmd .copy.done {
+.code .copy.done {
     color: var(--syn-string);
 }
 
@@ -124,81 +123,6 @@
     --shiki-token-function: var(--syn-fn);
     --shiki-token-punctuation: var(--code-ink);
     --shiki-token-link: var(--accent);
-}
-
-.cmd .f {
-    color: var(--syn-fn);
-}
-
-/* One runnable command with a $ prompt and Copy. On phones the command wraps and Copy goes under it. */
-.cmd {
-    display: flex;
-    align-items: center;
-    gap: var(--s-3);
-    min-height: 56px;
-    padding: 6px 6px 6px var(--s-5);
-    border-radius: var(--r-md);
-    background: var(--code-bg);
-    box-shadow: inset 0 0 0 1px var(--code-line);
-    color: var(--code-ink);
-    font-family: var(--font-mono);
-    font-size: 15px;
-}
-
-.cmd code {
-    flex: 1;
-    min-width: 0;
-    font: inherit;
-    white-space: pre;
-    overflow-x: auto;
-}
-
-/* The prompt is not part of the command: it is not copied or selected, and a 1ch gap stands for the space. */
-.cmd .p {
-    color: var(--syn-comment);
-    user-select: none;
-    padding-right: 1ch;
-}
-
-.cmd .copy {
-    flex: none;
-    height: 42px;
-    padding: 0 14px;
-    border-radius: var(--r-sm);
-    background: var(--surface);
-    box-shadow: inset 0 0 0 1px var(--code-line);
-    color: var(--code-ink);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    font-family: var(--font-text);
-    font-size: 14px;
-    font-weight: 500;
-}
-
-.cmd .copy:hover {
-    background: var(--sunken);
-}
-
-@media (max-width: 733px) {
-    .cmd {
-        flex-direction: column;
-        align-items: stretch;
-        border-radius: var(--r-lg);
-        padding: var(--s-4);
-    }
-
-    .cmd code {
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-        font-size: 14px;
-        line-height: 22px;
-    }
-
-    .cmd .copy {
-        height: 44px;
-    }
 }
 
 /* Callouts: note (accent), tip, warning, danger. */
@@ -602,4 +526,76 @@ html[data-lang="rust"] .lang-tabs:has(> .lang-panel[data-lang="rust"]) .seg butt
     line-height: 20px;
     color: var(--ink-3);
     margin-top: var(--s-3);
+}
+
+/* `::: systems` in docs/: a card for each system, from the Markdown list of its guides. */
+.systems {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--s-3);
+    margin: var(--s-5) 0;
+}
+
+@media (min-width: 734px) {
+    .systems {
+        gap: var(--s-4);
+    }
+}
+
+.sys-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s-1);
+    min-height: 156px;
+    padding: var(--s-4);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--line);
+    transition: box-shadow var(--dur-1) var(--ease);
+}
+
+.sys-card:hover {
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.sys-card.quiet {
+    background: transparent;
+}
+
+.sys-card .glyph {
+    color: var(--ink);
+    margin-bottom: auto;
+    padding-bottom: var(--s-3);
+}
+
+.sys-card .name {
+    font-size: 18px;
+    line-height: 26px;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.sys-card .detail {
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--ink-3);
+}
+
+.sys-card .more {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: var(--s-1);
+    font-size: 14px;
+    color: var(--accent);
+}
+
+.sys-card:hover .more {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+}
+
+.prose a.sys-card:not(.anchor) {
+    text-decoration: none;
 }

@@ -52,7 +52,7 @@
             Use <a href="/bingux">Bingux</a> for a complete desktop, or build your own from tools such as Waybar and Fuzzel.
         </p>
         <p class="cta">
-            <a class="btn primary" href="/install">Install</a>
+            <a class="btn primary" href={docsHref("installation")}>Install</a>
             <a class="btn secondary" href={docsHref("")}>Read the docs</a>
         </p>
         <div class="hero-shot">

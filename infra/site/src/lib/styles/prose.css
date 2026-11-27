@@ -84,8 +84,8 @@
 /* About 70 characters a line for running text. Code, tables and callouts keep the full column: a list item that
    holds one is not capped, only its paragraphs. */
 .prose > p:not(.lede),
-.prose > ul > li:not(:has(.code, .tbl-wrap, .callout, .cmd)),
-.prose > ol > li:not(:has(.code, .tbl-wrap, .callout, .cmd)),
+.prose > ul > li:not(:has(.code, .tbl-wrap, .callout)),
+.prose > ol > li:not(:has(.code, .tbl-wrap, .callout)),
 .prose li > p,
 .prose blockquote > p {
     max-width: 70ch;
@@ -149,8 +149,7 @@
 .prose .callout,
 .prose .tbl-wrap,
 .prose .tabs,
-.prose .details,
-.prose .cmd {
+.prose .details {
     margin: var(--s-5) 0;
 }
 

@@ -16,17 +16,19 @@ The guide for your system has the same steps by hand.
 
 ## Choose your system
 
-| System              | Guide                                  |
-| ------------------- | -------------------------------------- |
-| Fedora              | [Fedora](install-fedora.md)            |
-| openSUSE            | [openSUSE](install-opensuse.md)        |
-| Debian              | [Debian](install-debian.md)            |
-| Arch Linux, CachyOS | [Arch Linux](install-arch.md)          |
-| Alpine              | [Alpine](install-alpine.md)            |
-| Anything else       | [Build from source](install-source.md) |
+::: systems
 
-Each guide shows how to install, update and remove Gnoblin on that system. For the supported releases and
-architectures, see [platform support](platform-support.md).
+- [Fedora](install-fedora.md): dnf
+- [openSUSE](install-opensuse.md): zypper
+- [Debian](install-debian.md): apt
+- [Arch Linux](install-arch.md): pacman, also CachyOS
+- [Alpine](install-alpine.md): apk
+- [Build from source](install-source.md): any other system
+- [Platform support](platform-support.md): releases and architectures
+
+:::
+
+Each guide shows how to install, update and remove Gnoblin on that system.
 
 ## After installing
 

@@ -10,7 +10,7 @@
     <p class="sub">Search the docs for it, or start from one of these pages.</p>
     <div class="field"><SearchField size="lg" keys={false} /></div>
     <div class="links">
-        <MoreLink href="/install">Install</MoreLink>
+        <MoreLink href={docsHref("installation")}>Install</MoreLink>
         <MoreLink href={docsHref("config")}>Config API</MoreLink>
         <MoreLink href={docsHref("bring-your-own-shell")}>Choose a shell</MoreLink>
     </div>
