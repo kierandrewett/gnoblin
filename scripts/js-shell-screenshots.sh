@@ -162,20 +162,24 @@ ctl() {
 }
 
 # window APP_ID TITLE BACKGROUND_HEX COMMAND [FOOT_OPTION...]: one foot window running COMMAND, in a tint of its own so the
-# windows can be told apart. foot takes a colour without the leading `#`. COMMAND is what the picture shows, so it is a
-# real program of the session (`gnoblinctl ...`) and not text typed for the picture. The compositor asks clients for
-# client-side decorations while no shell draws them, so foot draws a title bar of its own then; foot as it comes asks for
-# server-side (it does not need `-o csd.preferred=server`), and the shell's titlebar is its one bar whenever decorations
-# are on. `-o csd.preferred=client` makes foot draw its own bar whatever the answer, and `none` leaves it no bar at all,
-# which the compositor reads as a client that draws its own: the shell gives such a window none.
+# windows can be told apart. COMMAND is what the picture shows, so it is a real program of the session (`gnoblinctl ...`)
+# and not text typed for the picture. The window is painted with the terminal's own default-background escape sequence
+# (OSC 11), not `-o colors.background=`: foot 1.26 renamed the `colors` section to `colors-dark`, so that override is
+# rejected and the window keeps foot's default colour. The compositor asks clients for client-side decorations while no
+# shell draws them, so foot draws a title bar of its own then; foot as it comes asks for server-side (it does not need
+# `-o csd.preferred=server`), and the shell's titlebar is its one bar whenever decorations are on. `-o csd.preferred=client`
+# makes foot draw its own bar whatever the answer, and `none` leaves it no bar at all, which the compositor reads as a
+# client that draws its own: the shell gives such a window none.
 window() {
     local app_id="$1" title="$2" colour="$3" command="$4"
     shift 4
+    local hex="${colour#\#}"
+    local paint="printf '\\033]11;rgb:${hex:0:2}/${hex:2:2}/${hex:4:2}\\007'"
     WAYLAND_DISPLAY="$run_dir/gnoblin-wayland.sock" XDG_RUNTIME_DIR="$run_dir" LC_ALL=C.UTF-8 \
         GNOBLIN_IPC_SOCKET="$run_dir/ipc.sock" PATH="$bin_dir:$PATH" \
         foot --app-id "$app_id" --title "$title" \
-        -o "colors.background=${colour#\#}" -o "colors.alpha=1" -o "main.pad=8x8" "$@" \
-        sh -c "$command; exec sleep 3600" >/dev/null 2>&1 &
+        -o "main.pad=8x8" "$@" \
+        sh -c "$paint; $command; exec sleep 3600" >/dev/null 2>&1 &
     client_pids+=("$!")
 }
 
