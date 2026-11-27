@@ -13,7 +13,8 @@ function setCopied(button: HTMLButtonElement, copied: boolean) {
 
 function markOverflow(pre: HTMLElement) {
     const panel = pre.closest(".code");
-    if (!panel) return;
+    // A pre in a hidden tab panel has no box and says nothing about the one that is shown.
+    if (!panel || pre.clientWidth === 0) return;
     panel.classList.toggle("overflow", pre.scrollWidth > pre.clientWidth + 1);
     panel.classList.toggle("at-start", pre.scrollLeft <= 0);
     panel.classList.toggle("at-end", pre.scrollLeft + pre.clientWidth >= pre.scrollWidth - 1);
@@ -29,7 +30,8 @@ export const codeBlocks: Action<HTMLElement, unknown> = (node) => {
     const onClick = async (event: MouseEvent) => {
         if (!(event.target instanceof Element)) return;
         const button = event.target.closest<HTMLButtonElement>("button[data-copy]");
-        const pre = button?.closest(".code")?.querySelector("pre");
+        // A tab group has one pre per language; the shown one is the one with a box.
+        const pre = [...(button?.closest(".code")?.querySelectorAll("pre") ?? [])].find((p) => p.clientWidth > 0);
         if (!button || !pre || !node.contains(button)) return;
         if (!(await copyText(pre.textContent ?? ""))) return;
         setCopied(button, true);

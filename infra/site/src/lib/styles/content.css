@@ -92,6 +92,25 @@
     mask-image: linear-gradient(90deg, transparent, #000 64px);
 }
 
+/* Narrow phones (320 px): the header holds three tabs and Copy in a 280 px box. Copy is the icon alone (its aria-label
+   names it), and the tabs are tighter; every control stays 44 px high. */
+@media (max-width: 480px) {
+    .code .copy {
+        width: 44px;
+        padding: 0;
+        justify-content: center;
+    }
+
+    .code .copy span {
+        display: none;
+    }
+
+    .lang-tabs .seg button {
+        padding: 0 8px;
+        font-size: 13px;
+    }
+}
+
 /* Shiki's css-variables theme, mapped to the site's syntax colours. */
 .code {
     --shiki-foreground: var(--code-ink);
@@ -484,17 +503,14 @@ table.tbl {
     }
 }
 
-/* Language tabs (`::: tabs` in docs/): one example in each SDK language. The code panel keeps its Copy button; the tab
-   names the language, so the panel's own label goes. */
+/* Language tabs (`::: tabs` in docs/): one example in each SDK language, in one code box. The header holds the
+   segmented switch and Copy; the panels below hold only code. */
 .lang-tabs {
-    display: flex;
-    flex-direction: column;
-    gap: var(--s-3);
     margin: var(--s-5) 0;
 }
 
-.lang-tabs .seg {
-    align-self: flex-start;
+.lang-tabs .code-head {
+    padding-left: var(--s-2);
 }
 
 /* The first language is the default; the others show when the reader picks them (rules below). */
@@ -568,18 +584,6 @@ html[data-lang="rust"] .lang-tabs:has(> .lang-panel[data-lang="rust"]) .seg butt
     background: var(--surface);
     color: var(--ink);
     box-shadow: 0 1px 3px rgba(var(--shadow-rgb), 0.12);
-}
-
-.lang-tabs .code {
-    margin: 0;
-}
-
-.lang-tabs .code-head .lang {
-    display: none;
-}
-
-.lang-tabs .code-head {
-    justify-content: flex-end;
 }
 
 /* Screenshots: full frame, 1 px border, 8 px radius, a plain caption. */

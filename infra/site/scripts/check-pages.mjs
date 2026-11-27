@@ -253,7 +253,7 @@ for (const [vpName, viewport] of [
 // Every docs page, light and dark, at the widths where the layout changes: nothing may leave the window, and the page may
 // not scroll sideways. The band from 1280 to 1323 px is where the three-column grid and the header once did not fit.
 // Code and tables scroll or stack inside their own box; an element that sticks out of its scroller is not counted.
-const WIDTHS = [375, 768, 1100, 1280, 1300, 1312, 1323, 1324, 1440, 1920];
+const WIDTHS = [320, 375, 480, 768, 1100, 1280, 1300, 1312, 1323, 1324, 1440, 1920];
 const docsPages = ["/docs"];
 (function walk(dir) {
     for (const name of readdirSync(dir)) {
@@ -292,13 +292,33 @@ for (const width of WIDTHS) {
                     );
                     if (out.length === 3) break;
                 }
+                // The controls of each code header (tabs, Copy) must sit inside the code box: the box clips them.
+                const clipped = [];
+                for (const box of document.querySelectorAll(".code")) {
+                    const frame = box.getBoundingClientRect();
+                    if (!frame.width) continue;
+                    for (const control of box.querySelectorAll(".code-head button")) {
+                        const r = control.getBoundingClientRect();
+                        if (!r.width) continue;
+                        if (r.left < frame.left - 0.5 || r.right > frame.right + 0.5)
+                            clipped.push(
+                                `${control.textContent.trim() || control.className} ${Math.round(r.left - frame.left)}..${Math.round(r.right - frame.left)} of ${Math.round(frame.width)}`,
+                            );
+                    }
+                    if (clipped.length >= 3) break;
+                }
                 const nav = document.querySelector(".nav-col");
                 return {
+                    clipped,
                     over: document.documentElement.scrollWidth - innerWidth,
                     out,
                     navLeft: nav && getComputedStyle(nav).display !== "none" ? nav.getBoundingClientRect().left : null,
                 };
             }, scheme);
+            if (found.clipped.length)
+                failures.push(
+                    `${url} [${width}, ${scheme}] code header controls leave the code box: ${found.clipped.join(", ")}`,
+                );
             if (found.over > 0) failures.push(`${url} [${width}, ${scheme}] page scrolls sideways by ${found.over}px`);
             if (found.out.length)
                 failures.push(`${url} [${width}, ${scheme}] outside the window: ${found.out.join(", ")}`);
