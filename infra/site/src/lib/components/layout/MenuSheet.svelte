@@ -16,10 +16,16 @@
     }: { open?: boolean; docsSlug?: string | null; area?: SiteArea | null } = $props();
 
     let dialog: HTMLDialogElement;
+    // Where the sheet was scrolled to when it was last open: the menu comes back there. The first time (or after
+    // the scroll reached the top) it opens with the current page in view.
+    let scrolled = 0;
 
     $effect(() => {
-        if (open && !dialog.open) dialog.showModal();
-        else if (!open && dialog.open) dialog.close();
+        if (open && !dialog.open) {
+            dialog.showModal();
+            if (scrolled > 0) dialog.scrollTop = scrolled;
+            else dialog.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "center" });
+        } else if (!open && dialog.open) dialog.close();
     });
     // Opening search from the sheet replaces it.
     $effect(() => {
@@ -34,6 +40,9 @@
     class="sheet"
     aria-label="Menu"
     onclose={() => (open = false)}
+    onscroll={() => {
+        if (dialog.open) scrolled = dialog.scrollTop;
+    }}
     onclick={(event) => {
         if (event.target === dialog) open = false;
     }}

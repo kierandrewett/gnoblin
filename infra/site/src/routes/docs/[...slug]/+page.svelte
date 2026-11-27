@@ -19,6 +19,18 @@
     const ident = $derived(/^[\w-]+(\.[\w-]+)+$/.test(doc.title));
     // Shown under each search result.
     const trail = $derived(doc.trail.map((t) => t.label).join(" › "));
+
+    // A page deep in a long sidebar: scroll the sidebar so the current page is in view. It keeps its own scroll
+    // position while the reader moves between pages.
+    let navBox = $state<HTMLElement>();
+    $effect(() => {
+        void doc.slug;
+        const link = navBox?.querySelector<HTMLElement>('[aria-current="page"]');
+        if (!navBox || !link) return;
+        const box = navBox.getBoundingClientRect();
+        const at = link.getBoundingClientRect();
+        if (at.top < box.top || at.bottom > box.bottom) navBox.scrollTop += at.top - box.top - box.height / 3;
+    });
 </script>
 
 <svelte:head>
@@ -28,7 +40,7 @@
 
 <div class="docs">
     <div class="nav-col">
-        <div class="nav-sticky"><SideNav current={doc.slug} /></div>
+        <div class="nav-sticky" bind:this={navBox}><SideNav current={doc.slug} /></div>
     </div>
     <article class="article" data-pagefind-body data-pagefind-meta="trail:{trail}">
         <div data-pagefind-ignore><Breadcrumbs trail={doc.trail} title={doc.title} /></div>
@@ -61,8 +73,10 @@
 <style>
     .docs {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) min(var(--measure), 100% - 2 * var(--page-pad)) minmax(0, 1fr);
-        column-gap: var(--s-8);
+        grid-template-columns:
+            minmax(var(--nav-w), 1fr) min(var(--measure), 100% - 2 * var(--page-pad))
+            minmax(var(--toc-w), 1fr);
+        column-gap: var(--col-gap);
         align-items: start;
     }
 
@@ -84,10 +98,13 @@
         width: var(--toc-w);
     }
 
+    /* The 4 px of side padding (undone by the margin) keep the focus ring of the links inside the scroller. */
     .nav-sticky {
         position: sticky;
         top: calc(var(--topbar-h) + var(--s-6));
         max-height: calc(100vh - var(--topbar-h) - var(--s-6));
+        margin-inline: -4px;
+        padding-inline: 4px;
         overflow-y: auto;
         overscroll-behavior: contain;
     }
@@ -122,6 +139,7 @@
         .docs {
             grid-template-columns: var(--nav-w) minmax(0, var(--measure));
             justify-content: center;
+            column-gap: var(--s-6);
             padding: 0 var(--page-pad);
         }
 

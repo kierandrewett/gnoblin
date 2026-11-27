@@ -1,13 +1,14 @@
 // Quality gate for the built site: opens key pages in headless Chrome, in light and dark, on a desktop and a phone
 // viewport, and fails on console errors, failed requests, horizontal overflow or images that do not load. It also
 // checks search, that the docs navigation and outline sit 32 px under the header from the first pixel of scroll,
-// and that the header is laid out the same on every page. Run `yarn build`, then `yarn test:pages` (it starts its
+// that the header is laid out the same on every page, that no docs page overflows at any width from 375 to 1920 px
+// (including 1280 to 1324), and the language choice. Run `yarn build`, then `yarn test:pages` (it starts its
 // own server on build/).
 //
 // Options: --base URL (use a running server instead), --shots DIR (save full-page screenshots there).
 // CHROME points at the browser (default: google-chrome, google-chrome-stable or chromium on PATH).
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
@@ -247,6 +248,175 @@ for (const [vpName, viewport] of [
         for (const p of problems) fail(p);
         await context.close();
     }
+}
+
+// Every docs page, light and dark, at the widths where the layout changes: nothing may leave the window, and the page may
+// not scroll sideways. The band from 1280 to 1323 px is where the three-column grid and the header once did not fit.
+// Code and tables scroll or stack inside their own box; an element that sticks out of its scroller is not counted.
+const WIDTHS = [375, 768, 1100, 1280, 1300, 1312, 1323, 1324, 1440, 1920];
+const docsPages = ["/docs"];
+(function walk(dir) {
+    for (const name of readdirSync(dir)) {
+        const file = path.join(dir, name);
+        if (statSync(file).isDirectory()) walk(file);
+        else if (name.endsWith(".html"))
+            docsPages.push(
+                "/docs/" +
+                    path
+                        .relative(path.join(site, "build/docs"), file)
+                        .replace(/\.html$/, "")
+                        .replace(/\/index$/, ""),
+            );
+    }
+})(path.join(site, "build/docs"));
+for (const width of WIDTHS) {
+    const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
+    const page = await context.newPage();
+    for (const url of docsPages) {
+        await page.goto(base + url, { waitUntil: "load" });
+        for (const scheme of ["light", "dark"]) {
+            const found = await page.evaluate((scheme) => {
+                document.documentElement.dataset.scheme = scheme;
+                const inside = (el) => {
+                    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+                        if (getComputedStyle(p).overflowX !== "visible") return true;
+                    }
+                    return false;
+                };
+                const out = [];
+                for (const el of document.querySelectorAll("body *")) {
+                    const r = el.getBoundingClientRect();
+                    if (!r.width || !r.height || (r.left >= -1 && r.right <= innerWidth + 1) || inside(el)) continue;
+                    out.push(
+                        `${el.tagName.toLowerCase()}.${String(el.getAttribute("class") ?? "").split(" ")[0]} ${Math.round(r.left)}..${Math.round(r.right)}`,
+                    );
+                    if (out.length === 3) break;
+                }
+                const nav = document.querySelector(".nav-col");
+                return {
+                    over: document.documentElement.scrollWidth - innerWidth,
+                    out,
+                    navLeft: nav && getComputedStyle(nav).display !== "none" ? nav.getBoundingClientRect().left : null,
+                };
+            }, scheme);
+            if (found.over > 0) failures.push(`${url} [${width}, ${scheme}] page scrolls sideways by ${found.over}px`);
+            if (found.out.length)
+                failures.push(`${url} [${width}, ${scheme}] outside the window: ${found.out.join(", ")}`);
+            if (found.navLeft !== null && found.navLeft < 0)
+                failures.push(`${url} [${width}] sidebar column starts at ${found.navLeft}px`);
+        }
+    }
+    await context.close();
+}
+
+// Code never wraps, at any width: every line stays one line, the box scrolls on its own, the page does not, and a box
+// whose code fits has no scrollbar.
+for (const width of [320, 375, 480, 768, 1280]) {
+    const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
+    const page = await context.newPage();
+    for (const url of docsPages) {
+        await page.goto(base + url, { waitUntil: "networkidle" });
+        const found = await page.evaluate(() => {
+            const out = [];
+            if (document.documentElement.scrollWidth > innerWidth) out.push("the page scrolls sideways");
+            for (const pre of document.querySelectorAll(".code pre")) {
+                if (!pre.clientWidth) continue;
+                const style = getComputedStyle(pre);
+                if (style.whiteSpace !== "pre") out.push(`a code box has white-space ${style.whiteSpace}`);
+                const lineHeight = parseFloat(style.lineHeight);
+                for (const line of pre.querySelectorAll(".line")) {
+                    if (line.getBoundingClientRect().height > lineHeight * 1.5) {
+                        out.push(`a code line wraps: ${line.textContent.slice(0, 40)}`);
+                        break;
+                    }
+                }
+                const fits = pre.scrollWidth <= pre.clientWidth + 1;
+                if (fits && pre.offsetHeight - pre.clientHeight > 0) out.push("a code box that fits has a scrollbar");
+                if (fits === pre.closest(".code").classList.contains("overflow"))
+                    out.push(`a code box fade is ${fits ? "on" : "off"} when its code ${fits ? "fits" : "overflows"}`);
+            }
+            return out.slice(0, 3);
+        });
+        if (found.length) failures.push(`${url} [${width}] ${found.join("; ")}`);
+    }
+    await context.close();
+}
+
+// The language choice: stored, or `?lang=`, is applied before the first paint (the page's scripts are blocked here, so
+// only app.html and the CSS act), is remembered, and every tab group follows a tab click. Tabs and Copy are 44 px high
+// on a phone.
+{
+    const url = "/docs/shell-api/idle";
+    const visibleLanguages = (page) =>
+        page.evaluate(() =>
+            [...document.querySelectorAll(".lang-tabs")].map(
+                (g) =>
+                    [...g.querySelectorAll(".lang-panel")].find((p) => getComputedStyle(p).display !== "none")?.dataset
+                        .lang,
+            ),
+        );
+    for (const lang of ["python", "rust"]) {
+        const context = await browser.newContext({ viewport: VIEWPORTS.desktop });
+        await context.addInitScript((value) => localStorage.setItem("gnoblin-language", value), lang);
+        const page = await context.newPage();
+        await page.route("**/*.js", (route) => route.abort());
+        await page.goto(base + url, { waitUntil: "domcontentloaded" });
+        const shown = await visibleLanguages(page);
+        if (!shown.length || shown.some((l) => l !== lang))
+            failures.push(
+                `language: with ${lang} stored the groups show ${JSON.stringify(shown)} before any script runs`,
+            );
+        await context.close();
+    }
+    {
+        const context = await browser.newContext({ viewport: VIEWPORTS.desktop });
+        const page = await context.newPage();
+        await page.goto(`${base}${url}?lang=rust`, { waitUntil: "networkidle" });
+        const stored = await page.evaluate(() => localStorage.getItem("gnoblin-language"));
+        if (stored !== "rust") failures.push(`language: ?lang=rust stored "${stored}"`);
+        const shown = await visibleLanguages(page);
+        if (shown.some((l) => l !== "rust")) failures.push(`language: ?lang=rust shows ${JSON.stringify(shown)}`);
+        await page.locator('.lang-tabs [role="tab"][data-lang="python"]').first().click();
+        const after = await visibleLanguages(page);
+        if (after.some((l) => l !== "python")) failures.push(`language: the tab click left ${JSON.stringify(after)}`);
+        await page.goto(`${base}/docs/shell-api/outputs`, { waitUntil: "networkidle" });
+        const next = await visibleLanguages(page);
+        if (!next.length || next.some((l) => l !== "python"))
+            failures.push(`language: the choice was not kept on the next page (${JSON.stringify(next)})`);
+        await context.close();
+    }
+    {
+        const context = await browser.newContext({ viewport: VIEWPORTS.phone, hasTouch: true });
+        const page = await context.newPage();
+        await page.goto(base + url, { waitUntil: "networkidle" });
+        const small = await page.evaluate(() =>
+            [...document.querySelectorAll(".seg button, .code .copy")]
+                .filter((b) => b.getClientRects().length && b.getBoundingClientRect().height < 44)
+                .map((b) => `${b.className || b.getAttribute("role")} ${b.getBoundingClientRect().height}px`),
+        );
+        if (small.length) failures.push(`touch targets under 44px on a phone: ${small.slice(0, 4).join(", ")}`);
+        await context.close();
+    }
+}
+
+// Every language tab is indexed, not only the one shown: a Python or Rust name finds the page, once.
+{
+    const page = await browser.newPage();
+    await page.goto(`${base}/docs/shell-api/idle`, { waitUntil: "networkidle" });
+    for (const [query, expected] of [
+        ["LockWhenIdle", "/docs/shell-api/idle"],
+        ["on_resume", "/docs/shell-api/idle"],
+    ]) {
+        const urls = await page.evaluate(async (q) => {
+            const pagefind = await import("/pagefind/pagefind.js");
+            const found = await pagefind.search(q);
+            return (await Promise.all(found.results.map((r) => r.data()))).map((d) => d.url.replace(/\.html$/, ""));
+        }, query);
+        if (!urls.includes(expected))
+            failures.push(`search: "${query}" does not find ${expected} (${urls.slice(0, 3)})`);
+        if (new Set(urls).size !== urls.length) failures.push(`search: "${query}" lists a page twice`);
+    }
+    await page.close();
 }
 
 // The docs navigation and outline sit 32 px under the header from scroll 0, so nothing moves when the reader

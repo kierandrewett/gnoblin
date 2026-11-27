@@ -9,29 +9,20 @@
     import TopBar from "#lib/components/layout/TopBar.svelte";
     import SearchDialog from "#lib/components/search/SearchDialog.svelte";
     import type { DocsPage } from "#lib/docs.ts";
-    import type { NavSection } from "#lib/nav.ts";
     import type { SiteArea } from "#lib/site.ts";
     import { announcer } from "#lib/state.svelte.ts";
 
     let { children }: { children: Snippet } = $props();
 
-    const AREA_OF_SECTION: Record<NavSection["id"], SiteArea> = {
-        start: "docs",
-        shell: "shells",
-        config: "configure",
-        dev: "develop",
-        contrib: "docs",
-    };
-
     // The home page and the docs pages share the header bar and the centred one-line footer.
     const route = $derived(page.route.id ?? "");
     const docsPage = $derived<DocsPage | undefined>(route.startsWith("/docs") ? page.data.page : undefined);
     const area = $derived.by((): SiteArea | null => {
-        if (route === "/install") return "install";
-        if (route === "/bingux") return "shells";
+        if (route === "/install") return "start";
+        if (route === "/bingux") return "shell";
         if (!docsPage) return null;
         if (docsPage.slug === "reference") return "reference";
-        return docsPage.section ? AREA_OF_SECTION[docsPage.section] : "docs";
+        return docsPage.section ?? "start";
     });
 </script>
 

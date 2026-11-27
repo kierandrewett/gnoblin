@@ -45,6 +45,18 @@
     background: var(--sunken);
 }
 
+/* Touch size (44 px) for Copy and the language tabs on phones and on any coarse pointer. */
+@media (max-width: 733px), (pointer: coarse) {
+    .code-head {
+        height: 52px;
+    }
+
+    .code .copy {
+        height: 44px;
+        padding: 0 14px;
+    }
+}
+
 .code .copy.done,
 .cmd .copy.done {
     color: var(--syn-string);
@@ -56,6 +68,7 @@
     font-size: var(--t-code-size);
     line-height: var(--t-code-lh);
     overflow-x: auto;
+    overscroll-behavior-x: contain;
     white-space: pre;
     tab-size: 4;
 }
@@ -64,12 +77,19 @@
     font: inherit;
 }
 
+/* Code never wraps: indentation and line breaks carry meaning. A long line scrolls inside its own box (never the
+   page), with a fade on each edge that has more to show: the right edge at the start, both while scrolled, the left
+   at the end. actions/code-blocks.ts sets the classes; the mask changes no layout. */
 .code.overflow pre {
     mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent);
 }
 
-.code.overflow.at-end pre {
-    mask-image: none;
+.code.overflow:not(.at-start):not(.at-end) pre {
+    mask-image: linear-gradient(90deg, transparent, #000 64px, #000 calc(100% - 64px), transparent);
+}
+
+.code.overflow.at-end:not(.at-start) pre {
+    mask-image: linear-gradient(90deg, transparent, #000 64px);
 }
 
 /* Shiki's css-variables theme, mapped to the site's syntax colours. */
@@ -195,15 +215,34 @@
     margin-top: var(--s-2);
 }
 
-.callout.tip > svg {
+/* The kinds differ by title text and by a soft tint, not by the icon colour alone. */
+.callout.tip {
+    background: var(--tip-soft);
+    box-shadow: none;
+}
+
+.callout.warning {
+    background: var(--warning-soft);
+    box-shadow: none;
+}
+
+.callout.danger {
+    background: var(--danger-soft);
+    box-shadow: none;
+}
+
+.callout.tip > svg,
+.callout.tip .title {
     color: var(--tip);
 }
 
-.callout.warning > svg {
+.callout.warning > svg,
+.callout.warning .title {
     color: var(--warning);
 }
 
-.callout.danger > svg {
+.callout.danger > svg,
+.callout.danger .title {
     color: var(--danger);
 }
 
@@ -219,11 +258,11 @@
 
 .details summary {
     list-style: none;
-    min-height: 56px;
+    min-height: 48px;
     display: flex;
     align-items: center;
     gap: var(--s-3);
-    font-size: 17px;
+    font-size: var(--t-body-size);
     font-weight: 600;
     cursor: pointer;
 }
@@ -247,9 +286,17 @@
     color: var(--ink-2);
 }
 
-/* Tables: hairlines between rows only. They scroll sideways when they do not fit. */
+/* Tables: hairlines between rows only. Cells wrap, and identifiers in them break anywhere, so a table fits its
+   column; if it still does not, it scrolls inside its own box, with a shadow on the edge that has more. Below 734 px
+   a row becomes a block: the first cell is its title and each other cell carries its column heading
+   (data-label, written by src/lib/server/markdown.ts). */
 .tbl-wrap {
     overflow-x: auto;
+    background:
+        linear-gradient(to right, var(--bg) 30%, transparent) 0 0 / 40px 100% no-repeat local,
+        linear-gradient(to left, var(--bg) 30%, transparent) 100% 0 / 40px 100% no-repeat local,
+        radial-gradient(farthest-side at 0 50%, var(--edge-shadow), transparent) 0 0 / 12px 100% no-repeat scroll,
+        radial-gradient(farthest-side at 100% 50%, var(--edge-shadow), transparent) 100% 0 / 12px 100% no-repeat scroll;
 }
 
 .tbl-wrap:focus-visible {
@@ -285,19 +332,63 @@ table.tbl {
     padding-right: 0;
 }
 
+.tbl td:first-child,
 .tbl code.inline {
-    overflow-wrap: normal;
+    overflow-wrap: anywhere;
 }
 
-/* The first column names a field or value: keep it on one line; the table scrolls when it does not fit. From
-   tablet width only the last column wraps. */
-.tbl td:first-child {
-    white-space: nowrap;
-}
+@media (max-width: 733px) {
+    .tbl-wrap {
+        overflow-x: visible;
+        background: none;
+    }
 
-@media (min-width: 734px) {
-    .tbl td:not(:last-child) {
-        white-space: nowrap;
+    table.tbl,
+    .tbl tbody,
+    .tbl tr,
+    .tbl td {
+        display: block;
+    }
+
+    .tbl thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+
+    .tbl tbody tr {
+        padding: var(--s-3) 0;
+        border-top: 1px solid var(--line);
+    }
+
+    .tbl thead tr {
+        display: block;
+    }
+
+    .tbl td {
+        padding: 2px 0;
+        border: 0;
+    }
+
+    .tbl td:empty {
+        display: none;
+    }
+
+    .tbl td:first-child {
+        color: var(--ink);
+        font-weight: 600;
+    }
+
+    .tbl td[data-label]:not(:first-child)::before {
+        content: attr(data-label);
+        display: block;
+        margin-top: 4px;
+        font-size: 12px;
+        line-height: 16px;
+        font-weight: 600;
+        color: var(--ink-3);
     }
 }
 
@@ -387,6 +478,12 @@ table.tbl {
     box-shadow: 0 1px 3px rgba(var(--shadow-rgb), 0.12);
 }
 
+@media (max-width: 733px), (pointer: coarse) {
+    .seg button {
+        min-height: 44px;
+    }
+}
+
 /* Language tabs (`::: tabs` in docs/): one example in each SDK language. The code panel keeps its Copy button; the tab
    names the language, so the panel's own label goes. */
 .lang-tabs {
@@ -400,8 +497,77 @@ table.tbl {
     align-self: flex-start;
 }
 
-.lang-panel[hidden] {
+/* The first language is the default; the others show when the reader picks them (rules below). */
+.lang-tabs > .lang-panel:not(.first) {
     display: none;
+}
+
+/* The reader's language shows from <html data-lang> (set before the first paint by app.html), so the first language
+   never flashes. A group that lacks the language keeps what it shows. actions/lang-tabs.ts keeps the ARIA state and
+   the tabs' state in step with it. */
+html[data-lang="typescript"]
+    .lang-tabs:has(> .lang-panel[data-lang="typescript"])
+    > .lang-panel:not([data-lang="typescript"]) {
+    display: none;
+}
+
+html[data-lang="typescript"]
+    .lang-tabs:has(> .lang-panel[data-lang="typescript"])
+    > .lang-panel[data-lang="typescript"] {
+    display: block;
+}
+
+html[data-lang="typescript"]
+    .lang-tabs:has(> .lang-panel[data-lang="typescript"])
+    .seg
+    button:not([data-lang="typescript"]) {
+    background: transparent;
+    color: var(--ink-2);
+    box-shadow: none;
+}
+
+html[data-lang="typescript"] .lang-tabs:has(> .lang-panel[data-lang="typescript"]) .seg button[data-lang="typescript"] {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgba(var(--shadow-rgb), 0.12);
+}
+html[data-lang="python"] .lang-tabs:has(> .lang-panel[data-lang="python"]) > .lang-panel:not([data-lang="python"]) {
+    display: none;
+}
+
+html[data-lang="python"] .lang-tabs:has(> .lang-panel[data-lang="python"]) > .lang-panel[data-lang="python"] {
+    display: block;
+}
+
+html[data-lang="python"] .lang-tabs:has(> .lang-panel[data-lang="python"]) .seg button:not([data-lang="python"]) {
+    background: transparent;
+    color: var(--ink-2);
+    box-shadow: none;
+}
+
+html[data-lang="python"] .lang-tabs:has(> .lang-panel[data-lang="python"]) .seg button[data-lang="python"] {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgba(var(--shadow-rgb), 0.12);
+}
+html[data-lang="rust"] .lang-tabs:has(> .lang-panel[data-lang="rust"]) > .lang-panel:not([data-lang="rust"]) {
+    display: none;
+}
+
+html[data-lang="rust"] .lang-tabs:has(> .lang-panel[data-lang="rust"]) > .lang-panel[data-lang="rust"] {
+    display: block;
+}
+
+html[data-lang="rust"] .lang-tabs:has(> .lang-panel[data-lang="rust"]) .seg button:not([data-lang="rust"]) {
+    background: transparent;
+    color: var(--ink-2);
+    box-shadow: none;
+}
+
+html[data-lang="rust"] .lang-tabs:has(> .lang-panel[data-lang="rust"]) .seg button[data-lang="rust"] {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgba(var(--shadow-rgb), 0.12);
 }
 
 .lang-tabs .code {

@@ -40,21 +40,21 @@
 }
 
 .prose h2 {
-    font-size: 20px;
-    line-height: 28px;
-    margin: var(--s-8) 0 var(--s-4);
+    font-size: 24px;
+    line-height: 32px;
+    margin: var(--s-7) 0 var(--s-3);
 }
 
 .prose h3 {
-    font-size: var(--t-body-size);
-    line-height: var(--t-body-lh);
-    margin: var(--s-6) 0 var(--s-2);
+    font-size: 18px;
+    line-height: 26px;
+    margin: var(--s-5) 0 var(--s-2);
 }
 
 .prose h4 {
-    font-size: 15px;
-    line-height: 24px;
-    margin: var(--s-5) 0 var(--s-2);
+    font-size: var(--t-body-size);
+    line-height: var(--t-body-lh);
+    margin: var(--s-4) 0 var(--s-1);
 }
 
 .prose .anchor {
@@ -63,7 +63,7 @@
     top: 50%;
     translate: 0 -50%;
     padding: 2px;
-    color: var(--ink-soft);
+    color: var(--ink-3);
     opacity: 0;
     transition: opacity var(--dur-1) var(--ease);
 }
@@ -114,21 +114,22 @@
     font-weight: 600;
 }
 
+/* Inline links are regular weight, teal and underlined: colour alone is not enough to tell them from text. */
 .prose a:not(.anchor) {
     color: var(--accent);
-    font-weight: 600;
-    text-decoration: none;
-}
-
-.prose a:not(.anchor):hover {
+    font-weight: 400;
     text-decoration: underline;
     text-decoration-thickness: 1px;
+    text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
     text-underline-offset: 3px;
 }
 
+.prose a:not(.anchor):hover {
+    text-decoration-color: currentColor;
+}
+
 .prose blockquote {
-    padding-left: var(--s-4);
-    border-left: 3px solid var(--line);
+    padding-left: var(--s-5);
     color: var(--ink-3);
 }
 
@@ -157,17 +158,16 @@
     margin-top: 0;
 }
 
+/* The heading anchor sits in the left margin, which only exists beside the navigation column (from 1024 px). */
+@media (max-width: 1023px) {
+    .prose .anchor {
+        display: none;
+    }
+}
+
 @media (max-width: 733px) {
     .prose h1.ident {
         font-size: 22px;
         line-height: 30px;
-    }
-
-    .prose h2 {
-        margin-top: var(--s-7);
-    }
-
-    .prose .anchor {
-        display: none;
     }
 }

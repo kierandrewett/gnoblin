@@ -43,7 +43,9 @@ export function warm(): Promise<PagefindModule | null> {
             await module.init();
             return module;
         })
-        .catch(() => {
+        .catch((error: unknown) => {
+            // The dialog tells the reader; the console keeps the cause.
+            if (!import.meta.env.DEV) console.error("Search: the index failed to load", error);
             failedAt = Date.now();
             return null;
         });

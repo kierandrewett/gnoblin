@@ -1,5 +1,4 @@
-// Behaviour for every code panel (.code) inside an element: the Copy button, and the fade on the right while a
-// long line can still scroll. Works on markup from CodeBlock.svelte and from the Markdown renderer alike.
+// Behaviour for every code panel (.code) inside an element: the Copy button, and the fades on the edges that have more to scroll to. Works on markup from CodeBlock.svelte and from the Markdown renderer alike.
 import type { Action } from "svelte/action";
 import { copyText } from "../state.svelte.ts";
 
@@ -16,6 +15,7 @@ function markOverflow(pre: HTMLElement) {
     const panel = pre.closest(".code");
     if (!panel) return;
     panel.classList.toggle("overflow", pre.scrollWidth > pre.clientWidth + 1);
+    panel.classList.toggle("at-start", pre.scrollLeft <= 0);
     panel.classList.toggle("at-end", pre.scrollLeft + pre.clientWidth >= pre.scrollWidth - 1);
 }
 

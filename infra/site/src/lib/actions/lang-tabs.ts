@@ -1,18 +1,13 @@
 // Behaviour for every language tab group (.lang-tabs, written by src/lib/server/markdown.ts from `::: tabs`) inside an
-// element: a click or an arrow key selects a language, and every group on the page follows, so a reader who picks Python
-// reads Python down the page. The choice is kept for the next page. Arrow keys, Home and End move between the tabs of a
-// group (WAI-ARIA tabs). The markup is complete without this script: the first language shows.
+// element: a click or an arrow key picks a language for the whole site (setLanguage in state.svelte.ts), and every
+// group on the page follows, so a reader who picks Python reads Python down the page. app.html applies the stored language (or `?lang=`) to <html data-lang> before the first
+// paint and src/lib/styles/content.css shows it from that attribute, so the markup needs no script to show the right
+// panel; this action keeps the tabs' ARIA state in step. Arrow keys, Home and End move between
+// the tabs of a group (WAI-ARIA tabs).
 import type { Action } from "svelte/action";
+import { LANGUAGE_EVENT, LANGUAGES, setLanguage, type LanguageId } from "../state.svelte.ts";
 
-const STORAGE_KEY = "gnoblin-language";
-
-function remembered(): string | null {
-    try {
-        return localStorage.getItem(STORAGE_KEY);
-    } catch {
-        return null;
-    }
-}
+const isLanguage = (value: unknown): value is LanguageId => LANGUAGES.some((l) => l.id === value);
 
 /** Shows `lang` in every group that has it; a group without it keeps what it shows. */
 function select(root: HTMLElement, lang: string) {
@@ -24,28 +19,16 @@ function select(root: HTMLElement, lang: string) {
             tab.setAttribute("aria-selected", String(on));
             tab.tabIndex = on ? 0 : -1;
         }
-        for (const panel of group.querySelectorAll<HTMLElement>('[role="tabpanel"]')) {
-            panel.hidden = panel.dataset.lang !== lang;
-        }
+        // Inactive panels are hidden by CSS from <html data-lang>, which also keeps them out of the accessibility tree.
     }
 }
 
 /** The parameter is the content (for example the page's HTML): when it changes, the groups are found again. */
 export const langTabs: Action<HTMLElement, unknown> = (node) => {
-    const choose = (lang: string, store: boolean) => {
-        select(node, lang);
-        if (!store) return;
-        try {
-            localStorage.setItem(STORAGE_KEY, lang);
-        } catch {
-            // Storage is off: the choice lasts for this page.
-        }
-    };
-
     const onClick = (event: MouseEvent) => {
         if (!(event.target instanceof Element)) return;
         const tab = event.target.closest<HTMLButtonElement>('.lang-tabs [role="tab"]');
-        if (tab?.dataset.lang && node.contains(tab)) choose(tab.dataset.lang, true);
+        if (isLanguage(tab?.dataset.lang) && node.contains(tab)) setLanguage(tab.dataset.lang);
     };
 
     const onKey = (event: KeyboardEvent) => {
@@ -60,25 +43,29 @@ export const langTabs: Action<HTMLElement, unknown> = (node) => {
             event.key
         ];
         const target = next === undefined ? undefined : tabs[next];
-        if (!target?.dataset.lang) return;
+        if (!isLanguage(target?.dataset.lang)) return;
         event.preventDefault();
-        choose(target.dataset.lang, true);
+        setLanguage(target.dataset.lang);
         target.focus();
     };
 
+    const onLanguage = (event: Event) => select(node, (event as CustomEvent<string>).detail);
+
     const apply = () => {
-        const lang = remembered();
+        const lang = document.documentElement.dataset.lang;
         if (lang) select(node, lang);
     };
 
     node.addEventListener("click", onClick);
     node.addEventListener("keydown", onKey);
+    window.addEventListener(LANGUAGE_EVENT, onLanguage);
     apply();
     return {
         update: apply,
         destroy() {
             node.removeEventListener("click", onClick);
             node.removeEventListener("keydown", onKey);
+            window.removeEventListener(LANGUAGE_EVENT, onLanguage);
         },
     };
 };

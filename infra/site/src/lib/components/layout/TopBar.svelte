@@ -1,9 +1,10 @@
 <script lang="ts">
-    // The site header, the same on every page: mark and name, the main nav, search, Source, Issues and Releases,
-    // and the appearance toggle. From 1280 px it sits on the docs page grid (the mark over the navigation, the site
-    // links and search over the centred 720 px column, the project links over the outline). It is the page colour
+    // The site header, the same on every page: mark and name, the main nav (the sidebar's sections and the reference),
+    // search, the appearance toggle and, on wide screens, Source, Issues and Releases (the footer has them at every
+    // width). From 1280 px it sits on the docs page grid (the mark over the navigation, the site links over the
+    // centred 720 px column, search and the toggle over the outline). It is the page colour
     // until the page scrolls, then gains a rule and a blur (CSS scroll-driven; with reduced motion the rule is
-    // always there). Below 1024 px it shows the mark, search and a menu button that opens MenuSheet.
+    // always there). Below 1100 px it shows the mark, search and a menu button that opens MenuSheet.
     import { PROJECT_LINKS, SITE_NAV, type SiteArea } from "#lib/site.ts";
     import { search } from "#lib/state.svelte.ts";
     import SearchField from "../search/SearchField.svelte";
@@ -146,8 +147,13 @@
         gap: var(--s-4);
     }
 
+    /* Source, Issues and Releases need a wide side column; narrower than that the footer carries them. */
+    .proj,
+    .sep {
+        display: none;
+    }
+
     .proj {
-        display: flex;
         align-items: center;
         gap: var(--s-4);
         font-size: 13px;
@@ -178,14 +184,15 @@
         gap: var(--s-1);
     }
 
-    /* From 1280 px: the docs page's three columns. */
+    /* From 1280 px: the docs page's three columns. The side tracks are at least --nav-w (232 px) wide there, the
+       same as on the docs page, so nothing leaves the window. */
     @media (min-width: 1280px) {
         .inner {
             display: grid;
             grid-template-columns:
-                minmax(0, 1fr) min(var(--measure), 100% - 2 * var(--page-pad))
-                minmax(0, 1fr);
-            column-gap: var(--s-8);
+                minmax(var(--nav-w), 1fr) min(var(--measure), 100% - 2 * var(--page-pad))
+                minmax(var(--toc-w), 1fr);
+            column-gap: var(--col-gap);
             padding: 0;
         }
 
@@ -201,23 +208,42 @@
         }
 
         .tools {
-            display: contents;
-        }
-
-        .tools > :global(.search-field) {
-            grid-area: 1 / 2;
-            justify-self: end;
-        }
-
-        .end {
             grid-column: 3;
-            display: flex;
-            align-items: center;
-            gap: var(--s-4);
+            margin-left: 0;
+            justify-self: start;
+        }
+
+        /* Search and the toggle share a side track as narrow as 248 px: the field is 176 px, without the key hint. */
+        .tools > :global(.search-field) {
+            width: 176px;
+        }
+
+        .tools > :global(.search-field .keys) {
+            display: none;
         }
     }
 
-    @media (max-width: 1023px) {
+    @media (min-width: 1500px) {
+        .tools > :global(.search-field) {
+            width: 220px;
+        }
+
+        .tools > :global(.search-field .keys) {
+            display: flex;
+        }
+    }
+
+    @media (min-width: 1800px) {
+        .proj {
+            display: flex;
+        }
+
+        .sep {
+            display: block;
+        }
+    }
+
+    @media (max-width: 1099px) {
         .site,
         .tools {
             display: none;
