@@ -349,6 +349,15 @@ unsafe extern "system" fn collect(
     if !wanted || data.is_null() || user.is_null() {
         return vk::FALSE;
     }
+    // The loader reports through the same messenger, for example an installed driver for hardware this machine does not
+    // have ("Call to 'vkEnumeratePhysicalDevices' in ICD ... failed"). That says nothing about this renderer's use of the
+    // device, so it is not kept.
+    // SAFETY: the layer passes a valid callback structure for the duration of the call.
+    let id_name = unsafe { (*data).p_message_id_name };
+    // SAFETY: a non-null id name is a NUL-terminated string valid for the duration of the call.
+    if !id_name.is_null() && unsafe { CStr::from_ptr(id_name) }.to_bytes() == b"Loader Message" {
+        return vk::FALSE;
+    }
     // SAFETY: the layer passes a valid callback structure for the duration of the call and
     // `user` is the `Arc` the context leaked for this messenger, alive until it is destroyed.
     let (text, sink) = unsafe {
