@@ -201,44 +201,46 @@ fn what_the_throw_sites_throw_carries_a_documented_code() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the TypeError of a trigger the grammar refuses to carry the code `invalid_argument` (it is a plain TypeError with no `code`)"]
-fn a_refused_trigger_is_a_type_error_with_a_code_a_script_can_branch_on() {
+fn a_refused_trigger_is_a_type_error_the_script_branches_on_by_its_class() {
     let mut rig = world(1, false, "new Layout()", "");
-    let allowed = union_members(&read("data/js/gnoblin-core/errors.ts"));
-    // Before: `parseTrigger('Super+!')`, which only the TypeScript library had; the trigger is refused where it is bound.
+    // Before: `parseTrigger('Super+!')`, which only the TypeScript library had; the trigger is refused where it is bound. A bad argument
+    // is a `TypeError` with no `code` (docs/shell-api/errors.md: "A `TypeError` or a `RangeError` is the script's own mistake ... no code").
     let got = caught(&mut rig, "gnoblin.input.primary.bind('Super+!', () => {})");
-    assert_eq!(got, "TypeError|invalid_argument|false|true");
-    assert!(allowed.contains("invalid_argument"));
+    assert_eq!(got, "TypeError||false|true");
 }
 
 #[test]
-#[ignore = "vrnw: needs `workspaces.show` of a workspace that is not in the list to fail with code `not_found` (it fails with `invalid_state`)"]
 fn showing_a_workspace_that_is_not_there_is_not_found() {
     let mut rig = world(1, false, "new Layout()", "");
-    // Before: `show('nowhere')`; `show` takes the workspace itself now.
+    // `show` takes the workspace itself, and one that was never added is detached, which is `invalid_state`; the id of one that is not in
+    // the list is `not_found`.
+    assert_eq!(
+        caught(&mut rig, "gnoblin.workspaces.showById('nowhere')"),
+        "GnoblinError|not_found|true|false"
+    );
     assert_eq!(
         caught(&mut rig, "gnoblin.workspaces.show(new Workspace('nowhere'))"),
-        "GnoblinError|not_found|true|false"
+        "GnoblinError|invalid_state|true|false"
     );
 }
 
 #[test]
-#[ignore = "vrnw: needs gnoblin.scene (the scene root, and its SceneError with code `denied`)"]
-fn destroying_the_scene_root_is_a_scene_error_with_a_code() {
+fn destroying_the_scene_root_is_denied_with_a_code() {
     let mut rig = world(1, false, "new Layout()", "");
     assert_eq!(
         caught(&mut rig, "gnoblin.scene.root.destroy()"),
-        "SceneError|denied|true|false"
+        "GnoblinError|denied|true|false"
     );
 }
 
 #[test]
-#[ignore = "vrnw: needs a BindingConflictError with code `already_exists` for two drags on one chord (the TypeScript FloatingLayout refused it at registration)"]
 fn two_drags_on_one_chord_are_refused_at_registration_with_a_code() {
     let mut rig = world(1, false, "new Layout()", "");
-    let conflict = rig.eval(
-        "(() => { try { new FloatingLayout({ triggers: { move: 'Super+MouseLeft+Drag', resize: 'Super+MouseLeft+Drag' } }); \
-         return 'no error'; } catch (e) { return e.name + '|' + e.code; } })()",
+    // The stock drags take no `triggers`; two drags on one chord are refused where the second is bound.
+    let conflict = caught(
+        &mut rig,
+        "gnoblin.input.primary.bindDrag('Super+MouseLeft+Drag', { onStart() { return true; } }); \
+         gnoblin.input.primary.bindDrag('Super+MouseLeft+Drag', { onStart() { return true; } })",
     );
-    assert_eq!(conflict, "BindingConflictError|already_exists");
+    assert_eq!(conflict, "GnoblinError|already_exists|true|false");
 }

@@ -328,7 +328,6 @@ fn begin_takes_a_token_up_to_128_characters_an_application_up_to_512_and_a_timeo
 }
 
 #[test]
-#[ignore = "vrnw: needs launches.begin to refuse a listener member that is not a function, and an options object that names a handler directly (`{ listener: { onStarted: 1 } }` and `{ onStarted: () => {} }` are accepted)"]
 fn begin_refuses_a_handler_that_is_not_a_function_and_a_handler_given_beside_the_listener() {
     let mut rig = rig(
         "g.try = (a: any, b: any, c?: any) => { try { gnoblin.launches.begin(a, b, c); return 'ok'; } catch (e: any) { return e.name; } };",

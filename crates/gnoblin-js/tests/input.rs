@@ -1715,7 +1715,6 @@ fn a_bad_registration_is_refused_with_a_message_that_says_why() {
 }
 
 #[test]
-#[ignore = "vrnw: needs InputContext.bind to refuse a drag trigger given a plain function (it is accepted and claims the chord)"]
 fn a_drag_trigger_bound_to_a_plain_function_is_refused() {
     let comp = world(false);
     let mut rig = rig(
@@ -1728,7 +1727,8 @@ fn a_drag_trigger_bound_to_a_plain_function_is_refused() {
     );
     assert_eq!(
         rig.eval("errors.join('\\n')"),
-        r#"TypeError: InputContext "seatA".bind: "Super+MouseLeft+Drag" is a drag; bind a PointerDragBinding with onStart, onUpdate and onEnd"#
+        // The words are the library's own: a catalog name (`pointer_drag_binding`, `bind_drag`), as the refusal of a press object on a drag says it.
+        r#"TypeError: InputContext "seatA".bind: "Super+MouseLeft+Drag" is a drag; bind a pointer_drag_binding with bind_drag"#
     );
     assert!(comp.claimed().is_empty(), "a refused binding holds no claim");
 }

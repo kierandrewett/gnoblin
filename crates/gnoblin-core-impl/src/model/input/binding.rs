@@ -27,12 +27,17 @@ impl BindingAction {
     }
 }
 
-/// Refuses a trigger the action cannot serve: an object that handles a press is not for a drag or a gesture, and the object of a drag or of
-/// a gesture is for that kind of trigger only. A function serves every trigger the compositor can claim.
+/// Refuses a trigger the action cannot serve: an object that handles a press is not for a drag or a gesture, the object of a drag or of
+/// a gesture is for that kind of trigger only, and a function serves every trigger the compositor can claim but a drag, which takes place
+/// over time with a start, updates and an end (a function on a gesture runs when it ends).
 fn check_action(what: &str, action: &BindingAction, parsed: &ParsedTrigger) -> Res<()> {
     let drag = parsed.kind == TriggerClass::Pointer && parsed.action == Some("drag");
     let gesture = parsed.kind == TriggerClass::Gesture;
     match action {
+        BindingAction::Closure(_) if drag => Err(Fail::type_error(format!(
+            "{what}.bind: \"{}\" is a drag; bind a pointer_drag_binding with bind_drag",
+            parsed.text
+        ))),
         BindingAction::Handler(_) if drag || gesture => Err(Fail::type_error(format!(
             "{what}.bind_binding: \"{}\" is a {}; bind {} with {}",
             parsed.text,

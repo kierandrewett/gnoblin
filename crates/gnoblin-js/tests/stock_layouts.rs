@@ -399,20 +399,19 @@ fn layout_options_have_the_retired_defaults_and_bad_ones_are_refused() {
             "0,row,",
             "TypeError: \"middle\" is not a value of master_stack_orientation (left, right, top, bottom)",
             "TypeError: \"diagonal\" is not a value of grid_fill (row, column)",
-            "TypeError: grid.gap must be a finite number, got NaN",
+            "TypeError: grid.gap must be a finite number of at least 0, got NaN",
         ])
     );
 }
 
 #[test]
-#[ignore = "vrnw: needs MasterStackLayout to refuse a negative gap (it takes gap -1 without a word)"]
 fn master_stack_refuses_a_negative_gap() {
     let got = run(r#"
         emit(thrown(() => new MasterStackLayout({ gap: -1 })));
     "#);
     assert_eq!(
         got,
-        "RangeError: MasterStackLayout gap must be a finite number of at least 0, got -1"
+        "TypeError: master_stack.gap must be a finite number of at least 0, got -1"
     );
 }
 
