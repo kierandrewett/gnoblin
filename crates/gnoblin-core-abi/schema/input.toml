@@ -13,7 +13,7 @@
 namespace = "gnoblin.model"
 version = "0.2.0"
 local = true
-title = "Input and shortcuts"
+title = "Input"
 
 # Where a binding comes from. A device's binding runs before a layout's, and a layout's before the context's own.
 [[enum]]
@@ -79,6 +79,7 @@ since = "0.2.0"
 returns = "bool"
 optional = true
 
+# The press that matched.
 [[callback.param]]
 name = "event"
 type = "object:binding_event"
@@ -90,6 +91,7 @@ name = "client_scope"
 since = "0.2.0"
 returns = "bool"
 
+# The window with the keyboard focus.
 [[callback.param]]
 name = "client"
 type = "object:client"
@@ -205,10 +207,12 @@ since = "0.2.0"
 function = true
 returns = "object:trigger"
 
+# The trigger, written as the grammar reads it (`Super+Shift+1`).
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# What holds the trigger, for the message of a refusal. `trigger` when left out.
 [[object.method.param]]
 name = "what"
 type = "string"
@@ -221,10 +225,12 @@ since = "0.2.0"
 function = true
 returns = "string"
 
+# The trigger, written as the grammar reads it.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# What holds the trigger, for the message of a refusal. `trigger` when left out.
 [[object.method.param]]
 name = "what"
 type = "string"
@@ -238,10 +244,12 @@ since = "0.2.0"
 function = true
 returns = "string"
 
+# The trigger, written as the grammar reads it.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# What holds the trigger, for the message of a refusal. `trigger` when left out.
 [[object.method.param]]
 name = "what"
 type = "string"
@@ -447,6 +455,7 @@ returns = "bool"
 required = true
 optional = true
 
+# The press: the trigger that matched and where the input came to.
 [[object.method.param]]
 name = "event"
 type = "object:binding_event"
@@ -469,6 +478,7 @@ returns = "bool"
 required = true
 optional = true
 
+# The press the drag started from. `position` is where the press was.
 [[object.method.param]]
 name = "event"
 type = "object:binding_event"
@@ -478,6 +488,7 @@ type = "object:binding_event"
 name = "on_update"
 since = "0.2.0"
 
+# The step: `position` is where the pointer is, and `dx` and `dy` say how far it is from the press.
 [[object.method.param]]
 name = "event"
 type = "object:binding_event"
@@ -487,6 +498,7 @@ type = "object:binding_event"
 name = "on_end"
 since = "0.2.0"
 
+# The drag at its end: `phase` is `end`, and `position` is where the pointer is.
 [[object.method.param]]
 name = "event"
 type = "object:binding_event"
@@ -496,6 +508,7 @@ type = "object:binding_event"
 name = "on_cancel"
 since = "0.2.0"
 
+# The drag as it was when it ended: `phase` is `cancel`.
 [[object.method.param]]
 name = "event"
 type = "object:binding_event"
@@ -517,6 +530,7 @@ returns = "bool"
 required = true
 optional = true
 
+# The gesture when it is decided: `phase` is `start`.
 [[object.method.param]]
 name = "event"
 type = "object:binding_event"
@@ -526,6 +540,7 @@ type = "object:binding_event"
 name = "on_update"
 since = "0.2.0"
 
+# The step: how far the fingers have gone.
 [[object.method.param]]
 name = "event"
 type = "object:binding_event"
@@ -535,6 +550,7 @@ type = "object:binding_event"
 name = "on_end"
 since = "0.2.0"
 
+# The gesture when the fingers left the pad: `phase` is `end`.
 [[object.method.param]]
 name = "event"
 type = "object:binding_event"
@@ -544,6 +560,7 @@ type = "object:binding_event"
 name = "on_cancel"
 since = "0.2.0"
 
+# The gesture as it was when it ended: `phase` is `cancel`.
 [[object.method.param]]
 name = "event"
 type = "object:binding_event"
@@ -656,15 +673,18 @@ name = "bind"
 since = "0.2.0"
 returns = "object:binding"
 
+# The trigger to bind, written as the grammar reads it.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# The function that runs on a press. Left out, the trigger is claimed and swallowed.
 [[object.method.param]]
 name = "action"
 type = "callback:key_action"
 optional = true
 
+# The id, priority and the other fields of `binding_options`. A field left out takes the default its description gives.
 [[object.method.param]]
 name = "options"
 type = "object:binding_options"
@@ -676,14 +696,17 @@ name = "bind_binding"
 since = "0.2.0"
 returns = "object:binding"
 
+# The trigger to bind, written as the grammar reads it.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# The object the shell implements: its `on_press` runs when the chord is pressed.
 [[object.method.param]]
 name = "handler"
 type = "object:key_binding"
 
+# The id, priority and the other fields of `binding_options`. A field left out takes the default its description gives.
 [[object.method.param]]
 name = "options"
 type = "object:binding_options"
@@ -695,14 +718,17 @@ name = "bind_drag"
 since = "0.2.0"
 returns = "object:binding"
 
+# A pointer drag such as `Super+MouseLeft+Drag`.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# The object the shell implements to follow the drag.
 [[object.method.param]]
 name = "handler"
 type = "object:pointer_drag_binding"
 
+# The id, priority and the other fields of `binding_options`. A field left out takes the default its description gives.
 [[object.method.param]]
 name = "options"
 type = "object:binding_options"
@@ -714,14 +740,17 @@ name = "bind_gesture"
 since = "0.2.0"
 returns = "object:binding"
 
+# A gesture such as `Swipe3Left`.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# The object the shell implements to follow the gesture.
 [[object.method.param]]
 name = "handler"
 type = "object:gesture_binding"
 
+# The id, priority and the other fields of `binding_options`. A field left out takes the default its description gives.
 [[object.method.param]]
 name = "options"
 type = "object:binding_options"
@@ -734,6 +763,7 @@ since = "0.2.0"
 optional = true
 returns = "object:binding"
 
+# The id to look for.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -744,6 +774,7 @@ name = "has"
 since = "0.2.0"
 returns = "bool"
 
+# The id to look for.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -754,6 +785,7 @@ name = "remove"
 since = "0.2.0"
 returns = "bool"
 
+# The id of the binding to take out.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -774,6 +806,7 @@ returns = "list<object:binding>"
 name = "added"
 since = "0.2.0"
 
+# The binding that joined.
 [[object.signal.field]]
 name = "binding"
 type = "object:binding"
@@ -783,6 +816,7 @@ type = "object:binding"
 name = "removed"
 since = "0.2.0"
 
+# The binding that left.
 [[object.signal.field]]
 name = "binding"
 type = "object:binding"
@@ -1039,15 +1073,18 @@ name = "bind"
 since = "0.2.0"
 returns = "object:binding"
 
+# The trigger to bind, written as the grammar reads it.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# The function that runs on a press. Left out, the trigger is claimed and swallowed.
 [[object.method.param]]
 name = "action"
 type = "callback:key_action"
 optional = true
 
+# The id, priority and the other fields of `binding_options`. A field left out takes the default its description gives.
 [[object.method.param]]
 name = "options"
 type = "object:binding_options"
@@ -1059,14 +1096,17 @@ name = "bind_binding"
 since = "0.2.0"
 returns = "object:binding"
 
+# The trigger to bind, written as the grammar reads it.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# The object the shell implements: its `on_press` runs when the chord is pressed.
 [[object.method.param]]
 name = "handler"
 type = "object:key_binding"
 
+# The id, priority and the other fields of `binding_options`. A field left out takes the default its description gives.
 [[object.method.param]]
 name = "options"
 type = "object:binding_options"
@@ -1078,14 +1118,17 @@ name = "bind_drag"
 since = "0.2.0"
 returns = "object:binding"
 
+# A pointer drag such as `Super+MouseLeft+Drag`.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# The object the shell implements to follow the drag.
 [[object.method.param]]
 name = "handler"
 type = "object:pointer_drag_binding"
 
+# The id, priority and the other fields of `binding_options`. A field left out takes the default its description gives.
 [[object.method.param]]
 name = "options"
 type = "object:binding_options"
@@ -1097,14 +1140,17 @@ name = "bind_gesture"
 since = "0.2.0"
 returns = "object:binding"
 
+# A gesture such as `Swipe3Left`.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# The object the shell implements to follow the gesture.
 [[object.method.param]]
 name = "handler"
 type = "object:gesture_binding"
 
+# The id, priority and the other fields of `binding_options`. A field left out takes the default its description gives.
 [[object.method.param]]
 name = "options"
 type = "object:binding_options"
@@ -1370,15 +1416,18 @@ name = "bind"
 since = "0.2.0"
 returns = "object:binding"
 
+# The trigger to bind, written as the grammar reads it.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# The function that runs on a press. Left out, the trigger is claimed and swallowed.
 [[object.method.param]]
 name = "action"
 type = "callback:key_action"
 optional = true
 
+# The id, priority and the other fields of `binding_options`. A field left out takes the default its description gives.
 [[object.method.param]]
 name = "options"
 type = "object:binding_options"
@@ -1390,14 +1439,17 @@ name = "bind_binding"
 since = "0.2.0"
 returns = "object:binding"
 
+# The trigger to bind, written as the grammar reads it.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# The object the shell implements: its `on_press` runs when the chord is pressed.
 [[object.method.param]]
 name = "handler"
 type = "object:key_binding"
 
+# The id, priority and the other fields of `binding_options`. A field left out takes the default its description gives.
 [[object.method.param]]
 name = "options"
 type = "object:binding_options"
@@ -1409,14 +1461,17 @@ name = "bind_drag"
 since = "0.2.0"
 returns = "object:binding"
 
+# A pointer drag such as `Super+MouseLeft+Drag`.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# The object the shell implements to follow the drag.
 [[object.method.param]]
 name = "handler"
 type = "object:pointer_drag_binding"
 
+# The id, priority and the other fields of `binding_options`. A field left out takes the default its description gives.
 [[object.method.param]]
 name = "options"
 type = "object:binding_options"
@@ -1428,14 +1483,17 @@ name = "bind_gesture"
 since = "0.2.0"
 returns = "object:binding"
 
+# A gesture such as `Swipe3Left`.
 [[object.method.param]]
 name = "trigger"
 type = "string"
 
+# The object the shell implements to follow the gesture.
 [[object.method.param]]
 name = "handler"
 type = "object:gesture_binding"
 
+# The id, priority and the other fields of `binding_options`. A field left out takes the default its description gives.
 [[object.method.param]]
 name = "options"
 type = "object:binding_options"
@@ -1447,6 +1505,7 @@ name = "is_binding_only"
 since = "0.2.0"
 returns = "bool"
 
+# A device name from `devices`.
 [[object.method.param]]
 name = "name"
 type = "string"
@@ -1457,6 +1516,7 @@ type = "string"
 name = "make_binding_only"
 since = "0.2.0"
 
+# A device name from `devices`.
 [[object.method.param]]
 name = "name"
 type = "string"
@@ -1467,6 +1527,7 @@ name = "release_binding_only"
 since = "0.2.0"
 returns = "bool"
 
+# A device name from `devices`.
 [[object.method.param]]
 name = "name"
 type = "string"
@@ -1490,6 +1551,7 @@ since = "0.2.0"
 optional = true
 returns = "object:input_hit"
 
+# The point, in the compositor's logical space.
 [[object.method.param]]
 name = "position"
 type = "object:input_point"
@@ -1505,10 +1567,12 @@ since = "0.2.0"
 name = "attach_layout"
 since = "0.2.0"
 
+# A collection a shell made.
 [[object.method.param]]
 name = "layout"
 type = "object:binding_collection"
 
+# Tells which windows the layout's bindings apply to. Left out, they apply to every window.
 [[object.method.param]]
 name = "owns"
 type = "callback:client_scope"
@@ -1519,6 +1583,7 @@ optional = true
 name = "detach_layout"
 since = "0.2.0"
 
+# The layout to stop, as it was given to `attach_layout`.
 [[object.method.param]]
 name = "layout"
 type = "object:binding_collection"
@@ -1565,6 +1630,7 @@ readonly = true
 name = "add_context"
 since = "0.2.0"
 
+# The context a shell made. Adding a context that is there changes nothing.
 [[object.method.param]]
 name = "context"
 type = "object:input_context"
@@ -1576,6 +1642,7 @@ name = "remove_context"
 since = "0.2.0"
 returns = "bool"
 
+# The context to remove. A seat's own context is refused.
 [[object.method.param]]
 name = "context"
 type = "object:input_context"
@@ -1587,6 +1654,7 @@ since = "0.2.0"
 optional = true
 returns = "object:device"
 
+# The id the compositor gave the device.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -1598,6 +1666,7 @@ since = "0.2.0"
 optional = true
 returns = "object:input_context"
 
+# The context's name.
 [[object.method.param]]
 name = "name"
 type = "string"
@@ -1622,6 +1691,7 @@ readonly = true
 name = "device_added"
 since = "0.2.0"
 
+# The device that was plugged in.
 [[object.signal.field]]
 name = "device"
 type = "object:device"
@@ -1631,6 +1701,7 @@ type = "object:device"
 name = "device_removed"
 since = "0.2.0"
 
+# The device that was unplugged.
 [[object.signal.field]]
 name = "device"
 type = "object:device"
