@@ -949,14 +949,31 @@ fn a_spawned_process_has_a_handle_and_its_end_reaches_wait_and_the_listeners() {
     let (mut rig, _owner) = rig("class Watch extends ProcessListener {
              onExited(process: any) { g.log.push(`exit ${process.id} ${process.exitCode} ${process.alive}`); }
          }
-         gnoblin.process!.addListener(new Watch());
-         g.job = gnoblin.process!.spawn(['sh', '-c', 'printf out; exit 3'], { stdout: 'capture' });
-         g.same = g.job.wait() === g.job.wait();
-         g.job.wait().then(() => g.log.push(`wait ${g.job.exit.exitCode} ${g.job.exit.stdout} ${g.job.exit.timedOut}`));");
+         gnoblin.process!.addListener(new Watch());");
+    // The child runs until the test writes the release file, so it is still running for the reads below however slow the turns are.
+    // The guard writes it on every exit, so a failed assertion does not leave the child looping.
+    struct Release(std::path::PathBuf);
+    impl Drop for Release {
+        fn drop(&mut self) {
+            let _ = fs::write(&self.0, "");
+        }
+    }
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let release = dir.path().join("release");
+    let _release = Release(release.clone());
+    rig.ts(&format!(
+        r#"g.job = gnoblin.process!.spawn(['sh', '-c', 'printf out; until [ -e "$GNOBLIN_RELEASE" ]; do sleep 0.01; done; exit 3'], {{ stdout: 'capture', env: ['GNOBLIN_RELEASE={}'] }});"#,
+        release.display()
+    ));
+    rig.ts("g.same = g.job.wait() === g.job.wait();");
+    rig.ts(
+        "g.job.wait().then(() => g.log.push(`wait ${g.job.exit.exitCode} ${g.job.exit.stdout} ${g.job.exit.timedOut}`));",
+    );
     assert_eq!(
         rig.ts("[g.job.id, g.job.pid > 0, g.job.alive, g.job.status, g.job.argv.join(' ')].join('|')"),
-        "1|true|true|running|sh -c printf out; exit 3"
+        r#"1|true|true|running|sh -c printf out; until [ -e "$GNOBLIN_RELEASE" ]; do sleep 0.01; done; exit 3"#
     );
+    fs::write(&release, "").expect("the release file");
     until(&mut rig, "the process ended", |rig| rig.ts("g.job.alive") == "false");
     rig.settle();
     assert_eq!(
