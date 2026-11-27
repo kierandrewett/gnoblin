@@ -64,7 +64,9 @@ pub(crate) fn start_focus(ui: &Rc<Ui>) -> gnoblin_object::Res<()> {
     focus::start(ui)
 }
 
-/// Stops the stock focus policy for the toolkit `ui`, as a shell with a focus policy of its own does (`focus_policy.stop`).
+/// Stops the stock focus policy for the toolkit `ui`. Only `ui::testing` calls it (the oracle records without stock focus); a shell
+/// stops the policy through `focus_policy.stop`.
+#[cfg(any(test, feature = "testing"))]
 pub(crate) fn stop_focus(ui: &Rc<Ui>) {
     focus::stop(ui);
 }
