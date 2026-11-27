@@ -371,6 +371,13 @@ pub struct ObjectType {
     /// For a record: the number field a bare number stands for (`all` of `corner_radius`). A script may give the number where the
     /// record goes, and the SDK makes the record with only that field.
     pub number: Option<String>,
+    /// For a record: the names a script may be tempted to give that are not fields, each with the reason it is refused (`primary`, because
+    /// the layout derives the primary output). A script that gives one is refused with the reason; any other name that is not a field is
+    /// refused as unknown. In the order the file lists them.
+    pub refuses: Vec<(String, String)>,
+    /// For a record: a value the library answers or takes and a script does not change. Its value classes are frozen in the script
+    /// languages whose values can be, so a write is refused where it is made.
+    pub immutable: bool,
     /// For a family: its variants, one for each value of the `tag` enum, in the enum's order. A variant is a value class of its own in
     /// each language, and the family is the type that holds any of them; on the wire a variant is the family's record.
     pub variants: Vec<TaggedVariant>,
@@ -416,6 +423,8 @@ impl ObjectType {
             export: self.export.clone(),
             tag: self.tag.clone(),
             number: self.number.clone(),
+            refuses: self.refuses.clone(),
+            immutable: self.immutable,
             variants: self.variants.clone(),
             properties: self
                 .properties
@@ -1074,6 +1083,12 @@ impl Catalog {
             if let Some(field) = &object.number {
                 let _ = writeln!(text, "number {field}");
             }
+            if !object.refuses.is_empty() {
+                let _ = writeln!(text, "refuses {:?}", object.refuses);
+            }
+            if object.immutable {
+                let _ = writeln!(text, "immutable");
+            }
             for property in &object.properties {
                 let _ = writeln!(
                     text,
@@ -1384,6 +1399,8 @@ fn lower_augments(schemas: &mut [Schema], problems: &mut Vec<String>) {
             export: Export::default(),
             tag: None,
             number: None,
+            refuses: Vec::new(),
+            immutable: false,
             variants: Vec::new(),
             properties,
             methods,

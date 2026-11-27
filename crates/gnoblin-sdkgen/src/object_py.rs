@@ -310,6 +310,16 @@ class Implementor(_Held):
     _h: Any = None
 
 
+def defines(obj: Any, name: str, label: str) -> bool:
+    """Whether a script object answers the method `name` of the interface `label`: it does with a callable, and an object that holds anything else there is refused."""
+    member = getattr(obj, name, None)
+    if callable(member):
+        return True
+    if member is not None:
+        raise TypeError(f"{label}.{name}: expected a callable, got {type(member).__name__}")
+    return False
+
+
 def ref(value: Any, implement: Callable[[Any], Any] | None = None) -> Any:
     """An object on its way in: a library object, or a script object that implements an interface (`implement` makes the library's side)."""
     handle = getattr(value, "_h", None)
@@ -860,10 +870,17 @@ impl<'a> Py<'a> {
             }
             forced
         };
-        c.line(if keyword_only {
-            "@dataclasses.dataclass(kw_only=True)"
+        let mut options = Vec::new();
+        if keyword_only {
+            options.push("kw_only=True");
+        }
+        if class.immutable {
+            options.push("frozen=True");
+        }
+        c.line(if options.is_empty() {
+            "@dataclasses.dataclass".to_owned()
         } else {
-            "@dataclasses.dataclass"
+            format!("@dataclasses.dataclass({})", options.join(", "))
         });
         c.line(format!("class {name}:"));
         c.indent();
@@ -1825,8 +1842,9 @@ impl<'a> Py<'a> {
             let ident = member_name(&method.name, &method.extras.export.py);
             let at = Self::at(&lookups, 'm', &method.name);
             c.line(format!(
-                "if callable(getattr(obj, {}, None)): implemented.append(i[{at}])",
-                quote(&ident)
+                "if _B.defines(obj, {}, {}): implemented.append(i[{at}])",
+                quote(&ident),
+                quote(&name)
             ));
             let reads: Vec<String> = method
                 .params

@@ -103,6 +103,7 @@ default = 0.0
 name = "output_config"
 since = "0.2.0"
 kind = "record"
+refuses = { primary = "the layout derives the primary output" }
 
 # `WxH@Hz` such as `3440x1440@144`, or `preferred` to keep what the backend drives.
 [[object.property]]
