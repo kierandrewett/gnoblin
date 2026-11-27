@@ -71,14 +71,17 @@ the first input afterwards shows a notification.
 `ms` is a number above 0 and at most 86400000, which is a day. A configuration has at most 256 live watches, and each has
 its own time. Any other value throws a `RangeError`.
 
-A watch is not idle when it starts. It becomes idle once the session has been idle for `ms` and nothing holds it awake.
+A watch is idle once the session has been idle for `ms` and nothing holds it awake. A watch made while the session is quiet is idle
+at once; any other becomes idle when `ms` have passed without input.
 
 - `onIdle(watch)` runs for every idle period until you cancel the watch.
 - `onResume(watch)` runs on the first input after an idle period, or when a hold appears.
 - `onClosed(watch, reason)` runs once when the watch ends. `reason` is `"cancelled"`.
-- A watch made while the session is already idle runs `onIdle` from the next turn, after the call that made it has returned.
-  A listener passed to `watch` hears it, and so does one added to the returned watch straight after, such as
-  `watch.on("idle", ...)` in TypeScript.
+- A watch made while the session is already idle has `isIdle` true when `watch` returns, and runs `onIdle` once, from the next
+  turn, after the call that made it has returned. A listener passed to `watch` hears it, and so does one added to the returned
+  watch straight after, such as `watch.on("idle", ...)` in TypeScript.
+- If the session turns active, or a hold of yours appears, before that turn, the watch is not idle by then: `onIdle` does not
+  run, and `onResume` does not either, because the listeners were never told the session was idle.
 
 An `IdleListener` is a class with optional methods, or an object that has some of them. All three methods are optional.
 
