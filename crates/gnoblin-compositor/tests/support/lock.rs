@@ -170,6 +170,20 @@ impl Peer {
         }
     }
 
+    /// Reads until `done` holds of what this connection has been told, or until `limit` has passed, whichever is first.
+    /// For a client that is owed something it knows the end of: how long the session takes to hand it over is the
+    /// machine's, so the end is waited for and not guessed as a window. What it was not told by `limit` is the caller's
+    /// to assert on.
+    pub fn watch_until(&mut self, limit: Duration, done: impl Fn(&Peer) -> bool) {
+        self.wire.set_read_timeout(Duration::from_millis(50));
+        let deadline = Instant::now() + limit;
+        while !done(self) && Instant::now() < deadline {
+            if let Some(envelope) = self.wire.receive_within() {
+                self.note(&envelope);
+            }
+        }
+    }
+
     pub fn wait_for_state(&mut self, target: &str) {
         let deadline = Instant::now() + Duration::from_secs(20);
         self.wire.set_read_timeout(Duration::from_millis(100));

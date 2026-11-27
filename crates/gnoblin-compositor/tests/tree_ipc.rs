@@ -1391,13 +1391,36 @@ fn snapshot_holding_window(wire: &mut Wire, title: &str) -> (AttachedPayload, Ve
 }
 
 /// Reads change batches until the changes published so far satisfy `done`.
+///
+/// What follows a snapshot is not always a batch. A frame tells a connection its changes and then its events, and a
+/// window node's `ready` event is the frame's that made the node. When that same frame decided the shell's attach, the
+/// shell hears the node in the snapshot (the frame's reads run after the node is made) and then its `ready`, so the
+/// `ready` of a window the snapshot already holds is passed over here. Any other frame between the batches fails.
 fn changes_until(wire: &mut Wire, done: impl Fn(&[change::Properties]) -> bool) -> Vec<change::Properties> {
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut all = Vec::new();
     while !done(&all) {
         assert!(Instant::now() < deadline, "the expected changes never arrived: {all:?}");
-        let batch: ChangesPayload = event(wire, "changes");
-        all.extend(batch.changes);
+        let envelope = wire.receive().expect("a frame");
+        assert!(
+            matches!(envelope.kind, Some(Kind::Event(_))),
+            "an Event frame for the changes, got {envelope:?}"
+        );
+        assert_eq!(envelope.namespace, NAMESPACE);
+        match envelope.member.as_str() {
+            "changes" => {
+                let batch: ChangesPayload = envelope.payload_as().expect("the payload decodes");
+                all.extend(batch.changes);
+            }
+            "event" => {
+                let ready: EventPayload = envelope.payload_as().expect("the payload decodes");
+                assert_eq!(
+                    ready.kind, "ready",
+                    "the only event a window test is owed besides its changes: {ready:?}"
+                );
+            }
+            member => panic!("a `changes` batch or a `ready` event, got `{member}`: {envelope:?}"),
+        }
     }
     all
 }

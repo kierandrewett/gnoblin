@@ -242,6 +242,10 @@ const STALL_LIMIT: Duration = Duration::from_secs(5);
 /// the dispatcher's own tick (50 ms) and not the seconds a write to a full socket takes.
 const STALL_BOUND: Duration = Duration::from_millis(1_500);
 
+/// The longest a client that reads is given to hear everything the session kept for it. A client that takes something
+/// is never dropped for [`STALL_LIMIT`], so this bounds only the test when a change really was lost.
+const HEARING_LIMIT: Duration = Duration::from_secs(30);
+
 /// A paint list of 60 long texts, a little under the 1 MiB a `content` may hold. The first text says which list it is,
 /// so no two are equal and each is a change the compositor publishes to every observer.
 fn large_paint_list(which: u16) -> Vec<u8> {
@@ -374,15 +378,22 @@ fn a_client_that_reads_but_too_little_is_dropped_once_more_than_the_session_hold
 #[test]
 fn a_client_that_reads_late_but_inside_the_stall_limit_loses_nothing_and_hears_every_change_in_order() {
     let (session, mut observer, mut late, mut holder, fed) = session_with_a_client_to_stall();
+    let feeding = Instant::now();
     let told = feed(&mut holder, fed, &mut observer, 10, None);
     assert!(
         told.slowest <= STALL_BOUND,
         "a request waited {:?} for the compositor while a client that reads late was being fed",
         told.slowest
     );
-    // Two seconds of not reading is inside the limit: what the session keeps for it, it keeps in order.
-    std::thread::sleep(Duration::from_secs(2));
-    late.watch(Duration::from_millis(1_500));
+    // Two seconds of not reading is inside the limit: what the session keeps for it, it keeps in order. The client has
+    // taken nothing since the first change, so the two seconds are counted from there and not from when the feeding ended:
+    // feeding a loaded machine takes seconds, and a client that waited those and two more would be past the limit.
+    std::thread::sleep((feeding + Duration::from_secs(2)).saturating_duration_since(Instant::now()));
+    // What it kept is about 10 MB, and the session offers the socket more of it on each tick of its dispatcher, so how long
+    // it takes to hand over depends on how busy the machine is. The client reads until the last change has come, and not
+    // for a time that a loaded machine can overrun; a change the session lost never comes, and the loop below says which.
+    let last = *told.serials.last().expect("the canvas was fed");
+    late.watch_until(HEARING_LIMIT, |late| late.batches.contains(&last));
     assert!(
         late.batches.windows(2).all(|pair| pair[0] < pair[1]),
         "the changes arrived out of order: {:?}",
