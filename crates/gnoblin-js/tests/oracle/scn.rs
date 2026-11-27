@@ -395,6 +395,8 @@ impl Scn {
         let source = format!("{PRELUDE}{body}");
         let build = world.clone();
         let rig = rig_setup(&typescript_globals(), &source, move |comp| build.build(comp));
+        // The recorded library has no stock focus policy of its own; the shell stops the one the toolkit started on boot.
+        gnoblin_std_impl::ui_testing::stop_stock_focus();
         let boot = rig.load_diagnostics.clone();
         let mark = 0;
         Scn {

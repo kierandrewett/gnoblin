@@ -64,6 +64,11 @@ pub(crate) fn start_focus(ui: &Rc<Ui>) -> gnoblin_object::Res<()> {
     focus::start(ui)
 }
 
+/// Stops the stock focus policy for the toolkit `ui`, as a shell with a focus policy of its own does (`focus_policy.stop`).
+pub(crate) fn stop_focus(ui: &Rc<Ui>) {
+    focus::stop(ui);
+}
+
 /// A request a window made. Answers whether a listener handled it, which the window menu respects: a `menu` request a listener answered
 /// does not open the menu.
 pub(crate) fn on_request(ui: &Rc<Ui>, node: u64, request: &str, x: f64, y: f64) -> bool {

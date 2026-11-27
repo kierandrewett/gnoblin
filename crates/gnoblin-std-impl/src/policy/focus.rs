@@ -324,7 +324,7 @@ pub(super) fn start(ui: &Rc<Ui>) -> Res<()> {
 }
 
 /// Stops the policy and forgets what it waited for.
-fn stop(ui: &Rc<Ui>) {
+pub(crate) fn stop(ui: &Rc<Ui>) {
     let listening = {
         let mut policy = ui.policy.borrow_mut();
         policy.focus.started = false;

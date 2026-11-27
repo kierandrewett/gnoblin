@@ -32,3 +32,11 @@ pub fn measurements_changed() {
         ui.schedule();
     }
 }
+
+/// Stops the stock focus policy of every toolkit of this thread: the test's shell has a focus policy of its own, as the recorded
+/// TypeScript library does.
+pub fn stop_stock_focus() {
+    for ui in super::tree::all() {
+        crate::policy::stop_focus(&ui);
+    }
+}
