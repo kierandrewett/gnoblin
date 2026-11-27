@@ -14,7 +14,7 @@ export const REFERENCE_ONLY = { section: SECTION };
 export const WITHOUT_REFERENCE = { section: { not: SECTION } };
 
 /** Reference records listed first, so a reader looking for `focus` sees the member before the guide. */
-export const REFERENCE_LIMIT = 8;
+export const REFERENCE_LIMIT = 5;
 
 export const SECTION_LABEL = { reference: "API reference", pages: "Pages" } as const;
 

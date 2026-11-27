@@ -345,7 +345,11 @@ export function fieldRefs(fields: Field[]): Ref[] {
 function defaultText(value: DefaultValue, type: TypeSpelling, pkg: Pkg, lang: LanguageId): string {
     if (Array.isArray(value)) return `[${value.map((v) => defaultText(v, type, pkg, lang)).join(", ")}]`;
     if (typeof value === "boolean") return lang === "python" ? (value ? "True" : "False") : String(value);
-    if (typeof value === "number") return String(value);
+    if (typeof value === "number") {
+        // A whole number the schema types as a double is written `30.0` where the language tells a float from an int.
+        const decimal = type.schema.includes("double") && Number.isInteger(value) && lang !== "typescript";
+        return decimal ? `${value}.0` : String(value);
+    }
     // A word of an enum that the type names is spelled the way that enum spells it.
     for (const ref of type.refs) {
         if (ref.kind !== "enum") continue;

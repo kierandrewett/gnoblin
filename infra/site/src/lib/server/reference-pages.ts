@@ -205,6 +205,13 @@ function parameterTable(pkg: Pkg, m: Method): string {
     );
 }
 
+/** The properties of a class and of the classes it extends, the base first: what an object of the class has. */
+function withBases(pkg: Pkg, c: RawClass): Property[] {
+    const base = c.base ? resolve(pkg, c.base) : undefined;
+    const parent = base && reference().classes.get(key(base.pkg, base.name));
+    return [...(parent ? withBases(base.pkg, parent) : []), ...c.properties];
+}
+
 async function methodBody(pkg: Pkg, m: Method): Promise<string> {
     const out: string[] = [];
     const rest = afterFirstSentence(m.description);
@@ -243,7 +250,7 @@ async function methodBody(pkg: Pkg, m: Method): Promise<string> {
                     table(
                         `Members of ${returned.names.typescript}`,
                         [{ head: "Name" }, { head: "Type" }, { head: "Description" }],
-                        returned.properties.map((p) => ({
+                        withBases(target!.pkg, returned).map((p) => ({
                             cells: [
                                 `<b class="nm">${spelled(p.names)}</b>`,
                                 typeHtml(target!.pkg, p.type),
@@ -833,9 +840,12 @@ export function errorsPage(): ErrorsPage {
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Paths and search
 
+let paths: Set<string> | undefined;
+
 /** Every page of the reference: a link from the docs is checked against these. */
 export function referencePaths(): Set<string> {
-    const paths = new Set(["/reference", "/reference/errors"]);
+    if (paths) return paths;
+    paths = new Set(["/reference", "/reference/errors"]);
     for (const e of classEntries()) paths.add(`/reference/${e.package}/${e.name}`);
     for (const e of typesEntries()) paths.add(`/reference/${e.package}/types/${e.area}`);
     return paths;

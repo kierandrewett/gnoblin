@@ -109,12 +109,15 @@ export async function find(query: string): Promise<Found | null> {
         module.search(query, { filters: REFERENCE_ONLY }),
         module.search(query, { filters: WITHOUT_REFERENCE }),
     ]);
-    const results = [...(api?.results ?? []).slice(0, REFERENCE_LIMIT), ...(pages?.results ?? [])];
+    const reference = (api?.results ?? []).slice(0, REFERENCE_LIMIT);
+    const results = [...reference, ...(pages?.results ?? [])];
     const found: Found = {
         total: results.length,
         loaded: 0,
         async more(count) {
-            const slice = results.slice(found.loaded, found.loaded + count);
+            // The first screen has the reference rows and then the usual number of pages, so a common word still shows its pages.
+            const take = found.loaded === 0 ? reference.length + count : count;
+            const slice = results.slice(found.loaded, found.loaded + take);
             found.loaded += slice.length;
             return (await Promise.all(slice.map((result) => result.data()))).map(toGroup);
         },

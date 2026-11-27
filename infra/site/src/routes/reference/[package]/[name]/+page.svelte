@@ -85,8 +85,8 @@
         <h2 id="sec-events">Events <span class="cnt">{c.events.length}</span></h2>
         <p class="ref-note">
             <span data-only="typescript"
-                >Listen with <code>{c.titleText.charAt(0).toLowerCase() + c.titleText.slice(1)}.on(event, handler)</code
-                >, which returns a <code>Listener</code>. The handler receives the arguments listed here.</span
+                >Listen with <code>object.on(event, handler)</code>, which returns a <code>Listener</code>. The handler
+                receives the arguments listed here.</span
             >
             <span data-only="python"
                 >Listen with <code>on(event, handler)</code>, or as a decorator, <code>@object.on(event)</code>. Both
