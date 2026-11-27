@@ -209,7 +209,16 @@ pub fn serve(compositor: &dyn Compositor, connection: &Connection) -> Option<Ses
             }),
         }),
     };
-    match futures_lite::future::block_on(connection.object_server().at(PATH, service.clone())) {
+    // Served, and then answering: a caller that is handed the connection's name right after this
+    // returns must not find a dispatcher that has not listened yet (`gnoblin_service_core::bus`).
+    let served = futures_lite::future::block_on(async {
+        let served = connection.object_server().at(PATH, service.clone()).await;
+        if matches!(served, Ok(None)) {
+            gnoblin_service_core::dispatching(connection).await?;
+        }
+        served
+    });
+    match served {
         Ok(None) => {}
         Ok(Some(_)) => {
             log::warn!(area = "services", "the session idle path is already served");
