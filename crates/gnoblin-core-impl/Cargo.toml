@@ -73,6 +73,8 @@ gnoblin-testkit = { path = "../gnoblin-testkit", optional = true }
 gnoblin-testkit = { path = "../gnoblin-testkit" }
 # The provider registration tests register `NullWm` as the window manager.
 gnoblin-wm-api = { path = "../gnoblin-wm-api" }
+# The schema files' `raises` are checked against the script API's error codes (`tests/raises.rs`).
+gnoblin-schema = { path = "../gnoblin-schema" }
 
 [build-dependencies]
 # The ABI crate names the SONAME and the value kinds the generated catalog uses; the schema is the catalog's source.
