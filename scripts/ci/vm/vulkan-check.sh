@@ -85,7 +85,11 @@ pixels() {
     fi
 }
 
-red='foot -o colors.background=ff0000 sh -c '"'"'sleep 3600'"'"
+# foot 1.26 renamed the `colors` section to `colors-dark`, so `-o colors.background=` is an error on Arch and Tumbleweed (foot 1.28)
+# and `-o colors-dark.background=` one on Debian 13 (foot 1.21). The terminal's own escape sequence for the default background
+# (OSC 11) works on every version, and paints the whole window.
+paint='printf "\033]11;rgb:ff/00/00\007"'
+red="foot sh -c '$paint; sleep 3600'"
 session_for vulkan-foot 8 'GNOBLIN_CI_RENDERER=vulkan' "$red"
 reason=$(serves vulkan-foot)
 if [ -n "$reason" ]; then
@@ -109,7 +113,7 @@ if [ -z "$vkms_card" ]; then
     done
 else
     session_for vkms-vulkan 30 "GNOBLIN_CI_RENDERER=vulkan GNOBLIN_DRM_DEVICE=$vkms_card GNOBLIN_LOG=backend:debug" \
-        "foot -o colors.background=ff0000 sh -c 'while :; do echo \$RANDOM; sleep 0.02; done'"
+        "foot sh -c '$paint; while :; do echo \$RANDOM; sleep 0.02; done'"
     reason=$(serves vkms-vulkan)
     if [ -n "$reason" ]; then
         check vkms-vulkan fail "$reason"
