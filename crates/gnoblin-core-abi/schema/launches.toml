@@ -7,6 +7,7 @@
 namespace = "gnoblin.model"
 version = "0.2.0"
 local = true
+title = "Launches"
 
 # Where a launch is. It begins `pending` and leaves it once, for one of the other three.
 [[enum]]

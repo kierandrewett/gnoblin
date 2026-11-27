@@ -10,6 +10,7 @@
 namespace = "gnoblin.model"
 version = "0.2.0"
 local = true
+title = "Dialogs"
 
 # What a request is: a consent dialog for a portal request, the compositor's passphrase prompt, or a polkit authentication.
 [[enum]]

@@ -2,6 +2,7 @@
 namespace = "gnoblin.model"
 version = "0.2.0"
 local = true
+title = "Focus"
 
 # What `focus_history.history` is narrowed by: a field left out does not narrow.
 [[object]]

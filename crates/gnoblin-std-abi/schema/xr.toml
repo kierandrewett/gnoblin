@@ -15,6 +15,7 @@
 namespace = "gnoblin.std"
 version = "0.2.0"
 local = true
+title = "XR"
 
 # Where an extension is in its life: `ready` while it serves a session, `unloaded` while it is absent.
 [[enum]]

@@ -8,6 +8,7 @@
 namespace = "gnoblin.model"
 version = "0.2.0"
 local = true
+title = "Idle"
 
 # What the compositor said about idleness.
 [[object]]

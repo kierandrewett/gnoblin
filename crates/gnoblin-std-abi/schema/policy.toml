@@ -11,6 +11,7 @@
 namespace = "gnoblin.std"
 version = "0.2.0"
 local = true
+title = "Window policy"
 
 # The focus modes: `click` focuses on a click, `sloppy` follows the pointer, `follow-mouse` acts on entry only.
 [[enum]]

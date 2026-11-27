@@ -6,6 +6,7 @@
 namespace = "gnoblin.std"
 version = "0.2.0"
 local = true
+title = "Widgets"
 
 # A range of the text: `start` is before `end`.
 [[object]]

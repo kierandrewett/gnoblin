@@ -6,6 +6,7 @@
 namespace = "gnoblin.model"
 version = "0.2.0"
 local = true
+title = "Insets"
 
 # The room a window's frame takes outside its content, in pixels. Every side is 0 or more.
 [[object]]

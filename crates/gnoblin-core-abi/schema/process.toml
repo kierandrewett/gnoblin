@@ -9,6 +9,7 @@
 namespace = "gnoblin.model"
 version = "0.2.0"
 local = true
+title = "Processes"
 
 # Where one standard stream goes: the session log, nowhere, or into the end record (up to `output_limit` bytes).
 [[enum]]

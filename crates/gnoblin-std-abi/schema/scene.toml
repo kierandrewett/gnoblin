@@ -11,6 +11,7 @@
 namespace = "gnoblin.std"
 version = "0.2.0"
 local = true
+title = "Scene"
 
 # What a pointer that reaches a node does: `forward` hits the node and, for a view of a client, goes on into the client in the client's
 # own surface coordinates; `capture` hits the node and stops there, and the shell hears the node's `pointer` signal; `none` misses the

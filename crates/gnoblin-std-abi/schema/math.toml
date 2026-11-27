@@ -10,6 +10,7 @@
 namespace = "gnoblin.std"
 version = "0.2.0"
 local = true
+title = "Geometry"
 
 # A point or a direction in three dimensions. Positions use the units of the node's parent; rays and planes use the units of their
 # inputs.

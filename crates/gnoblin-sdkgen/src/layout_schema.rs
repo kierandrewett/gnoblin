@@ -114,7 +114,7 @@ pub fn schema_text() -> String {
     let mut out = String::new();
     out.push_str(
         "# The built-in layouts of `gnoblin.std`, written from `gnoblin_std_abi::layouts::LAYOUT_KINDS` by `gnoblin-sdkgen`.\n\
-         namespace = \"gnoblin.std\"\nversion = \"0.2.0\"\nlocal = true\n",
+         namespace = \"gnoblin.std\"\nversion = \"0.2.0\"\nlocal = true\ntitle = \"Workspaces and layouts\"\n",
     );
     for kind in LAYOUT_KINDS {
         let mut enum_members: BTreeSet<String> = BTreeSet::new();

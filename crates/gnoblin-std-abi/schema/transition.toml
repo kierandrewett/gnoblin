@@ -13,6 +13,7 @@
 namespace = "gnoblin.std"
 version = "0.2.0"
 local = true
+title = "Transitions"
 
 # How an animation moves from its start to its end. Each name is the CSS timing function of the same name: `ease-out` is `cubic-bezier(0,
 # 0, 0.58, 1)`.

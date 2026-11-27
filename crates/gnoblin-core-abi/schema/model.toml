@@ -8,3 +8,4 @@
 namespace = "gnoblin.model"
 version = "0.2.0"
 local = true
+title = "Object model"

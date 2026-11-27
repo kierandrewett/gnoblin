@@ -5,6 +5,7 @@
 namespace = "gnoblin.model"
 version = "0.2.0"
 local = true
+title = "Windows and outputs"
 
 # How the compositor answers a window's client when it asks to be told it may draw its next frame: `auto` after every frame that
 # shows the window, `hold` never, `throttle` at most `frame_rate` times a second.
