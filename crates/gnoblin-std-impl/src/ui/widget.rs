@@ -410,6 +410,11 @@ pub(crate) struct Canvases {
     pub(crate) bars_cover: Option<Closure>,
     /// The primary output, for a bar that names none.
     pub(crate) bars_primary: Option<Closure>,
+    /// Whether each bar was on show when the library's turn last looked, so a bar that gave way or came back is drawn again.
+    pub(crate) bars_seen: Vec<(Cid, bool)>,
+    /// The room the bars handed the library for each output, so only an output a bar took room from is given back: room a shell set
+    /// itself (`output_set_insets`) on an output with no bar is left as it was.
+    pub(crate) bars_room: HashMap<u64, (f64, f64)>,
 }
 
 impl Canvases {

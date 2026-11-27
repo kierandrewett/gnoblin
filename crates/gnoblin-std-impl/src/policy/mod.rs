@@ -98,6 +98,11 @@ pub(crate) fn turn(ui: &Rc<Ui>) {
     requests::turn(ui);
 }
 
+/// A window's frame changed the room it takes: the rectangle a maximised window returns to keeps the frame's place.
+pub(crate) fn frame_moved(ui: &Ui, client: u64, was: &crate::floating::Inset, now: &crate::floating::Inset) {
+    requests::follow_frame(ui, client, was, now);
+}
+
 /// How long until the policy needs a turn, in milliseconds.
 pub(crate) fn wake_in(ui: &Ui) -> Option<u64> {
     [focus::wake_in(ui), requests::wake_in(ui)].into_iter().flatten().min()

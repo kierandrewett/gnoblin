@@ -249,6 +249,30 @@ fn forget(ui: &Ui, client: u64, take: impl FnOnce(&mut Rests) -> Option<Rect>) -
     take(ui.policy.borrow_mut().requests.kept.entry(client).or_default())
 }
 
+/// A window's frame took another room: the FRAME keeps its place, so the rectangle the window returns to from maximise moves in by what
+/// the top and left gained and stays inside the work area. The library does the same for what it keeps itself (`follow_frame`).
+pub(super) fn follow_frame(ui: &Ui, client: u64, was: &crate::floating::Inset, now: &crate::floating::Inset) {
+    let Some(area) = look(ui.ctx, |st| Ok(st.work_area_of_client(client))).ok().flatten() else {
+        return;
+    };
+    let mut policy = ui.policy.borrow_mut();
+    let Some(floating) = policy
+        .requests
+        .kept
+        .get_mut(&client)
+        .and_then(|kept| kept.floating.as_mut())
+    else {
+        return;
+    };
+    let moved = Rect::new(
+        floating.x + now.left - was.left,
+        floating.y + now.top - was.top,
+        floating.width,
+        floating.height,
+    );
+    *floating = crate::client_state::fit_content(&moved, now, &area);
+}
+
 /// Fills the work area and keeps the floating rectangle. Refused (false) when the window is maximised or fullscreen already.
 pub(super) fn maximise(ui: &Rc<Ui>, client: u64) -> bool {
     if nodes::flag(&ui.g, client, "maximised") || nodes::flag(&ui.g, client, "fullscreen") {

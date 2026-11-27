@@ -84,6 +84,12 @@ pub(crate) fn turn(std: &Rc<Std>) {
         }
     }
     std.drain();
+    // The bars' room is what the layouts below tile in: a window gone fullscreen, a workspace shown or an output come or gone since the
+    // toolkit's last frame changes it, and the pass must not run on the room of a turn before.
+    let ctx = std.st.borrow().ctx;
+    if let Some(ui) = crate::ui::find(ctx) {
+        ui.sync_bars(true);
+    }
     layout_pass(std, &g);
     std.st.borrow_mut().apply_styles(true);
     std.st.borrow_mut().publish_active_workspace();

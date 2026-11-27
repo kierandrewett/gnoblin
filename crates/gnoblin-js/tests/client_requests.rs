@@ -147,7 +147,6 @@ fn an_unfullscreen_request_returns_the_rectangle_the_window_had() {
 }
 
 #[test]
-#[ignore = "vrnw: needs a Bar to give way to a fullscreen window and to leave its room out of the layouts and the area (Bar.insets() reports it, nothing uses it)"]
 fn a_fullscreen_window_covers_the_bars_which_come_back_when_it_leaves() {
     // Before: "a fullscreen window covers the bars, which come back when it leaves". The retired window starts at the
     // screen's top in the workspace's own space (y -32); in screen coordinates that is y 0.
@@ -210,7 +209,6 @@ fn fullscreen_over_a_maximised_window_keeps_it_maximised_and_leaving_returns_the
 }
 
 #[test]
-#[ignore = "vrnw: needs a Bar to give way to a fullscreen window and to leave its room out of the layouts and the area (Bar.insets() reports it, nothing uses it)"]
 fn maximising_fills_the_area_the_bars_leave_and_fullscreen_over_it_fills_the_whole_output() {
     // New: the retired case has no bar, so its maximised and fullscreen rectangles are the same. With a 32 pixel bar the
     // maximised window fills what the bar leaves and fullscreen still covers the whole output.
@@ -233,7 +231,6 @@ fn maximising_fills_the_area_the_bars_leave_and_fullscreen_over_it_fills_the_who
 }
 
 #[test]
-#[ignore = "vrnw: needs a Bar to give way to a fullscreen window and to leave its room out of the layouts and the area (Bar.insets() reports it, nothing uses it)"]
 fn closing_a_fullscreen_window_brings_the_bars_back() {
     // Before: "closing a fullscreen window brings the bars back".
     let mut rig = world(1);

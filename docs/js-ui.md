@@ -447,11 +447,60 @@ drawing: `text`, `caret`, `selection`, `insert`, `backspace`, `delete`, `left`, 
 A clock keeps its own time. The shell runs no frame while nothing happens, so a `Clock` asks for one when its text is
 due to change: at the end of the minute, or of the second for a format that shows seconds.
 
-`Bar` is a strip along the `top` or `bottom` of the primary screen, over the windows and as wide as the screen. It takes
-its room from them:
+`Bar` is a strip along the `top` or `bottom` of an output, over the windows and as wide as the output. It sits on the
+primary output unless `output` names another output's node. Bars on one edge of one output stack in the order they were
+made. A bar takes its room from the windows there:
 
-- `gnoblin.workspaces.area` and the layouts' work area are the screen less the bars (`Bar.insets()`).
+- `gnoblin.workspaces.area`, the area of an output and the layouts' work area are the output less its bars. A maximised
+  window fills what the bars leave, a snapped window tiles in it, and a floating window under a new bar moves below it.
+- Room follows the bar: it comes when the bar is made, and goes when the bar is destroyed, hidden or unplugged with its output.
+- A bar gives way to a fullscreen window. While a window that is not minimised is fullscreen on the workspace an output
+  shows, that output's bars are hidden (`shown` is false) and take no room, and the fullscreen window covers the whole output.
+  They come back when it leaves or closes. Bars on other outputs stay.
 - `hideWhen` hides a bar, and gives its room back, while it returns true.
+- `Bar.insets(output)` is the room the bars take from the `top` and `bottom` of an output, the primary one when none is given.
+
+::: tabs
+
+```typescript
+import { Bar } from "gnoblin-std/generated/objects";
+
+const bar = new Bar({ edge: "top", height: 32 });
+console.log(Bar.insets().top, bar.shown);
+bar.destroy();
+```
+
+```python
+from gnoblin.objects.std import Bar
+
+bar = Bar(edge="top", height=32.0)
+print(Bar.insets().top, bar.shown)
+bar.destroy()
+```
+
+```rust
+use gnoblin_std::objects::{Bar, BarEdge};
+use gnoblin_std::prelude::*;
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = g.std()?.objects()?;
+
+    let bar = Bar::new(&objects)?;
+    bar.set_edge(BarEdge::Top)?;
+    bar.set_height(32.0)?;
+    let room = Bar::insets(&objects, None)?;
+    println!("{} {}", room.top, bar.shown()?);
+    bar.destroy()?;
+    Ok(())
+}
+```
+
+:::
+
+A shell can answer the two questions itself: `Bar.onOutputs(primary)` says which output is the primary one, and
+`Bar.giveWayTo(covered)` says whether a fullscreen window covers an output. Leave them out for the library's answers, which
+are the output flagged primary (else the first) and a fullscreen window on the workspace that output shows.
 
 ## The stock shell UI
 

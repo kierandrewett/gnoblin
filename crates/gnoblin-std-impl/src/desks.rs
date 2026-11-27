@@ -335,6 +335,27 @@ impl State {
         }
     }
 
+    /// Whether a fullscreen window that is not minimised is showing on `output`: the workspace the output shows (the one that spans
+    /// over it, when one does) holds it. The shell's bars give way to such a window, and take no room while it is there.
+    pub(crate) fn output_covered(&self, output: NodeId) -> bool {
+        let Some(desk) = self
+            .desk_of_output(output)
+            .map(|id| self.effective_desk(id))
+            .and_then(|id| self.desk(id))
+            .filter(|desk| !desk.parked)
+        else {
+            return false;
+        };
+        let Some(shown) = desk.shown else {
+            return false;
+        };
+        self.clients.iter().any(|client| {
+            self.rec.get(client).is_some_and(|rec| rec.workspace == Some(shown))
+                && nodes::flag(&self.g, *client, "fullscreen")
+                && !nodes::flag(&self.g, *client, "minimised")
+        })
+    }
+
     // ---- outputs come and go -------------------------------------------------------------------------------------------
 
     /// Whether an output can show a workspace: it is on and mirrors nothing.

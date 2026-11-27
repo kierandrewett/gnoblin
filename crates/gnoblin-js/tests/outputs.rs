@@ -359,7 +359,6 @@ fn a_layout_tiles_in_the_area_of_the_output_that_shows_its_workspace() {
 }
 
 #[test]
-#[ignore = "vrnw: needs the workspace layout area to leave the room of the bars (Bar.insets; the area is the whole output)"]
 fn bars_reserve_room_on_their_own_output_and_give_way_to_a_fullscreen_window_there() {
     // Before: bars are children of a `Desk` (`Desk:arrange` stacks them on that desk's edges). New: `Bar` takes an output.
     let mut rig = world(0, true, "new Fill()");
@@ -379,9 +378,10 @@ fn bars_reserve_room_on_their_own_output_and_give_way_to_a_fullscreen_window_the
         "1000,0,600,380",
         "the second output has its own bottom bar and none on top"
     );
+    // A bar that names no output keeps `output` 0 (the primary output, whichever it is) and takes its room on the first output.
     assert_eq!(
         rig.eval(
-            "[g.main.output === Number(gnoblin.outputs.at(0).id), g.side.output === Number(gnoblin.outputs.at(1).id), String(Bar.insets(Number(gnoblin.outputs.at(1).id)).bottom), String(Bar.insets().top)].join('|')"
+            "[g.main.output === 0, g.side.output === Number(gnoblin.outputs.at(1).id), String(Bar.insets(Number(gnoblin.outputs.at(1).id)).bottom), String(Bar.insets(Number(gnoblin.outputs.at(0).id)).top)].join('|')"
         ),
         "true|true|20|32"
     );
