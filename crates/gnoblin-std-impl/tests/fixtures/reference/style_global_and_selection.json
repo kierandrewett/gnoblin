@@ -255,16 +255,6 @@
         ],
         [
           {
-            "key": "focus",
-            "node": 21,
-            "op": "set",
-            "value": {
-              "node": 10
-            }
-          }
-        ],
-        [
-          {
             "key": "x",
             "node": 10,
             "op": "set",
@@ -309,16 +299,6 @@
             "node": 10,
             "op": "set",
             "value": 12.0
-          }
-        ],
-        [
-          {
-            "key": "focus",
-            "node": 21,
-            "op": "set",
-            "value": {
-              "node": 11
-            }
           }
         ],
         [

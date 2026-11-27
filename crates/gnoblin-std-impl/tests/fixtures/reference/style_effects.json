@@ -602,16 +602,6 @@
         ],
         [
           {
-            "key": "focus",
-            "node": 21,
-            "op": "set",
-            "value": {
-              "node": 9
-            }
-          }
-        ],
-        [
-          {
             "key": "x",
             "node": 9,
             "op": "set",
