@@ -23,7 +23,7 @@
 //! path for them: every frame is composed), so there is no direct scan-out to turn off while a factor is set.
 
 use gnoblin_types::{Rect, Scale, Size};
-use smithay::backend::allocator::dmabuf::{AsDmabuf, Dmabuf};
+use smithay::backend::allocator::dmabuf::{AsDmabuf, Dmabuf, DmabufFlags};
 use smithay::backend::allocator::format::FormatSet;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBuffer, GbmBufferFlags, GbmDevice};
 use smithay::backend::allocator::{Allocator, Fourcc, Modifier};
@@ -32,7 +32,7 @@ use smithay::backend::drm::exporter::ExportBuffer;
 use smithay::backend::drm::exporter::ExportFramebuffer;
 use smithay::backend::drm::exporter::gbm::{GbmFramebufferExporter, NodeFilter};
 use smithay::backend::egl::{EGLDevice, EGLDisplay};
-use smithay::reexports::drm::control::crtc;
+use smithay::reexports::drm::control::{Device as ControlDevice, crtc};
 use smithay::utils::{Physical, Size as PhysicalSize};
 
 use crate::frame::Scanout;
@@ -716,17 +716,19 @@ fn allocate(
             modifiers,
         )
         .map_err(|error| format!("the scan-out buffer cannot be allocated: {error}"))?;
-    let dmabuf = buffer
-        .export()
-        .map_err(|error| format!("the scan-out buffer cannot be exported: {error}"))?;
     let target = match renderer {
-        ScanRenderer::Gles(gles) => SlotTarget::Gles(
-            gles.import_scanout(&dmabuf)
-                .map_err(|error| format!("the scan-out buffer cannot be imported: {error}"))?,
-        ),
+        ScanRenderer::Gles(gles) => {
+            let dmabuf = buffer
+                .export()
+                .map_err(|error| format!("the scan-out buffer cannot be exported: {error}"))?;
+            SlotTarget::Gles(
+                gles.import_scanout(&dmabuf)
+                    .map_err(|error| format!("the scan-out buffer cannot be imported: {error}"))?,
+            )
+        }
         ScanRenderer::Vulkan(vulkan) => {
             // A buffer the renderer cannot write is refused here, with its format, and not at the first flip.
-            let dmabuf = as_linear(dmabuf)?;
+            let dmabuf = writable_linear(&buffer, drm)?;
             vulkan
                 .renderer()
                 .import_dmabuf(&dmabuf)
@@ -745,23 +747,37 @@ fn allocate(
     })
 }
 
-/// `dmabuf` labelled LINEAR when GBM exported it with no modifier: a buffer made for the LINEAR flag is one, and the Vulkan
-/// renderer writes only LINEAR buffers.
-fn as_linear(dmabuf: Dmabuf) -> Result<Dmabuf, String> {
-    if smithay::backend::allocator::Buffer::format(&dmabuf).modifier == Modifier::Linear {
-        return Ok(dmabuf);
+/// `buffer` as a LINEAR dmabuf its owner may write through a mapping.
+///
+/// The Vulkan renderer writes the buffer with a shared mapping of the dmabuf, which needs a descriptor opened read-write.
+/// `gbm_bo_get_fd` of Mesa 25.0 (Debian 13) exports read-only, and `mmap(PROT_WRITE, MAP_SHARED)` of such a descriptor is
+/// `EACCES`, so no frame could be written (Mesa 25.3 and later export read-write and map fine). The buffer is
+/// exported here from its own GEM handle with `DRM_RDWR` instead. This is the buffer's first export, which is what makes the
+/// descriptor read-write: the kernel hands an already exported buffer's existing file to a later export, whatever flags it
+/// asks for. A buffer made for the LINEAR flag is LINEAR whatever modifier GBM reports, and the renderer writes only LINEAR
+/// buffers, so the dmabuf is labelled so.
+fn writable_linear(buffer: &GbmBuffer, drm: &DrmDeviceFd) -> Result<Dmabuf, String> {
+    if buffer.plane_count() != 1 {
+        return Err(format!(
+            "the scan-out buffer has {} planes, the Vulkan renderer writes one",
+            buffer.plane_count()
+        ));
     }
+    let fd = drm
+        .buffer_to_prime_fd(
+            smithay::reexports::drm::buffer::Buffer::handle(buffer),
+            smithay::reexports::drm::CLOEXEC | smithay::reexports::drm::RDWR,
+        )
+        .map_err(|error| format!("the scan-out buffer cannot be exported read-write: {error}"))?;
     let mut builder = Dmabuf::builder(
-        smithay::backend::allocator::Buffer::size(&dmabuf),
-        smithay::backend::allocator::Buffer::format(&dmabuf).code,
+        smithay::backend::allocator::Buffer::size(buffer),
+        smithay::backend::allocator::Buffer::format(buffer).code,
         Modifier::Linear,
-        dmabuf.flags(),
+        DmabufFlags::empty(),
     );
-    for ((handle, offset), stride) in dmabuf.handles().zip(dmabuf.offsets()).zip(dmabuf.strides()) {
-        let owned = handle
-            .try_clone_to_owned()
-            .map_err(|error| format!("the scan-out buffer's plane cannot be duplicated: {error}"))?;
-        builder.add_plane(owned, offset, stride);
+    builder.add_plane(fd, buffer.offset(0), buffer.stride_for_plane(0));
+    if let Some(node) = buffer.device_node() {
+        builder.set_node(node);
     }
     builder
         .build()
