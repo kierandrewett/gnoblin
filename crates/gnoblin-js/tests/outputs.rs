@@ -1107,7 +1107,7 @@ fn a_fractional_position_throws_naming_the_key_and_sends_nothing() {
 #[test]
 fn a_mirror_of_that_is_not_a_connector_throws_naming_the_key_and_sends_nothing() {
     let (mirror, sent) = bad_apply("{ mirrorOf: 3 }");
-    assert!(mirror.contains(".mirror_of"), "{mirror}");
+    assert!(mirror.contains(".mirrorOf"), "{mirror}");
     assert_eq!(sent, 0, "a request that does not check is never sent");
 }
 
