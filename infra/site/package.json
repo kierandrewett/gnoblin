@@ -51,7 +51,6 @@
     "svelte": "^5.57.3",
     "svelte-check": "^4.7.7",
     "tslib": "^2.9.1",
-    "typedoc": "0.28.20",
     "typescript": "~6.0.0",
     "typescript-eslint": "^8.72.1",
     "unified": "^11.0.5",

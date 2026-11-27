@@ -80,7 +80,7 @@ you save it.
 Python also has a thinner spelling of the compositor, `from gnoblin import gnoblin`, which works on the compositor's node
 tree with decorators (`@gnoblin.bind("<Super>Return")`, `@gnoblin.on_client_created`). It is described under
 [The `gnoblin` object](#the-gnoblin-object); the object classes above are the same ones TypeScript and Rust use.
-Every class and member a script can use is in the [Python API reference](/reference/python/).
+Every class and member a script can use is in the [API reference](/reference).
 
 ## Run it
 

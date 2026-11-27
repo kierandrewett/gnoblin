@@ -68,7 +68,12 @@ resource "cloudflare_workers_route" "repo_index" {
 }
 
 # Website Worker. It serves the SvelteKit build as static assets. CI builds infra/site/build before Terraform runs.
-# Old URLs redirect through pages that the build writes, so the Worker needs no _redirects file.
+# Old URLs redirect through pages that the build writes. The old per-language reference subpaths (/reference/typescript/*, /python/* and
+# /rust/*) redirect to /reference through the _redirects file that scripts/postbuild.mjs writes into the build:
+# https://developers.cloudflare.com/workers/static-assets/redirects/
+# Verified with `wrangler dev` (4.x) on a throwaway config with this Worker script and these assets settings: a request for
+# /reference/rust/gnoblin_core/struct.Foo.html or /reference/python/x/y.html answers 301 with Location: /reference although the Worker has a
+# fetch handler (the rules apply to env.ASSETS.fetch). Not verified on Cloudflare itself; check one old URL after the first deploy.
 resource "cloudflare_workers_script" "website" {
   account_id         = var.account_id
   script_name        = "gnoblin-website"

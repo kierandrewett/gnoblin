@@ -1,0 +1,1044 @@
+/* The API reference (src/routes/reference). Global, because most of the markup is written by the loader (src/lib/server/reference-pages.ts) and
+   handed to the page as HTML. The design is RefDesign (the Doop canvas "Gnoblin website", Docs page): the docs tokens, a quiet page, a table
+   for every list of members.
+
+   Language. A page holds every spelled thing for each language that spells it differently, in an element with `data-only="<languages>"`. The
+   language is <html data-lang> (set before the first paint by app.html; with none it is TypeScript), and an element that does not belong to it
+   is not shown, so the page works without script, find-in-page sees one spelling and the reader's language never flashes. */
+html:not([data-lang="python"]):not([data-lang="rust"]) [data-only]:not([data-only~="typescript"]),
+html[data-lang="python"] [data-only]:not([data-only~="python"]),
+html[data-lang="rust"] [data-only]:not([data-only~="rust"]) {
+    display: none !important;
+}
+
+.ref {
+    --ref-nav: 224px;
+    --ref-toc: 208px;
+    --ref-gap: 40px;
+    display: grid;
+    grid-template-columns: var(--ref-nav) minmax(0, 816px) var(--ref-toc);
+    column-gap: var(--ref-gap);
+    justify-content: center;
+    align-items: start;
+}
+
+.ref-navcol,
+.ref-toccol {
+    align-self: stretch;
+    padding-top: var(--s-6);
+}
+
+.ref-sticky {
+    position: sticky;
+    top: calc(var(--topbar-h) + var(--s-6));
+    max-height: calc(100vh - var(--topbar-h) - var(--s-6));
+    padding-inline: 4px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.ref-art {
+    min-width: 0;
+    padding: 0 0 var(--s-8);
+}
+
+/* Breadcrumbs left, the language picker right, in one bar that sticks under the header. A rule appears once the page has scrolled. */
+.ref-bar {
+    position: sticky;
+    top: var(--topbar-h);
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-4);
+    height: 56px;
+    background: var(--bg);
+}
+
+.ref-bar.stuck {
+    box-shadow: inset 0 -1px 0 var(--line);
+}
+
+.ref-crumbs {
+    min-width: 0;
+}
+
+.ref-crumbs ol {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--ink-3);
+    white-space: nowrap;
+    list-style: none;
+}
+
+.ref-crumbs li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.ref-crumbs li + li::before {
+    content: "›";
+    color: var(--ink-3);
+}
+
+.ref-crumbs a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.ref-crumbs li:last-child {
+    color: var(--ink-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The language picker: one radio group, one tab stop, the arrow keys move and choose. The selected pill follows <html data-lang> in CSS, so it
+   is right in the first paint. */
+.lang-pick {
+    display: inline-flex;
+    flex: none;
+    padding: 3px;
+    gap: 2px;
+    border-radius: var(--r-pill);
+    background: var(--sunken);
+}
+
+.lang-pick button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 14px;
+    border-radius: var(--r-pill);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-2);
+    white-space: nowrap;
+}
+
+.lang-pick button:hover {
+    color: var(--ink);
+}
+
+.lang-pick svg {
+    width: 10px;
+    height: 10px;
+}
+
+html:not([data-lang="python"]):not([data-lang="rust"]) .lang-pick button[data-lang="typescript"],
+html[data-lang="python"] .lang-pick button[data-lang="python"],
+html[data-lang="rust"] .lang-pick button[data-lang="rust"] {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgba(var(--shadow-rgb), 0.16);
+}
+
+.lang-pick button:focus-visible {
+    outline-offset: 0;
+    border-radius: var(--r-pill);
+}
+
+/* Headings and text. One h1; the sections are h2, a method is h3 and what opens under it h4. */
+.ref-art h1 {
+    margin-top: var(--s-4);
+    font-size: 46px;
+    line-height: 54px;
+    font-weight: 700;
+    text-wrap: balance;
+}
+
+.ref-art h1.ident {
+    font-family: var(--font-mono);
+    font-size: 34px;
+    line-height: 42px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.ref-meta {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--ink-3);
+}
+
+.ref-lede {
+    margin: 14px 0 var(--s-5);
+    max-width: 66ch;
+    font-size: var(--t-lead-size);
+    line-height: var(--t-lead-lh);
+    color: var(--ink-2);
+}
+
+.ref-prose p {
+    max-width: 72ch;
+    margin: 0 0 var(--s-3);
+    font-size: 15px;
+    line-height: 24px;
+    color: var(--ink-2);
+}
+
+.ref-art h2 {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 56px 0 var(--s-3);
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 600;
+    scroll-margin-top: calc(var(--topbar-h) + 72px);
+}
+
+.ref-art h2 .cnt {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+}
+
+.ref-art h3.sub,
+.ref-art h4.sub {
+    margin: var(--s-5) 0 6px;
+    font-size: 15px;
+    line-height: 24px;
+    font-weight: 600;
+}
+
+.ref-note {
+    max-width: 72ch;
+    margin-bottom: 14px;
+    font-size: 14px;
+    line-height: 22px;
+    color: var(--ink-2);
+}
+
+.ref-art code,
+.ref-prose code {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    padding: 0.08em 0.36em;
+    border-radius: 6px;
+    background: var(--sunken);
+    color: var(--ink);
+    overflow-wrap: anywhere;
+}
+
+.ref-art pre.plain {
+    max-width: 72ch;
+    margin: 0 0 var(--s-3);
+    padding: var(--s-3) var(--s-4);
+    overflow-x: auto;
+    border-radius: var(--r-md);
+    background: var(--code-bg);
+    box-shadow: inset 0 0 0 1px var(--code-line);
+    font: 13px/20px var(--font-mono);
+}
+
+.ref-art pre.plain code {
+    padding: 0;
+    background: none;
+    font-size: inherit;
+}
+
+a.ty {
+    color: var(--accent);
+}
+
+a.ty:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.ref-art .mute {
+    color: var(--ink-3);
+}
+
+/* Created by, Returned by. */
+.ref-facts {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    row-gap: 4px;
+    margin: var(--s-4) 0 0;
+    font-size: 14px;
+    line-height: 22px;
+}
+
+.ref-facts dt {
+    color: var(--ink-3);
+}
+
+.ref-facts dd {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 14px;
+    min-width: 0;
+    color: var(--ink-2);
+}
+
+.ref-facts a,
+.ref-glance a {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    text-underline-offset: 3px;
+}
+
+.ref-facts a:hover,
+.ref-glance a:hover {
+    color: var(--accent);
+    text-decoration-color: var(--accent);
+}
+
+/* The import line: one box, Copy at the right. */
+.ref-import {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3);
+    min-height: 44px;
+    padding: 0 var(--s-2) 0 20px;
+    border-radius: var(--r-md);
+    background: var(--code-bg);
+    box-shadow: inset 0 0 0 1px var(--code-line);
+    font: 13.5px/22px var(--font-mono);
+    color: var(--code-ink);
+}
+
+.ref-import pre {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 0;
+    overflow-x: auto;
+    font: inherit;
+    white-space: pre;
+}
+
+.ref-import .copy {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--code-line);
+    font: 500 12px/1 var(--font-text);
+    color: var(--ink-2);
+    white-space: nowrap;
+}
+
+.ref-import .copy:hover {
+    color: var(--ink);
+}
+
+.ref-import .copy.done {
+    color: var(--tip);
+}
+
+/* Members at a glance. */
+.ref-glance {
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr);
+    row-gap: 10px;
+    column-gap: var(--s-4);
+    font-size: 13px;
+}
+
+.ref-glance dt {
+    line-height: 24px;
+    color: var(--ink-3);
+}
+
+.ref-glance dd {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 14px;
+    line-height: 24px;
+}
+
+/* Examples: the docs code panel, one for each language. */
+.ref-art .ex .code {
+    margin: 0 0 var(--s-3);
+}
+
+/* Tables: the docs table, with the member's name as the row heading. */
+.ref-tbl {
+    table-layout: fixed;
+}
+
+/* Column widths, from the first row of the header: a hidden (other language's) column takes none. */
+.ref-tbl th.c-name {
+    width: 156px;
+}
+
+.ref-tbl th.c-type {
+    width: 168px;
+}
+
+.ref-tbl th.c-flags {
+    width: 92px;
+}
+
+.ref-tbl th.c-decl {
+    width: 42%;
+}
+
+.ref-tbl th.c-evt {
+    width: 210px;
+}
+
+.ref-tbl th.c-args {
+    width: 230px;
+}
+
+.ref-tbl th.c-code {
+    width: 130px;
+}
+
+.ref-tbl th.c-kind {
+    width: 96px;
+}
+
+.ref-tbl th[scope="row"] {
+    padding: 12px var(--s-4) 12px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 0;
+    vertical-align: top;
+    text-align: left;
+    font-weight: 400;
+}
+
+.ref-tbl tbody tr:first-child > * {
+    border-top: 0;
+}
+
+.ref-tbl .nm,
+.ref-tbl th[scope="row"] a.anchor {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+}
+
+.ref-tbl td.t,
+.ref-tbl td .ty,
+.ref-tbl td code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+}
+
+.ref-tbl td.flags {
+    color: var(--ink-3);
+    white-space: nowrap;
+}
+
+.ref-tbl td.flags i {
+    display: block;
+    font-style: normal;
+    font-size: 12px;
+}
+
+.ref-tbl td,
+.ref-tbl th[scope="row"] {
+    overflow-wrap: anywhere;
+}
+
+.ref-tbl td.by a {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    text-underline-offset: 3px;
+}
+
+.ref-tbl .df {
+    display: block;
+    margin-top: 2px;
+    color: var(--ink-3);
+    font-size: 13px;
+}
+
+.ref-tbl .more {
+    display: none;
+}
+
+.ref-tbl .dl {
+    display: block;
+    font: 13px/20px var(--font-mono);
+    color: var(--ink-2);
+    overflow-wrap: anywhere;
+}
+
+.ref-tbl .dl + .dl {
+    margin-top: 6px;
+    color: var(--ink-3);
+}
+
+.ref-tbl .dl b {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.ref-tbl .vals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+/* An anchored row: a tinted fill. The rest of a long description opens with it. */
+.ref-tbl tr:target > * {
+    background: var(--accent-soft);
+    border-top-color: transparent;
+    --ink-3: light-dark(#58585d, #a1a1a6);
+}
+
+.ref-tbl tr:target > :first-child {
+    padding-left: 10px;
+    border-start-start-radius: 8px;
+    border-end-start-radius: 8px;
+}
+
+.ref-tbl tr:target > :last-child {
+    padding-right: 10px;
+    border-start-end-radius: 8px;
+    border-end-end-radius: 8px;
+}
+
+.ref-tbl tr:target .more {
+    display: block;
+}
+
+.ref-tbl tr:target code {
+    background: var(--bg);
+}
+
+/* Methods: a row that opens. The anchored one is open, with a full ring. */
+.ref-methods {
+    border-top: 1px solid var(--line);
+}
+
+.ref-methods details {
+    border-bottom: 1px solid var(--line);
+    scroll-margin-top: calc(var(--topbar-h) + 72px);
+}
+
+.ref-methods summary {
+    display: block;
+    padding: 12px 0 12px 22px;
+    cursor: pointer;
+    list-style: none;
+    position: relative;
+}
+
+.ref-methods summary::-webkit-details-marker {
+    display: none;
+}
+
+.ref-methods summary::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 19px;
+    width: 6px;
+    height: 6px;
+    border-right: 1.6px solid var(--ink-3);
+    border-bottom: 1.6px solid var(--ink-3);
+    rotate: -45deg;
+    transition: rotate var(--dur-1) var(--ease);
+}
+
+.ref-methods details[open] > summary::before {
+    rotate: 45deg;
+    top: 17px;
+}
+
+.ref-methods h3.sig {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--s-3);
+    margin: 0;
+    font: 14px/22px var(--font-mono);
+    color: var(--ink-2);
+    overflow-wrap: anywhere;
+}
+
+.ref-methods h3.sig b {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.ref-methods .dl {
+    display: block;
+}
+
+.ref-methods .sum {
+    margin: 2px 0 0;
+    max-width: 70ch;
+    font-size: 14px;
+    line-height: 22px;
+    color: var(--ink-2);
+}
+
+.ref-methods .permalink {
+    position: absolute;
+    right: 0;
+    top: 12px;
+    display: inline-flex;
+    padding: 2px 4px;
+    color: var(--ink-3);
+    font-size: 13px;
+}
+
+.ref-methods .permalink:hover {
+    color: var(--accent);
+}
+
+.ref-methods .body {
+    padding: 0 0 var(--s-5) 22px;
+}
+
+.ref-methods details:target {
+    margin: 6px 0;
+    border-radius: var(--r-md);
+    border-bottom-color: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--accent);
+    background: var(--accent-soft);
+    --ink-3: light-dark(#58585d, #a1a1a6);
+}
+
+.ref-methods details:target > summary {
+    padding-left: 42px;
+    padding-right: 20px;
+}
+
+.ref-methods details:target > summary::before {
+    left: 22px;
+}
+
+.ref-methods details:target > summary .permalink {
+    right: 16px;
+}
+
+.ref-methods details:target .body {
+    padding: 0 20px 20px 42px;
+}
+
+.ref-methods details:target code {
+    background: var(--bg);
+}
+
+/* The edge shadows of a scrolling table are drawn over the page colour: inside the tinted method they would be white strips. */
+.ref-methods details:target .tbl-wrap {
+    background: none;
+}
+
+.ref-methods .body p {
+    max-width: 70ch;
+    margin: 0 0 10px;
+    font-size: 14px;
+    line-height: 22px;
+    color: var(--ink-2);
+}
+
+.ref-methods .body h4.sub {
+    margin-top: 18px;
+}
+
+.ref-methods .body .tbl-wrap {
+    margin-bottom: var(--s-2);
+}
+
+.ref-methods details:target .tbl td,
+.ref-methods details:target .tbl th[scope="row"] {
+    border-top-color: color-mix(in srgb, var(--line-strong) 40%, transparent);
+}
+
+.ref-methods .body .ret {
+    font: 13px/22px var(--font-mono);
+}
+
+/* An interface method on a types page. */
+.ref-art .mrow {
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+}
+
+.ref-art .mrow .sig {
+    font: 14px/22px var(--font-mono);
+    color: var(--ink-2);
+}
+
+.ref-art .mrow p {
+    margin: 2px 0 0;
+    font-size: 14px;
+    color: var(--ink-2);
+}
+
+/* The index. Spacing from the site's tokens: 64 between packages, 8 from heading to note, 16 from note to import line, 32 between areas, 8 from an
+   area heading to its list, 4 between its rows. */
+.ref-pkg {
+    margin-top: var(--s-8);
+}
+
+.ref-pkg > h2 {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 22px;
+    line-height: 30px;
+}
+
+.ref-pkg > .ref-note {
+    margin: var(--s-2) 0 var(--s-4);
+}
+
+.ref-area {
+    margin-top: var(--s-6);
+    scroll-margin-top: calc(var(--topbar-h) + var(--s-6));
+}
+
+.ref-area h3 {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s-2);
+    margin: 0 0 var(--s-2);
+    font-size: 15px;
+    line-height: 24px;
+    font-weight: 600;
+}
+
+.ref-area h3 .cnt {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--ink-3);
+}
+
+.ref-kinds {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    row-gap: var(--s-1);
+    column-gap: var(--s-4);
+}
+
+.ref-kinds dt {
+    font-size: 13px;
+    line-height: 24px;
+    color: var(--ink-3);
+}
+
+.ref-kinds dd {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 14px;
+    line-height: 24px;
+}
+
+.ref-kinds a {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--ink-2);
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    text-underline-offset: 3px;
+}
+
+.ref-kinds a:hover {
+    color: var(--accent);
+    text-decoration-color: var(--accent);
+}
+
+.ref-kinds code {
+    padding: 0;
+    background: none;
+}
+
+/* In-place filtering of the index (the header search on a reference page). */
+.ref-hidden {
+    display: none;
+}
+
+/* The tree: the same as the docs tree, with the package names in monospace. */
+.ref-tree {
+    padding: 0 0 var(--s-8);
+}
+
+.ref-tree.sheet {
+    padding: var(--s-1) var(--s-4) var(--s-6);
+}
+
+.ref-tree .sec {
+    margin-bottom: var(--s-4);
+}
+
+.ref-tree .sec-h,
+.ref-tree .grp {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    text-align: left;
+}
+
+.ref-tree .sec-h {
+    min-height: 32px;
+    margin-bottom: 2px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.ref-tree .sec-h.mono {
+    font-family: var(--font-mono);
+}
+
+.ref-tree svg {
+    color: var(--ink-3);
+}
+
+.ref-tree a,
+.ref-tree .grp {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    width: 100%;
+    min-height: 30px;
+    padding: 5px 0;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--ink-2);
+    text-align: left;
+}
+
+.ref-tree a:hover,
+.ref-tree .grp:hover,
+.ref-tree .sec-h:hover svg {
+    color: var(--ink);
+}
+
+.ref-tree a[aria-current="page"] {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.ref-tree ul ul {
+    margin: 0 0 var(--s-2) 1px;
+    padding-left: var(--s-4);
+    box-shadow: inset 1px 0 0 var(--line);
+}
+
+.ref-tree.sheet a,
+.ref-tree.sheet .grp,
+.ref-tree.sheet .sec-h {
+    min-height: 40px;
+    font-size: 15px;
+}
+
+/* The outline. */
+.ref-toc .t {
+    margin: 0 0 var(--s-3);
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 600;
+}
+
+.ref-toc ul {
+    list-style: none;
+}
+
+.ref-toc a {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--s-2);
+    padding: 4px 0;
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--ink-3);
+}
+
+.ref-toc a:hover {
+    color: var(--ink);
+}
+
+.ref-toc a[aria-current="true"] {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.ref-toc .c {
+    font-variant-numeric: tabular-nums;
+}
+
+.ref-mtoc {
+    display: none;
+    margin: 0 0 var(--s-5);
+}
+
+/* Below 1280 px the outline moves into the article, and below 1024 the tree into the menu sheet. */
+@media (max-width: 1279px) {
+    .ref {
+        --ref-toc: 0px;
+        grid-template-columns: var(--ref-nav) minmax(0, 816px);
+        column-gap: var(--s-6);
+        padding: 0 var(--page-pad);
+    }
+
+    .ref-toccol {
+        display: none;
+    }
+
+    .ref-mtoc {
+        display: block;
+    }
+}
+
+@media (max-width: 1023px) {
+    .ref {
+        grid-template-columns: minmax(0, 816px);
+    }
+
+    .ref-navcol {
+        display: none;
+    }
+}
+
+@media (max-width: 733px) {
+    .ref-art h1 {
+        font-size: var(--t-h1-size);
+        line-height: var(--t-h1-lh);
+    }
+
+    .ref-art h1.ident {
+        font-size: 28px;
+        line-height: 36px;
+    }
+
+    .ref-art h2 {
+        margin-top: var(--s-7);
+    }
+
+    /* The picker is a full-width control in the sticky bar, and the trail scrolls under it. */
+    .ref-bar {
+        flex-direction: column-reverse;
+        align-items: stretch;
+        height: auto;
+        gap: 0;
+        padding: var(--s-2) 0 var(--s-2);
+    }
+
+    .ref-crumbs {
+        overflow-x: auto;
+        padding: 6px 0 2px;
+    }
+
+    .lang-pick {
+        display: flex;
+    }
+
+    .lang-pick button {
+        flex: 1;
+        min-height: 44px;
+        font-size: 14px;
+    }
+
+    .ref-facts,
+    .ref-glance,
+    .ref-kinds {
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: 0;
+    }
+
+    .ref-facts dd,
+    .ref-glance dd,
+    .ref-kinds dd {
+        margin-bottom: var(--s-2);
+    }
+
+    /* Tables stack, as the docs tables do: the first cell is the title of its row. */
+    .ref-tbl th[scope="row"] {
+        display: block;
+        padding: 0;
+        border: 0;
+    }
+
+    .ref-tbl tbody tr {
+        padding: var(--s-3) 0;
+        border-top: 1px solid var(--line);
+    }
+
+    .ref-tbl tbody tr:first-child {
+        border-top: 0;
+    }
+
+    /* A property is a name, then its type and flags on one line, then what it is. */
+    .ref-tbl tbody tr:has(> td.t) {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 2px var(--s-3);
+    }
+
+    .ref-tbl tr > th[scope="row"] {
+        flex: 0 0 100%;
+    }
+
+    .ref-tbl tr > td.t::before,
+    .ref-tbl tr > td.flags::before {
+        display: none;
+    }
+
+    .ref-tbl tr > td.flags {
+        display: flex;
+        gap: var(--s-2);
+        margin: 0;
+    }
+
+    .ref-tbl tr > td.flags i {
+        display: inline;
+    }
+
+    .ref-tbl tr > td:last-child {
+        flex: 0 0 100%;
+    }
+
+    .ref-tbl tr:target > * {
+        background: none;
+    }
+
+    .ref-tbl tr:target {
+        background: var(--accent-soft);
+        border-radius: var(--r-sm);
+    }
+
+    .ref-methods details:target .body {
+        padding-left: 20px;
+    }
+
+    .ref-methods details:target > summary {
+        padding-left: 36px;
+    }
+
+    .ref-methods details:target > summary::before {
+        left: 16px;
+    }
+
+    .ref-methods .body {
+        padding-left: 0;
+    }
+}
+
+@media print {
+    html:not([data-lang="python"]):not([data-lang="rust"]) [data-only]:not([data-only~="typescript"]) {
+        display: none !important;
+    }
+}

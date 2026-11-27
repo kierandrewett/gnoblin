@@ -4,12 +4,9 @@ import path from "node:path";
 import type { DocsPage } from "../docs.ts";
 import { docsHref, NAV_ORDER, UNLISTED, type NavEntry } from "../nav.ts";
 import { renderMarkdown } from "./markdown.ts";
+import { referencePaths } from "./reference-pages.ts";
 
 export const DOCS_DIR = __DOCS_DIR__;
-/** The reference of each SDK, written by `scripts/reference.mjs` and copied by `scripts/postbuild.mjs` to /reference/<language>/. It is
- *  not a docs page; a link to it from a page is checked against this list. */
-export const REFERENCE_LANGUAGES = ["typescript", "python", "rust"];
-
 function walk(root: string, dir: string): string[] {
     if (!existsSync(dir)) return [];
     return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -66,10 +63,11 @@ export function resolveDocsLink(target: string, fromFile: string): string | null
         .replace(/^\.$/, "");
     if (docsPages().has(slug)) return docsHref(slug) + hash;
 
-    // The reference of an SDK is a site of its own beside the docs: /reference/typescript/, /reference/python/, /reference/rust/.
-    const [reference, language] = rel.split("/");
-    if (reference === "reference" && language !== undefined && REFERENCE_LANGUAGES.includes(language)) {
-        return `/${rel}${hash}`;
+    // The API reference is not made of docs pages: its routes are /reference, /reference/core/<class>, /reference/std/<class>,
+    // /reference/<core|std>/types/<area> and /reference/errors (src/routes/reference). A link names one of them.
+    if (rel === "reference" || rel.startsWith("reference/")) {
+        const path = `/${rel.replace(/\/$/, "")}`;
+        return referencePaths().has(path) ? path + hash : null;
     }
 
     // Files other than pages: docs/public is served at the site root, anything else under /docs/.

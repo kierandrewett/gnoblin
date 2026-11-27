@@ -5,9 +5,10 @@
 // 2. Writes small redirect pages for the old URLs. The VitePress site served docs pages at the root (/config,
 //    /install-fedora); they now live under /docs/. Older moved pages keep pointing at their new place too.
 // 3. Builds the Pagefind search index into build/pagefind/ from the docs pages (data-pagefind-body).
-// 4. Copies the reference of the three SDKs (.generated/api, written by scripts/reference.mjs) to build/reference/<language>/. Each is the
-//    native HTML of that language's reference tool, served at /reference/typescript/, /reference/python/ and /reference/rust/.
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+// 4. Redirects the roots of the old per-language references (/reference/typescript/, /reference/python/ and /reference/rust/, which
+//    TypeDoc, Sphinx and rustdoc wrote) to /reference, the one API reference of the site, and writes the `_redirects` file that
+//    sends their subpaths there too.
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as pagefind from "pagefind";
@@ -15,8 +16,7 @@ import * as pagefind from "pagefind";
 const site = fileURLToPath(new URL("..", import.meta.url));
 const docs = path.resolve(site, "../../docs");
 const out = path.join(site, "build");
-const api = path.join(site, ".generated/api");
-const LANGUAGES = ["typescript", "python", "rust"];
+const OLD_REFERENCES = ["typescript", "python", "rust"];
 
 function walk(dir) {
     return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
@@ -58,8 +58,9 @@ const pages = new Set(
 );
 const docsUrl = (slug) => (slug === "" ? "/docs" : `/docs/${slug}`);
 
-function writeRedirect(from, target) {
-    const file = path.join(out, `${from}.html`);
+function writeRedirect(from, target, { folder = false } = {}) {
+    // A folder redirect is the folder's own index page, which the Worker serves at /from/.
+    const file = folder ? path.join(out, from, "index.html") : path.join(out, `${from}.html`);
     // Never replace a real page (for example /bingux, which is now the Bingux page).
     if (existsSync(file) || existsSync(path.join(out, from, "index.html"))) return false;
     mkdirSync(path.dirname(file), { recursive: true });
@@ -156,7 +157,9 @@ for (const [from, to] of Object.entries(MOVED)) {
 }
 
 // 3. Search index.
-// Only the docs pages carry data-pagefind-body, so only they are read: docs.html and docs/**. The copy button's label
+// Only the docs pages carry data-pagefind-body, so only they are read: docs.html and docs/**. The reference pages are not read: the index
+// has one record for each class and member of the reference instead (build/reference/search-records.json, written by
+// src/routes/reference/search-records.json), found by any of its three spellings. The copy button's label
 // in each code block is not page text. The pages are written in British English and the site never serves another
 // language, so one language is forced. Pagefind also writes its own search UI, which the site does not use (it has
 // its own dialog, src/lib/components/search/); those files are removed so they are not deployed.
@@ -164,6 +167,28 @@ const { index, errors } = await pagefind.createIndex({ forceLanguage: "en-gb", e
 if (!index) throw new Error(`Pagefind: ${errors.join(", ")}`);
 const added = await index.addDirectory({ path: out, glob: "{docs.html,docs/**/*.html}" });
 if (added.errors.length) throw new Error(`Pagefind: ${added.errors.join(", ")}`);
+// The reference: a record for each class and member. The `section` filter lets the dialog list them above the pages, and the title in
+// each language lets it show the one that is picked.
+const recordsFile = path.join(out, "reference/search-records.json");
+const records = JSON.parse(readFileSync(recordsFile, "utf8"));
+for (const record of records) {
+    const { errors: failed } = await index.addCustomRecord({
+        url: record.url,
+        content: record.content,
+        language: "en-gb",
+        meta: {
+            title: record.title.typescript,
+            title_typescript: record.title.typescript,
+            title_python: record.title.python,
+            title_rust: record.title.rust,
+            kind: record.kind,
+            trail: record.trail,
+        },
+        filters: { section: ["reference"] },
+    });
+    if (failed.length) throw new Error(`Pagefind: ${record.url}: ${failed.join(", ")}`);
+}
+rmSync(recordsFile);
 const written = await index.writeFiles({ outputPath: path.join(out, "pagefind") });
 if (written.errors.length) throw new Error(`Pagefind: ${written.errors.join(", ")}`);
 await pagefind.close();
@@ -171,15 +196,16 @@ for (const file of readdirSync(path.join(out, "pagefind"))) {
     if (/^pagefind-(component-ui|modular-ui|ui|highlight)\./.test(file)) rmSync(path.join(out, "pagefind", file));
 }
 
-// 4. The reference of each SDK. A language that is missing fails the build: the three are equal entries of the site.
-for (const language of LANGUAGES) {
-    const from = path.join(api, language);
-    if (!existsSync(path.join(from, "index.html"))) {
-        throw new Error(`The ${language} reference is missing (${from}). Run \`yarn reference\` first.`);
-    }
-    cpSync(from, path.join(out, "reference", language), { recursive: true });
+// 4. The old per-language references, and the docs page that led to them.
+if (writeRedirect("docs/reference", "/reference")) redirects++;
+for (const language of OLD_REFERENCES) {
+    if (writeRedirect(`reference/${language}`, "/reference", { folder: true })) redirects++;
 }
+writeFileSync(
+    path.join(out, "_redirects"),
+    `${OLD_REFERENCES.map((language) => `/reference/${language}/* /reference 301`).join("\n")}\n`,
+);
 
 console.log(
-    `postbuild: copied ${copied} files from docs/, wrote ${redirects} redirects, indexed ${added.page_count} pages, copied the reference of ${LANGUAGES.join(", ")}`,
+    `postbuild: copied ${copied} files from docs/, wrote ${redirects} redirects, indexed ${added.page_count} pages and ${records.length} reference entries`,
 );

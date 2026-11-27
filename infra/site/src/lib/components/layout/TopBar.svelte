@@ -5,6 +5,7 @@
     // centred 720 px column, search and the toggle over the outline). It is the page colour
     // until the page scrolls, then gains a rule and a blur (CSS scroll-driven; with reduced motion the rule is
     // always there). Below 1100 px it shows the mark, search and a menu button that opens MenuSheet.
+    import type { Snippet } from "svelte";
     import { PROJECT_LINKS, SITE_NAV, type SiteArea } from "#lib/site.ts";
     import { search } from "#lib/state.svelte.ts";
     import SearchField from "../search/SearchField.svelte";
@@ -14,7 +15,11 @@
     import ThemeToggle from "../ui/ThemeToggle.svelte";
     import MenuSheet from "./MenuSheet.svelte";
 
-    let { area = null, docsSlug = null }: { area?: SiteArea | null; docsSlug?: string | null } = $props();
+    let {
+        area = null,
+        docsSlug = null,
+        menu,
+    }: { area?: SiteArea | null; docsSlug?: string | null; menu?: Snippet } = $props();
 
     let menuOpen = $state(false);
 </script>
@@ -55,7 +60,7 @@
         </div>
     </div>
 </header>
-<MenuSheet bind:open={menuOpen} {docsSlug} {area} />
+<MenuSheet bind:open={menuOpen} {docsSlug} {area} {menu} />
 
 <style>
     /* The rule is an inset shadow, so it never changes the height. */

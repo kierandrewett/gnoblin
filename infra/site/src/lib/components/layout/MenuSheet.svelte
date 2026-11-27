@@ -1,6 +1,7 @@
 <script lang="ts">
     // The phone and tablet menu: a modal sheet from the right (native <dialog>: focus stays inside, Esc closes it
     // and focus returns to the menu button). On docs pages it holds the docs navigation.
+    import type { Snippet } from "svelte";
     import { afterNavigate } from "$app/navigation";
     import { PROJECT_LINKS, SITE_NAV, type SiteArea } from "#lib/site.ts";
     import { search } from "#lib/state.svelte.ts";
@@ -13,7 +14,8 @@
         open = $bindable(false),
         docsSlug = null,
         area = null,
-    }: { open?: boolean; docsSlug?: string | null; area?: SiteArea | null } = $props();
+        menu,
+    }: { open?: boolean; docsSlug?: string | null; area?: SiteArea | null; menu?: Snippet } = $props();
 
     let dialog: HTMLDialogElement;
     // Where the sheet was scrolled to when it was last open: the menu comes back there. The first time (or after
@@ -49,7 +51,7 @@
 >
     <div class="panel">
         <div class="head">
-            <span class="title">{docsSlug !== null ? "Docs" : "Menu"}</span>
+            <span class="title">{menu ? "API reference" : docsSlug !== null ? "Docs" : "Menu"}</span>
             <IconButton icon="x" label="Close menu" onclick={() => (open = false)} />
         </div>
         <div class="search"><SearchField size="block" keys={false} /></div>
@@ -60,7 +62,7 @@
                 {/each}
             </ul>
         </nav>
-        {#if docsSlug !== null}<SideNav current={docsSlug} sheet />{/if}
+        {#if menu}{@render menu()}{:else if docsSlug !== null}<SideNav current={docsSlug} sheet />{/if}
         <div class="foot">
             <nav aria-label="Project" class="proj">
                 {#each PROJECT_LINKS as link (link.label)}<a href={link.href}>{link.label}</a>{/each}

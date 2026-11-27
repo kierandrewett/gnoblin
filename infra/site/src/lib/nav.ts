@@ -7,8 +7,8 @@
 export interface NavItem {
     label: string;
     slug?: string;
-    /** A page that is not a docs page: a link to the generated reference of one language, which sits beside the site's pages
-     *  (`/reference/typescript/`). It has no place in the previous and next links. */
+    /** A page that is not a docs page: a link to the API reference (`/reference/`), which has pages of its own beside the docs. It has no
+     *  place in the previous and next links. */
     href?: string;
     items?: NavItem[];
 }
@@ -171,15 +171,7 @@ export const NAV: NavSection[] = [
                     { label: "Operations, errors and timers", slug: "shell-api/errors" },
                 ],
             },
-            {
-                label: "API reference",
-                slug: "reference",
-                items: [
-                    { label: "TypeScript", href: "/reference/typescript/" },
-                    { label: "Python", href: "/reference/python/" },
-                    { label: "Rust", href: "/reference/rust/" },
-                ],
-            },
+            { label: "API reference", href: "/reference" },
             {
                 label: "Events",
                 slug: "events",

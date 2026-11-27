@@ -69,7 +69,7 @@
                         >{item.label}</a
                     >
                 {:else if item.href !== undefined}
-                    <!-- Outside the SvelteKit app (the generated reference): a full page load. -->
+                    <!-- The API reference has its own layout: a full page load. -->
                     <a href={item.href} rel="external">{item.label}</a>
                 {/if}
             </li>

@@ -18,13 +18,14 @@ yarn preview    # serves build/ like the Cloudflare Worker does, at http://local
 
 `yarn build` runs four steps:
 
-1. `scripts/reference.mjs` makes the API reference of the three SDKs: TypeDoc, Sphinx and rustdoc (see below).
+1. `scripts/reference.mjs` writes `.generated/reference.json`, the data of the API reference (see below).
 2. `scripts/examples.mjs` checks the examples of every `::: tabs` group with `cargo xtask docs-examples`.
 3. `vite build` builds the site.
-4. `scripts/postbuild.mjs` copies files from `docs/` that are not pages, writes redirect pages for old URLs, builds the
-   Pagefind search index into `build/pagefind/` and copies the API reference to `build/reference/`.
+4. `scripts/postbuild.mjs` copies files from `docs/` that are not pages, writes redirect pages for old URLs (the old
+   `/reference/typescript/`, `/python/` and `/rust/` go to `/reference`) and builds the Pagefind search index into
+   `build/pagefind/`, with the API reference's classes and members.
 
-Steps 1 and 2 need the Rust toolchain of the repository, and step 1 needs Python 3.11 or later too (see below).
+Steps 1 and 2 need the Rust toolchain of the repository.
 
 ## Checks
 
@@ -34,10 +35,14 @@ yarn lint         # ESLint and Prettier
 yarn test:pages   # after yarn build: headless Chrome over key pages
 ```
 
-`yarn test:pages` opens the key pages in light and dark, at desktop, tablet and phone sizes. It fails on console
-errors, failed requests, horizontal overflow and images that do not load, and checks that search finds a page. It
-uses `google-chrome`, `google-chrome-stable` or `chromium` from your `PATH`; set `CHROME` to use another browser.
-Add `--shots DIR` to save a screenshot of every page.
+`yarn test:pages` opens the built pages in headless Chrome. It uses `google-chrome`, `google-chrome-stable` or `chromium` from your
+`PATH`; set `CHROME` to use another browser. Add `--shots DIR` to save a screenshot of every page.
+
+- The key pages open in light and dark, at desktop, tablet and phone sizes. It fails on console errors, failed requests, horizontal
+  overflow and images that do not load, and checks that search finds a page.
+- The API reference opens in each language at 375, 1280 to 1324 and 1440 px, with no sideways scroll. It also checks the heading outline,
+  the table headings, the language picker (radio group, arrow keys, and spelling as the only change), the page a member's anchor opens,
+  the contrast of its text in both schemes, search by each spelling of a member, and the redirects from the old per-language references.
 
 The build itself fails when:
 
@@ -59,11 +64,13 @@ The pages are read at build time from the repository's `docs/` folder. Nothing i
   written in `markdown.ts`, and `src/lib/actions/lang-tabs.ts` selects a language for every group on the page and keeps the
   choice. The grammar is also read by `xtask/src/docs_tabs.rs`; change both together. The authoring rules are in
   `docs/documentation-site.md`.
-- The API reference is not made by this app. `docs/reference/index.md` is the page that leads to it, and its sidebar entries in
-  `nav.ts` are links (`href`) to `/reference/typescript/`, `/reference/python/` and `/reference/rust/`. Each is the native HTML
-  of that language's tool, written by `scripts/reference.mjs` into `.generated/api` (ignored by Git) and copied to `build/reference/` by
-  `scripts/postbuild.mjs`. `reference/` holds the tools' own configuration: `typedoc.json`, the Sphinx `python/conf.py` with
-  its pinned `requirements.txt`, and the rustdoc `rust/header.html`. `docs/documentation-site.md` has the details.
+- The API reference is built from `.generated/reference.json`, which Git ignores. `scripts/reference.mjs` writes it by running
+  `cargo xtask gen-sdks --target reference`, and `node scripts/reference.mjs --from FILE` copies one that was generated elsewhere.
+    - The routes are in `src/routes/reference/`: the index, a page for each class and service, a page of types for each area, and
+      `/reference/errors`.
+    - `src/lib/server/reference.ts` reads the file and `reference-pages.ts` builds the pages from it. Every name, type and declaration is the
+      generator's, and one page holds the three languages (`data-only`, shown by `src/lib/styles/reference.css`).
+    - `docs/documentation-site.md` has the details.
 - `src/routes/docs/[...slug]/` renders each page at `/docs/<path>`: `docs/install-fedora.md` is
   `/docs/install-fedora` and `docs/recipes/index.md` is `/docs/recipes`.
 - Files in `docs/public/` are served at the site root and `docs/images/` at `/docs/images/`.

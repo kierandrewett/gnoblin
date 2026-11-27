@@ -73,21 +73,16 @@ jobs:
         run: |
           yarn check
           yarn lint
-      - uses: actions/setup-python@v6
-        with:
-          # The Python reference is made by Sphinx, from the packages pinned in requirements.txt.
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: infra/site/reference/python/requirements.txt
       - name: Install system libraries
-        # The API reference and the example checks run the SDK generator and build the SDK crates.
+        # The API reference data and the example checks run the SDK generator and build the SDK crates.
         run: scripts/ci-install-system-libraries.sh
       - name: Install and show the pinned toolchain
         run: |
           rustup toolchain install
           rustup show active-toolchain
       - name: Restore the Rust build
-        # The reference (cargo doc) and the example checks (cargo check) build the SDK crates and what they depend on.
+        # The reference data (cargo xtask gen-sdks) and the example checks (cargo check) build the SDK generator, the SDK crates and what they
+        # depend on.
         uses: actions/cache@v6
         with:
           path: |
@@ -97,9 +92,9 @@ jobs:
           key: infra-rust-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: infra-rust-${{ runner.os }}-
       - name: Build the website
-        # Writes the API reference of the three SDKs (TypeDoc, Sphinx, rustdoc), checks the examples of every ::: tabs group in its
-        # language (tsc, pyright, cargo check), then fails on a broken link in docs/, a page that is not in the sidebar and a heading
-        # link that does not exist.
+        # Writes the reference data of the object model (reference.json, which the API reference pages are built from), checks the
+        # examples of every ::: tabs group in its language (tsc, pyright, cargo check), then fails on a broken link in docs/, a page that
+        # is not in the sidebar and a heading link that does not exist.
         working-directory: infra/site
         run: yarn build
       - name: Check the built pages

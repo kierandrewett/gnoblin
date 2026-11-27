@@ -9,8 +9,8 @@ std library. Pick the language you like. The [shell API](/shell-api/) and the [A
 each of them.
 
 This page builds a first shell, then covers running it, reloading it while windows stay open, and what happens when you
-update Gnoblin. The types and functions you call are in the [Rust API reference](/reference/rust/), which is the rustdoc of
-`gnoblin-core`, `gnoblin-std` and `gnoblin-macros`.
+update Gnoblin. The types and functions you call are in the [API reference](/reference), which lists every class and member of
+`gnoblin-core` and `gnoblin-std` as Rust spells it.
 
 ## Create a shell {#create-the-project}
 
@@ -346,7 +346,7 @@ one. A node from `adopt_ephemeral_node` is removed at the next reload unless the
 
 Rust is typed by the compiler, so `cargo check` is the type check: every member the SDK crates have is a method with its
 types, and a name that does not exist does not compile. An editor with `rust-analyzer` completes the members and shows
-their documentation, which is the generated [Rust reference](/reference/rust/).
+their documentation, which is the generated [API reference](/reference).
 
 To check that the installed `gnoblin` loads your built shell, without starting a session:
 

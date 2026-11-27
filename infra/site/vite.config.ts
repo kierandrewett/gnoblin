@@ -9,9 +9,9 @@ import { defineConfig, type Plugin } from "vite";
 const here = path.dirname(fileURLToPath(import.meta.url));
 // The pages are read from the repository's docs folder at build time; nothing is copied into this folder.
 const docsDir = path.resolve(here, "../../docs");
-// The reference of the three SDKs is written here by `scripts/reference.mjs` (`yarn reference`, which `yarn build` runs first) and
-// copied to build/reference/ by `scripts/postbuild.mjs`. It is ignored by Git.
-const referenceDir = path.resolve(here, ".generated/api");
+// The reference of the object model, written here by `scripts/reference.mjs` (`yarn reference`, which `yarn build` runs first). The reference
+// pages (src/routes/reference) are built from it. It is ignored by Git.
+const referenceJson = path.resolve(here, ".generated/reference.json");
 
 // The commit and time of this build, shown in the footer. CI sets GITHUB_SHA; a local build asks Git.
 const buildSha =
@@ -84,6 +84,7 @@ export default defineConfig({
         __BUILD_SHA__: JSON.stringify(buildSha),
         __BUILT_AT__: JSON.stringify(builtAt),
         __DOCS_DIR__: JSON.stringify(docsDir),
+        __REFERENCE_JSON__: JSON.stringify(referenceJson),
     },
     server: { fs: { allow: [docsDir] } },
     plugins: [
@@ -93,16 +94,10 @@ export default defineConfig({
             adapter: adapter({ pages: "build", assets: "build", strict: true }),
             prerender: {
                 entries: ["*", "/404"],
-                // A broken link or anchor fails the build. Files from docs/ (images, docs/public) and the reference of each SDK
-                // are copied into the output by scripts/postbuild.mjs, so the crawler cannot fetch them yet: check they exist
-                // instead.
+                // A broken link or anchor fails the build. Files from docs/ (images, docs/public) are copied into the output by
+                // scripts/postbuild.mjs, so the crawler cannot fetch them yet: check they exist instead.
                 handleHttpError: ({ path: url, referrer, message }) => {
                     const rel = decodeURIComponent(url);
-                    if (rel.startsWith("/reference/")) {
-                        const file = path.join(referenceDir, rel.slice("/reference/".length));
-                        if (existsSync(file) && (statSync(file).isFile() || existsSync(path.join(file, "index.html"))))
-                            return;
-                    }
                     const file = rel.startsWith("/docs/")
                         ? path.join(docsDir, rel.slice("/docs/".length))
                         : path.join(docsDir, "public", rel);

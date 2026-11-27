@@ -16,14 +16,14 @@ cargo xtask gen-sdks --update           # record an additive change of the catal
 
 ## The API reference
 
-The [API reference](reference/index.md) of the website is the output of each language's own documentation tool, run over the SDK that
-language installs: TypeDoc over the declarations, Sphinx over the Python stubs and rustdoc over the Rust crates. The generator is what
-makes them agree:
+The [API reference](/reference) of the website is built from `reference/reference.json`, which the `reference` target writes. The generator
+is what makes the three languages agree:
 
 - The descriptions are the comments above each class, property, method, parameter, signal, signal field, enum, enum value, callback and
   variant in the schema files.
     - The `object-types` target writes them as TSDoc comments and Python docstrings, and the `object-api` target writes them as Rust doc
-      comments, so a description is the same sentence in the three references and in an editor's hover text.
+      comments, and the `reference` target keeps them in `reference.json`, so a description is the same sentence on the website and in an
+      editor's hover text.
     - A comment above a member of an `[[augment]]` describes the member the library adds to the core's class.
     - An enum value is described by the comment above it, when `values` is written one value to a line:
 
@@ -54,9 +54,8 @@ makes them agree:
 - `cargo xtask gen-sdks` also writes `reference/reference.json`, the same facts and the declarations the other targets wrote, as one JSON
   file for the reference of the website. `cargo xtask docs-coverage` counts the tables that have no description, and the files that have
   no `title`.
-- `cargo xtask docs-reference` writes the declarations the TypeScript and Python tools read into `infra/site/.generated/sdk`, and
-  `yarn build` in `infra/site` runs the three tools. Nothing it writes is committed. [Documentation site](documentation-site.md) has the
-  details.
+- `yarn build` in `infra/site` runs `cargo xtask gen-sdks --target reference` and builds the reference pages from the file. Nothing it
+  writes is committed. [Documentation site](documentation-site.md) has the details.
 
 ## Where the files go
 

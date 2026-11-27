@@ -33,7 +33,7 @@ export const SITE_NAV: { label: string; href: string; area: SiteArea }[] = [
         href: docsHref(firstSlug(section.items) ?? ""),
         area: section.id,
     })),
-    { label: "Reference", href: docsHref("reference"), area: "reference" },
+    { label: "Reference", href: "/reference", area: "reference" },
 ];
 
 export const BUILD = {

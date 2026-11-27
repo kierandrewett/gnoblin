@@ -26,9 +26,8 @@ yarn preview
 The build fails when a link in `docs/` points to a page or heading that does not exist, or when a page is in neither
 the sidebar nor the unlisted list. Links to files outside `docs/` should point directly to their source on GitHub.
 
-`yarn build` also writes the [API reference](#api-reference) and checks the [examples](#show-an-example-in-every-language).
-Both need the Rust toolchain of the source repository, because the SDK generator and the SDK crates are Rust, and the reference needs
-Python 3.11 or later (with `uv`, or the `venv` and `pip` modules) for its Python tool.
+`yarn build` also writes the data of the [API reference](#api-reference) and checks the [examples](#show-an-example-in-every-language).
+Both need the Rust toolchain of the source repository, because the SDK generator and the SDK crates are Rust.
 
 To check the built pages in headless Chrome, run `yarn test:pages` after `yarn build`.
 
@@ -90,7 +89,7 @@ The SDK has three languages, and the documentation treats them alike:
   shell pages) has the same sections as the other two, in the same order: create, run, reload while it runs, types and
   editor support, imports and libraries, use the objects, window requests, troubleshooting, examples.
 - Say so when something exists in one language only, and only after you have looked it up in the
-  [API reference](reference/index.md) for all three. The console, for example, is a JavaScript prompt, and XR
+  [API reference](/reference) for all three. The console, for example, is a JavaScript prompt, and XR
   scripting is part of the TypeScript library.
 
 ### Check the examples
@@ -139,36 +138,41 @@ import { connect } from "node:net";
 
 ## API reference
 
-The [API reference](reference/index.md) is the reference of each SDK, made by the documentation tool of that language and served as its own
-HTML beside the docs:
+The [API reference](/reference) is made by this site, from one file the SDK generator writes, `reference.json`. It has a page for each
+class and service (`/reference/core/<class>` and `/reference/std/<class>`), one page of types for each area (`/reference/core/types/<area>`),
+and one page of error codes (`/reference/errors`). A reader picks TypeScript, Python or Rust once, and every name, signature and example on
+the page follows.
 
-| Language   | Tool                                            | URL                      | Reads                                                                                            |
-| ---------- | ----------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------ |
-| TypeScript | TypeDoc                                         | `/reference/typescript/` | The declarations an install gives an editor: `gnoblin-core` and `gnoblin-std`.                   |
-| Python     | Sphinx with `sphinx-autoapi` and the Furo theme | `/reference/python/`     | The stub package an install gives a type checker. It reads the `.pyi` files and imports nothing. |
-| Rust       | rustdoc, through `cargo doc`                    | `/reference/rust/`       | The `gnoblin-core`, `gnoblin-std` and `gnoblin-macros` crates.                                   |
+| What                                  | URL                                                  |
+| ------------------------------------- | ---------------------------------------------------- |
+| The index of both libraries           | `/reference`                                         |
+| A class or a service                  | `/reference/core/client`, `/reference/std/workspace` |
+| Records, enums, interfaces, callbacks | `/reference/core/types/client`                       |
+| The error codes                       | `/reference/errors`                                  |
+| A property or a method                | `#app_id`, `#focus` (the schema's snake case name)   |
+| An event                              | `#event-title_changed`                               |
 
-`yarn build` runs `scripts/reference.mjs`, which writes the three into `infra/site/.generated/api`, and `scripts/postbuild.mjs` copies
-them to `build/reference`. Git ignores both. `yarn reference` writes them again, and `node scripts/reference.mjs --only python` writes one.
-A language that is missing fails the build.
+`yarn build` runs `scripts/reference.mjs`. It runs `cargo xtask gen-sdks --target reference` and copies the file that command writes to
+`infra/site/.generated/reference.json`, which Git ignores. `yarn reference` writes it again.
 
-- The TypeScript and Python tools read the files that an install writes for editors. `cargo xtask docs-reference` writes them into
-  `infra/site/.generated/sdk`, so the reference cannot name a member the SDK lacks.
-- The versions are pinned. TypeDoc is in `infra/site/package.json`, and the Python packages are in
-  `infra/site/reference/python/requirements.txt`.
-- The script makes the Python environment in `.generated/venv` from that file. It uses `uv` when it is installed, and `python3 -m venv`
-  otherwise.
+On a machine that cannot build the SDK crates, `node scripts/reference.mjs --from FILE` copies a file that was generated elsewhere.
+
+- A name, a type and a declaration is what the generator wrote for that language, the line the SDK file has: the `.d.ts` declaration for
+  TypeScript, the `.pyi` stub for Python and the generated API for Rust. The site spells nothing itself, so the reference cannot name a member
+  the SDK lacks.
 - A description is the comment above the class or member in the schema file under `crates/gnoblin-core-abi/schema` or
-  `crates/gnoblin-std-abi/schema`. The generator writes it as a TSDoc comment, a Python docstring and a Rust doc comment, so it is the
-  same sentence in the three references and in an editor's hover text. To change one, edit that comment. A paragraph indented by two
-  spaces more than the comment around it is kept as a code block.
-- The code of the SDKs has descriptions of its own beside the generated ones: the TSDoc of `data/js`, the docstrings of
-  `crates/gnoblin-runtime-python/stubs` and the doc comments of `crates/gnoblin-core` and `crates/gnoblin-std`. Edit those where they are.
-  The Rust build fails on a rustdoc warning (`-D warnings`), and the TypeScript build on a broken `{@link}`.
-- The pages of the docs link to a reference with `/reference/typescript/`, `/reference/python/` or `/reference/rust/`, and to a type by the
-  name of its file. The build checks that the language is there, and the other pages of the reference are not checked.
-
-The references are not searched by the search box of the docs, which covers the guides. Each tool has a search of its own.
+  `crates/gnoblin-std-abi/schema`, so it is the same sentence in the three languages and in an editor's hover text. To change one, edit that
+  comment. A name in backticks in a description follows the language that is read. A paragraph indented by two spaces more than the comment
+  around it is kept as a code block.
+- The keys `title`, `range`, `unit`, `default`, `raises` and `example` of the schema files are shown as the area's name, a range line, a unit,
+  a default line, the Errors table of a member and its Example. The text of each error code is the table of
+  [Operations, errors and timers](shell-api/errors.md#error-codes); the build fails on a code that table lacks.
+- The picker uses the language of the guides' code tabs: the `gnoblin-language` key of `localStorage`, `data-lang` on `<html>` and `?lang=`
+  in a link. It changes spelling and nothing else: the anchors and the URLs are the same in the three languages.
+- Search finds a class or a member by any of its three spellings (`titleChanged`, `title_changed` and `on_title_changed`), as an
+  "API reference" result, and shows it in the language that is picked.
+- The old `/reference/typescript/`, `/reference/python/` and `/reference/rust/` redirect to `/reference`.
+- A page of the docs links to a reference page by its URL, `/reference/core/client`; the build checks that the page exists.
 
 ## Write for the reader
 
