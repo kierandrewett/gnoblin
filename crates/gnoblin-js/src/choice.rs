@@ -337,6 +337,35 @@ mod tests {
         assert!(matches!(choose(&root, Path::new("both.ts")), Choice::Typescript(_)));
     }
 
+    /// The shipped TypeScript examples that import the bare package entries (`gnoblin-core`, `gnoblin-std`) run on the native library:
+    /// on the TypeScript library the bare entries are another module with other exports, so a shell that picked it would not find its
+    /// classes. The default shell is held to the same.
+    #[test]
+    fn the_shipped_shells_on_the_bare_entries_are_generated() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut shells = vec![
+            repo.join("shells/default/shell.ts"),
+            repo.join("examples/03-typescript-std/shell.ts"),
+        ];
+        for entry in fs::read_dir(repo.join("examples")).expect("the examples directory") {
+            let dir = entry.expect("a directory entry").path();
+            let name = dir.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+            if name.starts_with(['2', '3']) && name != "03-typescript-std" && dir.join("shell.ts").is_file() {
+                shells.push(dir.join("shell.ts"));
+            }
+        }
+        assert!(
+            shells.len() > 10,
+            "the examples were not found under {}",
+            repo.display()
+        );
+        for shell in shells {
+            let root = shell.parent().expect("a shell has a directory");
+            let name = shell.file_name().expect("a shell has a name");
+            assert_eq!(choose(root, Path::new(name)), Choice::Generated, "{}", shell.display());
+        }
+    }
+
     #[test]
     fn the_starter_is_read_from_its_text() {
         let (_dir, root) = root_with(&[("helper.ts", "export const h = 1;\n")]);
