@@ -24,6 +24,11 @@ impl Composer {
 /// How long a visual bell's flash takes to fade out, in milliseconds.
 pub(super) const FLASH_MS: u32 = 150;
 
+/// The most an animation moves on the first turn after it starts: one frame at 60 Hz. The loop reports the time since
+/// its previous turn, and after an idle stretch that is up to 100 ms that passed before the request which started the
+/// animation was handled, so the animation's clock starts at its request instead of that stretch.
+pub(super) const FIRST_STEP_MS: u32 = 16;
+
 /// The alpha a visual bell's flash starts at, before it fades.
 pub(super) const FLASH_PEAK: f32 = 0.5;
 
@@ -87,7 +92,8 @@ impl Composer {
     pub fn advance_motion(&mut self, elapsed_ms: u32) {
         self.view_clock_ms = self.view_clock_ms.saturating_add(u64::from(elapsed_ms));
         self.rearm_shaders();
-        self.motion.advance(&mut self.scene, elapsed_ms);
+        self.motion
+            .advance_capping_new(&mut self.scene, elapsed_ms, FIRST_STEP_MS);
         self.reap_motion_ends();
         self.advance_flash(elapsed_ms);
     }
@@ -341,6 +347,12 @@ impl Composer {
             return;
         }
         self.damage_flash(flash);
+        // A flash that has not moved yet was started this turn, after the idle stretch the turn reports.
+        let elapsed_ms = if flash.elapsed_ms == 0 {
+            elapsed_ms.min(FIRST_STEP_MS)
+        } else {
+            elapsed_ms
+        };
         flash.elapsed_ms = flash.elapsed_ms.saturating_add(elapsed_ms);
         if flash.elapsed_ms >= FLASH_MS {
             self.flash = None;

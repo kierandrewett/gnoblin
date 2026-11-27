@@ -17,6 +17,10 @@ use crate::support::{Mapper, scene};
 /// a window that did not is gone sooner. The boundary has the slack of a loaded machine on both sides.
 const BOUNDARY: Duration = Duration::from_millis(120);
 
+/// The least a 200 ms fade lasts from the close request however long the loop idled before it: the first turn may take one frame (16 ms)
+/// of it, where a build that counted the idle stretch lost up to 100 ms.
+const FULL_FADE: Duration = Duration::from_millis(180);
+
 /// How long the closed window `a` stays in the tree of a session whose shell is `source` in `shell_name`, with the stock library of
 /// `stock` (or the source tree's own).
 fn how_long_a_closed_window_stays(shell_name: &str, source: &str, stock: Option<&str>) -> Duration {
@@ -32,11 +36,8 @@ fn how_long_a_closed_window_stays(shell_name: &str, source: &str, stock: Option<
     // The window's own open fade runs out first (it is real time), so the only motion left is the close.
     std::thread::sleep(Duration::from_millis(600));
     let ipc = session.ipc();
-    // The compositor's loop advances its animations by the time since its previous turn, and a loop that sat idle through the sleep
-    // above (it wakes every 100 ms) hands that stretch to the fade a close starts: a window closed late in an idle wait lost up to that
-    // much of its 200 ms and left the tree after about 120 ms. A round trip is a turn, so a close that follows one finds the clock
-    // current and the fade has its full length.
-    mapper.roundtrip();
+    // No round trip first: the loop idles in 100 ms waits, so a close that arrives late in one is handled by a turn that reports the whole
+    // stretch since the last. The fade's clock starts at the request, not at that stretch.
     // Timed from the request: the compositor handles the close before `close_window`'s round trip returns, so a clock started after
     // that round trip can only read short.
     let closed = Instant::now();
@@ -68,8 +69,8 @@ fn a_core_only_shell_sees_no_built_in_fade_and_a_std_shell_still_fades_two_hundr
     // Std: importing the package opens the library, which sets the desktop's 200 ms motion, so the closed window fades out.
     let faded = how_long_a_closed_window_stays("shell.js", "import \"gnoblin-std\";\n", None);
     assert!(
-        faded >= BOUNDARY,
-        "a std session fades a closing window for 200 ms, yet the closed window left the tree after {faded:?}"
+        faded >= FULL_FADE,
+        "a std session fades a closing window for 200 ms from the request, yet the closed window left the tree after {faded:?}"
     );
     assert!(
         faded < Duration::from_secs(2),

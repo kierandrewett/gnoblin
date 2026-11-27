@@ -242,6 +242,9 @@ struct Track {
     paused: bool,
     curve: Curve,
     applied: PropertyValue,
+    /// Set until the track has been stepped once: the time the loop reports for that first step may include a stretch
+    /// that passed before the track existed.
+    fresh: bool,
 }
 
 impl Track {
@@ -341,6 +344,17 @@ impl TweenPlayer {
     /// move, and a reversed one moves back to its start, where it ends
     /// [`TrackEndReason::RolledBack`].
     pub fn advance(&mut self, scene: &mut Scene, elapsed_ms: u32) {
+        self.advance_capping_new(scene, elapsed_ms, u32::MAX);
+    }
+
+    /// [`advance`](Self::advance), except that a track started since the previous call moves by at most
+    /// `first_step_ms` on this one.
+    ///
+    /// A loop that sat idle reports the whole idle stretch on the turn that follows it, and that turn also handles
+    /// the request that started the track, so the stretch passed before the track existed. Capping the first step
+    /// starts a track's clock at about its request, and an animation lasts its full duration however long the loop
+    /// idled first.
+    pub fn advance_capping_new(&mut self, scene: &mut Scene, elapsed_ms: u32, first_step_ms: u32) {
         let ids: Vec<TrackId> = self.tracks.keys().copied().collect();
         for id in ids {
             let Some(mut track) = self.tracks.remove(&id) else {
@@ -354,7 +368,12 @@ impl TweenPlayer {
                 self.tracks.insert(id, track);
                 continue;
             }
-            track.step(elapsed_ms);
+            let step = if std::mem::take(&mut track.fresh) {
+                elapsed_ms.min(first_step_ms)
+            } else {
+                elapsed_ms
+            };
+            track.step(step);
             self.present(scene, id, track);
         }
     }
@@ -726,6 +745,7 @@ impl TweenPlayer {
                 paused: false,
                 curve,
                 applied: from,
+                fresh: true,
             },
         );
         id
