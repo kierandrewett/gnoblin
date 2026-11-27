@@ -5740,13 +5740,14 @@ fn swipe(session: &Session, fingers: u8) {
     }
 }
 
-/// The start of the `shell.ts` of the claim test; the starter file and the user's keys follow it.
+/// The start of the `shell.ts` of the claim test; the starter file and the user's keys follow it, and the starter's own
+/// import supplies `gnoblin` to the prelude, as module imports apply to the whole file.
 /// The prelude makes every key the config binds count instead of act, by trigger, and `probe()` reports the counts of the
 /// running generation. The actions themselves do not run: the media keys would start `wpctl` and `playerctl`, `Super+space` the
 /// launcher, and the workspace keys and the slide would move the window the test drags, so a binding that was reached is
 /// the proof, and what it would have done is the stock library's own tests'. A key is bound through the seat's `bind`, which the
 /// prelude wraps, and the three-finger slide through a gesture binding that declines, which leaves the gesture unhandled.
-const COUNTING_PRELUDE: &str = r#"import { GestureBinding, gnoblin } from "gnoblin-core"; import { ClientState } from "gnoblin-std";
+const COUNTING_PRELUDE: &str = r#"import { GestureBinding } from "gnoblin-core"; import { ClientState } from "gnoblin-std";
 
 const fired: Record<string, number> = {};
 (globalThis as { probe?: () => string }).probe = () => JSON.stringify(fired);
