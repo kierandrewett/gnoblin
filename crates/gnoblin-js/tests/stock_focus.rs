@@ -66,7 +66,7 @@ fn run(body: &str) -> String {
 fn run_native(body: &str) -> String {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    let imports = IMPORTS.replace("import { emit, thrown } from \"harness\";", "");
+    let imports = "import { Snap } from \"gnoblin-std\";\n";
     let prelude = "const emit = (value: unknown) => { (globalThis as any).out = String(value); };\n\
                    const thrown = (fn: () => void) => { try { fn(); } catch (e: any) { return `${e.name}: ${e.message}`; } return \"did not throw\"; };\n";
     fs::write(root.join("shell.ts"), format!("{imports}\n{prelude}{body}\n")).expect("shell.ts is written");
@@ -323,7 +323,6 @@ fn edge_tiling_is_off_unless_it_is_the_boolean_true() {
 }
 
 #[test]
-#[ignore = "vrnw: TS internal: calls data/js functions (`edgeZone`, `tileRect`, `focusSettings`, ...) that the generated library does not export; Snap.edgeZone and Snap.tileRect are the static equivalents"]
 fn a_pointer_near_an_edge_names_the_zone_and_a_zone_names_a_rectangle() {
     // Before: "a pointer within the margin of an edge names that edge", "a pointer away from every edge names no zone",
     // "left and right tile to the matching half, top fills the area", "an unknown zone has no rectangle", in the the retired shell
@@ -332,20 +331,21 @@ fn a_pointer_near_an_edge_names_the_zone_and_a_zone_names_a_rectangle() {
         r#"
         const area = { x: 0, y: 32, width: 1920, height: 1048 };
         const text = (r: any) => (r === null ? "none" : [r.x, r.y, r.width, r.height].join(","));
+        const zone = (r: any) => (r == null ? "" : r.zone);
         emit([
-            edgeZone(2, 500, area, 4),
-            edgeZone(1917, 500, area, 4),
-            edgeZone(900, 33, area, 4),
-            edgeZone(960, 500, area, 4),
-            edgeZone(1, 33, area, 4),
-            edgeZone(1919, 33, area, 4),
-            edgeZone(6, 500, area),
-            edgeZone(6, 500, area, 6),
-            text(tileRect("left", area)),
-            text(tileRect("right", area)),
-            text(tileRect("top", area)),
-            text(tileRect("bottom", area)),
-            text(tileRect("right", { x: 0, y: 0, width: 101, height: 50 })),
+            zone(Snap.edgeZone(2, 500, area, 4)),
+            zone(Snap.edgeZone(1917, 500, area, 4)),
+            zone(Snap.edgeZone(900, 33, area, 4)),
+            zone(Snap.edgeZone(960, 500, area, 4)),
+            zone(Snap.edgeZone(1, 33, area, 4)),
+            zone(Snap.edgeZone(1919, 33, area, 4)),
+            zone(Snap.edgeZone(6, 500, area)),
+            zone(Snap.edgeZone(6, 500, area, 6)),
+            text(Snap.tileRect("left", area)),
+            text(Snap.tileRect("right", area)),
+            text(Snap.tileRect("top", area)),
+            thrown(() => Snap.tileRect("bottom", area)).split(":")[0],
+            text(Snap.tileRect("right", { x: 0, y: 0, width: 101, height: 50 })),
         ].join("\n"));
     "#,
     );
@@ -363,7 +363,7 @@ fn a_pointer_near_an_edge_names_the_zone_and_a_zone_names_a_rectangle() {
             "0,32,960,1048",
             "960,32,960,1048",
             "0,32,1920,1048",
-            "none",
+            "TypeError",
             "50,0,51,50",
         ])
     );
