@@ -16,8 +16,8 @@ import {
     ShaderFilter,
     Shadow,
     Transition,
-} from "gnoblin-std/generated/objects";
-import type { Filter } from "gnoblin-std/generated/objects";
+} from "gnoblin-std";
+import type { Filter } from "gnoblin-std";
 import type {} from "gnoblin-std";
 
 const style = ClientStyle.ofClients();

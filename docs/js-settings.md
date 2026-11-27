@@ -28,7 +28,7 @@ is the setting of every mouse.
 ::: tabs
 
 ```typescript
-import { gnoblin, Keyboard, Mouse, Touchpad } from "gnoblin-core/generated/objects";
+import { gnoblin, Keyboard, Mouse, Touchpad } from "gnoblin-core";
 
 for (const device of gnoblin.input.devices) {
     if (device instanceof Keyboard) {
@@ -116,7 +116,7 @@ the output that matches it. It survives hotplug. Add it to `OutputProfiles.get()
 ::: tabs
 
 ```typescript
-import { OutputProfile, OutputProfiles } from "gnoblin-std/generated/objects";
+import { OutputProfile, OutputProfiles } from "gnoblin-std";
 
 const profiles = OutputProfiles.get();
 const main = new OutputProfile(
@@ -222,7 +222,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 ::: tabs
 
 ```typescript
-import { ClientStyle } from "gnoblin-std/generated/objects";
+import { ClientStyle } from "gnoblin-std";
 
 ClientStyle.ofClients().cornerRadius = { all: 12 };
 ClientStyle.ofClients().where({ appId: "foot" }).opacity = 0.9;
@@ -267,8 +267,8 @@ overrides the inner one. See [workspaces](/shell-api/workspaces).
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { MasterStackLayout, Workspace } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { MasterStackLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(
     new Workspace("dev", {
@@ -408,7 +408,7 @@ See [dialogs](/config/configure/dialogs).
 ::: tabs
 
 ```typescript
-import { DialogListener, DialogRequest, gnoblin } from "gnoblin-core/generated/objects";
+import { DialogListener, DialogRequest, gnoblin } from "gnoblin-core";
 
 gnoblin.dialogs.addListener(
     new (class extends DialogListener {

@@ -16,8 +16,8 @@ import {
     SwipeActionBinding,
     WindowState,
     WorkspaceSlideBinding,
-} from "gnoblin-std/generated/objects";
-import type { ClientRequest } from "gnoblin-std/generated/objects";
+} from "gnoblin-std";
+import type { ClientRequest } from "gnoblin-std";
 import type {} from "gnoblin-std";
 
 FocusPolicy.get().start();

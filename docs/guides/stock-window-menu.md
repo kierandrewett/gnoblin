@@ -71,8 +71,8 @@ entries to show. Each entry is a `MenuEntry`: a label and any of these:
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import { MenuEntry, MenuProvider, WindowMenus } from "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import { MenuEntry, MenuProvider, WindowMenus } from "gnoblin-std";
 import type {} from "gnoblin-std";
 
 const clients = Gnoblin.get().clients;
@@ -188,8 +188,8 @@ close on a press elsewhere, and be `secure` when the window is, as the stock men
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import { Box, MenuProvider, Text, WindowMenus } from "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import { Box, MenuProvider, Text, WindowMenus } from "gnoblin-std";
 import type {} from "gnoblin-std";
 
 const clients = Gnoblin.get().clients;
@@ -318,7 +318,7 @@ place and Escape puts the window back. The entries are dim until a mode can star
 ::: tabs
 
 ```typescript
-import { Repositioning } from "gnoblin-std/generated/objects";
+import { Repositioning } from "gnoblin-std";
 import type {} from "gnoblin-std";
 
 Repositioning.get().start();

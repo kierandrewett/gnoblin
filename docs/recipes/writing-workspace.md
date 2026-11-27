@@ -7,8 +7,8 @@ Rust shell crate's `lib.rs`. The three do the same thing:
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { FloatingLayout, MasterStackLayout, MonocleLayout, Workspace, Workspaces } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { FloatingLayout, MasterStackLayout, MonocleLayout, Workspace, Workspaces } from "gnoblin-std";
 
 const workspaces = Workspaces.get();
 const layouts = {

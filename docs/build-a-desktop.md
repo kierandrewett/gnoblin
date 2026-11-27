@@ -59,7 +59,7 @@ in [Rust shell](rust-shell.md#create-the-project), then put the Rust file in `li
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 const GAP = 10;
 
@@ -217,8 +217,8 @@ Then use the library's workspaces and layouts instead of placing windows yoursel
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { MasterStackLayout, Workspace } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { MasterStackLayout, Workspace } from "gnoblin-std";
 
 // One workspace; every window that opens joins it and the library tiles it.
 gnoblin.workspaces.add(

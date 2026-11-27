@@ -14,8 +14,8 @@ Each is also the static `Transition.request` of the std library.
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { MasterStackLayout } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { MasterStackLayout } from "gnoblin-std";
 
 const workspace = gnoblin.workspaces.byId("dev");
 const client = gnoblin.input.primary.focusedClient;
@@ -152,8 +152,8 @@ TypeScript takes the easing as its name (`"ease-out"`), Python as `Easing.EASE_O
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import "gnoblin-std";
 
 const client = gnoblin.input.primary.focusedClient;
 
@@ -241,8 +241,8 @@ To animate one window or one workspace, write only its properties in the callbac
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { MasterStackLayout } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { MasterStackLayout } from "gnoblin-std";
 
 const client = gnoblin.input.primary.focusedClient;
 const workspace = gnoblin.workspaces.byId("dev");

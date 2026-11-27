@@ -15,8 +15,8 @@ command line through `/bin/sh`, with the same options.
 ::: tabs
 
 ```typescript
-import { gnoblin, ProcessListener } from "gnoblin-core/generated/objects";
-import type { Process } from "gnoblin-core/generated/objects";
+import { gnoblin, ProcessListener } from "gnoblin-core";
+import type { Process } from "gnoblin-core";
 
 class Notify extends ProcessListener {
     onExited(process: Process) {
@@ -132,7 +132,7 @@ exist as `spawn` and `shell` on the process service.
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 gnoblin.input.primary.bind("Super+c", () => {
     const count = gnoblin.shell("ls ~/Downloads | wc -l", { stdout: "capture" });

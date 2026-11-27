@@ -9,8 +9,8 @@ A file replaces the stock setup, and a statement you delete is gone after the ne
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { FloatingLayout, Workspace } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { FloatingLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace("main", { layout: new FloatingLayout() }));
 gnoblin.input.primary.bind("Super+Return", () => {

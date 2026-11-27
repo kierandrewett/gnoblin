@@ -125,7 +125,7 @@ A refused power verb fails with one of these codes, and the message names the D-
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 gnoblin.session.suspend().catch((error, code) => {
     gnoblin.spawn(["notify-send", `Suspend failed: ${code}: ${error}`]);

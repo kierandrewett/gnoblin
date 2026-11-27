@@ -9,7 +9,7 @@ In `windows` (`windows.ts`, `windows.py` or `windows.rs`):
 
 ```typescript
 // windows.ts
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 export function placeWindows(): void {
     gnoblin.clients.on("added", (client) => {
@@ -60,7 +60,7 @@ In `bindings` (`bindings.ts`, `bindings.py` or `bindings.rs`):
 
 ```typescript
 // bindings.ts
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 export function bindKeys(): void {
     gnoblin.input.primary.bind("Super+d", () => {

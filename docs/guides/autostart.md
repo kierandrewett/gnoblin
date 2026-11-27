@@ -15,7 +15,7 @@ The programs end with the shell, so this is not a startup list for the login ses
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 gnoblin.input.primary.bind("Super+b", () => {
     gnoblin.spawn(["waybar"]);

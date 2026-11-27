@@ -22,7 +22,7 @@ Switch it off in the shell, with the other settings of the compositor itself. Th
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 gnoblin.compositor.userShaders = false;
 ```
@@ -70,8 +70,8 @@ The three shell languages set the same filter on a window's style. Each tab defi
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { ShaderFilter } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { ShaderFilter } from "gnoblin-std";
 
 const tint = `
 fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {

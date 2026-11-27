@@ -10,8 +10,8 @@ The scene is the tree of nodes a script makes.
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { ArcLayout, SceneNode, View, Workspace } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { ArcLayout, SceneNode, View, Workspace } from "gnoblin-std";
 
 const desktop = new Workspace("desktop", { layout: new ArcLayout({ radius: 1200, spacing: 0.35 }) });
 gnoblin.workspaces.add(desktop);
@@ -160,7 +160,7 @@ and leaves everything else alone.
 ::: tabs
 
 ```typescript
-import { SceneNode } from "gnoblin-std/generated/objects";
+import { SceneNode } from "gnoblin-std";
 
 const room = new SceneNode({ id: "xr-room", position: { x: 0, y: 1.2, z: -2 } });
 room.place({ rotation: { x: 0, y: Math.PI / 4, z: 0 }, uniformScale: 1 });
@@ -227,8 +227,8 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { View } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { View } from "gnoblin-std";
 
 const client = gnoblin.input?.primary?.focusedClient;
 if (client) {
@@ -331,8 +331,8 @@ neither is moved or reparented.
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { View } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { View } from "gnoblin-std";
 
 const panel = new View({ size: { width: 0.9, height: 0.55 }, fit: "contain", input: "forward" });
 const focused = gnoblin.input?.primary?.focusedClient;
@@ -412,8 +412,8 @@ as against `width` and `height`, which are what the shell asked for.
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import "gnoblin-std";
 
 const client = gnoblin.input?.primary?.focusedClient;
 if (client) {
@@ -487,7 +487,7 @@ it puts the nodes on an arc around the viewer, the focused one at the front.
 ::: tabs
 
 ```typescript
-import { ArcLayout } from "gnoblin-std/generated/objects";
+import { ArcLayout } from "gnoblin-std";
 
 const arc = new ArcLayout({ radius: 1200, spacing: 0.35 });
 ```
@@ -548,7 +548,7 @@ sets it again when anything the function read has changed.
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 const client = gnoblin.input?.primary?.focusedClient;
 client?.properties?.bindDouble("opacity", () => Math.max(0.25, 1 - client.x / 2500));

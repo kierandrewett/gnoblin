@@ -123,7 +123,7 @@ it starts to say yes:
 ::: tabs
 
 ```typescript
-import { Extensions } from "gnoblin-std/generated/objects";
+import { Extensions } from "gnoblin-std";
 
 Extensions.get().configure("xr", { room: true }, (client) => !client.appId.startsWith("org.keepassxc"));
 ```
@@ -318,7 +318,7 @@ for it, and a listener hears the session begin and end:
 ::: tabs
 
 ```typescript
-import { Extensions, XRListener, type XRSession } from "gnoblin-std/generated/objects";
+import { Extensions, XRListener, type XRSession } from "gnoblin-std";
 
 class Announce extends XRListener {
     onSessionStarted(session: XRSession): void {
@@ -415,7 +415,7 @@ which a configuration can because it runs first. This one puts the ring 1.8 m aw
 ::: tabs
 
 ```typescript
-import { Extensions, SpatialLayout } from "gnoblin-std/generated/objects";
+import { Extensions, SpatialLayout } from "gnoblin-std";
 
 const layout = new SpatialLayout({ radius: 1.8, triggers: { move: "Right.Grip+Drag", resize: "" } });
 Extensions.get().configure("xr", { room: true, layout });
@@ -466,7 +466,7 @@ assigning the viewport names them:
 ::: tabs
 
 ```typescript
-import { Extensions, XRCamera3D, XRRoom, XRViewport } from "gnoblin-std/generated/objects";
+import { Extensions, XRCamera3D, XRRoom, XRViewport } from "gnoblin-std";
 
 const session = Extensions.get().xr?.session;
 if (session) {
@@ -532,8 +532,8 @@ on the ring as well, and the panel goes with the window:
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import { Extensions } from "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import { Extensions } from "gnoblin-std";
 
 const room = Extensions.get().xr?.room;
 const client = Gnoblin.get().clients?.focused;
@@ -601,7 +601,7 @@ This layout leaves `rotate` out, adds a scale drag, replaces the stock `move` wi
 ::: tabs
 
 ```typescript
-import { Extensions, SpatialLayout, ViewMoveBinding, ViewScaleBinding } from "gnoblin-std/generated/objects";
+import { Extensions, SpatialLayout, ViewMoveBinding, ViewScaleBinding } from "gnoblin-std";
 
 const room = Extensions.get().xr?.room;
 if (room) {
@@ -712,7 +712,7 @@ nudges the panel sideways as far as the hand travels:
 ::: tabs
 
 ```typescript
-import { Extensions, XRControllerDragBinding, XRDragHandler, type XRDragEvent } from "gnoblin-std/generated/objects";
+import { Extensions, XRControllerDragBinding, XRDragHandler, type XRDragEvent } from "gnoblin-std";
 
 class Nudge extends XRDragHandler {
     private start = 0;
@@ -920,7 +920,7 @@ ends:
 ::: tabs
 
 ```typescript
-import { Extensions } from "gnoblin-std/generated/objects";
+import { Extensions } from "gnoblin-std";
 
 const hand = Extensions.get().xr?.session?.controller("60");
 hand?.claim("menu", ["thumbstick"]);

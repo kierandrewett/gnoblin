@@ -12,8 +12,8 @@
 //
 // Every line starts with `ctoropts:`, spelt as the Rust and Python shells of the same example (`38-native-options`) spell it, so that
 // one test reads all three.
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { MasterStackLayout, OutputProfile, Workspace } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { MasterStackLayout, OutputProfile, Workspace } from "gnoblin-std";
 
 function say(text: string): void {
     console.log(`ctoropts: ${text}`);

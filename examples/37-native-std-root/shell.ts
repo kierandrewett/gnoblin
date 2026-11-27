@@ -2,7 +2,7 @@
 //
 //     gnoblin ./shell.ts
 //
-// Importing `gnoblin-std/generated/objects` gives the core's `gnoblin` the members `workspaces`, `displays`, `scene`, `gestures` and
+// Importing `gnoblin-std` gives the core's `gnoblin` the members `workspaces`, `displays`, `scene`, `gestures` and
 // `requestTransition`, its `outputs` the member `profiles`, each input context `activeDisplay` and each collection of windows `style`. A shell
 // that never imports it (example 35) has none of them. This shell:
 //
@@ -17,8 +17,8 @@
 //
 // Every line starts with `stdroot:`, spelt as the Rust and Python shells of the same example (`37-native-std-root`) spell it, so that one test
 // reads all three.
-import { ClientCollection, gnoblin } from "gnoblin-core/generated/objects";
-import { Display, OutputProfile, Workspace } from "gnoblin-std/generated/objects";
+import { ClientCollection, gnoblin } from "gnoblin-core";
+import { Display, OutputProfile, Workspace } from "gnoblin-std";
 
 function say(text: string): void {
     console.log(`stdroot: ${text}`);

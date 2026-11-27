@@ -5,8 +5,8 @@
 // Starts the window menu, gives it three entries of this shell's own (a `MenuProvider`) that log what they run, marks the windows of the app
 // `secret` secure (their card is secure too), and logs what the menu does. Every line starts with `menus:`, as the Rust shell of the same
 // example spells it.
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import { MenuEntry, MenuProvider, WindowMenus } from "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import { MenuEntry, MenuProvider, WindowMenus } from "gnoblin-std";
 import type {} from "gnoblin-std";
 
 class Entries extends MenuProvider {

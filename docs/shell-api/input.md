@@ -293,7 +293,7 @@ What backs them:
 ::: tabs
 
 ```typescript
-import { InputContext, gnoblin } from "gnoblin-core/generated/objects";
+import { InputContext, gnoblin } from "gnoblin-core";
 
 const other = new InputContext("secondary");
 gnoblin.input.addContext(other);

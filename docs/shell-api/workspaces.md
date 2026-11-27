@@ -6,8 +6,8 @@ Add workspaces with `gnoblin.workspaces.add`, then read them, show one and chang
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { GridLayout, MasterStackLayout, Workspace } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { GridLayout, MasterStackLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace("web", { layout: new MasterStackLayout() }));
 gnoblin.workspaces.add(new Workspace("chat", { layout: new GridLayout() }));
@@ -151,8 +151,8 @@ no pointer says. `Workspace.show` and `Output.show` are the same call with a dif
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { Workspace } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { Workspace } from "gnoblin-std";
 
 const web = new Workspace("web");
 gnoblin.workspaces.add(web);
@@ -218,9 +218,9 @@ workspace changes, not on every frame, and a throw leaves the last placement in 
 ::: tabs
 
 ```typescript
-import { Layout, Workspace } from "gnoblin-std/generated/objects";
-import type { LayoutContextInit, LayoutPlacementInit } from "gnoblin-std/generated/objects";
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { Layout, Workspace } from "gnoblin-std";
+import type { LayoutContextInit, LayoutPlacementInit } from "gnoblin-std";
+import { gnoblin } from "gnoblin-core";
 
 class Columns extends Layout {
     compute(context: LayoutContextInit): LayoutPlacementInit[] {
@@ -366,8 +366,8 @@ do nothing on other layouts.
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { StripLayout } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { StripLayout } from "gnoblin-std";
 
 const seat = gnoblin.input?.primary;
 for (const [key, side] of [

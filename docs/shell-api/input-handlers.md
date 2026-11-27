@@ -7,8 +7,8 @@ workspaces and acts on gestures with these.
 ::: tabs
 
 ```typescript
-import { PointerDragBinding, gnoblin } from "gnoblin-core/generated/objects";
-import type { BindingEvent, Client } from "gnoblin-core/generated/objects";
+import { PointerDragBinding, gnoblin } from "gnoblin-core";
+import type { BindingEvent, Client } from "gnoblin-core";
 
 class Nudge extends PointerDragBinding {
     private client: Client | undefined;
@@ -199,8 +199,8 @@ of their own when you install both pairs:
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { MasterStackLayout, SplitResizeBinding, SwapBinding, Workspace } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { MasterStackLayout, SplitResizeBinding, SwapBinding, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace("dev", { layout: new MasterStackLayout({ ratio: 0.6 }) }));
 new SwapBinding({ trigger: "Alt+MouseLeft+Drag" }).install();
@@ -272,9 +272,9 @@ To drag a divider of your own layout, return a list with one split from `findSpl
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { Layout, SplitResizeBinding, Workspace } from "gnoblin-std/generated/objects";
-import type { LayoutContextInit, LayoutPlacementInit, LayoutSplitInit } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { Layout, SplitResizeBinding, Workspace } from "gnoblin-std";
+import type { LayoutContextInit, LayoutPlacementInit, LayoutSplitInit } from "gnoblin-std";
 
 class Halves extends Layout {
     ratio = 0.5;
@@ -513,8 +513,8 @@ To trade two windows from a script, swap them in the workspace's client collecti
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import "gnoblin-std";
 
 const dev = gnoblin.workspaces.byId("dev");
 const [first, second] = dev?.clients?.members ?? [];
@@ -589,7 +589,7 @@ it.
 ::: tabs
 
 ```typescript
-import { PointerDragBinding, gnoblin } from "gnoblin-core/generated/objects";
+import { PointerDragBinding, gnoblin } from "gnoblin-core";
 
 class Decline extends PointerDragBinding {
     onStart(): boolean {

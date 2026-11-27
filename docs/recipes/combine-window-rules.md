@@ -8,8 +8,8 @@ Each one sets `gnoblin.clients.style`, the style of every window, and runs a fun
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import "gnoblin-std";
 
 gnoblin.clients.style.opacity = 1;
 

@@ -9,8 +9,8 @@ In `appearance`, which uses the `gnoblin-std` library for `gnoblin.clients.style
 
 ```typescript
 // appearance.ts
-import { gnoblin } from "gnoblin-core/generated/objects";
-import "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import "gnoblin-std";
 
 export function styleWindows(): void {
     gnoblin.clients.style.cornerRadius = 12;
@@ -55,7 +55,7 @@ In `bindings`:
 
 ```typescript
 // bindings.ts
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 export function bindKeys(): void {
     gnoblin.input.primary.bind("Super+d", () => {

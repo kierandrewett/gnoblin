@@ -22,7 +22,7 @@ The window buttons in the traffic-light order, the title in the middle, and a ba
 ::: tabs
 
 ```typescript
-import { Decorations, DragArea, TitleText, WindowButtons } from "gnoblin-std/generated/objects";
+import { Decorations, DragArea, TitleText, WindowButtons } from "gnoblin-std";
 
 const decorations = Decorations.get();
 decorations.frame = (_client, frame) => {
@@ -111,7 +111,7 @@ frame and nothing is taken from it.
 ::: tabs
 
 ```typescript
-import { Decorations, FrameBorder, FrameGlow } from "gnoblin-std/generated/objects";
+import { Decorations, FrameBorder, FrameGlow } from "gnoblin-std";
 
 const decorations = Decorations.get();
 decorations.frame = (_client, frame) => {
@@ -204,8 +204,8 @@ resizes it.
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
-import { Decorations, ResizeHandle, Text, Titlebar } from "gnoblin-std/generated/objects";
+import { gnoblin } from "gnoblin-core";
+import { Decorations, ResizeHandle, Text, Titlebar } from "gnoblin-std";
 
 const decorations = Decorations.get();
 decorations.frame = (_client, frame) => {

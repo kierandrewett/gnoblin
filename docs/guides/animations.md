@@ -39,9 +39,9 @@ This fades each Text Editor window in when it opens:
 ::: tabs
 
 ```typescript
-import { Gnoblin, ClientCollectionListener } from "gnoblin-core/generated/objects";
-import type { Client } from "gnoblin-core/generated/objects";
-import "gnoblin-std/generated/objects";
+import { Gnoblin, ClientCollectionListener } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
+import "gnoblin-std";
 
 const gnoblin = Gnoblin.get();
 

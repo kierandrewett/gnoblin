@@ -7,8 +7,8 @@ a window that loses its output moves to another or waits hidden for the next. `g
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import { FloatingLayout, OutputAugment, Toast, Workspace, Workspaces } from "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import { FloatingLayout, OutputAugment, Toast, Workspace, Workspaces } from "gnoblin-std";
 
 const gnoblin = Gnoblin.get();
 const workspaces = Workspaces.get();
@@ -177,7 +177,7 @@ took effect.
 ::: tabs
 
 ```typescript
-import { Gnoblin, OutputConfig, OutputQuery } from "gnoblin-core/generated/objects";
+import { Gnoblin, OutputConfig, OutputQuery } from "gnoblin-core";
 
 const gnoblin = Gnoblin.get();
 gnoblin.outputs
@@ -243,7 +243,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 ::: tabs
 
 ```typescript
-import { Gnoblin, OutputConfig } from "gnoblin-core/generated/objects";
+import { Gnoblin, OutputConfig } from "gnoblin-core";
 
 Gnoblin.get()
     .outputs.at(1)
@@ -286,7 +286,7 @@ monitor: the mirrored output has no place of its own, no workspace, and the poin
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
+import { Gnoblin } from "gnoblin-core";
 
 const outputs = Gnoblin.get().outputs;
 outputs.at(1)?.mirror(outputs.at(0));
@@ -326,7 +326,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 ::: tabs
 
 ```typescript
-import { Gnoblin, OutputConfig } from "gnoblin-core/generated/objects";
+import { Gnoblin, OutputConfig } from "gnoblin-core";
 
 Gnoblin.get()
     .outputs.at(1)
@@ -394,7 +394,7 @@ plugged in: see [Hardware profiles](#hardware-profiles). One the compositor refu
 ::: tabs
 
 ```typescript
-import { Gnoblin, OutputConfig, OutputQuery } from "gnoblin-core/generated/objects";
+import { Gnoblin, OutputConfig, OutputQuery } from "gnoblin-core";
 
 const output = Gnoblin.get()
     .outputs.where(new OutputQuery({ name: "output-1" }))
@@ -531,13 +531,7 @@ again when the monitor comes back after an unplug.
 ::: tabs
 
 ```typescript
-import {
-    DisplayManager,
-    OutputMatch,
-    OutputPosition,
-    OutputProfile,
-    ProfileSettings,
-} from "gnoblin-std/generated/objects";
+import { DisplayManager, OutputMatch, OutputPosition, OutputProfile, ProfileSettings } from "gnoblin-std";
 
 const manager = DisplayManager.get();
 const main = new OutputProfile(new OutputMatch({ connector: "DP-1" }), {
@@ -681,8 +675,8 @@ whose `content` is the workspace shown. `gnoblin.displays` is the live collectio
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import { InputContextAugment, Workspace, Workspaces } from "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import { InputContextAugment, Workspace, Workspaces } from "gnoblin-std";
 
 const gnoblin = Gnoblin.get();
 const workspaces = Workspaces.get();
@@ -787,7 +781,7 @@ import {
     Viewport,
     Workspace,
     Workspaces,
-} from "gnoblin-std/generated/objects";
+} from "gnoblin-std";
 
 const manager = DisplayManager.get();
 const main = new OutputProfile(new OutputMatch({ connector: "DP-1" }));
@@ -932,8 +926,8 @@ A viewport looks at its content through a camera, `Camera2D` or `Camera3D`. Both
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import { Camera2D, Camera3D, GnoblinAugment, InputContextAugment } from "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import { Camera2D, Camera3D, GnoblinAugment, InputContextAugment } from "gnoblin-std";
 
 const gnoblin = Gnoblin.get();
 const seat = gnoblin.input.primary;
@@ -1068,8 +1062,8 @@ A layout can place windows in depth with `z`, `rotation` and `scale`; the camera
 ::: tabs
 
 ```typescript
-import { Gnoblin, OutputCollectionListener } from "gnoblin-core/generated/objects";
-import type { Output } from "gnoblin-core/generated/objects";
+import { Gnoblin, OutputCollectionListener } from "gnoblin-core";
+import type { Output } from "gnoblin-core";
 
 const gnoblin = Gnoblin.get();
 
@@ -1178,8 +1172,8 @@ A `Bar` sits on the primary output unless you give it one:
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import { Bar } from "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import { Bar } from "gnoblin-std";
 
 const second = Gnoblin.get().outputs.at(1);
 if (second) {
@@ -1249,8 +1243,8 @@ configuration what each output showed, by output name, and each output goes back
 ::: tabs
 
 ```typescript
-import { ClientQuery, Gnoblin } from "gnoblin-core/generated/objects";
-import { ClientAugment, OutputAugment } from "gnoblin-std/generated/objects";
+import { ClientQuery, Gnoblin } from "gnoblin-core";
+import { ClientAugment, OutputAugment } from "gnoblin-std";
 
 const gnoblin = Gnoblin.get();
 const [client] = gnoblin.findClients(new ClientQuery({ focused: true }));

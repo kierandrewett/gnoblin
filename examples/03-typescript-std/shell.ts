@@ -10,9 +10,9 @@
 // - `new Workspace` makes the one workspace, with a gap of 10 between tiles and 20 to the screen's edge, and `Workspaces` lists it;
 // - a listener on the collection of clients says where each window opens;
 // - `Super+Tab` swaps the window that has the keyboard with the first, which moves both columns without the layout being told how.
-import { Gnoblin } from "gnoblin-core/generated/objects";
-import { Layout, Workspace, Workspaces } from "gnoblin-std/generated/objects";
-import type { LayoutContextInit, LayoutPlacementInit } from "gnoblin-std/generated/objects";
+import { Gnoblin } from "gnoblin-core";
+import { Layout, Workspace, Workspaces } from "gnoblin-std";
+import type { LayoutContextInit, LayoutPlacementInit } from "gnoblin-std";
 
 /** Equal-width columns across the workspace, separated by the workspace's inner gap. */
 class Columns extends Layout {

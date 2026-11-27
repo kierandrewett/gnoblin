@@ -50,7 +50,7 @@ logs the application of each window that takes the keyboard:
 ::: tabs
 
 ```typescript
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
 gnoblin.clients.on("focusChanged", (client, focused) => {
     if (focused) {

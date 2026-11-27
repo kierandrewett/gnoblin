@@ -9,7 +9,7 @@ reload. A nested session leaves its host's devices alone ([input device settings
 ::: tabs
 
 ```typescript
-import { gnoblin, Mouse } from "gnoblin-core/generated/objects";
+import { gnoblin, Mouse } from "gnoblin-core";
 
 for (const device of gnoblin.input.devices) {
     if (device instanceof Mouse) {

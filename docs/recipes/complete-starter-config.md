@@ -19,7 +19,7 @@ Rust file leaves out the two strip focus keys. It is this, in full:
 // A shell with no `shell.ts` runs this same file, so a copy you leave unchanged behaves like the default.
 // Check changes with `gnoblinctl check --types shell.ts`; see the shell API pages for each object's details.
 
-import { gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 import {
     Decorations,
     FloatingLayout,
@@ -32,9 +32,9 @@ import {
     WindowState,
     Workspace,
     WorkspaceSlideBinding,
-} from "gnoblin-std/generated/objects";
+} from "gnoblin-std";
 // To use the examples below, add what they name to the import above.
-// import { MasterStackLayout } from "gnoblin-std/generated/objects";
+// import { MasterStackLayout } from "gnoblin-std";
 
 // Four floating workspaces. The first is shown until another is selected.
 // Choose a layout: FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout, DwindleLayout or StripLayout.
