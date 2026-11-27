@@ -1715,7 +1715,7 @@ fn a_bad_registration_is_refused_with_a_message_that_says_why() {
 }
 
 #[test]
-fn a_drag_trigger_bound_to_a_plain_function_is_refused() {
+fn a_drag_trigger_bound_to_a_plain_function_is_accepted_and_claims_the_chord() {
     let comp = world(false);
     let mut rig = rig(
         &comp,
@@ -1725,12 +1725,9 @@ fn a_drag_trigger_bound_to_a_plain_function_is_refused() {
              try { input.bind(\"Super+MouseLeft+Drag\", () => {}); } catch (e: any) { errors.push(`${e.name}: ${e.message}`); }\n",
         ),
     );
-    assert_eq!(
-        rig.eval("errors.join('\\n')"),
-        // The words are the library's own: a catalog name (`pointer_drag_binding`, `bind_drag`), as the refusal of a press object on a drag says it.
-        r#"TypeError: InputContext "seatA".bind: "Super+MouseLeft+Drag" is a drag; bind a pointer_drag_binding with bind_drag"#
-    );
-    assert!(comp.claimed().is_empty(), "a refused binding holds no claim");
+    // A function serves a drag as it serves any trigger (the shipped examples bind one); the TypeScript library refused it.
+    assert_eq!(rig.eval("errors.join('\\n')"), "");
+    assert!(!comp.claimed().is_empty(), "the function holds the claim of the drag");
 }
 
 #[test]
