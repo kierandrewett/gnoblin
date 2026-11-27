@@ -1,20 +1,15 @@
 //! The dwindle, strip, arc and carousel layouts, the split-resize drag, snapping and the tile swap of the native std, held to the
 //! TypeScript std (`data/js/gnoblin-std`), which is the reference.
 //!
-//! One script of events (a window opens, the keyboard moves, a chord is pressed, a pointer chord is dragged) is played twice over the
-//! same fake compositor: once to a TypeScript shell in this process, once to the native shell `shell-tiling` in the launcher, through
-//! the real core and the real `libgnoblin-std.so.1`. After each `step` the windows' rectangles and the placement properties a layout
-//! writes (tiled, visible, depth, rotation, scale) are read; the two runs must read the same numbers. A mismatch is a bug of the port.
+//! One script of events (a window opens, the keyboard moves, a chord is pressed, a pointer chord is dragged) is played to a TypeScript
+//! shell in this process over the fake compositor. After each `step` the windows' rectangles and the placement properties a layout
+//! writes (tiled, visible, depth, rotation, scale) are read and held to the fixture `tiling_<name>`, which `objects.rs` and
+//! `policy_replay.rs` replay to the native std.
 //! The script language is `crates/gnoblin-core-impl/src/driver_script.rs`'s.
 
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+use std::path::Path;
 use std::time::Duration;
-
-#[path = "../../gnoblin-core-impl/tests/support/mod.rs"]
-mod support;
-use support::*;
 
 mod reference;
 use reference::Reference;
@@ -22,55 +17,8 @@ use reference::Reference;
 use gnoblin_js::JsShellConfig;
 use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_testkit::compositor::{FakeCompositor, ROOT, text};
-use gnoblin_testkit::oracle::{self, Value, json};
+use gnoblin_testkit::oracle::{Value, json};
 use gnoblin_tree_client::tree_mirror::MirrorValue;
-
-// ---- the native side ---------------------------------------------------------------------------------------------------------
-
-struct Stage {
-    dir: PathBuf,
-    shell: PathBuf,
-}
-
-fn build_stage() -> Result<Stage, String> {
-    let base = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("std-tiling-stage");
-    let _ = fs::remove_dir_all(&base);
-    let target = base.join("target");
-    cargo_build(
-        &target,
-        &[
-            "-p",
-            "gnoblin-core-impl",
-            "-p",
-            "gnoblin-std-impl",
-            "-p",
-            "gnoblin-fixture-launcher",
-            "-p",
-            "gnoblin-fixture-shell-tiling",
-            "--features",
-            "gnoblin-core-impl/test-driver",
-        ],
-        &[],
-    )?;
-    let debug = target.join("debug");
-    let dir = base.join("prefix");
-    copy_to(&debug.join("libgnoblin_core_impl.so"), &dir.join(CORE_FILE));
-    copy_to(&debug.join(LAUNCHER), &dir.join(LAUNCHER));
-    copy_to(&debug.join("libgnoblin_std_impl.so"), &dir.join("libgnoblin-std.so.1"));
-    let shell = copy_to(
-        &debug.join("libshell_tiling.so"),
-        &dir.join("shells/libshell_tiling.so"),
-    );
-    Ok(Stage { dir, shell })
-}
-
-fn stage() -> &'static Stage {
-    static STAGE: LazyLock<Result<Stage, String>> = LazyLock::new(build_stage);
-    match &*STAGE {
-        Ok(stage) => stage,
-        Err(message) => panic!("cannot build the tiling shell: {message}"),
-    }
-}
 
 /// What one window looks like at a step.
 #[derive(Clone, Debug, PartialEq)]
@@ -86,83 +34,6 @@ struct Obs {
 }
 
 type Steps = Vec<(String, Vec<Obs>)>;
-
-fn list(text: &str) -> Vec<f64> {
-    text.split(',').filter_map(|part| part.parse().ok()).collect()
-}
-
-fn parse(stdout: &str) -> Steps {
-    let mut steps: Steps = Vec::new();
-    for line in stdout.lines() {
-        let field = |key: &str| {
-            let marker = format!("{key}=");
-            line.split_whitespace()
-                .find_map(|word| word.strip_prefix(marker.as_str()))
-                .unwrap_or("")
-                .to_owned()
-        };
-        if let Some(name) = line.strip_prefix("step=") {
-            steps.push((name.to_owned(), Vec::new()));
-        } else if line.starts_with("window id=") {
-            let Some((_, observed)) = steps.last_mut() else {
-                continue;
-            };
-            let id = field("id").parse().unwrap();
-            let rect = if line.ends_with("gone") {
-                None
-            } else {
-                Some(["x", "y", "w", "h"].map(|key| field(key).parse().unwrap()))
-            };
-            observed.push(Obs {
-                id,
-                rect,
-                tiled: false,
-                visible: true,
-                z: 0.0,
-                rotation: vec![0.0; 3],
-                scale: vec![1.0; 3],
-            });
-        } else if line.starts_with("props id=")
-            && let Some((_, observed)) = steps.last_mut()
-            && let Some(last) = observed.last_mut()
-        {
-            last.tiled = field("tiled") == "true";
-            last.visible = field("visible") == "true";
-            last.z = field("z").parse().unwrap();
-            last.rotation = list(&field("rot"));
-            last.scale = list(&field("scale"));
-        }
-    }
-    steps
-}
-
-/// Plays `script` in the launcher over the native shell.
-fn native(script: &str) -> Steps {
-    let stage = stage();
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    std::hash::Hash::hash(script, &mut hasher);
-    let file = stage
-        .dir
-        .join(format!("script-{:x}", std::hash::Hasher::finish(&hasher)));
-    fs::write(&file, script).expect("the script is written");
-    let (stdout, stderr, code) = run_with_env(
-        &stage.dir,
-        &["std_script"],
-        &[&stage.shell],
-        &[
-            ("LD_LIBRARY_PATH", stage.dir.as_path()),
-            ("GNOBLIN_TEST_SCRIPT", file.as_path()),
-        ],
-    );
-    assert_eq!(code, 0, "{stdout}\n{stderr}");
-    assert!(stderr.contains("tiling shell is running"), "{stderr}");
-    assert!(!stderr.contains("cannot"), "{stderr}");
-    assert!(stderr.contains("duplicate binding refused"), "{stderr}");
-    assert!(!stderr.contains("duplicate binding accepted"), "{stderr}");
-    assert!(!stdout.contains("bad script line"), "{stdout}");
-    assert_eq!(num(&stdout, "core_stats", "panics"), 0, "{stdout}");
-    parse(&stdout)
-}
 
 // ---- the TypeScript side -----------------------------------------------------------------------------------------------------
 
@@ -192,7 +63,7 @@ fn world() -> FakeCompositor {
     comp
 }
 
-/// The TypeScript shell with the chords of `shell-tiling`.
+/// The TypeScript shell with the chords of the tiling script.
 ///
 /// A shell runs on the native library unless its import graph reaches a module only the TypeScript library has
 /// (`crates/gnoblin-js/src/choice.rs`), so the reference imports `gnoblin-std/layout`: without it this would run the generated
@@ -253,7 +124,7 @@ g.chords = {
 };
 
 // Bindings of the shell's own, for the binding scenarios: each writes numbers into a window's rectangle (a floating workspace leaves
-// them alone), so a step shows which binding was asked, in what order and how it ended. `shell-tiling` has the same ones.
+// them alone), so a step shows which binding was asked, in what order and how it ended. `shell-policy` has the same ones.
 const input = gnoblin.input.primary;
 const first = () => ws.clients.at(0) as any;
 const put = (client: any, patch: object) => { client.bounds = { ...client.bounds, ...patch }; };
@@ -461,23 +332,15 @@ fn steps_json(steps: &Steps) -> Value {
     )
 }
 
-/// Plays `script` to the TypeScript std, holds what it did to the fixture `tiling_<name>` and, unless the run only records, plays it over
-/// the native std too and asserts every step reads the same; returns the steps for further checks.
+/// Plays `script` to the TypeScript std and holds what it did to the fixture `tiling_<name>`; returns the steps for further checks. The
+/// native std is held to the fixture by `objects.rs` (the layouts) and `policy_replay.rs` (the drags and gestures).
 fn same(name: &str, script: &str) -> Steps {
     let reference = reference(script);
     reference::fixtures().json(
         &format!("tiling_{name}"),
         &json!({ "script": script, "steps": steps_json(&reference) }),
     );
-    if oracle::recording() {
-        return reference;
-    }
-    let native = native(script);
-    assert_eq!(native.len(), reference.len(), "the two runs print as many steps");
-    for ((name, got), (_, want)) in native.iter().zip(&reference) {
-        assert_eq!(got, want, "step {name}: the native std differs from the TypeScript std");
-    }
-    native
+    reference
 }
 
 fn rect(steps: &Steps, step: &str, id: u64) -> Option<[f64; 4]> {

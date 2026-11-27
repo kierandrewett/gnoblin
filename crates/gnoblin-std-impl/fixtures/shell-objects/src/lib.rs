@@ -2,9 +2,9 @@
 //! library's layouts and each action of the dwindle, the strip and the carousel, written over the classes of `gnoblin_std::objects`
 //! (`workspace`, the built-in layout classes, `client_state`) and not over the std table.
 //!
-//! `shell-tiling` has the same chords over the table, with the pointer drags each layout brings; this shell has no drag bindings (a
+//! `shell-policy` has the same chords with the pointer drags each layout brings; this shell has no drag bindings (a
 //! binding is the policy lane's class), so the scripts that need one are not replayed (`tests/objects.rs` lists them). The chords are
-//! those of `shell-tiling`:
+//! those of `shell-policy`:
 //!
 //! | chord | what it does |
 //! |---|---|

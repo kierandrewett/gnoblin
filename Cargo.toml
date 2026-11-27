@@ -46,7 +46,6 @@ members = [
     "crates/gnoblin-std-impl/fixtures/shell-layouts",
     "crates/gnoblin-std-impl/fixtures/shell-objects",
     "crates/gnoblin-std-impl/fixtures/shell-policy",
-    "crates/gnoblin-std-impl/fixtures/shell-tiling",
     "crates/gnoblin-shell-host",
     "crates/gnoblin-macros",
     "crates/gnoblin-cursor",

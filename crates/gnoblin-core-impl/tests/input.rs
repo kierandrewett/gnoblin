@@ -1620,7 +1620,7 @@ fn bump(api: Api, window: Obj, name: &str, by: f64) -> Res<()> {
     put(api, window, name, number(api, window, name) + by)
 }
 
-/// The bindings of `shell-tiling`'s probes: two drags of `Super+Button2` (`A`, of priority 5, declines a window titled `B`; `B` takes what is
+/// The bindings of the policy fixture shell's probes: two drags of `Super+Button2` (`A`, of priority 5, declines a window titled `B`; `B` takes what is
 /// left), and gestures that write numbers into window 40. A drag moves the window it pressed: `A` along x, `B` along y.
 fn bind_tiling_probes(rig: &Rig, first: Obj) {
     let api = rig.api;

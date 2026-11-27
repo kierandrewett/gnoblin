@@ -2888,18 +2888,6 @@ kind = "same-name"
 reason = "the policy fixture shell is the objects fixture shell with the stock drags and the probe bindings added"
 
 [[allow]]
-left = "gnoblin-fixture-shell-policy::DragSet"
-right = "gnoblin-fixture-shell-tiling::Drags"
-kind = "same-shape"
-reason = "both fixture shells pick the drags a layout brings (swap and split resize, move and resize, none); one binds the table's drags, the other the policy classes"
-
-[[allow]]
-left = "gnoblin-fixture-shell-policy::Counter"
-right = "gnoblin-fixture-shell-tiling::GestureProbe"
-kind = "near-shape"
-reason = "both fixture shells probe the core's gesture matcher with the same writes; one binds through the table, the other through the core's typed classes"
-
-[[allow]]
 left = "gnoblin-core::DragPhase"
 right = "gnoblin-std-impl::Hook"
 kind = "same-shape"

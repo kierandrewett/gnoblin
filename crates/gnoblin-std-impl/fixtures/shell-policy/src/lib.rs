@@ -4,7 +4,7 @@
 //!
 //! It also binds the pointer drags each layout brings, through the classes of the policy catalog (`swap_binding` and `split_resize_binding`
 //! on a tiling layout, `move_binding` and `resize_binding` on a floating one) installed on the core's input context, and the probe bindings
-//! of the shell's own that `shell-tiling` has. The chords are those of `shell-tiling`:
+//! of the shell's own that the tiling script probes. The chords are those of the tiling script:
 //!
 //! | chord | what it does |
 //! |---|---|

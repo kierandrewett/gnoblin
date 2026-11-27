@@ -1,7 +1,7 @@
 //! The layouts of the native std through the object protocol, held to what the TypeScript std did (`data/js/gnoblin-std`), which the
 //! recorded fixtures `tiling_*.json` keep.
 //!
-//! `tests/tiling.rs` plays each script to a shell over the std table (`shell-tiling`). This file plays the same scripts, taken from the
+//! `tests/tiling.rs` plays each script to the TypeScript std and records the fixtures. This file plays the same scripts, taken from the
 //! fixtures, to `shell-objects`, which makes its workspace, its layouts, their actions and a client's size limits through the classes of
 //! `workspace.toml` (`gnoblin_std::objects`), over the real core and the real `libgnoblin-std.so.1`. After each step the rectangles and the
 //! placement properties a layout writes must be the fixture's, number for number.
