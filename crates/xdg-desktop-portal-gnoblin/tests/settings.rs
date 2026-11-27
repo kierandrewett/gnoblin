@@ -8,11 +8,13 @@
 
 mod support;
 
+use std::sync::mpsc;
 use std::time::Duration;
 
 use futures_lite::StreamExt as _;
 use gnoblin_model::{ObjectId, ObjectView, Observation, Revision, TypeKey, Value};
 use gnoblin_types::RequestId;
+use support::bounded;
 use support::bus::Bus;
 use xdg_desktop_portal_gnoblin::consent::{Host, Offer, Prompt, Refusal};
 use xdg_desktop_portal_gnoblin::{Backends, PATH, Portal};
@@ -23,8 +25,16 @@ use zbus::{Connection, OwnedVariant, Proxy};
 const INTERFACE: &str = "org.freedesktop.impl.portal.Settings";
 /// The namespace the spec names the two preferences in.
 const APPEARANCE: &str = "org.freedesktop.appearance";
-/// How long a signal may take to arrive before the test calls it lost.
+/// How long a signal may take to arrive before the test calls it lost, and how long a whole
+/// test may take before it fails instead of holding its job.
 const DEADLINE: Duration = Duration::from_secs(15);
+/// How long the caller of a held portal may take in all: it waits for the portal's name,
+/// connects, sends its call while the portal's thread is held, and gets the answer once the
+/// portal runs again. The bus answers in milliseconds, so this is the test's way of saying lost.
+const ANSWER: Duration = Duration::from_secs(5);
+/// How long the portal's thread is held while the call goes out and reaches the portal's
+/// connection. The bus daemon routes a call in a few milliseconds; this is far more.
+const HOLD: Duration = Duration::from_millis(300);
 
 /// A host with no prompt provider. The settings interface never asks for a prompt, so
 /// refusing every offer is the honest answer and keeps the test off the consent path.
@@ -87,12 +97,17 @@ async fn serve(bus: &Bus) -> (Portal, String) {
     (portal, name)
 }
 
-/// A caller connection on `bus`, as a toolkit would have.
-async fn caller(bus: &Bus) -> Connection {
-    Builder::address(bus.address())
+/// A caller connection on the bus at `address`, as a toolkit would have.
+async fn caller_at(address: &str) -> Connection {
+    Builder::address(address)
         .build()
         .await
         .expect("a caller connects to the private bus")
+}
+
+/// A caller connection on `bus`.
+async fn caller(bus: &Bus) -> Connection {
+    caller_at(bus.address()).await
 }
 
 /// The settings interface on the portal at `destination`.
@@ -122,67 +137,131 @@ async fn within<T>(future: impl Future<Output = T>) -> Option<T> {
 
 #[test]
 fn read_returns_the_reduced_motion_and_contrast_values_of_the_snapshot() {
-    let bus = Bus::start();
-    zbus::block_on(async {
-        let (portal, destination) = serve(&bus).await;
-        portal
-            .observe(&snapshot(vec![
-                ("reduced_motion", Value::Uint(1)),
-                ("contrast", Value::Uint(1)),
-            ]))
-            .await;
+    bounded::within("reading the values of a snapshot", DEADLINE, || {
+        let bus = Bus::start();
+        zbus::block_on(async {
+            let (portal, destination) = serve(&bus).await;
+            portal
+                .observe(&snapshot(vec![
+                    ("reduced_motion", Value::Uint(1)),
+                    ("contrast", Value::Uint(1)),
+                ]))
+                .await;
 
-        let caller = caller(&bus).await;
-        let settings = settings(&caller, &destination).await;
-        assert_eq!(read_u32(&settings, APPEARANCE, "reduced-motion").await, 1);
-        assert_eq!(read_u32(&settings, APPEARANCE, "contrast").await, 1);
+            let caller = caller(&bus).await;
+            let settings = settings(&caller, &destination).await;
+            assert_eq!(read_u32(&settings, APPEARANCE, "reduced-motion").await, 1);
+            assert_eq!(read_u32(&settings, APPEARANCE, "contrast").await, 1);
+        });
     });
 }
 
 #[test]
 fn a_reduced_motion_change_is_announced_and_read_back() {
-    let bus = Bus::start();
-    zbus::block_on(async {
-        let (portal, destination) = serve(&bus).await;
-        portal
-            .observe(&snapshot(vec![("reduced_motion", Value::Uint(0))]))
-            .await;
+    bounded::within("announcing and reading back a reduced-motion change", DEADLINE, || {
+        let bus = Bus::start();
+        zbus::block_on(async {
+            let (portal, destination) = serve(&bus).await;
+            portal
+                .observe(&snapshot(vec![("reduced_motion", Value::Uint(0))]))
+                .await;
 
-        let caller = caller(&bus).await;
-        let settings = settings(&caller, &destination).await;
-        assert_eq!(read_u32(&settings, APPEARANCE, "reduced-motion").await, 0);
+            let caller = caller(&bus).await;
+            let settings = settings(&caller, &destination).await;
+            assert_eq!(read_u32(&settings, APPEARANCE, "reduced-motion").await, 0);
 
-        // Subscribe before the change so the signal cannot arrive unheard.
-        let mut changes = settings
-            .receive_signal("SettingChanged")
-            .await
-            .expect("the caller subscribes to SettingChanged");
-        portal.observe(&changed("reduced_motion", Value::Uint(1))).await;
+            // Subscribe before the change so the signal cannot arrive unheard.
+            let mut changes = settings
+                .receive_signal("SettingChanged")
+                .await
+                .expect("the caller subscribes to SettingChanged");
+            portal.observe(&changed("reduced_motion", Value::Uint(1))).await;
 
-        let message = within(changes.next())
-            .await
-            .expect("a SettingChanged arrives before the deadline")
-            .expect("the signal stream yields a message");
-        let (namespace, key, value): (String, String, OwnedVariant) =
-            message.body().deserialize().expect("SettingChanged carries (ssv)");
-        assert_eq!(namespace, APPEARANCE);
-        assert_eq!(key, "reduced-motion");
-        assert_eq!(u32::try_from(value).expect("a u32"), 1);
+            let message = within(changes.next())
+                .await
+                .expect("a SettingChanged arrives before the deadline")
+                .expect("the signal stream yields a message");
+            let (namespace, key, value): (String, String, OwnedVariant) =
+                message.body().deserialize().expect("SettingChanged carries (ssv)");
+            assert_eq!(namespace, APPEARANCE);
+            assert_eq!(key, "reduced-motion");
+            assert_eq!(u32::try_from(value).expect("a u32"), 1);
 
-        assert_eq!(read_u32(&settings, APPEARANCE, "reduced-motion").await, 1);
+            assert_eq!(read_u32(&settings, APPEARANCE, "reduced-motion").await, 1);
+        });
     });
 }
 
 #[test]
 fn a_high_contrast_change_is_read_back_as_contrast() {
-    let bus = Bus::start();
-    zbus::block_on(async {
-        let (portal, destination) = serve(&bus).await;
-        portal.observe(&snapshot(vec![("contrast", Value::Uint(0))])).await;
+    bounded::within("reading back a high-contrast change", DEADLINE, || {
+        let bus = Bus::start();
+        zbus::block_on(async {
+            let (portal, destination) = serve(&bus).await;
+            portal.observe(&snapshot(vec![("contrast", Value::Uint(0))])).await;
 
-        let caller = caller(&bus).await;
-        let settings = settings(&caller, &destination).await;
-        portal.observe(&changed("contrast", Value::Uint(1))).await;
-        assert_eq!(read_u32(&settings, APPEARANCE, "contrast").await, 1);
+            let caller = caller(&bus).await;
+            let settings = settings(&caller, &destination).await;
+            portal.observe(&changed("contrast", Value::Uint(1))).await;
+            assert_eq!(read_u32(&settings, APPEARANCE, "contrast").await, 1);
+        });
+    });
+}
+
+/// A call that reaches the portal before its thread next runs a task is still answered.
+///
+/// The portal and its caller share one process, as they do in every test here, so while the
+/// portal's thread does anything but wait on the bus, nothing its connection has spawned runs:
+/// not the task that reads the socket, and not the one that dispatches method calls. The
+/// dispatcher takes its subscription to the connection's method calls only when it first
+/// runs, and the reader hands a message to the subscriptions there are when it reads it, so a
+/// call read before that is dropped and its caller waits for ever. `Portal::export` has to
+/// leave the dispatcher subscribed, which is what lets a caller that has the portal's name
+/// call it at once. The caller runs on a thread of its own, so it can send while the portal's
+/// thread is held.
+#[test]
+fn a_call_that_reaches_the_portal_before_it_next_runs_is_answered() {
+    bounded::within("a call to a portal whose thread is held", DEADLINE, || {
+        let bus = Bus::start();
+        let address = bus.address().to_owned();
+        let (destination_tx, destination_rx) = mpsc::channel::<String>();
+        let (sending_tx, sending_rx) = mpsc::channel::<()>();
+        let (answer_tx, answer_rx) = futures_channel::oneshot::channel::<u32>();
+        let calling = std::thread::spawn(move || {
+            let answer = bounded::within("the caller's Read", ANSWER, move || {
+                let destination = destination_rx
+                    .recv_timeout(DEADLINE)
+                    .expect("the portal names itself before the deadline");
+                zbus::block_on(async {
+                    let caller = caller_at(&address).await;
+                    let settings = settings(&caller, &destination).await;
+                    // The portal's thread is held from this signal on, so the call goes out
+                    // while nothing the portal's connection spawned can run.
+                    sending_tx.send(()).expect("the portal waits for the call");
+                    read_u32(&settings, APPEARANCE, "reduced-motion").await
+                })
+            });
+            let _ = answer_tx.send(answer);
+        });
+
+        zbus::block_on(async {
+            let (portal, destination) = serve(&bus).await;
+            portal
+                .observe(&snapshot(vec![("reduced_motion", Value::Uint(1))]))
+                .await;
+            destination_tx
+                .send(destination)
+                .expect("the caller waits for the portal's name");
+            sending_rx
+                .recv_timeout(DEADLINE)
+                .expect("the caller sends its call before the deadline");
+            std::thread::sleep(HOLD);
+
+            let answer = answer_rx
+                .await
+                .expect("the caller got no answer: its panic above says which call was lost");
+            assert_eq!(answer, 1, "the portal answered with the published value");
+        });
+        calling.join().expect("the caller's thread ends cleanly");
     });
 }
