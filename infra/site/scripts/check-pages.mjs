@@ -8,7 +8,7 @@
 // Options: --base URL (use a running server instead), --shots DIR (save full-page screenshots there).
 // CHROME points at the browser (default: google-chrome, google-chrome-stable or chromium on PATH).
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, readdirSync, statSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
@@ -32,9 +32,12 @@ const PAGES = [
     "/docs/bridge/connection",
     "/docs/install-arch",
     "/docs/guides/replace-built-in-dialogs",
-    // Language tabs, and the page that leads to the API reference of the three SDKs.
+    // Language tabs, and the API reference.
     "/docs/shell-api/idle",
-    "/docs/reference",
+    "/reference",
+    "/reference/core/client",
+    "/reference/std/workspace",
+    "/reference/errors",
     "/this-page-does-not-exist",
 ];
 const VIEWPORTS = {
@@ -122,43 +125,6 @@ for (const [vpName, viewport] of Object.entries(VIEWPORTS)) {
         }
         await context.close();
     }
-}
-
-// The API reference of each SDK is the native HTML of its tool, copied beside the pages of the site. Each opens at its stable URL,
-// loads everything it names, and has the way back to the docs and to the other two languages.
-const REFERENCES = [
-    { url: "/reference/typescript/", links: ["/reference/python/", "/reference/rust/"] },
-    { url: "/reference/python/", links: ["/reference/typescript/", "/reference/rust/"] },
-    { url: "/reference/rust/gnoblin_core/index.html", links: ["/reference/typescript/", "/reference/python/"] },
-];
-{
-    const page = await browser.newPage({ viewport: VIEWPORTS.desktop });
-    for (const { url, links } of REFERENCES) {
-        const problems = [];
-        page.removeAllListeners();
-        page.on("pageerror", (err) => problems.push(`page error: ${err.message}`));
-        page.on("requestfailed", (req) => problems.push(`request failed: ${req.url()}`));
-        page.on("response", (res) => {
-            if (res.status() >= 400) problems.push(`${res.status()}: ${res.url()}`);
-        });
-        await page.goto(base + url, { waitUntil: "networkidle" });
-        const hrefs = await page.evaluate(() =>
-            [...document.querySelectorAll("a[href]")].map((a) => a.getAttribute("href")),
-        );
-        for (const href of ["/docs/reference", ...links]) {
-            if (!hrefs.includes(href)) problems.push(`no link to ${href}`);
-        }
-        const title = await page.title();
-        if (!/gnoblin/i.test(title)) problems.push(`title is "${title}"`);
-        for (const p of problems) failures.push(`${url}: ${p}`);
-    }
-    // The sidebar of a docs page names the three, and each opens.
-    await page.goto(`${base}/docs/reference`, { waitUntil: "networkidle" });
-    for (const language of ["TypeScript", "Python", "Rust"]) {
-        const link = page.locator(`nav.sidenav a[rel="external"]`, { hasText: language });
-        if (!(await link.count())) failures.push(`/docs/reference: the sidebar has no ${language} reference link`);
-    }
-    await page.close();
 }
 
 // Search. From the home page and from a docs page, at desktop and phone sizes, light and dark: open the dialog, type,
@@ -511,6 +477,432 @@ for (const width of [320, 375, 480, 768, 1280]) {
             }
         }
         await page.close();
+    }
+}
+
+// What the reference checks need from the built site: the largest class pages (the ones most likely to overflow), a page of types and an
+// event whose name is spelled differently in the three languages.
+const referenceRoot = path.join(site, "build/reference");
+const referenceClasses = ["core", "std"].flatMap((pkg) =>
+    readdirSync(path.join(referenceRoot, pkg))
+        .filter((name) => name.endsWith(".html"))
+        .map((name) => ({
+            url: `/reference/${pkg}/${name.replace(/\.html$/, "")}`,
+            size: statSync(path.join(referenceRoot, pkg, name)).size,
+        })),
+);
+const largestClassPages = referenceClasses
+    .sort((a, b) => b.size - a.size)
+    .map((c) => c.url)
+    .filter((url) => !["/reference/core/client", "/reference/std/workspace", "/reference/core/output"].includes(url))
+    .slice(0, 3);
+const typesPageUrl = `/reference/core/types/${readdirSync(path.join(referenceRoot, "core/types"))
+    .find((name) => name.endsWith(".html"))
+    ?.replace(/\.html$/, "")}`;
+const clientEvents = [
+    ...readFileSync(path.join(referenceRoot, "core/client.html"), "utf8").matchAll(/ id="event-([a-z0-9_]+)"/g),
+].map((m) => m[1]);
+const firstEvent = clientEvents.find((name) => name.includes("_")) ?? clientEvents[0];
+if (!firstEvent) failures.push("reference: /reference/core/client has no event");
+
+// The API reference (/reference): built from reference.json by the site itself, three languages in one page. Every check below opens the
+// built pages in Chrome. The routes are the index, a class of each library, a page of types, the errors and the page a member's anchor names.
+const REFERENCE_PAGES = [
+    "/reference",
+    "/reference/core/client",
+    "/reference/std/workspace",
+    "/reference/core/output#apply",
+    "/reference/errors",
+    ...(typesPageUrl ? [typesPageUrl] : []),
+];
+const LANGS = ["typescript", "python", "rust"];
+
+// 1. Every page of the reference opens in each language without a console error, a failed request, a missing image or a sideways scroll,
+//    at the widths where the layout changes: a phone, the band from 1280 to 1323 px (where three columns and the header once did not fit)
+//    and a wide desktop. Code and tables scroll or stack inside their own box; an element that sticks out of its scroller does not count.
+for (const width of [375, 1280, 1300, 1312, 1323, 1324, 1440]) {
+    for (const lang of LANGS) {
+        const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
+        await context.addInitScript((value) => localStorage.setItem("gnoblin-language", value), lang);
+        const page = await context.newPage();
+        const problems = [];
+        page.on("console", (msg) => msg.type() === "error" && problems.push(`console: ${msg.text()}`));
+        page.on("pageerror", (err) => problems.push(`page error: ${err.message}`));
+        page.on("requestfailed", (req) => problems.push(`request failed: ${req.url()}`));
+        for (const url of [...REFERENCE_PAGES, ...largestClassPages]) {
+            problems.length = 0;
+            await page.goto(base + url, { waitUntil: "load" });
+            const found = await page.evaluate(() => {
+                const inside = (el) => {
+                    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+                        if (getComputedStyle(p).overflowX !== "visible") return true;
+                    }
+                    return false;
+                };
+                const out = [];
+                for (const el of document.querySelectorAll("body *")) {
+                    const r = el.getBoundingClientRect();
+                    if (!r.width || !r.height || (r.left >= -1 && r.right <= innerWidth + 1) || inside(el)) continue;
+                    out.push(
+                        `${el.tagName.toLowerCase()}.${String(el.getAttribute("class") ?? "").split(" ")[0]} ${Math.round(r.left)}..${Math.round(r.right)}`,
+                    );
+                    if (out.length === 3) break;
+                }
+                return { over: document.documentElement.scrollWidth - innerWidth, out };
+            });
+            const where = `${url} [${width}, ${lang}]`;
+            if (found.over > 0) failures.push(`${where} the page scrolls sideways by ${found.over}px`);
+            if (found.out.length) failures.push(`${where} outside the window: ${found.out.join(", ")}`);
+            for (const p of problems) failures.push(`${where} ${p}`);
+        }
+        await context.close();
+    }
+}
+
+// 2. Structure of a page, in each language: one h1 and a heading outline that never skips a level, every table with a heading cell for each
+//    column and a row heading, every anchor reachable by the keyboard, and a title.
+{
+    const context = await browser.newContext({ viewport: VIEWPORTS.desktop, reducedMotion: "reduce" });
+    const page = await context.newPage();
+    for (const url of REFERENCE_PAGES.map((u) => u.split("#")[0]).concat(largestClassPages)) {
+        await page.goto(base + url, { waitUntil: "load" });
+        for (const lang of LANGS) {
+            await page.evaluate((l) => (document.documentElement.dataset.lang = l), lang);
+            const found = await page.evaluate(() => {
+                const shown = (el) => el.getClientRects().length > 0;
+                const problems = [];
+                const headings = [...document.querySelectorAll("main h1, main h2, main h3, main h4")].filter(shown);
+                if (headings.filter((h) => h.tagName === "H1").length !== 1)
+                    problems.push("the page does not have exactly one h1");
+                let last = 0;
+                for (const h of headings) {
+                    const level = Number(h.tagName[1]);
+                    if (last && level > last + 1)
+                        problems.push(
+                            `the outline jumps from h${last} to h${level} at "${h.textContent.trim().slice(0, 30)}"`,
+                        );
+                    last = level;
+                }
+                for (const table of document.querySelectorAll("table.ref-tbl")) {
+                    if (!shown(table)) continue;
+                    const heads = [...table.querySelectorAll("thead th")].filter(shown);
+                    if (heads.some((th) => th.getAttribute("scope") !== "col"))
+                        problems.push("a column heading has no scope=col");
+                    const rows = [...table.querySelectorAll("tbody tr")].filter(shown);
+                    if (
+                        rows.some(
+                            (row) =>
+                                ![...row.children].some(
+                                    (c) => shown(c) && c.tagName === "TH" && c.getAttribute("scope") === "row",
+                                ),
+                        )
+                    )
+                        problems.push("a row has no row heading");
+                    const cells = rows[0] ? [...rows[0].children].filter(shown).length : heads.length;
+                    if (heads.length !== cells)
+                        problems.push(`a table has ${heads.length} column headings and ${cells} cells in a row`);
+                }
+                for (const a of document.querySelectorAll("main a.anchor")) {
+                    if (shown(a) && a.tabIndex < 0) problems.push("an anchor is not reachable by the keyboard");
+                }
+                return problems.slice(0, 3);
+            });
+            for (const p of found) failures.push(`${url} [${lang}] ${p}`);
+        }
+        if (!/Gnoblin/.test(await page.title())) failures.push(`${url}: the title is "${await page.title()}"`);
+    }
+    await context.close();
+}
+
+// 3. The language picker: a radio group with one tab stop, the arrow keys move and choose, the choice is kept and `?lang=` wins once. It
+//    changes spelling only: the URL, the anchors, the headings and the rows are the same in all three languages, the names are not.
+{
+    const url = "/reference/core/client";
+    const context = await browser.newContext({ viewport: VIEWPORTS.desktop, reducedMotion: "reduce" });
+    const page = await context.newPage();
+    await page.goto(base + url, { waitUntil: "networkidle" });
+    const snapshot = () =>
+        page.evaluate(() => {
+            const shown = (el) => el.getClientRects().length > 0;
+            const names = [...document.querySelectorAll("#sec-properties ~ .tbl-wrap tr[id] > th[scope=row]")]
+                .filter(shown)
+                .map((th) => th.innerText.trim());
+            return {
+                path: location.pathname,
+                lang: document.documentElement.dataset.lang ?? "typescript",
+                ids: [...document.querySelectorAll("main [id]")].map((el) => el.id).sort(),
+                headings: [...document.querySelectorAll("main h2")].map((h) => h.id),
+                rows: document.querySelectorAll("#sec-properties ~ .tbl-wrap tbody tr").length,
+                names,
+                hrefs: [...document.querySelectorAll("main a.ty")].map((a) => a.getAttribute("href")).sort(),
+            };
+        });
+    const radios = page.getByRole("radio");
+    if ((await radios.count()) !== 3) failures.push(`picker: ${await radios.count()} radios, expected 3`);
+    const tabStops = await page.evaluate(
+        () =>
+            [...document.querySelectorAll('[role="radiogroup"] [role="radio"]')].filter((r) => r.tabIndex === 0).length,
+    );
+    if (tabStops !== 1) failures.push(`picker: ${tabStops} tab stops, expected 1`);
+    const before = await snapshot();
+    const shownBy = {};
+    for (const [lang, label] of [
+        ["typescript", "TypeScript"],
+        ["python", "Python"],
+        ["rust", "Rust"],
+    ]) {
+        await page.getByRole("radio", { name: label }).click();
+        const now = await snapshot();
+        shownBy[lang] = now;
+        if (now.lang !== lang) failures.push(`picker: ${label} left <html data-lang> at ${now.lang}`);
+        if (
+            !(await page
+                .getByRole("radio", { name: label })
+                .evaluate((el) => el.getAttribute("aria-checked") === "true"))
+        )
+            failures.push(`picker: ${label} is not aria-checked after a click`);
+        if (now.path !== before.path) failures.push(`picker: ${label} changed the URL to ${now.path}`);
+        for (const key of ["ids", "headings", "hrefs"]) {
+            if (JSON.stringify(now[key]) !== JSON.stringify(before[key]))
+                failures.push(`picker: ${label} changed the page's ${key}`);
+        }
+        if (now.rows !== before.rows)
+            failures.push(`picker: ${label} shows ${now.rows} property rows, TypeScript ${before.rows}`);
+    }
+    // The spelling is what changes: the same property is `appId`, `app_id` and (Rust, a declaration) `app_id`.
+    if (!shownBy.typescript.names.some((n) => /[a-z][A-Z]/.test(n)))
+        failures.push("picker: TypeScript shows no camelCase property name");
+    if (!shownBy.python.names.some((n) => n.includes("_")))
+        failures.push("picker: Python shows no snake_case property name");
+    if (!shownBy.rust.names.some((n) => n.includes("fn "))) failures.push("picker: Rust shows no `fn` declaration");
+    if (JSON.stringify(shownBy.typescript.names) === JSON.stringify(shownBy.python.names))
+        failures.push("picker: Python spells the properties as TypeScript does");
+    // Arrow keys: from the selected radio, Right moves to the next language and focuses it.
+    await page.getByRole("radio", { name: "TypeScript" }).click();
+    await page.getByRole("radio", { name: "TypeScript" }).focus();
+    await page.keyboard.press("ArrowRight");
+    if ((await snapshot()).lang !== "python") failures.push("picker: ArrowRight did not choose Python");
+    if (!(await page.getByRole("radio", { name: "Python" }).evaluate((el) => el === document.activeElement)))
+        failures.push("picker: ArrowRight did not move the focus");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    if ((await snapshot()).lang !== "rust")
+        failures.push("picker: ArrowLeft twice from Python did not reach Rust (wrap)");
+    // The choice is kept for the next page, and `?lang=` picks one and keeps it.
+    await page.goto(`${base}/reference/std/workspace`, { waitUntil: "networkidle" });
+    if ((await snapshot()).lang !== "rust") failures.push("picker: the choice was not kept on the next page");
+    await page.goto(`${base}/reference/std/workspace?lang=python`, { waitUntil: "networkidle" });
+    if ((await snapshot()).lang !== "python") failures.push("picker: ?lang=python did not pick Python");
+    await context.close();
+}
+
+// 4. A member's anchor: the page opens at it, the row is the target and is in view, a method is open, and no language lacks the anchor.
+{
+    const context = await browser.newContext({ viewport: VIEWPORTS.desktop, reducedMotion: "reduce" });
+    const page = await context.newPage();
+    for (const lang of LANGS) {
+        await context.addInitScript((value) => localStorage.setItem("gnoblin-language", value), lang);
+        for (const hash of ["apply", "scale"]) {
+            await page.goto(`${base}/reference/core/output#${hash}`, { waitUntil: "networkidle" });
+            const found = await page.evaluate((id) => {
+                const el = document.getElementById(id);
+                if (!el) return "no such element";
+                const r = el.getBoundingClientRect();
+                const open = el instanceof HTMLDetailsElement ? el.open : true;
+                return { target: el.matches(":target"), top: r.top, bottom: r.bottom, open, height: innerHeight };
+            }, hash);
+            const where = `/reference/core/output#${hash} [${lang}]`;
+            if (typeof found === "string") failures.push(`${where}: ${found}`);
+            else {
+                if (!found.target) failures.push(`${where}: the element is not the :target`);
+                if (found.top < 0 || found.top > found.height)
+                    failures.push(`${where}: the anchor is at ${Math.round(found.top)}px, not in view`);
+                if (!found.open) failures.push(`${where}: the method is closed`);
+            }
+        }
+    }
+    await context.close();
+}
+
+// 5. Contrast: the text of the reference pages is at least 4.5:1 against what lies under it (3:1 for large text), in both schemes and in
+//    each language, including the method and the row that an anchor opens and tints.
+{
+    const CONTRAST_PAGES = [
+        ...REFERENCE_PAGES,
+        "/reference/core/output#scale",
+        "/reference/core/client#event-" + firstEvent,
+    ];
+    for (const [width, langs] of [
+        [1440, LANGS],
+        [375, ["typescript"]],
+    ]) {
+        for (const scheme of ["light", "dark"]) {
+            const context = await browser.newContext({
+                viewport: { width, height: 900 },
+                colorScheme: scheme,
+                reducedMotion: "reduce",
+            });
+            const page = await context.newPage();
+            for (const lang of langs) {
+                await context.addInitScript((value) => localStorage.setItem("gnoblin-language", value), lang);
+                for (const url of CONTRAST_PAGES) {
+                    await page.goto(base + url, { waitUntil: "networkidle" });
+                    const found = await page.evaluate(() => {
+                        const parse = (css) => {
+                            let m = /^rgba?\(([^)]+)\)$/.exec(css);
+                            if (m) {
+                                const p = m[1]
+                                    .split(/[ ,/]+/)
+                                    .filter(Boolean)
+                                    .map(Number);
+                                return { r: p[0], g: p[1], b: p[2], a: p[3] ?? 1 };
+                            }
+                            m = /^color\(srgb ([^)]+)\)$/.exec(css);
+                            if (m) {
+                                const p = m[1].split(/[ /]+/).filter(Boolean).map(Number);
+                                return { r: p[0] * 255, g: p[1] * 255, b: p[2] * 255, a: p[3] ?? 1 };
+                            }
+                            return null;
+                        };
+                        const over = (top, under) => ({
+                            r: top.r * top.a + under.r * (1 - top.a),
+                            g: top.g * top.a + under.g * (1 - top.a),
+                            b: top.b * top.a + under.b * (1 - top.a),
+                            a: 1,
+                        });
+                        const lum = ({ r, g, b }) => {
+                            const f = (v) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+                            return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+                        };
+                        const background = (el) => {
+                            const layers = [];
+                            for (let e = el; e; e = e.parentElement) {
+                                const c = parse(getComputedStyle(e).backgroundColor);
+                                if (c && c.a > 0) layers.push(c);
+                                if (c && c.a === 1) break;
+                            }
+                            let base = { r: 255, g: 255, b: 255, a: 1 };
+                            const body = parse(getComputedStyle(document.body).backgroundColor);
+                            if (body && body.a > 0) base = body;
+                            for (const layer of layers.reverse()) base = over(layer, base);
+                            return base;
+                        };
+                        const out = [];
+                        const seen = new Set();
+                        for (const el of document.querySelectorAll("main *, header *")) {
+                            if (!el.getClientRects().length) continue;
+                            const own = [...el.childNodes].filter((n) => n.nodeType === 3 && n.textContent.trim());
+                            if (!own.length) continue;
+                            const style = getComputedStyle(el);
+                            if (style.visibility === "hidden" || Number(style.opacity) < 1) continue;
+                            const fg0 = parse(style.color);
+                            if (!fg0) continue;
+                            const bg = background(el);
+                            const fg = over(fg0, bg);
+                            const ratio = (Math.max(lum(fg), lum(bg)) + 0.05) / (Math.min(lum(fg), lum(bg)) + 0.05);
+                            const size = parseFloat(style.fontSize);
+                            const large = size >= 24 || (size >= 18.66 && Number(style.fontWeight) >= 700);
+                            if (ratio >= (large ? 3 : 4.5)) continue;
+                            const key = `${style.color}|${Math.round(ratio * 100)}`;
+                            if (seen.has(key)) continue;
+                            seen.add(key);
+                            out.push(
+                                `"${own[0].textContent.trim().slice(0, 24)}" ${ratio.toFixed(2)}:1 (${style.color} on ${Math.round(bg.r)},${Math.round(bg.g)},${Math.round(bg.b)}) in ${el.tagName.toLowerCase()}.${String(el.getAttribute("class") ?? "").split(" ")[0]}`,
+                            );
+                        }
+                        return out.slice(0, 4);
+                    });
+                    for (const f of found) failures.push(`contrast ${url} [${width}, ${scheme}, ${lang}] ${f}`);
+                }
+            }
+            await context.close();
+        }
+    }
+}
+
+// 6. Search finds a member by each of its three spellings, as an "API reference" result listed above the pages, and shows its name in the
+//    language that is picked.
+{
+    const context = await browser.newContext({ viewport: VIEWPORTS.desktop, reducedMotion: "reduce" });
+    const page = await context.newPage();
+    await page.goto(`${base}/reference/core/client`, { waitUntil: "networkidle" });
+    const spellings = {};
+    for (const lang of LANGS) {
+        await page.evaluate((l) => (document.documentElement.dataset.lang = l), lang);
+        spellings[lang] = await page.evaluate((id) => {
+            const row = document.getElementById(id);
+            const cell = [...row.querySelectorAll("th[scope=row] a")].find((a) => a.getClientRects().length);
+            return cell.textContent.trim().replace(/^"|"$/g, "");
+        }, `event-${firstEvent}`);
+    }
+    const target = `/reference/core/client#event-${firstEvent}`;
+    for (const lang of LANGS) {
+        const urls = await page.evaluate(async (q) => {
+            const pagefind = await import("/pagefind/pagefind.js");
+            const found = await pagefind.search(q, { filters: { section: "reference" } });
+            return (await Promise.all(found.results.map((r) => r.data()))).map((d) => d.url);
+        }, spellings[lang]);
+        if (!urls.includes(target))
+            failures.push(`search: "${spellings[lang]}" (${lang}) does not find ${target} (${urls.slice(0, 3)})`);
+    }
+    // The dialog: the API reference above the pages, the name in the picked language, and the footer says which.
+    for (const lang of LANGS) {
+        const dialogContext = await browser.newContext({ viewport: VIEWPORTS.desktop, reducedMotion: "reduce" });
+        await dialogContext.addInitScript((value) => localStorage.setItem("gnoblin-language", value), lang);
+        const p = await dialogContext.newPage();
+        await p.goto(`${base}/docs`, { waitUntil: "networkidle" });
+        await p.keyboard.press("Control+k");
+        await p.getByRole("combobox", { name: "Search the docs" }).fill("focus");
+        await p.locator('#search-results [role="option"]').first().waitFor({ timeout: 10000 });
+        const dialog = await p.evaluate(() => {
+            const labels = [...document.querySelectorAll("#search-results .section")].map((s) => s.textContent.trim());
+            const rows = [...document.querySelectorAll("#search-results .api .rt")].map((el) => el.textContent.trim());
+            const foot = document.querySelector("dialog.search .foot")?.textContent ?? "";
+            const pages = document.querySelector("#search-results .group:not(.api)") !== null;
+            const apiBeforePages = (() => {
+                const all = [...document.querySelectorAll("#search-results .group")];
+                const firstPage = all.findIndex((g) => !g.classList.contains("api"));
+                return firstPage === -1 || all.slice(0, firstPage).every((g) => g.classList.contains("api"));
+            })();
+            return { labels, rows, foot, pages, apiBeforePages };
+        });
+        const label = { typescript: "TypeScript", python: "Python", rust: "Rust" }[lang];
+        if (dialog.labels[0] !== "API reference")
+            failures.push(`search dialog [${lang}]: the first section is "${dialog.labels[0]}"`);
+        if (!dialog.apiBeforePages)
+            failures.push(`search dialog [${lang}]: a page is listed above an API reference result`);
+        if (!dialog.foot.includes(`Names in ${label}`))
+            failures.push(`search dialog [${lang}]: the footer does not say "Names in ${label}"`);
+        if (!dialog.rows.length) failures.push(`search dialog [${lang}]: no API reference row`);
+        // Spelling: a member that is two words is camelCase in TypeScript and snake_case in the other two.
+        const spelled = lang === "typescript" ? /\.[a-z]+[A-Z]/ : /\.[a-z]+_[a-z]/;
+        if (!dialog.rows.some((row) => spelled.test(row)))
+            failures.push(`search dialog [${lang}]: no row is spelled in ${label} (${dialog.rows.slice(0, 3)})`);
+        await dialogContext.close();
+    }
+    await context.close();
+}
+
+// 7. The old roots of the per-language references redirect to /reference, and nothing on the site links to them.
+{
+    const page = await browser.newPage();
+    for (const url of ["/reference/typescript/", "/reference/python/", "/reference/rust/", "/docs/reference"]) {
+        await page.goto(base + url, { waitUntil: "networkidle" });
+        const at = new URL(page.url());
+        if (at.pathname !== "/reference") failures.push(`redirect: ${url} ends at ${at.pathname}, expected /reference`);
+    }
+    await page.close();
+    const old = /href="\/reference\/(typescript|python|rust)(\/|")/;
+    const walkHtml = (dir) =>
+        readdirSync(dir).flatMap((name) => {
+            const file = path.join(dir, name);
+            if (statSync(file).isDirectory()) return name === "pagefind" ? [] : walkHtml(file);
+            return name.endsWith(".html") ? [file] : [];
+        });
+    for (const file of walkHtml(path.join(site, "build"))) {
+        const rel = path.relative(path.join(site, "build"), file);
+        if (/^reference\/(typescript|python|rust)\//.test(rel)) continue;
+        if (old.test(readFileSync(file, "utf8"))) failures.push(`${rel} links to an old per-language reference`);
     }
 }
 
