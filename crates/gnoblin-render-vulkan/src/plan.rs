@@ -33,7 +33,7 @@ use gnoblin_render::{Border, Effects, FilterParams, Pass, ShaderKey, Shadow};
 use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 use smithay::utils::{Physical, Rectangle};
 
-use super::blur::{BlurState, Glass, Picture};
+use super::blur::{BlurPicture, BlurState, Glass};
 use super::pipeline::{INSTANCE_FLOATS, UNIFORM_BYTES};
 use super::spatial::{DrawVariant, Placed, plan_models};
 use gnoblin_render_frame::frame::{Layer, OutputFrame, Overlay, Surface, SurfaceSource};
@@ -285,7 +285,7 @@ pub(super) fn plan_into_damage(
     let mut draws = Draws::new(target);
     for damage in damage.clone() {
         for (index, layer) in frame.layers().iter().enumerate() {
-            match Paint::of(layer, index, scale, sizes) {
+            match LayerPaint::of(layer, index, scale, sizes) {
                 Layered::Flat(paint) => draws.layer(&mut built, damage, shaders, sizes, index, &paint),
                 // A layer with a model is drawn by the depth pass (`spatial.rs`), after the flat ones.
                 Layered::Model => {}
@@ -365,7 +365,7 @@ pub(super) fn plan_pieces(
     for quad in lead {
         draws.push(&mut built, quad.kind, quad.slot, image, quad.quad, &quad.uniforms);
     }
-    if let Layered::Flat(paint) = Paint::of(layer, index, scale, sizes) {
+    if let Layered::Flat(paint) = LayerPaint::of(layer, index, scale, sizes) {
         // The layer's own pieces carry no opacity: the group or the picture is faded as one. A picture also leaves the tint
         // and the grade to its composition, which treats it as one picture.
         let mut parts = EffectParts {
@@ -376,7 +376,7 @@ pub(super) fn plan_pieces(
             parts.tint = Color::WHITE;
             parts.grade = Grade::IDENTITY;
         }
-        let paint = Paint { parts, ..paint };
+        let paint = LayerPaint { parts, ..paint };
         if kind == Pieces::Picture {
             draws.shadows(&mut built, image, &paint.parts);
         }
@@ -416,7 +416,7 @@ pub(super) fn has_blur(effects: &Effects) -> bool {
 
 /// What a flat layer is made of, for the draw of its own pixels.
 #[derive(Clone, Copy, Debug)]
-enum Content {
+enum LayerContent {
     /// One colour, straight.
     Solid(Color),
     /// A texture (its slot), by the crop that maps the layer onto it.
@@ -424,21 +424,21 @@ enum Content {
 }
 
 /// A flat layer as the draws of its parts read it.
-struct Paint<'a> {
+struct LayerPaint<'a> {
     parts: EffectParts<'a>,
-    content: Content,
+    content: LayerContent,
 }
 
-/// What [`Paint::of`] finds in a layer.
+/// What [`LayerPaint::of`] finds in a layer.
 enum Layered<'a> {
-    Flat(Paint<'a>),
+    Flat(LayerPaint<'a>),
     /// A layer with a 3D model, which belongs to a depth pass this renderer does not have.
     Model,
     /// A layer with nothing to draw: no pixels, no texture, or the overlay.
     Absent,
 }
 
-impl<'a> Paint<'a> {
+impl<'a> LayerPaint<'a> {
     fn of(layer: &'a Layer, index: usize, scale: Scale, sizes: &TextureSizes) -> Layered<'a> {
         match layer {
             Layer::Solid(solid) => {
@@ -459,7 +459,7 @@ impl<'a> Paint<'a> {
                         1.0,
                         scale,
                     ),
-                    content: Content::Solid(solid.colour),
+                    content: LayerContent::Solid(solid.colour),
                 })
             }
             Layer::Surface(surface) => {
@@ -483,7 +483,7 @@ impl<'a> Paint<'a> {
                         surface.opacity,
                         scale,
                     ),
-                    content: Content::Surface(texture_mapping(surface, *size), slot_of(surface, index)),
+                    content: LayerContent::Surface(texture_mapping(surface, *size), slot_of(surface, index)),
                 })
             }
             Layer::Overlay(_) => Layered::Absent,
@@ -878,7 +878,7 @@ impl Draws {
         shaders: &Shaders,
         sizes: &TextureSizes,
         index: usize,
-        paint: &Paint<'_>,
+        paint: &LayerPaint<'_>,
     ) {
         let parts = &paint.parts;
         // A layer that was drawn from a stand-in (a secure layer's black, in a backdrop) has none of its effects, so it has none of
@@ -949,7 +949,7 @@ impl Draws {
         shaders: &Shaders,
         sizes: &TextureSizes,
         index: usize,
-        paint: &Paint<'_>,
+        paint: &LayerPaint<'_>,
     ) {
         let parts = &paint.parts;
         let quad = parts.quad;
@@ -958,17 +958,17 @@ impl Draws {
         }
         let passes = shader_passes(shaders, index, parts.effects, sizes);
         let mut uniforms = match paint.content {
-            Content::Solid(colour) if passes.is_empty() => {
+            LayerContent::Solid(colour) if passes.is_empty() => {
                 // The grade of a solid colour is done here, on the colour, as `grade::apply` does it.
                 Uniforms::solid(quad, grade::apply(parts.grade, colour), parts.tint, parts.opacity)
             }
-            Content::Solid(_) => {
+            LayerContent::Solid(_) => {
                 // The shader reads the solid's colour from a pixel of it, so the draw is a textured one.
                 let mut uniforms = Uniforms::surface(quad, [0.0, 0.0, 1.0, 1.0], parts.tint, parts.opacity, 0.0);
                 uniforms.grade = parts.grade.to_array();
                 uniforms
             }
-            Content::Surface(src, _) => {
+            LayerContent::Surface(src, _) => {
                 let mut uniforms = Uniforms::surface(quad, src, parts.tint, parts.opacity, 0.0);
                 uniforms.grade = parts.grade.to_array();
                 uniforms
@@ -980,7 +980,7 @@ impl Draws {
         }
         if !passes.is_empty() {
             self.push_shader(built, shaders, index, damage, quad, &uniforms);
-        } else if let Content::Surface(_, slot) = paint.content {
+        } else if let LayerContent::Surface(_, slot) = paint.content {
             self.push(built, PassKind::Surface, Some(slot), damage, quad, &uniforms);
         } else {
             self.push(built, PassKind::Solid, None, damage, quad, &uniforms);
@@ -1023,7 +1023,7 @@ impl Draws {
     }
 
     /// The layer's picture over the frame, at the layer's tint, opacity and grade. It is not clipped to the corners.
-    fn picture(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>, picture: &Picture) {
+    fn picture(&mut self, built: &mut FramePlan, damage: Rect, parts: &EffectParts<'_>, picture: &BlurPicture) {
         if !picture.extent.intersects(damage) {
             return;
         }
@@ -1168,7 +1168,7 @@ pub(super) struct LayerShape {
 
 /// The geometry of the layer at `index`, or `None` for one that is not drawn flat or has nothing to draw.
 pub(super) fn layer_shape(layer: &Layer, index: usize, scale: Scale, sizes: &TextureSizes) -> Option<LayerShape> {
-    let Layered::Flat(paint) = Paint::of(layer, index, scale, sizes) else {
+    let Layered::Flat(paint) = LayerPaint::of(layer, index, scale, sizes) else {
         return None;
     };
     let parts = &paint.parts;

@@ -58,7 +58,7 @@ pub(super) struct Glass {
 
 /// A layer's picture: what a filter that blurs blurs and grades.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct Picture {
+pub(super) struct BlurPicture {
     pub image: u32,
     /// Where it lies on the output.
     pub extent: Rect,
@@ -76,7 +76,7 @@ pub(super) enum BlurState {
     /// The layer's images are drawn by earlier passes of the frame.
     Drawn {
         glass: Option<Glass>,
-        picture: Option<Picture>,
+        picture: Option<BlurPicture>,
     },
 }
 
@@ -156,7 +156,7 @@ pub(super) struct Inputs<'a> {
 }
 
 /// A layer with a blur, as the planner measures it.
-struct Measured {
+struct MeasuredLayer {
     index: usize,
     quad: Rect,
     /// The part of `quad` that is on the output.
@@ -292,7 +292,14 @@ impl Planner<'_> {
     }
 
     /// The glass of a layer: its backdrop blurred and written into its group. Returns the group.
-    fn glass(&mut self, shaders: &Shaders, layer: &Measured, visible: Rect, region: Rect, pieces: Pieces) -> Glass {
+    fn glass(
+        &mut self,
+        shaders: &Shaders,
+        layer: &MeasuredLayer,
+        visible: Rect,
+        region: Rect,
+        pieces: Pieces,
+    ) -> Glass {
         let inputs = self.inputs;
         let index = layer.index;
         let size = Size::new(region.width, region.height);
@@ -402,7 +409,7 @@ impl Planner<'_> {
     }
 
     /// The picture of a layer: its pieces, blurred, in an image of `extent`. Returns the picture.
-    fn picture(&mut self, shaders: &Shaders, layer: &Measured, extent: Rect, filter: FilterParams) -> Picture {
+    fn picture(&mut self, shaders: &Shaders, layer: &MeasuredLayer, extent: Rect, filter: FilterParams) -> BlurPicture {
         let inputs = self.inputs;
         let index = layer.index;
         let size = Size::new(extent.width, extent.height);
@@ -430,12 +437,12 @@ impl Planner<'_> {
         self.job(index, second, size, &[sweep(image, size, [step, 0.0])]);
         self.job(index, image, size, &[sweep(second, size, [0.0, step])]);
         self.images.release(second);
-        Picture { image, extent, filter }
+        BlurPicture { image, extent, filter }
     }
 }
 
 /// The layers of the frame with a blur, measured.
-fn measure(inputs: &Inputs<'_>) -> Vec<Measured> {
+fn measure(inputs: &Inputs<'_>) -> Vec<MeasuredLayer> {
     let output = Rect::new(0, 0, inputs.physical.width, inputs.physical.height);
     let mut found = Vec::new();
     for (index, layer) in inputs.frame.layers().iter().enumerate() {
@@ -462,7 +469,7 @@ fn measure(inputs: &Inputs<'_>) -> Vec<Measured> {
         let Some(shape) = layer_shape(layer, index, inputs.scale, inputs.sizes) else {
             continue;
         };
-        found.push(Measured {
+        found.push(MeasuredLayer {
             index,
             quad: shape.quad,
             visible: shape.quad.intersection(output),
@@ -476,13 +483,13 @@ fn measure(inputs: &Inputs<'_>) -> Vec<Measured> {
 }
 
 /// The region a layer's backdrop blur reads: its visible rectangle grown by every blur's reach, clipped to the output.
-fn region_of(layer: &Measured, visible: Rect, output: Rect) -> Rect {
+fn region_of(layer: &MeasuredLayer, visible: Rect, output: Rect) -> Rect {
     let reach: u32 = layer.blurs.iter().map(|blur| reach_of(blur, layer.factor)).sum();
     grown(visible, reach).intersection(output).unwrap_or(visible)
 }
 
 /// The rectangle of a layer's picture: what it paints grown by the blur's reach, kept to what can reach the output.
-fn extent_of(layer: &Measured, filter: &FilterParams, output: Rect) -> Option<Rect> {
+fn extent_of(layer: &MeasuredLayer, filter: &FilterParams, output: Rect) -> Option<Rect> {
     let radius = (filter.blur * layer.factor).clamp(0.0, MAX_RADIUS);
     let reach = if radius > 0.0 {
         (radius / 3.0 * 4.0).ceil() as u32 + 1
