@@ -27,15 +27,15 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use gnoblin_schema::{
-    Augment, CallbackDecl, Catalog, DefaultValue, EnumDecl, Field, Method, Namespace, Notes, ObjectType, Property, Schema,
-    SchemaExample, Signal, TaggedVariant, Type, augment_class_name,
+    Augment, CallbackDecl, Catalog, DefaultValue, EnumDecl, Field, Method, Namespace, Notes, ObjectKind, ObjectType,
+    Property, Schema, SchemaExample, Signal, TaggedVariant, Type, augment_class_name,
 };
 
 use crate::declarations::Declarations;
 use crate::describe::{DocLanguageExt, number};
 use crate::docs::{DocLanguage, NamespaceDocs, base_of};
 use crate::object_script::{ScriptView, package_of};
-use crate::objects::stem_of;
+use crate::objects::{ctor_properties, slots_of, stem_of};
 use crate::text::pascal;
 use crate::{COMMAND, File, SdkSpec, Target, object_api, object_js, object_py, values};
 
@@ -308,7 +308,7 @@ impl<'a> ReferenceContext<'a> {
                 counts.enums += 1;
             }
             for declared in &schema.callbacks {
-                callbacks.push(self.callback_json(&id, declared));
+                callbacks.push(self.callback_json(&id, declared)?);
                 counts.callbacks += 1;
             }
             areas.push(Json::obj(vec![
@@ -434,6 +434,15 @@ impl<'a> ReferenceContext<'a> {
         for variant in &object.variants {
             variants.push(self.variant_json(object, variant)?);
         }
+        let constructor = self.constructor_json(object)?;
+        let events = self.events_json(object, &own)?;
+        let created_by = match (object.ctor.is_some(), object.kind) {
+            (true, _) => Json::str("constructor"),
+            (false, ObjectKind::Service) => Json::str("service"),
+            (false, ObjectKind::Interface) => Json::str("shell"),
+            (false, ObjectKind::Record) => Json::str("value"),
+            (false, ObjectKind::Handle) => Json::Null,
+        };
         Ok(Json::obj(vec![
             ("name", Json::str(object.name.as_str())),
             ("names", names),
@@ -445,11 +454,149 @@ impl<'a> ReferenceContext<'a> {
             ("secret", Json::Bool(object.secret)),
             ("import", import),
             ("example", example_json(object.notes.example.as_ref())),
+            ("created_by", created_by),
+            ("returned_by", self.returned_by(object)),
+            ("constructor", constructor),
             ("properties", Json::Arr(properties)),
             ("methods", Json::Arr(methods)),
             ("signals", Json::Arr(signals)),
             ("variants", Json::Arr(variants)),
+            ("events", events),
         ]))
+    }
+
+    /// The constructor of a class that names its `ctor`: the properties it takes in order, the fields of the options record it takes
+    /// after them, and the declarations of each SDK.
+    fn constructor_json(&self, object: &ObjectType) -> Result<Json, String> {
+        if object.ctor.is_none() {
+            return Ok(Json::Null);
+        }
+        let slots = slots_of(&self.spec.objects, &self.objects, object);
+        let ctor = ctor_properties(object, &slots)?;
+        let take = |properties: &[&Property]| -> Result<Json, String> {
+            let mut fields = Vec::new();
+            for property in properties {
+                let field = Field {
+                    name: property.name.clone(),
+                    ty: property.ty.clone(),
+                    since: property.since,
+                    secret: property.secret,
+                    optional: false,
+                    default: property.default.clone(),
+                    notes: property.notes.clone(),
+                };
+                fields.push(self.field_json(&field, self.member_doc(&object.name, &property.name))?);
+            }
+            Ok(Json::Arr(fields))
+        };
+        let mut rust = self.rust_lines.get(&object.name, "#new");
+        rust.extend(self.rust_lines.get(&object.name, "#new_with"));
+        Ok(Json::obj(vec![
+            ("positional", take(&ctor.positional)?),
+            ("options", take(&ctor.options)?),
+            (
+                "declarations",
+                Json::obj(vec![
+                    ("typescript", strings(self.ts_lines.get(&object.name, "#new"))),
+                    ("python", strings(self.py_lines.get(&object.name, "#new"))),
+                    ("rust", strings(rust)),
+                ]),
+            ),
+        ]))
+    }
+
+    /// The members that answer an object of the class: a property of the type, or a method that returns it.
+    fn returned_by(&self, object: &ObjectType) -> Json {
+        let full = format!("{}.{}", self.namespace, object.name);
+        let names = |ty: &Type, home: &Namespace| {
+            ty.referenced_objects().into_iter().any(|name| {
+                if name.contains('.') {
+                    name == full
+                } else {
+                    home == self.namespace && name == object.name
+                }
+            })
+        };
+        let mut found = Vec::new();
+        for schema in self.spec.objects.schemas() {
+            for owner in schema.objects.iter().filter(|owner| owner.augment_of.is_none()) {
+                let own = own_members(&self.spec.objects, owner, &schema.namespace);
+                let mut add = |member: &str, via: &str| {
+                    found.push(Json::obj(vec![
+                        ("namespace", Json::str(schema.namespace.as_str())),
+                        ("class", Json::str(owner.name.as_str())),
+                        ("member", Json::str(member)),
+                        ("via", Json::str(via)),
+                    ]));
+                };
+                for property in &own.properties {
+                    if names(&property.ty, &schema.namespace) {
+                        add(&property.name, "property");
+                    }
+                }
+                for method in &own.methods {
+                    if method.returns.as_ref().is_some_and(|ty| names(ty, &schema.namespace)) {
+                        add(&method.name, "method");
+                    }
+                }
+            }
+        }
+        Json::Arr(found)
+    }
+
+    /// The `<property>Changed` events the SDKs write for the properties a class declares: the library tells each, and the schema has no
+    /// signal for it. The names are read from the declarations the emitters wrote, so an event an SDK leaves out is left out here.
+    fn events_json(&self, object: &ObjectType, own: &OwnMembers<'_>) -> Result<Json, String> {
+        let mut events = Vec::new();
+        for property in &own.properties {
+            let key = format!("{}#changed", property.name);
+            let (ts, py, rust) = (
+                self.ts_lines.get(&object.name, &key),
+                self.py_lines.get(&object.name, &key),
+                self.rust_lines.get(&object.name, &key),
+            );
+            let (Some(ts_name), Some(py_name), Some(rust_name)) = (
+                ts.first().and_then(|line| line.split(':').next()),
+                py.first().and_then(|line| between(line, "Literal[\"", "\"]")),
+                rust.first().and_then(|line| between(line, "pub fn ", "(")),
+            ) else {
+                continue;
+            };
+            let payload = self.type_json(
+                &property.ty,
+                &object_js::spelling::property(&self.ts, property)?,
+                &object_py::spelling::property(&self.py, object, property)?,
+                &self.rust.property(property)?,
+            );
+            events.push(Json::obj(vec![
+                ("name", Json::str(format!("{}_changed", property.name))),
+                ("generated", Json::Bool(true)),
+                ("property", Json::str(property.name.as_str())),
+                (
+                    "listener",
+                    Json::obj(vec![
+                        (
+                            "typescript",
+                            Json::obj(vec![("method", Json::str("on")), ("event", Json::str(ts_name))]),
+                        ),
+                        (
+                            "python",
+                            Json::obj(vec![("method", Json::str("on")), ("event", Json::str(py_name))]),
+                        ),
+                        ("rust", Json::obj(vec![("method", Json::str(rust_name))])),
+                    ]),
+                ),
+                (
+                    "payload",
+                    Json::Arr(vec![Json::obj(vec![
+                        ("name", Json::str(property.name.as_str())),
+                        ("type", payload),
+                    ])]),
+                ),
+                ("declarations", self.lines(&object.name, &key)),
+            ]));
+        }
+        Ok(Json::Arr(events))
     }
 
     /// What a library adds to a class of the core: a pseudo class that holds the members, named for the class it extends.
@@ -729,7 +876,7 @@ impl<'a> ReferenceContext<'a> {
         ])
     }
 
-    fn callback_json(&self, area: &str, declared: &CallbackDecl) -> Json {
+    fn callback_json(&self, area: &str, declared: &CallbackDecl) -> Result<Json, String> {
         let params: Vec<Json> = declared
             .params
             .iter()
@@ -744,11 +891,25 @@ impl<'a> ReferenceContext<'a> {
                 ])
             })
             .collect();
-        Json::obj(vec![
+        Ok(Json::obj(vec![
             ("name", Json::str(declared.name.as_str())),
             ("area", Json::str(area)),
             ("since", Json::str(declared.since.to_string())),
             ("description", Json::str(self.docs.callback(&declared.name))),
+            (
+                "type",
+                Json::obj(vec![
+                    (
+                        "typescript",
+                        Json::str(object_js::spelling::callback(&self.ts, &declared.name)?),
+                    ),
+                    (
+                        "python",
+                        Json::str(object_py::spelling::callback(&self.py, &declared.name)?),
+                    ),
+                    ("rust", Json::str(self.rust.callback(&declared.name)?)),
+                ]),
+            ),
             ("params", Json::Arr(params)),
             (
                 "returns",
@@ -758,8 +919,14 @@ impl<'a> ReferenceContext<'a> {
                     .map_or(Json::Null, |ty| Json::str(ty.to_string())),
             ),
             ("optional", Json::Bool(declared.optional)),
-        ])
+        ]))
     }
+}
+
+/// The text between `start` and the next `end` after it.
+fn between<'t>(text: &'t str, start: &str, end: &str) -> Option<&'t str> {
+    let rest = &text[text.find(start)? + start.len()..];
+    Some(&rest[..rest.find(end)?])
 }
 
 fn names(typescript: &str, python: &str, rust: &str) -> Json {
@@ -1095,5 +1262,89 @@ mod tests {
         assert_eq!(text(&rust[0]), "pub fn reset(&self, name: &str) -> Result<(), Fail>");
         let python = items(get(get(method, "declarations"), "python"));
         assert_eq!(text(&python[0]), "def reset(self, name: str) -> None");
+    }
+
+    #[test]
+    fn constructors_events_and_callbacks_are_what_the_sdk_files_declare() {
+        let spec = SdkSpec::load(&workspace_root()).expect("the catalogs load");
+        let files = render(&spec, None).expect("the targets render");
+        let reference = reference(&spec).expect("the reference builds");
+        let (mut constructors, mut events, mut callbacks) = (0, 0, 0);
+        for namespace in items(get(&reference, "namespaces")) {
+            let stem = text(get(namespace, "name"))
+                .rsplit('.')
+                .next()
+                .expect("a stem")
+                .to_owned();
+            let package = if stem == "model" { "gnoblin-core" } else { "gnoblin-std" };
+            let ts = lines_of(&files, &format!("js/{package}/generated/objects.d.ts"));
+            let py = lines_of(&files, &format!("python/gnoblin/objects/{stem}.pyi"));
+            let rust: Vec<String> = lines_of(&files, &format!("rust-objects/{stem}_api.rs"))
+                .iter()
+                .map(|line| object_api::public_result(line))
+                .collect();
+            let declared = |declarations: &Json| {
+                for line in items(get(declarations, "typescript")) {
+                    assert!(ts.iter().any(|have| have == text(line)), "TypeScript: `{}`", text(line));
+                }
+                for line in items(get(declarations, "python")) {
+                    assert!(
+                        py.iter().any(|have| have.starts_with(text(line))),
+                        "Python: `{}`",
+                        text(line)
+                    );
+                }
+                for line in items(get(declarations, "rust")) {
+                    assert!(
+                        rust.iter().any(|have| have.starts_with(text(line))),
+                        "Rust: `{}`",
+                        text(line)
+                    );
+                }
+            };
+            for class in items(get(namespace, "classes")) {
+                let constructor = get(class, "constructor");
+                if !matches!(constructor, Json::Null) {
+                    let declarations = get(constructor, "declarations");
+                    assert!(
+                        !items(get(declarations, "typescript")).is_empty(),
+                        "{}",
+                        text(get(class, "name"))
+                    );
+                    assert!(
+                        !items(get(declarations, "python")).is_empty(),
+                        "{}",
+                        text(get(class, "name"))
+                    );
+                    assert!(
+                        !items(get(declarations, "rust")).is_empty(),
+                        "{}",
+                        text(get(class, "name"))
+                    );
+                    declared(declarations);
+                    constructors += 1;
+                }
+                for event in items(get(class, "events")) {
+                    assert!(matches!(get(event, "generated"), Json::Bool(true)));
+                    declared(get(event, "declarations"));
+                    events += 1;
+                }
+            }
+            for callback in items(get(namespace, "callbacks")) {
+                let kind = get(callback, "type");
+                assert!(
+                    ts.iter().any(|have| have.contains(text(get(kind, "typescript")))),
+                    "{callback:?}"
+                );
+                assert!(
+                    py.iter().any(|have| have.contains(text(get(kind, "python")))),
+                    "{callback:?}"
+                );
+                callbacks += 1;
+            }
+        }
+        assert!(constructors >= 20, "{constructors} constructors");
+        assert!(events > 100, "{events} generated events");
+        assert!(callbacks > 30, "{callbacks} callbacks");
     }
 }

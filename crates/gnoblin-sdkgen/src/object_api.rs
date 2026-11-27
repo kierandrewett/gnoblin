@@ -963,13 +963,15 @@ impl @Ids@ {
             } else {
                 format!(", {}", params.join(", "))
             };
+            let sig = format!("pub fn {new_name}(objects: &Objects{params}) -> go::Res<{name}>");
+            self.declared(&object.name, "#new", &sig);
             methods.push_str(&fill(
                 r#"    /// Makes the object.
     ///
     /// # Errors
     ///
     /// The library refuses the arguments.
-    pub fn @New@(objects: &Objects@Params@) -> go::Res<@Name@> {
+    @Sig@ {
         let ids = @Ids@::of(objects)?;
         let object = go::client::Object::create(objects.api, ids.class, &[@Inits@]).map_err(|fail| go::typed::at_class(fail, @NameLit@, @NewLit@))?;
         Ok(@Name@ { object, objects: objects.clone() })
@@ -991,6 +993,7 @@ impl @Ids@ {
 
 "#,
                 &[
+                    ("Sig", &sig),
                     ("New", new_name),
                     ("Params", &params),
                     ("Name", &name),
@@ -1213,13 +1216,18 @@ pub struct @Options@ {
                 ("Fields", &fields.join("\n")),
             ],
         );
+        let sig = format!(
+            "pub fn new_with(objects: &Objects{params}, {}options: {options_name}) -> go::Res<{name}>",
+            if moves { "mut " } else { "" }
+        );
+        self.declared(&object.name, "#new_with", &sig);
         let new_with = fill(
             r#"    /// Makes the object with `options` set in the same call.
     ///
     /// # Errors
     ///
     /// The library refuses an argument or an option, and no object is made.
-    pub fn new_with(objects: &Objects@Params@, @Mut@options: @Options@) -> go::Res<@Name@> {
+    @Sig@ {
         let ids = @Ids@::of(objects)?;
         let mut inits = vec![@Inits@];
 @Writes@
@@ -1229,6 +1237,7 @@ pub struct @Options@ {
 
 "#,
             &[
+                ("Sig", &sig),
                 ("Params", params),
                 ("Mut", if moves { "mut " } else { "" }),
                 ("Options", &options_name),
@@ -1953,6 +1962,11 @@ impl<'a> Spelling<'a> {
         } else {
             param
         })
+    }
+
+    /// The type of the closure a callback declares, as a parameter takes it.
+    pub(super) fn callback(&self, name: &str) -> Result<String, String> {
+        Ok(public_result(&self.0.closure_type(name)?))
     }
 
     /// What a method answers.

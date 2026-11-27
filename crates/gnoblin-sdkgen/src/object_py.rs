@@ -1634,9 +1634,11 @@ impl<'a> Py<'a> {
             true,
             Some(&format!("_spell_{snake_name}")),
         );
+        let header = format!("def __init__({}) -> None", params.join(", "));
+        self.view.declared(&object.name, "#new", &header);
         self.def(
             c,
-            &format!("def __init__({}) -> None", params.join(", ")),
+            &header,
             if ctor.options.is_empty() {
                 "Makes the object."
             } else {
@@ -2229,6 +2231,11 @@ pub(super) mod spelling {
 
     pub(crate) fn input(view: &ScriptView<'_>, field: &Field) -> Result<String, String> {
         Py { view, stub: true }.ty(&field.ty, true)
+    }
+
+    /// The type of the function a callback declares.
+    pub(crate) fn callback(view: &ScriptView<'_>, name: &str) -> Result<String, String> {
+        Py { view, stub: true }.ty(&gnoblin_schema::Type::Callback(name.to_owned()), false)
     }
 
     pub(crate) fn returns(view: &ScriptView<'_>, method: &Method) -> Result<String, String> {

@@ -2254,7 +2254,9 @@ impl Js<'_> {
                 } else {
                     params.push(format!("options?: {}", self.options_type(object)?));
                 }
-                c.line(format!("constructor({});", params.join(", ")));
+                let line = format!("constructor({});", params.join(", "));
+                self.view.declared(&object.name, "#new", &line);
+                c.line(line);
             }
         } else {
             c.line("private constructor();");
@@ -2512,6 +2514,11 @@ pub(super) mod spelling {
 
     pub(crate) fn input(view: &ScriptView<'_>, field: &Field) -> Result<String, String> {
         Js { view }.ts(&field.ty, true)
+    }
+
+    /// The type of the function a callback declares.
+    pub(crate) fn callback(view: &ScriptView<'_>, name: &str) -> Result<String, String> {
+        Js { view }.ts(&gnoblin_schema::Type::Callback(name.to_owned()), false)
     }
 
     pub(crate) fn returns(view: &ScriptView<'_>, method: &Method) -> Result<String, String> {
