@@ -34,6 +34,7 @@ use gnoblin_render_software::Software;
 mod device;
 mod dmabuf;
 mod effects;
+mod parallel;
 mod shader;
 mod views;
 

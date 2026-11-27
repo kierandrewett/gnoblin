@@ -30,12 +30,20 @@
 //! fail on it. Errors of any type and validation warnings are collected; the rest is noise.
 //! [`Validation::Synchronized`] adds the layer's synchronisation checks, which is where races between frames in flight
 //! show. A release build, or a machine without the layer, runs without it.
+//!
+//! Older layers (1.3.239, Debian 12, is one) are not safe for two threads that each have a validated device. Every call finds
+//! its per-device data in one global map that is changed, without a lock, when an instance or a device is made or destroyed
+//! (Khronos issue 4391, `GetLayerDataPtr` is a data race; fixed in 2026 with a shared mutex), so a thread that makes or drops
+//! a renderer while another thread calls into the layer takes that thread down with a null read inside the layer. A
+//! validated context therefore holds the process's validation seat for its whole life ([`ValidationSeat`]): a renderer on
+//! another thread that wants validation waits for it, and a second one on the same thread shares it.
 
 #[cfg(test)]
 use std::cell::Cell;
 use std::ffi::{CStr, c_char, c_void};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
+use std::thread::ThreadId;
 use std::time::Duration;
 
 use ash::ext::{debug_utils, validation_features};
@@ -232,6 +240,9 @@ pub(super) struct VkContext {
     pub(super) render_node: Option<u64>,
     #[cfg(test)]
     pub(super) faults: Faults,
+    /// The validation seat this context holds while the layer is on, released after everything above is gone: the last
+    /// field, so it is dropped last.
+    _seat: Option<ValidationSeat>,
 }
 
 /// What a pipeline cache blob is for: it is refused by any other device or driver.
@@ -248,6 +259,60 @@ struct Messenger {
     handle: vk::DebugUtilsMessengerEXT,
     /// An `Arc::into_raw` of the sink, released when the messenger is destroyed.
     sink: *const Mutex<Vec<String>>,
+}
+
+/// Which thread's contexts use the validation layer right now, and how many.
+static SEAT: Mutex<Option<(ThreadId, usize)>> = Mutex::new(None);
+
+/// Signalled when the seat is let go.
+static SEAT_FREE: Condvar = Condvar::new();
+
+/// The process-wide right to have contexts that use the validation layer, held by one thread at a time.
+///
+/// The layer's global map of per-device data is not safe against a thread that makes or destroys an instance or a device
+/// while another thread calls into the layer (see the module docs, "Validation"). The renderer's own test binary makes one
+/// renderer per test thread and took the process down with a segmentation fault inside the layer in about one run in ten
+/// on a box with the layer installed (bead gnoblin-wphw). A context that validates holds the seat from before its
+/// instance is made until after its instance is destroyed, so while it is alive no other thread makes, destroys or calls
+/// a validated device. A thread that already holds the seat takes it again, which the layer cannot object to: one thread
+/// never races with itself. Contexts that do not validate never touch the layer and never wait: a release build, or a
+/// compositor with one renderer for all its outputs, is not affected.
+pub(super) struct ValidationSeat;
+
+impl ValidationSeat {
+    /// Takes the seat for this thread, waiting while another thread holds it.
+    pub(super) fn take() -> Self {
+        let me = std::thread::current().id();
+        let mut held = SEAT.lock().unwrap_or_else(PoisonError::into_inner);
+        loop {
+            match &mut *held {
+                None => *held = Some((me, 1)),
+                Some((holder, count)) if *holder == me => *count += 1,
+                Some(_) => {
+                    held = SEAT_FREE.wait(held).unwrap_or_else(PoisonError::into_inner);
+                    continue;
+                }
+            }
+            return Self;
+        }
+    }
+}
+
+impl Drop for ValidationSeat {
+    fn drop(&mut self) {
+        let mut held = SEAT.lock().unwrap_or_else(PoisonError::into_inner);
+        let vacated = match &mut *held {
+            Some((_, count)) => {
+                *count -= 1;
+                *count == 0
+            }
+            None => false,
+        };
+        if vacated {
+            *held = None;
+            SEAT_FREE.notify_all();
+        }
+    }
 }
 
 impl Drop for VkContext {
@@ -322,6 +387,9 @@ impl VkContext {
             Validation::Off => false,
             Validation::Auto | Validation::Synchronized => cfg!(debug_assertions) && validation_layer_present(&entry),
         };
+        // Held until this function returns on a failure, and by the context for its life on success: either way it is
+        // let go after the instance is destroyed.
+        let seat = wants_validation.then(ValidationSeat::take);
         let synchronized = wants_validation && options.validation == Validation::Synchronized;
         let (instance, messenger) = match create_instance(&entry, wants_validation, synchronized, &messages) {
             Ok(created) => created,
@@ -333,8 +401,12 @@ impl VkContext {
             Err(error) => return Err(error),
         };
         let validating = messenger.is_some();
+        let seat = seat.filter(|_| validating);
         match build(entry, instance, messenger, messages, validating, &options.device) {
-            Ok(context) => Ok(context),
+            Ok(mut context) => {
+                context._seat = seat;
+                Ok(context)
+            }
             Err(failure) => {
                 let (error, entry, instance, messenger) = *failure;
                 // SAFETY: nothing was created on this instance besides the messenger, and the
@@ -347,6 +419,7 @@ impl VkContext {
                     instance.destroy_instance(None);
                 }
                 drop(entry);
+                drop(seat);
                 Err(error)
             }
         }
@@ -606,6 +679,7 @@ fn build(
         render_node: candidate.render_node,
         #[cfg(test)]
         faults: Faults::default(),
+        _seat: None,
     })
 }
 
