@@ -203,9 +203,9 @@ async fn activity_changed(stream: &mut zbus::proxy::SignalStream<'_>) -> Option<
             message.body().deserialize().ok()
         },
         async {
-            for _ in 0..20_000 {
-                futures_lite::future::yield_now().await;
-            }
+            // A time, not a count of yields: a count ends as soon as the machine is fast with
+            // the thread that would deliver the signal busy elsewhere.
+            async_io::Timer::after(STEP).await;
             None
         },
     )

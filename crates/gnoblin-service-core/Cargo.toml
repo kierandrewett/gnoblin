@@ -23,6 +23,12 @@ gnoblin-log = { path = "../gnoblin-log" }
 # The payload a polkit offer carries to the compositor's dialog and to polkit's helper: the cookie, the identities.
 gnoblin-polkit-auth = { path = "../gnoblin-polkit-auth" }
 
+# A served object is only answered once zbus's dispatcher listens (`bus::dispatching`): a Ping to
+# the connection's own name, the timer that sends another, and the connection's type.
+zbus.workspace = true
+futures-lite.workspace = true
+async-io.workspace = true
+
 [dev-dependencies]
 # The IPC test serves the checked-in schema through the in-process link, so the slot
 # property names are checked against the contract rather than a fixture.

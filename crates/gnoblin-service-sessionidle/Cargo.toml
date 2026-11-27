@@ -21,6 +21,8 @@ futures-lite.workspace = true
 gnoblin-log = { path = "../gnoblin-log" }
 
 [dev-dependencies]
+# The timer that bounds the wait for a signal in the tests.
+async-io.workspace = true
 # The private bus the D-Bus tests start for themselves, shared with the other service crates.
 gnoblin-service-testkit = { path = "../gnoblin-service-testkit" }
 

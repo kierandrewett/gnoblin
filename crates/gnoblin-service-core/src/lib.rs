@@ -44,6 +44,8 @@
 
 /// The request state machine shared by every agent that offers a request.
 pub mod agent;
+/// Serving on a bus connection: the wait until zbus's object server answers its first call.
+pub mod bus;
 /// The privileged connection agents offer through, and the linked-agent seam.
 pub mod host;
 /// The slot registry: each optional capability has one provider.
@@ -51,6 +53,8 @@ pub mod slot;
 
 /// Agent types, re-exported from [`agent`]: an agent, its decision and its refusal.
 pub use agent::{Agent, Decision, Finished, Identity, Offerer, Pending, PolkitRequest, Proposition, Refusal};
+/// The wait until a served connection dispatches, re-exported from [`bus`].
+pub use bus::dispatching;
 /// Request identity and outcome vocabulary, re-exported from `gnoblin-model`.
 pub use gnoblin_model::{RequestId, RequestOutcome, Tick};
 /// The host connection and its failure type, re-exported from [`host`].
