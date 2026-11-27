@@ -493,6 +493,21 @@ mod tests {
         std::fs::write(&old, "#!/bin/sh\nexit 0\n").expect("a script");
         std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("an executable mode");
 
+        // Another test of this binary may fork while a script above is still open for writing; the child holds
+        // that descriptor until it execs, and the kernel refuses to run the script ("Text file busy") meanwhile.
+        // `Capabilities::of` reads that refusal as "no switch", so wait until both scripts can run.
+        for script in [&modern, &old] {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while let Err(error) = std::process::Command::new(script).output() {
+                assert!(
+                    error.kind() == std::io::ErrorKind::ExecutableFileBusy && std::time::Instant::now() < deadline,
+                    "{}: {error}",
+                    script.display()
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+
         assert!(Capabilities::of(&modern).byte_order_switch);
         assert!(!Capabilities::of(&old).byte_order_switch);
         assert!(!Capabilities::of(&directory.join("missing")).byte_order_switch);
