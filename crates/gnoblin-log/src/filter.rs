@@ -325,6 +325,16 @@ fn setting_of(code: u8) -> Setting {
 mod tests {
     use super::*;
 
+    /// The spec and the registry are process-wide. A test that installs a spec and then checks
+    /// its component races every other test that installs one, since each ends by resetting the
+    /// spec and that reset rewrites every registered level. Such tests hold this lock throughout.
+    /// A poisoned lock is used as it is, so one failed assertion does not hide the others.
+    static GLOBAL_SPEC: Mutex<()> = Mutex::new(());
+
+    fn hold_global_spec() -> std::sync::MutexGuard<'static, ()> {
+        GLOBAL_SPEC.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     fn parsed(text: &str) -> Spec {
         Spec::parse(text).unwrap_or_else(|error| panic!("{error}"))
     }
@@ -389,6 +399,7 @@ mod tests {
     fn a_disabled_level_is_refused_and_an_enabled_one_passes() {
         static QUIET: Component = Component::new("filter-test-quiet");
         let component = &QUIET;
+        let _global = hold_global_spec();
         set_spec(parsed("filter-test-quiet:warn"));
         assert!(component.enabled(Level::ERROR));
         assert!(component.enabled(Level::WARN));
@@ -401,6 +412,7 @@ mod tests {
     fn a_registered_component_is_listed_once_with_its_level() {
         static LISTED: Component = Component::new("filter-test-listed");
         let component = &LISTED;
+        let _global = hold_global_spec();
         set_spec(parsed("filter-test-listed:debug"));
         assert!(component.enabled(Level::DEBUG));
         let listed: Vec<_> = components()
@@ -421,6 +433,7 @@ mod tests {
     fn a_new_spec_reaches_components_that_already_registered() {
         static LATE: Component = Component::new("filter-test-late");
         let component = &LATE;
+        let _global = hold_global_spec();
         assert!(component.enabled(Level::INFO));
         set_spec(parsed("filter-test-late:off"));
         assert!(!component.enabled(Level::ERROR));
