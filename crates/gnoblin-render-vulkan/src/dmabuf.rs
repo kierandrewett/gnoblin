@@ -115,6 +115,18 @@ pub(super) fn linear(dmabuf: &Dmabuf) -> Result<Linear, DmabufError> {
     })
 }
 
+/// `error` and what caused it: smithay's mapping error says only that mapping failed and keeps the errno as its source.
+fn with_cause(error: &dyn std::error::Error) -> String {
+    let mut text = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        text.push_str(": ");
+        text.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    text
+}
+
 /// Maps the plane, brackets `access` with the kernel's sync ioctl and runs `body` on the mapped bytes.
 fn with_mapping<T>(
     dmabuf: &Dmabuf,
@@ -129,7 +141,7 @@ fn with_mapping<T>(
     };
     let mapping = dmabuf
         .map_plane(0, mode)
-        .map_err(|error| DmabufError::Map(error.to_string()))?;
+        .map_err(|error| DmabufError::Map(with_cause(&error)))?;
     let needed = shape.stride * (shape.height as usize - 1) + shape.width as usize * 4;
     if mapping.length() < needed {
         return Err(DmabufError::Layout);
