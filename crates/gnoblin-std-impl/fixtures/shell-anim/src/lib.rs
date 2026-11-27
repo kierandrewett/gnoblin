@@ -10,62 +10,120 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use gnoblin_core::objects::{Client, ClientQuery, ModelRoot};
+use gnoblin_std::objects::{
+    BlurFilter, Border, BrightnessFilter, Camera2D, Camera3D, ClientStyle, CornerRadius, Easing, Filter, GridLayout,
+    MasterStackLayout, MasterStackLayoutOptions, Objects, Projection, SaturateFilter, Scene, ShaderFilter, Shadow,
+    StyleProperty, Transition, TransitionOptions, TransitionValue, View, Workspaces,
+};
 use gnoblin_std::prelude::*;
-use gnoblin_std::{Border, Camera3DOptions, CornerRadius, Filter, Shadow, StyleProperty};
 
 /// Prints what a step saw.
 fn log(text: &str) {
     eprintln!("anim-log {text}");
 }
 
-/// The window `id` as a client. The scenario opens every window before it presses a chord that names it, so a missing one is the
-/// scenario's fault and the chord's panic is caught and reported.
-fn client(std: &Std, id: u64) -> gnoblin_std::Result<Client> {
-    Ok(std
-        .clients()?
-        .get(&id.to_string())?
-        .unwrap_or_else(|| panic!("the scenario has no client {id}")))
+/// What a step works with: both libraries' typed classes.
+#[derive(Clone)]
+struct World {
+    core: gnoblin_core::objects::Objects,
+    objects: Objects,
+}
+
+impl World {
+    /// The window `id` as a client. The scenario opens every window before it presses a chord that names it, so a missing one is the
+    /// scenario's fault and the chord's panic is caught and reported.
+    fn client(&self, id: u64) -> gnoblin_std::Result<Client> {
+        Ok(ModelRoot::get(&self.core)?
+            .clients()?
+            .get_by_id(&id.to_string())?
+            .unwrap_or_else(|| panic!("the scenario has no client {id}")))
+    }
+}
+
+/// A number the transition stages for a property of a node.
+fn number(value: f64) -> TransitionValue {
+    TransitionValue {
+        number: Some(value),
+        ..TransitionValue::default()
+    }
+}
+
+fn options(duration: f64) -> TransitionOptions {
+    TransitionOptions {
+        duration,
+        ..TransitionOptions::default()
+    }
 }
 
 /// What a step leaves for a later one.
 #[derive(Default)]
 struct Kept {
     held: Option<Transition>,
+    /// Transitions that run to their end after their step: the object stays alive so its `finished` reaches the step's listener.
+    running: Vec<Transition>,
     camera: Option<Camera3D>,
     flat: Option<Camera2D>,
 }
 
-type Step = Box<dyn Fn(&Std, &mut Kept) -> gnoblin_std::Result<()>>;
+type Step = Box<dyn Fn(&World, &mut Kept) -> gnoblin_std::Result<()>>;
+
+fn node_of(client: &Client) -> gnoblin_std::Result<u64> {
+    Ok(client.id()?.parse().expect("a client id is a node number"))
+}
 
 fn steps() -> Vec<(&'static str, Step)> {
-    let basic: Step = Box::new(|std, _| {
-        let (c40, c41) = (client(std, 40)?, client(std, 41)?);
-        let t = std.transition(
-            TransitionOptions::new().duration_ms(200.0).easing(Easing::EaseInOut),
-            |tx| {
-                tx.set(c40.window().id(), "opacity", 0.5)?;
-                tx.set(c40.window().id(), "x", 300.0)?;
-                tx.set(c41.window().id(), "opacity", 0.25)
+    let basic: Step = Box::new(|world, kept| {
+        let (c40, c41) = (world.client(40)?, world.client(41)?);
+        let model = ModelRoot::get(&world.core)?;
+        let objects = world.objects.clone();
+        let t = model.request_transition(
+            move || {
+                Transition::set(&objects, node_of(&c40)?, "opacity", &number(0.5))?;
+                Transition::set(&objects, node_of(&c40)?, "x", &number(300.0))?;
+                Transition::set(&objects, node_of(&c41)?, "opacity", &number(0.25))?;
+                Ok(())
             },
+            Some(&TransitionOptions {
+                easing: Easing::EaseInOut,
+                ..options(200.0)
+            }),
+            Some(|| Ok(())),
         )?;
-        t.on_finished(|result| log(&format!("basic finished cancelled={}", result.cancelled)))?;
+        t.on_finished(|cancelled| log(&format!("basic finished cancelled={cancelled}")))?
+            .keep();
+        kept.running.push(t);
         Ok(())
     });
     let staged = || -> Step {
-        Box::new(|std, kept| {
-            let c41 = client(std, 41)?;
-            let t = std.transition(
-                TransitionOptions::new()
-                    .duration_ms(100.0)
-                    .delay_ms(50.0)
-                    .easing(Easing::Linear)
-                    .autoplay(false),
-                |tx| {
-                    tx.set(c41.window().id(), "x", 100.0)?;
-                    tx.set(c41.window().id(), "rotation", [0.0, 0.5, 0.0])
+        Box::new(|world, kept| {
+            let c41 = world.client(41)?;
+            let model = ModelRoot::get(&world.core)?;
+            let objects = world.objects.clone();
+            let t = model.request_transition(
+                move || {
+                    Transition::set(&objects, node_of(&c41)?, "x", &number(100.0))?;
+                    Transition::set(
+                        &objects,
+                        node_of(&c41)?,
+                        "rotation",
+                        &TransitionValue {
+                            triple: Some(vec![0.0, 0.5, 0.0]),
+                            ..TransitionValue::default()
+                        },
+                    )?;
+                    Ok(())
                 },
+                Some(&TransitionOptions {
+                    delay: 50.0,
+                    easing: Easing::Linear,
+                    autoplay: false,
+                    ..options(100.0)
+                }),
+                Some(|| Ok(())),
             )?;
-            t.on_finished(|result| log(&format!("staged finished cancelled={}", result.cancelled)))?;
+            t.on_finished(|cancelled| log(&format!("staged finished cancelled={cancelled}")))?
+                .keep();
             kept.held = Some(t);
             Ok(())
         })
@@ -76,24 +134,49 @@ fn steps() -> Vec<(&'static str, Step)> {
             None => Ok(()),
         })
     };
-    let instant: Step = Box::new(|std, _| {
-        let c42 = client(std, 42)?;
-        let t = std.transition(TransitionOptions::new().duration_ms(0.0), |tx| {
-            tx.set(c42.window().id(), "opacity", 0.75)?;
-            tx.set(c42.window().id(), "x", 20.0)
-        })?;
-        t.on_finished(|result| log(&format!("instant finished cancelled={}", result.cancelled)))?;
+    let instant: Step = Box::new(|world, kept| {
+        let c42 = world.client(42)?;
+        let objects = world.objects.clone();
+        let t = ModelRoot::get(&world.core)?.request_transition(
+            move || {
+                Transition::set(&objects, node_of(&c42)?, "opacity", &number(0.75))?;
+                Transition::set(&objects, node_of(&c42)?, "x", &number(20.0))?;
+                Ok(())
+            },
+            Some(&options(0.0)),
+            Some(|| Ok(())),
+        )?;
+        t.on_finished(|cancelled| log(&format!("instant finished cancelled={cancelled}")))?
+            .keep();
+        kept.running.push(t);
         Ok(())
     });
-    let layout: Step = Box::new(|std, _| {
-        let workspace = std.workspaces()?.at(0)?.expect("a default workspace");
-        std.transition(TransitionOptions::new().duration_ms(300.0), |_| {
-            workspace.set_layout(MasterStackLayout::new().ratio(0.6))
-        })?;
+    let layout: Step = Box::new(|world, _| {
+        let workspace = Workspaces::get(&world.objects)?
+            .list()?
+            .into_iter()
+            .next()
+            .expect("a default workspace");
+        let objects = world.objects.clone();
+        ModelRoot::get(&world.core)?.request_transition(
+            move || {
+                let layout = MasterStackLayout::new_with(
+                    &objects,
+                    MasterStackLayoutOptions {
+                        ratio: Some(0.6),
+                        ..MasterStackLayoutOptions::default()
+                    },
+                )?;
+                workspace.set_layout(&layout.as_layout()?)?;
+                Ok(())
+            },
+            Some(&options(300.0)),
+            Some(|| Ok(())),
+        )?;
         Ok(())
     });
-    let style_global: Step = Box::new(|std, _| {
-        let style = std.clients()?.style()?;
+    let style_global: Step = Box::new(|world, _| {
+        let style = ClientStyle::of_clients(&world.objects)?;
         style.set_shadows(&[
             Shadow {
                 y: 8.0,
@@ -118,118 +201,141 @@ fn steps() -> Vec<(&'static str, Step)> {
                 ..Border::default()
             },
         ])?;
-        style.set_backdrop_filter(&[Filter::Blur(12.0), Filter::Saturate(1.2), Filter::Brightness(1.1)])?;
-        style.set_corner_radius(CornerRadius::All(12.0))?;
-        style.set_opacity(0.9)
+        style.set_backdrop_filter(&[
+            BlurFilter { radius: 12.0 }.into(),
+            SaturateFilter { amount: 1.2 }.into(),
+            BrightnessFilter { amount: 1.1 }.into(),
+        ])?;
+        style.set_corner_radius(&CornerRadius {
+            all: Some(12.0),
+            ..CornerRadius::default()
+        })?;
+        style.set_opacity(0.9)?;
+        Ok(())
     });
-    let style_selection: Step = Box::new(|std, _| {
-        let selected = std.clients()?.where_(&Query::new().is("app_id", "nautilus"))?;
+    let style_selection: Step = Box::new(|world, _| {
+        let clients = ModelRoot::get(&world.core)?.clients()?;
+        let selected = clients.where_(
+            &ClientQuery {
+                app_id: Some("nautilus".to_owned()),
+                ..ClientQuery::default()
+            },
+            None,
+        )?;
         selected.style()?.set_borders(&[Border {
             width: 3.0,
             color: "#00ff00".to_owned(),
             ..Border::default()
-        }])
+        }])?;
+        Ok(())
     });
-    let style_client: Step = Box::new(|std, _| {
-        let style = client(std, 40)?.style()?;
+    let style_client: Step = Box::new(|world, _| {
+        let style = world.client(40)?.style()?;
         style.set_opacity(0.5)?;
-        style.set_shadows(&[])
+        style.set_shadows(&[])?;
+        Ok(())
     });
-    let style_unset: Step = Box::new(|std, _| {
-        client(std, 40)?.style()?.unset(StyleProperty::Opacity)?;
-        let computed = client(std, 41)?.computed_style()?;
+    let style_unset: Step = Box::new(|world, _| {
+        world.client(40)?.style()?.unset(StyleProperty::Opacity)?;
+        let computed = world.client(41)?.computed_style()?;
         log(&format!(
             "computed 41 opacity={} borders={} origin={}",
             computed.opacity,
             computed.borders.len(),
-            computed.origin_of(StyleProperty::Borders)
+            computed.origin.borders
         ));
         Ok(())
     });
-    let style_bad: Step = Box::new(|std, _| {
-        match std.clients()?.style()?.set_opacity(2.0) {
-            Err(error) => log(&format!("bad opacity: {}", error.message())),
+    let style_bad: Step = Box::new(|world, _| {
+        match ClientStyle::of_clients(&world.objects)?.set_opacity(2.0) {
+            Err(error) => log(&format!("bad opacity: {}", error.message)),
             Ok(()) => log("bad opacity: accepted"),
         }
         let border = Border {
             width: -1.0,
             ..Border::default()
         };
-        match client(std, 42)?.style()?.set_borders(&[border]) {
-            Err(error) => log(&format!("bad border: {}", error.message())),
+        match world.client(42)?.style()?.set_borders(&[border]) {
+            Err(error) => log(&format!("bad border: {}", error.message)),
             Ok(()) => log("bad border: accepted"),
         }
         Ok(())
     });
-    let scene: Step = Box::new(|std, kept| {
-        let scene = std.scene()?;
-        let camera = Camera3D::new(
-            std,
-            Camera3DOptions {
-                position: Some([1.0, 2.0, 3.0]),
-                projection: Some(gnoblin_std::Projection::Perspective),
-                fov: Some(70.0),
-                near: Some(0.2),
-                ..Camera3DOptions::default()
-            },
-        )?;
-        scene.root().add(&camera)?;
-        let c40 = client(std, 40)?;
-        let view = View::new(
-            std,
-            &ViewOptions {
-                camera: Some(&camera),
-                width: Some(400.0),
-                height: Some(300.0),
-                content: Some(&c40),
-            },
-        )?;
-        scene.root().add(&view)?;
-        let flat = Camera2D::new(
-            std,
-            Camera2DOptions {
-                center: Some((10.0, 20.0)),
-                zoom: Some(2.0),
-                roll: Some(0.5),
-            },
-        )?;
-        scene.root().add(&flat)?;
+    let scene: Step = Box::new(|world, kept| {
+        let scene = Scene::get(&world.objects)?;
+        let camera = Camera3D::new(&world.objects)?;
+        camera.set_position(&gnoblin_std::objects::Vec3 { x: 1.0, y: 2.0, z: 3.0 })?;
+        camera.set_projection(Projection::Perspective)?;
+        camera.set_fov(70.0)?;
+        camera.set_near(0.2)?;
+        scene.add(&camera.as_scene_node()?)?;
+        let c40 = world.client(40)?;
+        let view = View::new(&world.objects)?;
+        view.set_camera(&camera)?;
+        view.set_size(&gnoblin_std::objects::SceneSize {
+            width: 400.0,
+            height: 300.0,
+        })?;
+        view.show_client(&c40)?;
+        scene.add(&view.as_scene_node()?)?;
+        let flat = Camera2D::new(&world.objects)?;
+        flat.set_x(10.0)?;
+        flat.set_y(20.0)?;
+        flat.set_zoom(2.0)?;
+        flat.set_roll(0.5)?;
+        scene.add(&flat.as_scene_node()?)?;
         log(&format!("camera size={}", camera.size()?));
         if let Err(error) = flat.set_zoom(0.0) {
-            log(&format!("bad zoom: {}", error.message()));
+            log(&format!("bad zoom: {error}"));
         }
         kept.camera = Some(camera);
         kept.flat = Some(flat);
         Ok(())
     });
-    let scene_transition: Step = Box::new(|std, kept| {
+    let scene_transition: Step = Box::new(|world, kept| {
         let (Some(camera), Some(flat)) = (&kept.camera, &kept.flat) else {
             return Ok(());
         };
-        std.transition(TransitionOptions::new().duration_ms(100.0), |_| {
-            flat.set_zoom(4.0)?;
-            flat.set_center(30.0, 40.0)?;
-            flat.set_roll(1.0)?;
-            camera.set_fov(40.0)
-        })?;
+        let (camera, flat) = (camera.clone(), flat.clone());
+        ModelRoot::get(&world.core)?.request_transition(
+            {
+                let (camera, flat) = (camera.clone(), flat.clone());
+                move || {
+                    flat.set_zoom(4.0)?;
+                    flat.set_x(30.0)?;
+                    flat.set_y(40.0)?;
+                    flat.set_roll(1.0)?;
+                    camera.set_fov(40.0)?;
+                    Ok(())
+                }
+            },
+            Some(&options(100.0)),
+            Some(|| Ok(())),
+        )?;
         log(&format!("flat zoom={} fov={}", flat.zoom()?, camera.fov()?));
         Ok(())
     });
-    let style_shader: Step = Box::new(|std, _| {
-        client(std, 42)?.style()?.set_filter(&[Filter::shader(
-            "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }",
-            &[0.5, 2.0],
-        )])
+    let style_shader: Step = Box::new(|world, _| {
+        let shader = ShaderFilter {
+            params: vec![0.5, 2.0],
+            ..ShaderFilter::new(
+                "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }"
+                    .to_owned(),
+            )
+        };
+        world.client(42)?.style()?.set_filter(&[shader.into()])?;
+        Ok(())
     });
+    let _ = (GridLayout::new, Filter::Blur);
     vec![
         ("Super+a", basic),
         ("Super+b", staged()),
-        ("Super+c", held(|t| t.set_progress(0.5))),
-        ("Super+d", held(Transition::play)),
-        ("Super+e", held(Transition::pause)),
-        ("Super+f", held(Transition::reverse)),
+        ("Super+c", held(|t| Ok(t.set_progress(0.5)?))),
+        ("Super+d", held(|t| Ok(t.play()?))),
+        ("Super+e", held(|t| Ok(t.pause()?))),
+        ("Super+f", held(|t| Ok(t.reverse()?))),
         ("Super+g", staged()),
-        ("Super+h", held(Transition::cancel)),
+        ("Super+h", held(|t| Ok(t.cancel()?))),
         ("Super+i", instant),
         ("Super+j", layout),
         ("Super+k", style_global),
@@ -245,12 +351,15 @@ fn steps() -> Vec<(&'static str, Step)> {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?;
+    let world = World {
+        core: g.objects()?,
+        objects: g.std()?.objects()?,
+    };
     let kept = Rc::new(RefCell::new(Kept::default()));
     for (chord, step) in steps() {
-        let (std, kept) = (std.clone(), Rc::clone(&kept));
+        let (world, kept) = (world.clone(), Rc::clone(&kept));
         g.bind(chord, move || {
-            if let Err(error) = step(&std, &mut kept.borrow_mut()) {
+            if let Err(error) = step(&world, &mut kept.borrow_mut()) {
                 log(&format!("{chord} failed: {error}"));
             }
         })?;
