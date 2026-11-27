@@ -42,7 +42,7 @@ pub mod shortcuts;
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures_lite::StreamExt as _;
 
@@ -65,7 +65,16 @@ pub const BUS_NAME: &str = "org.freedesktop.impl.portal.desktop.gnoblin";
 pub const PATH: &str = "/org/freedesktop/portal/desktop";
 
 /// How often the service loop fails the prompts that are past their deadline.
-pub const TICK: std::time::Duration = std::time::Duration::from_millis(200);
+pub const TICK: Duration = Duration::from_millis(200);
+
+/// How long [`Portal::export`] waits for the answer to the `Ping` it sends its own connection
+/// before it sends another. The bus answers in milliseconds; this only has to be longer than
+/// a busy machine's worst round trip, because a `Ping` that is merely slow costs one more.
+const DISPATCH_PING: Duration = Duration::from_millis(250);
+
+/// How many `Ping`s [`Portal::export`] sends before it reports that the objects never started
+/// answering. With [`DISPATCH_PING`] that is five seconds, which is a bus that is gone, not slow.
+const DISPATCH_ATTEMPTS: u32 = 20;
 
 /// One request handle's live meaning, so `Request.Close` can end what the handler waits
 /// for.
@@ -204,11 +213,18 @@ impl Portal {
         Arc::clone(&self.lock().capture)
     }
 
-    /// Export every interface and own the bus name.
+    /// Export every interface, and return once the connection answers method calls to them.
     ///
     /// The objects are exported before the name is requested, because a caller that
     /// resolves the name must find an object behind it: a name without an object is a
-    /// method call that never gets a reply.
+    /// method call that never gets a reply. For the same reason this does not return until
+    /// the connection's object server is dispatching, which is more than the objects being
+    /// in its table (see [`Portal::dispatching`]).
+    ///
+    /// # Errors
+    ///
+    /// An interface the connection refuses, or a bus whose connection never answers a
+    /// method call to itself.
     pub async fn export(&self) -> Result<(), fdo::Error> {
         let object_server = self.connection.object_server();
         object_server
@@ -285,7 +301,44 @@ impl Portal {
                 .await
                 .map_err(bus)?;
         }
-        Ok(())
+        self.dispatching().await
+    }
+
+    /// Wait until the connection's object server takes the method calls addressed to it.
+    ///
+    /// zbus starts the server's dispatcher as a task of the connection's runtime, and the
+    /// task subscribes to the connection's method calls only when it first runs, which is
+    /// after [`Connection::object_server`] has returned. The task that reads the socket hands
+    /// each message to the subscriptions there are when it reads it, so a call it reads before
+    /// the dispatcher has run is dropped, and zbus gives its caller no deadline: the caller
+    /// waits for ever. A caller that has this connection's name can be that quick, because the
+    /// two tasks run only while the thread that drives the connection yields to them.
+    ///
+    /// A `Ping` addressed to this very connection is such a call, and an answer to it proves
+    /// the dispatcher is subscribed, since the dispatcher is what answers. A `Ping` that was
+    /// read too early is dropped like any other call, so one that is not answered after
+    /// [`DISPATCH_PING`] is sent again rather than waited on.
+    async fn dispatching(&self) -> Result<(), fdo::Error> {
+        // A connection with no unique name is not on a bus and cannot address itself. The
+        // portal is only ever served on a bus, so this is no more than a guard.
+        let Some(name) = self.connection.unique_name() else {
+            return Ok(());
+        };
+        // Let the tasks zbus spawned have their first turn, so that the first `Ping` is read
+        // by a dispatcher that is there to hear it, and the delay below is for a bus that is
+        // slow rather than for the ordinary case.
+        futures_lite::future::yield_now().await;
+        let connection = &self.connection;
+        let destination = name.as_str();
+        let ping =
+            move || connection.call_method(Some(destination), PATH, Some("org.freedesktop.DBus.Peer"), "Ping", &());
+        match answered(DISPATCH_ATTEMPTS, DISPATCH_PING, ping).await {
+            Some(Ok(_)) => Ok(()),
+            Some(Err(error)) => Err(bus(error)),
+            None => Err(fdo::Error::Failed(format!(
+                "the object server on {name} did not answer {DISPATCH_ATTEMPTS} Pings sent to it"
+            ))),
+        }
     }
 
     /// Serve until the connection ends: expire prompts, and end what a gone caller owned.
@@ -400,6 +453,30 @@ impl Portal {
             }
         }
     }
+}
+
+/// The answer to `ask`, asked up to `tries` times and given `patience` each time.
+///
+/// A try that is not answered in time is dropped, which withdraws it, and the next one is
+/// made: a call the bus never answers is the case this is for. `None` is every try unanswered,
+/// after `tries * patience`.
+async fn answered<F, Fut, T>(tries: u32, patience: Duration, mut ask: F) -> Option<T>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = T>,
+{
+    for _ in 0..tries {
+        let reply = futures_lite::future::or(async { Some(ask().await) }, async {
+            async_io::Timer::after(patience).await;
+            None
+        })
+        .await;
+        if reply.is_some() {
+            return reply;
+        }
+        log::debug!("a call was not answered in time; asking again");
+    }
+    None
 }
 
 /// End what a session opened: every stream, and for a remote desktop its EIS connection.
@@ -715,5 +792,56 @@ pub(crate) fn string_of(value: &zbus::OwnedVariant) -> Option<String> {
     match &**value {
         zbus::Variant::Str(text) => Some(text.to_string()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::future::{pending, ready};
+
+    use super::*;
+
+    #[test]
+    fn a_dropped_try_is_asked_again_and_the_first_answer_is_the_result() {
+        let mut asked = 0;
+        let reply = futures_lite::future::block_on(answered(5, Duration::from_millis(20), || {
+            asked += 1;
+            let this = asked;
+            async move {
+                if this < 3 {
+                    pending::<()>().await;
+                }
+                this
+            }
+        }));
+        assert_eq!(reply, Some(3), "the third try is the first that answers");
+        assert_eq!(asked, 3, "no try is made after the answer");
+    }
+
+    #[test]
+    fn tries_that_are_never_answered_end_after_all_of_them() {
+        let started = Instant::now();
+        let mut asked = 0;
+        let reply = futures_lite::future::block_on(answered(3, Duration::from_millis(30), || {
+            asked += 1;
+            pending::<u32>()
+        }));
+        assert_eq!(reply, None, "nothing answered");
+        assert_eq!(asked, 3, "every try was made");
+        assert!(
+            started.elapsed() >= Duration::from_millis(90),
+            "each try was given its patience, took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn an_answer_to_the_first_try_asks_no_more() {
+        let mut asked = 0;
+        let reply = futures_lite::future::block_on(answered(3, Duration::from_secs(60), || {
+            asked += 1;
+            ready(9)
+        }));
+        assert_eq!((reply, asked), (Some(9), 1));
     }
 }

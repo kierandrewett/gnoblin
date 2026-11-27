@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+use support::bounded;
 use support::bus::Bus;
 use zbus::connection::Builder;
 use zbus::{Connection, ObjectPath, OwnedVariant, Proxy, Variant, fdo};
@@ -19,6 +20,9 @@ use zbus::{Connection, ObjectPath, OwnedVariant, Proxy, Variant, fdo};
 const BUS_NAME: &str = "org.freedesktop.impl.portal.desktop.gnoblin";
 const PATH: &str = "/org/freedesktop/portal/desktop";
 const DEADLINE: Duration = Duration::from_secs(15);
+/// How long one whole test may take: the backend's start, its name, and every call after it. A
+/// call that is lost fails the test here, naming it, instead of holding the job.
+const LIMIT: Duration = Duration::from_secs(60);
 
 /// The backend, spawned against one bus, killed on drop.
 struct Backend {
@@ -102,76 +106,82 @@ async fn wait_for_name(connection: &Connection, backend: &mut Backend) {
 
 #[test]
 fn starts_without_compositor_ipc_and_serves_settings() {
-    let bus = Bus::start();
-    let directory = scratch("activation-settings");
-    let mut backend = Backend::start(&bus, &directory);
-    zbus::block_on(async {
-        let connection = caller(&bus).await;
-        wait_for_name(&connection, &mut backend).await;
+    bounded::within("reading every setting from the started backend", LIMIT, || {
+        let bus = Bus::start();
+        let directory = scratch("activation-settings");
+        let mut backend = Backend::start(&bus, &directory);
+        zbus::block_on(async {
+            let connection = caller(&bus).await;
+            wait_for_name(&connection, &mut backend).await;
 
-        let settings = Proxy::new(&connection, BUS_NAME, PATH, "org.freedesktop.impl.portal.Settings")
-            .await
-            .expect("the settings proxy");
-        // An empty filter asks for every namespace. The call answers with no compositor
-        // behind it: the table is empty, and an empty table is a valid answer.
-        let namespaces: Vec<String> = Vec::new();
-        let _all: BTreeMap<String, BTreeMap<String, OwnedVariant>> = settings
-            .call("ReadAll", &(namespaces,))
-            .await
-            .expect("ReadAll answers with no compositor behind it");
+            let settings = Proxy::new(&connection, BUS_NAME, PATH, "org.freedesktop.impl.portal.Settings")
+                .await
+                .expect("the settings proxy");
+            // An empty filter asks for every namespace. The call answers with no compositor
+            // behind it: the table is empty, and an empty table is a valid answer.
+            let namespaces: Vec<String> = Vec::new();
+            let _all: BTreeMap<String, BTreeMap<String, OwnedVariant>> = settings
+                .call("ReadAll", &(namespaces,))
+                .await
+                .expect("ReadAll answers with no compositor behind it");
+        });
+
+        assert!(
+            backend.exited().is_none(),
+            "the backend is still serving after a settings read"
+        );
     });
-
-    assert!(
-        backend.exited().is_none(),
-        "the backend is still serving after a settings read"
-    );
 }
 
 #[test]
 fn refuses_capture_without_a_shell_and_keeps_serving() {
-    let bus = Bus::start();
-    let directory = scratch("activation-refuse");
-    let mut backend = Backend::start(&bus, &directory);
-    let text = zbus::block_on(async {
-        let connection = caller(&bus).await;
-        wait_for_name(&connection, &mut backend).await;
+    bounded::within("asking the started backend for a screenshot", LIMIT, || {
+        let bus = Bus::start();
+        let directory = scratch("activation-refuse");
+        let mut backend = Backend::start(&bus, &directory);
+        let text = zbus::block_on(async {
+            let connection = caller(&bus).await;
+            wait_for_name(&connection, &mut backend).await;
 
-        let screenshot = Proxy::new(&connection, BUS_NAME, PATH, "org.freedesktop.impl.portal.Screenshot")
-            .await
-            .expect("the screenshot proxy");
-        let handle = ObjectPath::try_from("/org/freedesktop/portal/desktop/request/activation/shot")
-            .expect("the handle is a valid object path");
-        let options: HashMap<&str, Variant<'_>> = HashMap::new();
-        let refusal = screenshot
-            .call_method("Screenshot", &(handle, "", "", options))
-            .await
-            .expect_err("a capture with no shell is refused");
-        refusal.to_string()
+            let screenshot = Proxy::new(&connection, BUS_NAME, PATH, "org.freedesktop.impl.portal.Screenshot")
+                .await
+                .expect("the screenshot proxy");
+            let handle = ObjectPath::try_from("/org/freedesktop/portal/desktop/request/activation/shot")
+                .expect("the handle is a valid object path");
+            let options: HashMap<&str, Variant<'_>> = HashMap::new();
+            let refusal = screenshot
+                .call_method("Screenshot", &(handle, "", "", options))
+                .await
+                .expect_err("a capture with no shell is refused");
+            refusal.to_string()
+        });
+
+        assert!(
+            text.contains("portal.ui"),
+            "the refusal names the missing slot, got: {text}"
+        );
+        assert!(
+            backend.exited().is_none(),
+            "the backend is still serving after a refused capture"
+        );
     });
-
-    assert!(
-        text.contains("portal.ui"),
-        "the refusal names the missing slot, got: {text}"
-    );
-    assert!(
-        backend.exited().is_none(),
-        "the backend is still serving after a refused capture"
-    );
 }
 
 #[test]
 fn exits_when_the_bus_goes_away() {
-    let bus = Bus::start();
-    let directory = scratch("activation-exit");
-    let mut backend = Backend::start(&bus, &directory);
-    zbus::block_on(async {
-        let connection = caller(&bus).await;
-        wait_for_name(&connection, &mut backend).await;
-    });
+    bounded::within("waiting for the started backend to end with its bus", LIMIT, || {
+        let bus = Bus::start();
+        let directory = scratch("activation-exit");
+        let mut backend = Backend::start(&bus, &directory);
+        zbus::block_on(async {
+            let connection = caller(&bus).await;
+            wait_for_name(&connection, &mut backend).await;
+        });
 
-    drop(bus);
-    let status = backend.wait_for_exit();
-    assert!(status.success(), "a bus loss is a clean exit, got {status}");
+        drop(bus);
+        let status = backend.wait_for_exit();
+        assert!(status.success(), "a bus loss is a clean exit, got {status}");
+    });
 }
 
 /// `org.freedesktop.impl.portal.*` names a member and a property the frontend looks up by
@@ -189,46 +199,48 @@ fn spells_the_members_and_properties_the_frontend_looks_up() {
         "org.freedesktop.impl.portal.Settings",
         "org.freedesktop.impl.portal.Inhibit",
     ];
-    let bus = Bus::start();
-    let directory = scratch("activation-spelling");
-    let mut backend = Backend::start(&bus, &directory);
-    zbus::block_on(async {
-        let connection = caller(&bus).await;
-        wait_for_name(&connection, &mut backend).await;
+    bounded::within("reading the spelling of the started backend's members", LIMIT, || {
+        let bus = Bus::start();
+        let directory = scratch("activation-spelling");
+        let mut backend = Backend::start(&bus, &directory);
+        zbus::block_on(async {
+            let connection = caller(&bus).await;
+            wait_for_name(&connection, &mut backend).await;
 
-        let properties = Proxy::new(&connection, BUS_NAME, PATH, "org.freedesktop.DBus.Properties")
-            .await
-            .expect("the properties proxy");
-        for interface in VERSIONED {
-            let version: OwnedVariant = properties
-                .call("Get", &(interface, "version"))
+            let properties = Proxy::new(&connection, BUS_NAME, PATH, "org.freedesktop.DBus.Properties")
                 .await
-                .unwrap_or_else(|error| panic!("{interface} serves `version`: {error}"));
-            let version = u32::try_from(&version).expect("`version` is a u32");
-            assert!(version >= 1, "{interface} reports a version");
-        }
+                .expect("the properties proxy");
+            for interface in VERSIONED {
+                let version: OwnedVariant = properties
+                    .call("Get", &(interface, "version"))
+                    .await
+                    .unwrap_or_else(|error| panic!("{interface} serves `version`: {error}"));
+                let version = u32::try_from(&version).expect("`version` is a u32");
+                assert!(version >= 1, "{interface} reports a version");
+            }
 
-        let introspectable = Proxy::new(&connection, BUS_NAME, PATH, "org.freedesktop.DBus.Introspectable")
-            .await
-            .expect("the introspection proxy");
-        let description: String = introspectable
-            .call("Introspect", &())
-            .await
-            .expect("Introspect answers");
-        for interface in [
-            "org.freedesktop.impl.portal.RemoteDesktop",
-            "org.freedesktop.impl.portal.InputCapture",
-        ] {
-            let start = description
-                .find(&format!("<interface name=\"{interface}\">"))
-                .unwrap_or_else(|| panic!("{interface} is exported"));
-            let end = description[start..]
-                .find("</interface>")
-                .map_or(description.len(), |offset| start + offset);
-            assert!(
-                description[start..end].contains("<method name=\"ConnectToEIS\">"),
-                "{interface} serves ConnectToEIS, spelled as the spec does"
-            );
-        }
+            let introspectable = Proxy::new(&connection, BUS_NAME, PATH, "org.freedesktop.DBus.Introspectable")
+                .await
+                .expect("the introspection proxy");
+            let description: String = introspectable
+                .call("Introspect", &())
+                .await
+                .expect("Introspect answers");
+            for interface in [
+                "org.freedesktop.impl.portal.RemoteDesktop",
+                "org.freedesktop.impl.portal.InputCapture",
+            ] {
+                let start = description
+                    .find(&format!("<interface name=\"{interface}\">"))
+                    .unwrap_or_else(|| panic!("{interface} is exported"));
+                let end = description[start..]
+                    .find("</interface>")
+                    .map_or(description.len(), |offset| start + offset);
+                assert!(
+                    description[start..end].contains("<method name=\"ConnectToEIS\">"),
+                    "{interface} serves ConnectToEIS, spelled as the spec does"
+                );
+            }
+        });
     });
 }

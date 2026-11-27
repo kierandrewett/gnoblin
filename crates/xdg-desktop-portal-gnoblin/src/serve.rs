@@ -12,7 +12,10 @@
 //!    it is built into the backends before anything is exported. Without a shell the portal
 //!    still starts: it serves what needs no prompt and refuses the rest.
 //! 2. **The objects, then the name.** A caller that resolves the name must find an object
-//!    behind it; a name without an object is a method call that never answers.
+//!    behind it; a name without an object is a method call that never answers. The objects
+//!    answer once [`Portal::export`] returns: it waits until the connection has answered a
+//!    call to itself, because a call that reaches the connection before zbus's dispatcher
+//!    has started is dropped, and its caller waits for ever.
 //! 3. **The loop on its own thread, the bus loop on the caller's.** The IPC client is a
 //!    blocking reader, and the bus connection has its own executor; one thread each keeps
 //!    either from stalling the other.
