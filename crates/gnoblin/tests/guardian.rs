@@ -131,6 +131,9 @@ impl Session {
             .env("XDG_DATA_HOME", directory.path().join("data"))
             .env("HOME", directory.path().join("home"))
             .env_remove("GNOBLIN_SHELL")
+            // A terminal opened from a Gnoblin session inherits that session's descriptor variable. The guardian
+            // under test is no child of it, and `environment` takes this variable to mean "a child's own environment".
+            .env_remove("GNOBLIN_READY_FD")
             .env("GNOBLIN_IPC_SOCKET", directory.path().join("ipc.sock"))
             .env("GNOBLIN_TEST_FAST", "1")
             // The session has to run headless however the machine that runs the test is set up: `auto` would nest in a
@@ -285,34 +288,162 @@ impl Session {
     }
 }
 
-/// Whether a process holds a socket with this inode, as `/proc` reports it.
+/// What a read of a process's `/proc` entries found: an answer, or the state of a process that is in the middle of
+/// `execve`.
+enum Proc<T> {
+    Ready(T),
+    /// Not an answer yet; carries what the read saw, for the failure message.
+    Busy(String),
+}
+
+/// Read `/proc` until it answers, and fail with what the last read saw if it never does.
+///
+/// While a process is inside `execve`, what a read of it finds says nothing about what the process has or lacks. On a
+/// child shaped like the ones the supervisor starts (`posix_spawn`, a cleared environment, its own process group,
+/// piped output) each of these was seen:
+///
+/// - `environ` reads as empty, because the kernel records the new image's environment only after it has let go of
+///   the old image;
+/// - `environ` reads as the guardian's own, because a `posix_spawn` child shares the guardian's memory until its
+///   `execve`;
+/// - `environ` reads as only the start of an environment, when the read straddles an `execve`;
+/// - a read of `environ` or of an `fd` entry fails with `EACCES`.
+///
+/// The guardian logs `started <name> (pid P)` when `spawn` has returned, which is when the child has begun its
+/// `execve` and not when it has finished it, so a test that reads on seeing that line can land in any of them. Each
+/// was taken for "the variable is not there", which is a different statement. The windows are microseconds wide: what
+/// a read waits for is the state, not a duration.
+#[track_caller]
+fn settle<T>(what: &str, mut read: impl FnMut() -> Proc<T>) -> T {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        let seen = match read() {
+            Proc::Ready(value) => return value,
+            Proc::Busy(seen) => seen,
+        };
+        assert!(
+            Instant::now() < deadline,
+            "{what} was still not readable after {TIMEOUT:?}; the last read saw: {seen}"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+/// Whether a failed `/proc` read is the answer of a process that is mid-`execve`, and so worth reading again.
+/// Any other failure says nothing a test may treat as "absent", and ends the test with the error.
+fn mid_exec(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::PermissionDenied
+}
+
+/// Wait until `pid` is running `command`, by its command line.
+///
+/// The XR stand-in is a shell script that `exec`s `sleep`: one pid, two programs. As the shell it is still starting
+/// (bash rewrites the environment it imports, in place, while it does) and then it replaces itself, so none of its
+/// `/proc` entries can be trusted until it has become `sleep`. Once it has, nothing replaces it again. This waits for
+/// that, and for nothing else about the process.
+#[track_caller]
+fn wait_for_command(pid: i32, command: &[&str]) {
+    let path = format!("/proc/{pid}/cmdline");
+    let wanted: Vec<u8> = command
+        .iter()
+        .flat_map(|argument| argument.bytes().chain([0]))
+        .collect();
+    settle(&path, || match std::fs::read(&path) {
+        Ok(bytes) if bytes == wanted => Proc::Ready(()),
+        Ok(bytes) => Proc::Busy(format!("the command line {:?}", String::from_utf8_lossy(&bytes))),
+        Err(error) if mid_exec(&error) => Proc::Busy(format!("{path}: {error}")),
+        Err(error) => panic!("{path} cannot be read: {error}"),
+    });
+}
+
+/// One descriptor of a process, as `/proc/<pid>/fd/<n>` names it; `None` when the process has no such descriptor.
+fn fd_target(path: &std::path::Path) -> Proc<Option<String>> {
+    match std::fs::read_link(path) {
+        Ok(target) => Proc::Ready(Some(target.to_string_lossy().into_owned())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Proc::Ready(None),
+        Err(error) if mid_exec(&error) => Proc::Busy(format!("{}: {error}", path.display())),
+        Err(error) => panic!("{} cannot be read: {error}", path.display()),
+    }
+}
+
+/// The sockets a process holds, by the `socket:[inode]` name `/proc` gives each.
+///
+/// A listing that cannot be read ends the test: "holds nothing" is not what an unreadable `fd` directory means, and
+/// the assertions that a process does *not* hold a socket would pass without having looked.
+#[track_caller]
 fn socket_inodes(pid: i32) -> Vec<String> {
     let directory = format!("/proc/{pid}/fd");
-    let Ok(entries) = std::fs::read_dir(&directory) else {
-        return Vec::new();
-    };
-    entries
-        .filter_map(|entry| std::fs::read_link(entry.ok()?.path()).ok())
-        .map(|target| target.to_string_lossy().into_owned())
-        .filter(|target| target.starts_with("socket:["))
-        .collect()
+    settle(&directory, || {
+        let entries = match std::fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if mid_exec(&error) => return Proc::Busy(format!("{directory}: {error}")),
+            Err(error) => panic!("{directory} cannot be listed: {error}"),
+        };
+        let mut sockets = Vec::new();
+        for entry in entries {
+            let path = match entry {
+                Ok(entry) => entry.path(),
+                Err(error) if mid_exec(&error) => return Proc::Busy(format!("{directory}: {error}")),
+                Err(error) => panic!("{directory} cannot be listed: {error}"),
+            };
+            // A descriptor closed since the listing is not held, which is all this is asked.
+            match fd_target(&path) {
+                Proc::Ready(Some(target)) if target.starts_with("socket:[") => sockets.push(target),
+                Proc::Ready(_) => {}
+                Proc::Busy(seen) => return Proc::Busy(seen),
+            }
+        }
+        Proc::Ready(sockets)
+    })
 }
 
-/// The descriptor number a process was given for `variable`, from its environment.
+/// The environment of a process, as `KEY=value` entries separated by NULs, once it is the process's own.
+///
+/// Every child the guardian starts is given `GNOBLIN_READY_FD` (the guardian strips it from the environment it passes
+/// on, so it is never inherited from further up), and a read that does not have it is a read of something else: empty,
+/// or the guardian's environment from before the `execve`. See [`settle`].
+#[track_caller]
+fn environment(pid: i32) -> String {
+    const OWN: &str = "GNOBLIN_READY_FD";
+    let path = format!("/proc/{pid}/environ");
+    settle(&path, || match std::fs::read(&path) {
+        Ok(bytes) => {
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            if text
+                .split('\0')
+                .any(|entry| entry.split_once('=').is_some_and(|(key, _)| key == OWN))
+            {
+                Proc::Ready(text)
+            } else if bytes.is_empty() {
+                Proc::Busy("an empty environment".to_owned())
+            } else {
+                Proc::Busy(format!("{} bytes of environment without {OWN}", bytes.len()))
+            }
+        }
+        Err(error) if mid_exec(&error) => Proc::Busy(format!("{path}: {error}")),
+        Err(error) => panic!("{path} cannot be read: {error}"),
+    })
+}
+
+/// The descriptor number a process was given for `variable`, from its environment; `None` when it has no such variable.
+#[track_caller]
 fn inherited(pid: i32, variable: &str) -> Option<i32> {
-    let environment = std::fs::read(format!("/proc/{pid}/environ")).ok()?;
-    let text = String::from_utf8_lossy(&environment);
-    text.split('\0')
+    let environment = environment(pid);
+    let (_, value) = environment
+        .split('\0')
         .filter_map(|entry| entry.split_once('='))
-        .find(|(key, _)| *key == variable)
-        .and_then(|(_, value)| value.trim().parse().ok())
+        .find(|(key, _)| *key == variable)?;
+    let number = value.trim().parse().unwrap_or_else(|_| {
+        panic!("{variable} is `{value}` in pid {pid}'s environment, which is no descriptor number")
+    });
+    Some(number)
 }
 
-/// The socket a process holds at `number`.
+/// The socket a process holds at `number`; `None` when it holds no such descriptor.
+#[track_caller]
 fn socket_at(pid: i32, number: i32) -> Option<String> {
-    std::fs::read_link(format!("/proc/{pid}/fd/{number}"))
-        .ok()
-        .map(|target| target.to_string_lossy().into_owned())
+    let path = std::path::PathBuf::from(format!("/proc/{pid}/fd/{number}"));
+    settle(&path.display().to_string(), || fd_target(&path))
 }
 
 /// Kill one process the way a crash does.
@@ -542,6 +673,8 @@ fn an_opted_in_xr_extension_is_given_a_wayland_socket_no_other_child_has() {
     let xr = session.pid("xr");
     let host = session.pid("shell");
     let compositor = session.pid("compositor");
+    // `started xr` is logged when the guardian's `spawn` returns, not when the stand-in has finished starting.
+    wait_for_command(xr, &["sleep", "600"]);
 
     let number = inherited(xr, "WAYLAND_SOCKET")
         .unwrap_or_else(|| panic!("the extension was given a Wayland socket:\n{}", session.log()));
