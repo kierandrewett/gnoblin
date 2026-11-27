@@ -8,6 +8,7 @@ mod compat_report;
 mod deps;
 mod dist;
 mod dist_check;
+mod docs_coverage;
 mod docs_examples;
 mod docs_parity;
 mod docs_tabs;
@@ -50,6 +51,10 @@ subcommands:
   dupes --warn       the same report, printing every hit and exiting zero
   logging            fail on a direct logging-crate dependency or a stock print in library code
   docs-parity        fail on a documented gnoblin name the implemented surface lacks, unless allow-listed
+  docs-coverage [--fail] [--counts]
+                     count the schema tables (classes, properties, methods, parameters, signals, signal fields, variants,
+                     enums, enum values, callbacks) that have no description comment, and the files without a title;
+                     report-only, or with --fail exit 1 on a gap; see xtask/src/docs_coverage.rs
   docs-examples [--lang typescript|python|rust]... [--out DIR] [PAGE.md ...]
                      check the examples of every `::: tabs` group of docs/ in its own language: tsc over the installed
                      declarations, pyright over the installed stubs, cargo check against the SDK crates; a failure names the
@@ -100,6 +105,7 @@ fn main() -> ExitCode {
         ("stage", _) => stage::run(&rest),
         ("watch-shell", _) => watch_shell::run(&rest),
         ("docs-parity", []) => docs_parity::run(),
+        ("docs-coverage", _) => docs_coverage::run(&rest),
         ("docs-examples", _) => docs_examples::run_examples(&rest),
         ("docs-reference", _) => docs_examples::run_reference(&rest),
         ("compat-report", []) => compat_report::run(false),

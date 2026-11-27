@@ -29,7 +29,9 @@ use std::collections::BTreeMap;
 
 use gnoblin_schema::{CallbackDecl, Catalog, EnumDecl, Namespace, ObjectType};
 
-use super::docs::{NO_DOCS, NamespaceDocs, base_of};
+use super::declarations::{Declarations, note};
+use super::describe::member_text;
+use super::docs::{DocLanguage, NO_DOCS, NamespaceDocs, base_of};
 use super::objects::{foreign_handle, foreign_handles, stem_of};
 use super::text::pascal;
 use super::{Comment, File, SdkSpec, Target, object_js, object_py, values};
@@ -43,6 +45,10 @@ pub(super) struct ScriptView<'a> {
     pub(super) callbacks: BTreeMap<&'a str, &'a CallbackDecl>,
     /// What the schema files say about the classes; empty for a catalog that has no comments (a test fixture).
     pub(super) docs: &'a NamespaceDocs,
+    /// The language the view's comments are written for.
+    pub(super) flavor: DocLanguage,
+    /// Where the declarations written are noted, for the reference model.
+    pub(super) declarations: Option<&'a Declarations>,
 }
 
 impl<'a> ScriptView<'a> {
@@ -63,6 +69,8 @@ impl<'a> ScriptView<'a> {
                 .map(|declared| (declared.name.as_str(), declared))
                 .collect(),
             docs: &NO_DOCS,
+            flavor: DocLanguage::TypeScript,
+            declarations: None,
         }
     }
 
@@ -70,6 +78,23 @@ impl<'a> ScriptView<'a> {
     pub(super) fn with_docs(mut self, docs: &'a NamespaceDocs) -> ScriptView<'a> {
         self.docs = docs;
         self
+    }
+
+    /// The same view, writing its comments for `flavor`.
+    pub(super) fn with_flavor(mut self, flavor: DocLanguage) -> ScriptView<'a> {
+        self.flavor = flavor;
+        self
+    }
+
+    /// The same view, noting each declaration it writes in `sink`.
+    pub(super) fn with_declarations(mut self, sink: &'a Declarations) -> ScriptView<'a> {
+        self.declarations = Some(sink);
+        self
+    }
+
+    /// Notes that the member `member` of `class` was declared as `text`.
+    pub(super) fn declared(&self, class: &str, member: &str, text: impl AsRef<str>) {
+        note(self.declarations, class, member, text);
     }
 
     /// Whether the view carries the schema's descriptions.
@@ -82,9 +107,24 @@ impl<'a> ScriptView<'a> {
         self.docs.class(name)
     }
 
-    /// The description of the member `member` of the class `class`, from the class or the nearest base that has one.
-    pub(super) fn member_doc(&self, class: &str, member: &str) -> &'a str {
+    /// What the schema says about the member `member` of the class `class` (a property, a method or a signal), written for the view's
+    /// language: its description from the class or the nearest base that has one, its parameters, range, unit, default, the codes it
+    /// raises and its example. Empty for a view without descriptions.
+    pub(super) fn member_doc(&self, class: &str, member: &str) -> String {
+        if !self.has_docs() {
+            return String::new();
+        }
+        member_text(self.docs, &self.objects, self.flavor, class, member)
+    }
+
+    /// The description of the member `member` of the class `class` and nothing else, from the class or the nearest base that has one.
+    pub(super) fn description(&self, class: &str, member: &str) -> &'a str {
         self.docs.member(class, member, |name| base_of(&self.objects, name))
+    }
+
+    /// The description of the value `value` of the enum `name`, or an empty text.
+    pub(super) fn enum_value_doc(&self, name: &str, value: &str) -> &'a str {
+        self.docs.enum_value(name, value)
     }
 
     /// The description of the enum `name`, or an empty text.
@@ -295,10 +335,13 @@ impl Target for ObjectTypesTarget {
                 comment: Some(Comment::Slashes),
                 text: object_js::render_dts(&view)?,
             });
+            let python = ScriptView::new(&spec.objects, &namespace)
+                .with_docs(spec.docs.namespace(&namespace))
+                .with_flavor(DocLanguage::Python);
             files.push(File {
                 path: format!("python/gnoblin/objects/{}.pyi", module_of(&namespace)?),
                 comment: Some(Comment::Hash),
-                text: object_py::render(&view, true)?,
+                text: object_py::render(&python, true)?,
             });
         }
         Ok(files)

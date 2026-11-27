@@ -20,11 +20,40 @@ The [API reference](reference/index.md) of the website is the output of each lan
 language installs: TypeDoc over the declarations, Sphinx over the Python stubs and rustdoc over the Rust crates. The generator is what
 makes them agree:
 
-- The descriptions are the comments above each class, property, method, signal and enum in the schema files. The `object-types` target
-  writes them as TSDoc comments and Python docstrings, and the `object-api` target writes them as Rust doc comments, so a description is
-  the same sentence in the three references and in an editor's hover text. A comment above a member of an `[[augment]]` describes the
-  member the library adds to the core's class.
-- A member without a comment has the generic one-line description its kind has: "The property `x`." or "The method `y`."
+- The descriptions are the comments above each class, property, method, parameter, signal, signal field, enum, enum value, callback and
+  variant in the schema files.
+    - The `object-types` target writes them as TSDoc comments and Python docstrings, and the `object-api` target writes them as Rust doc
+      comments, so a description is the same sentence in the three references and in an editor's hover text.
+    - A comment above a member of an `[[augment]]` describes the member the library adds to the core's class.
+    - An enum value is described by the comment above it, when `values` is written one value to a line:
+
+    ```toml
+    values = [
+        # The compositor's own curve.
+        "default",
+        # No curve.
+        "flat",
+    ]
+    ```
+
+- A table that carries no comment has the generic one-line description its kind has ("The property `x`." or "The method `y`.") in the
+  declarations, and `cargo xtask docs-coverage` counts it as undescribed.
+- A local file also carries what a description cannot say as keys, which only the reference reads (they are in no catalog hash, no ABI
+  lock and no generated table):
+    - `title = "Input"` at the top of a file: what the file's area is called in the reference.
+    - `range = [min, max]` and `unit = "ms"` on a number or a list of numbers: a property, a parameter or a signal field. The ends are
+      included.
+    - `default = <value>` on an `optional` parameter: what a call that leaves it out stands for. A property's `default` is the existing one.
+    - `raises = ["invalid_argument"]` on a method or a writable property: the error codes of `docs/shell-api/errors.md` (`not_found`,
+      `denied`, ...) it can fail with.
+    - `example.typescript`, `example.python` and `example.rust` on a class, property, method or signal: a short program that uses it.
+      `cargo xtask docs-examples` checks each in its own language, as it checks the examples of a page.
+
+    The TSDoc, the docstring and the rustdoc of a member say them (`@param`, `@throws`, `@example`; `:param:`, `:raises:`; `# Arguments`).
+
+- `cargo xtask gen-sdks` also writes `reference/reference.json`, the same facts and the declarations the other targets wrote, as one JSON
+  file for the reference of the website. `cargo xtask docs-coverage` counts the tables that have no description, and the files that have
+  no `title`.
 - `cargo xtask docs-reference` writes the declarations the TypeScript and Python tools read into `infra/site/.generated/sdk`, and
   `yarn build` in `infra/site` runs the three tools. Nothing it writes is committed. [Documentation site](documentation-site.md) has the
   details.
@@ -454,9 +483,6 @@ The declarations are what an editor and `gnoblinctl check --types` read. `gnobli
 
 Importing `gnoblin-std/generated/objects` opens `libgnoblin-std.so.1` and throws `gnoblin-std is not installed (looked in: ...)`
 without it, as `gnoblin-std` does; `gnoblin.objects.std` raises `ImportError` the same way.
-
-The catalog carries no
-documentation strings yet, so a member's doc comment says what it is and not what it does.
 
 A crate that serves a catalog of its own, as a test fixture, renders the same two files with `gnoblin_sdkgen::emit_catalog_for_build`
 (`crates/gnoblin-object/fixtures/probe` covers one class of every kind, so the generated tables and the generated typed API are compiled

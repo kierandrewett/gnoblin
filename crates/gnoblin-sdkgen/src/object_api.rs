@@ -37,7 +37,9 @@ use gnoblin_schema::{
     Type,
 };
 
-use super::docs::{NO_DOCS, NamespaceDocs, base_of};
+use super::declarations::{Declarations, note};
+use super::describe::member_text;
+use super::docs::{DocLanguage, NO_DOCS, NamespaceDocs, base_of};
 use super::objects::{
     Member, augment_finds, augments_of, check_foreign, crate_path_of, ctor_properties, finds_of, foreign_handle,
     foreign_handles, options_type_name, slots_of, stem_of,
@@ -61,7 +63,7 @@ impl Target for ObjectApiTarget {
             files.push(File {
                 path: format!("rust-objects/{stem}_api.rs"),
                 comment: Some(Comment::Slashes),
-                text: render_described(&spec.objects, &namespace, spec.docs.namespace(&namespace))?,
+                text: render_described(&spec.objects, &namespace, spec.docs.namespace(&namespace), None)?,
             });
         }
         Ok(files)
@@ -77,6 +79,41 @@ fn fill(template: &str, pairs: &[(&str, &str)]) -> String {
     text
 }
 
+/// A declaration as a reader of the public API spells it: the library's result alias `go::Res<T>` is `Result<T, Fail>`, with the `Fail`
+/// that `gnoblin_core` exports.
+pub(crate) fn public_result(text: &str) -> String {
+    const OPEN: &str = "go::Res<";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(OPEN) {
+        out.push_str(&rest[..start]);
+        let inner = start + OPEN.len();
+        let bytes = rest.as_bytes();
+        let mut depth = 1_usize;
+        let mut end = inner;
+        while end < bytes.len() {
+            match bytes[end] {
+                b'<' => depth += 1,
+                // The `>` of `->` closes nothing.
+                b'>' if bytes[end - 1] != b'-' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            end += 1;
+        }
+        out.push_str("Result<");
+        out.push_str(&public_result(&rest[inner..end]));
+        out.push_str(", Fail>");
+        rest = &rest[(end + 1).min(rest.len())..];
+    }
+    out.push_str(rest);
+    out
+}
+
 /// What a class of the namespace is, for the types that name it.
 struct Renderer<'a> {
     catalog: &'a Catalog,
@@ -86,6 +123,8 @@ struct Renderer<'a> {
     callbacks: BTreeMap<&'a str, &'a CallbackDecl>,
     /// What the schema files say about the classes, for the doc comments.
     docs: &'a NamespaceDocs,
+    /// Where the declarations written are noted, for the reference model.
+    declarations: Option<&'a Declarations>,
 }
 
 fn class_name(object: &ObjectType) -> String {
@@ -138,7 +177,7 @@ fn doc_then(indent: &str, text: &str, note: &str) -> String {
     }
 }
 
-fn member_ident(name: &str, export: &Option<String>) -> String {
+pub(super) fn member_ident(name: &str, export: &Option<String>) -> String {
     rust_ident(&export.clone().unwrap_or_else(|| snake(name)))
 }
 
@@ -177,6 +216,7 @@ impl<'a> Renderer<'a> {
             enums,
             callbacks,
             docs,
+            declarations: None,
         };
         let mut names = BTreeSet::new();
         for name in gen_
@@ -194,13 +234,25 @@ impl<'a> Renderer<'a> {
         Ok(gen_)
     }
 
-    /// The class `name` names in this namespace, or an error saying why there is none. A class of another namespace is reached through
-    /// [`Self::foreign_path`] instead.
-    /// The schema's description of the member `member` of `class`, from the class or the nearest base that has one.
-    fn member_doc(&self, class: &str, member: &str) -> &'a str {
-        self.docs.member(class, member, |name| base_of(&self.objects, name))
+    /// What the schema says about the member `member` of `class`, written for rustdoc: its description from the class or the nearest base
+    /// that has one, its parameters, range, unit and default, the codes it raises and its example.
+    fn member_doc(&self, class: &str, member: &str) -> String {
+        if std::ptr::eq(self.docs, &NO_DOCS) {
+            return String::new();
+        }
+        member_text(self.docs, &self.objects, DocLanguage::Rust, class, member)
     }
 
+    /// Notes that the member `member` of the schema's class `class` was declared as `text`, as a reader of the public API spells it:
+    /// the library's result alias `go::Res<T>` is `Result<T, Fail>`, with `Fail` of `gnoblin_core`.
+    fn declared(&self, class: &str, member: &str, text: impl AsRef<str>) {
+        if self.declarations.is_some() {
+            note(self.declarations, class, member, public_result(text.as_ref()));
+        }
+    }
+
+    /// The class `name` names in this namespace, or an error saying why there is none. A class of another namespace is reached through
+    /// [`Self::foreign_path`] instead.
     fn class(&self, name: &str) -> Result<&'a ObjectType, String> {
         if name.contains('.') {
             return Err(format!(
@@ -380,6 +432,15 @@ impl<'a> Renderer<'a> {
         text.push_str("#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]\n");
         let _ = writeln!(text, "pub enum {name} {{");
         for (index, variant) in variants.iter().enumerate() {
+            text.push_str(&doc_if(
+                "    ",
+                self.docs.enum_value(&declared.name, &declared.values[index]),
+            ));
+            self.declared(
+                &declared.name,
+                &declared.values[index],
+                format!("{variant} = {},", index + 1),
+            );
             let _ = writeln!(text, "    {variant} = {},", index + 1);
         }
         text.push_str("}\n");
@@ -505,9 +566,10 @@ impl go::typed::FromVal<Objects> for @Name@ {
                     (owned, field.clone())
                 }
             };
+            self.declared(class.name, &property.name, format!("pub {field}: {ty},"));
             declared.push(format!(
                 "{}    pub {field}: {ty},",
-                doc_if("    ", self.docs.member(class.name, &property.name, |_| None))
+                doc_if("    ", &self.member_doc(class.name, &property.name))
             ));
             starts.push(format!("            {field}: {start},"));
             if slots.is_none() {
@@ -1125,7 +1187,7 @@ impl go::typed::FromVal<Objects> for @Name@ {
                 "{}    pub {ident}: Option<{ty}>,",
                 doc_or(
                     "    ",
-                    self.member_doc(&object.name, &property.name),
+                    &self.member_doc(&object.name, &property.name),
                     &format!("The property `{}`.", property.name)
                 )
             ));
@@ -1193,6 +1255,7 @@ pub struct @Options@ {
         let id = format!("ids.p_{}", snake(&property.name));
         let schema = &property.name;
         let described = self.member_doc(schema_class, schema);
+        let described = described.as_str();
         let doc_closure = doc_after("    ", &format!("Sets the closure `{schema}`."), described);
         let doc_get = doc_or("    ", described, &format!("The property `{schema}`."));
         let doc_set = doc_after("    ", &format!("Sets the property `{schema}`."), described);
@@ -1208,41 +1271,52 @@ pub struct @Options@ {
             claim(&setter)?;
             let param = self.param(&property.ty)?;
             let value = self.arg_expr("run", &property.ty, false)?;
+            let sig = format!("pub fn {setter}(&self, run: {param}) -> go::Res<()>");
+            self.declared(schema_class, schema, &sig);
             let _ = write!(
                 out,
-                "{doc_closure}    ///\n    /// # Errors\n    ///\n    /// The library refuses it.\n    pub fn {setter}(&self, run: {param}) -> go::Res<()> {{\n        let objects = &self.objects;\n        let ids = {ids}::of(objects)?;\n        let value = {value};\n        objects.api.set(self.object.handle(), {id}, &value).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
+                "{doc_closure}    ///\n    /// # Errors\n    ///\n    /// The library refuses it.\n    {sig} {{\n        let objects = &self.objects;\n        let ids = {ids}::of(objects)?;\n        let value = {value};\n        objects.api.set(self.object.handle(), {id}, &value).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
             );
             return Ok(());
         }
         claim(&ident)?;
         let getter = self.getter_type(property)?;
+        let sig = format!("pub fn {ident}(&self) -> go::Res<{getter}>");
+        self.declared(schema_class, schema, &sig);
         let _ = write!(
             out,
-            "{doc_get}    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library cannot read it.\n    pub fn {ident}(&self) -> go::Res<{getter}> {{\n        let ids = {ids}::of(&self.objects)?;\n        let value = self.objects.api.get(self.object.handle(), {id}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(&self.objects, &value)\n    }}\n\n"
+            "{doc_get}    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library cannot read it.\n    {sig} {{\n        let ids = {ids}::of(&self.objects)?;\n        let value = self.objects.api.get(self.object.handle(), {id}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(&self.objects, &value)\n    }}\n\n"
         );
         if !property.readonly {
             let setter = format!("set_{}", property_stem(property));
             claim(&setter)?;
             let param = self.param(&property.ty)?;
+            let sig = format!("pub fn {setter}(&self, value: {param}) -> go::Res<()>");
+            self.declared(schema_class, schema, &sig);
             let _ = write!(
                 out,
-                "{doc_set}    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    pub fn {setter}(&self, value: {param}) -> go::Res<()> {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value)).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
+                "{doc_set}    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    {sig} {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value)).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
             );
             if property.animated {
                 let timed = format!("set_{}_timed", property_stem(property));
                 claim(&timed)?;
+                let sig = format!("pub fn {timed}(&self, value: {param}, timing: &go::Timing) -> go::Res<()>");
+                self.declared(schema_class, schema, &sig);
                 let _ = write!(
                     out,
-                    "{doc_timed}    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    pub fn {timed}(&self, value: {param}, timing: &go::Timing) -> go::Res<()> {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set_timed(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value), timing).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
+                    "{doc_timed}    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    {sig} {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set_timed(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value), timing).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
                 );
             }
         }
         let watch = format!("on_{}_changed", property_stem(property));
         claim(&watch)?;
         let owned = self.owned(&property.ty)?;
+        let sig =
+            format!("pub fn {watch}(&self, mut run: impl FnMut({owned}) + 'static) -> go::Res<go::typed::Listener>");
+        self.declared(schema_class, &format!("{schema}#changed"), &sig);
         let _ = write!(
             out,
-            "{doc_watch}    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn {watch}(&self, mut run: impl FnMut({owned}) + 'static) -> go::Res<go::typed::Listener> {{\n        let ids = {ids}::of(&self.objects)?;\n        let objects = self.objects.clone();\n        let reg = self.objects.api.listen(self.object.handle(), {id}, move |_, args| {{\n            run(go::typed::arg(&objects, args, 0)?);\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(go::typed::Listener::new(self.objects.api, reg))\n    }}\n\n"
+            "{doc_watch}    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    {sig} {{\n        let ids = {ids}::of(&self.objects)?;\n        let objects = self.objects.clone();\n        let reg = self.objects.api.listen(self.object.handle(), {id}, move |_, args| {{\n            run(go::typed::arg(&objects, args, 0)?);\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(go::typed::Listener::new(self.objects.api, reg))\n    }}\n\n"
         );
         Ok(())
     }
@@ -1285,19 +1359,24 @@ pub struct @Options@ {
         };
         let schema = &method.name;
         let described = self.member_doc(schema_class, schema);
+        let described = described.as_str();
         let doc_function = doc_or("    ", described, &format!("The function `{schema}`."));
         let doc_method = doc_or("    ", described, &format!("The method `{schema}`."));
         let args = args.join(", ");
         if method.function {
+            let sig = format!("pub fn {ident}(objects: &Objects{params}) -> go::Res<{returns}>");
+            self.declared(schema_class, schema, &sig);
             let _ = write!(
                 out,
-                "{doc_function}    ///\n    /// # Errors\n    ///\n    /// The library refuses the arguments.\n    pub fn {ident}(objects: &Objects{params}) -> go::Res<{returns}> {{\n        let ids = {ids}::of(objects)?;\n        let value = objects.api.call_static(ids.class, ids.m_{name}, &[{args}]).map_err(|fail| go::typed::at_class(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(objects, &value)\n    }}\n\n",
+                "{doc_function}    ///\n    /// # Errors\n    ///\n    /// The library refuses the arguments.\n    {sig} {{\n        let ids = {ids}::of(objects)?;\n        let value = objects.api.call_static(ids.class, ids.m_{name}, &[{args}]).map_err(|fail| go::typed::at_class(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(objects, &value)\n    }}\n\n",
                 name = snake(schema),
             );
         } else {
+            let sig = format!("pub fn {ident}(&self{params}) -> go::Res<{returns}>");
+            self.declared(schema_class, schema, &sig);
             let _ = write!(
                 out,
-                "{doc_method}    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library refuses the arguments.\n    pub fn {ident}(&self{params}) -> go::Res<{returns}> {{\n        let objects = &self.objects;\n        let ids = {ids}::of(objects)?;\n        let value = objects.api.call(self.object.handle(), ids.m_{name}, &[{args}]).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(objects, &value)\n    }}\n\n",
+                "{doc_method}    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library refuses the arguments.\n    {sig} {{\n        let objects = &self.objects;\n        let ids = {ids}::of(objects)?;\n        let value = objects.api.call(self.object.handle(), ids.m_{name}, &[{args}]).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(objects, &value)\n    }}\n\n",
                 name = snake(schema),
             );
         }
@@ -1319,12 +1398,14 @@ pub struct @Options@ {
             let owned = self.owned(&property.ty)?;
             let doc = doc_or(
                 "    ",
-                self.docs.member(&class.name, &property.name, |_| None),
+                &self.member_doc(&class.name, &property.name),
                 &format!("The property `{}`.", property.name),
             );
+            let sig = format!("fn {ident}(&self) -> go::Res<{owned}>;");
+            self.declared(&class.name, &property.name, &sig);
             let _ = write!(
                 declared,
-                "{doc}    ///\n    /// # Errors\n    ///\n    /// The generation has retired, or the library cannot read it.\n    fn {ident}(&self) -> go::Res<{owned}>;\n\n",
+                "{doc}    ///\n    /// # Errors\n    ///\n    /// The generation has retired, or the library cannot read it.\n    {sig}\n\n",
             );
             let read = if matches!(property.ty, Type::ObjectRef(_)) {
                 format!(
@@ -1370,12 +1451,14 @@ pub struct @Options@ {
             };
             let doc = doc_or(
                 "    ",
-                self.docs.member(&class.name, &method.name, |_| None),
+                &self.member_doc(&class.name, &method.name),
                 &format!("The {kind} `{}`.", method.name),
             );
+            let sig = format!("fn {ident}(&self{params}) -> go::Res<{returns}>;");
+            self.declared(&class.name, &method.name, &sig);
             let _ = write!(
                 declared,
-                "{doc}    ///\n    /// # Errors\n    ///\n    /// The generation has retired, or the library refuses the arguments.\n    fn {ident}(&self{params}) -> go::Res<{returns}>;\n\n",
+                "{doc}    ///\n    /// # Errors\n    ///\n    /// The generation has retired, or the library refuses the arguments.\n    {sig}\n\n",
             );
             let _ = write!(
                 defined,
@@ -1421,7 +1504,7 @@ pub struct @Options@ {
         claim(&ident)?;
         let doc_signal = doc_then(
             "    ",
-            self.member_doc(schema_class, &signal.name),
+            &self.member_doc(schema_class, &signal.name),
             &format!(
                 "Calls `run` from the library's turn each time the signal `{}` is told, until the guard is dropped.",
                 signal.name
@@ -1442,10 +1525,14 @@ pub struct @Options@ {
         } else {
             ("        let objects = self.objects.clone();\n", "args")
         };
+        let sig = format!(
+            "pub fn {ident}(&self, mut run: impl FnMut({}) + 'static) -> go::Res<go::typed::Listener>",
+            types.join(", ")
+        );
+        self.declared(schema_class, schema, &sig);
         let _ = write!(
             out,
-            "{doc_signal}    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn {ident}(&self, mut run: impl FnMut({types}) + 'static) -> go::Res<go::typed::Listener> {{\n        let ids = {ids}::of(&self.objects)?;\n{keep}        let reg = self.objects.api.listen(self.object.handle(), ids.s_{name}, move |_, {args}| {{\n            run({reads});\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(go::typed::Listener::new(self.objects.api, reg))\n    }}\n\n",
-            types = types.join(", "),
+            "{doc_signal}    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    {sig} {{\n        let ids = {ids}::of(&self.objects)?;\n{keep}        let reg = self.objects.api.listen(self.object.handle(), ids.s_{name}, move |_, {args}| {{\n            run({reads});\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(go::typed::Listener::new(self.objects.api, reg))\n    }}\n\n",
             reads = reads.join(", "),
             name = snake(schema),
         );
@@ -1503,14 +1590,15 @@ pub struct @Options@ {
                     ""
                 }
             );
+            let field_type = if optional {
+                format!("Option<{closure}>")
+            } else {
+                closure
+            };
+            self.declared(&object.name, schema, format!("pub {ident}: {field_type},"));
             handlers.push(format!(
-                "{}    pub {ident}: {},",
-                doc_then("    ", self.member_doc(&object.name, schema), &note),
-                if optional {
-                    format!("Option<{closure}>")
-                } else {
-                    closure
-                }
+                "{}    pub {ident}: {field_type},",
+                doc_then("    ", &self.member_doc(&object.name, schema), &note),
             ));
             if optional {
                 starts.push(format!("{ident}: None"));
@@ -1740,7 +1828,7 @@ pub trait Finds<S>: Sized {
 "#;
 
 pub(super) fn render(catalog: &Catalog, namespace: &Namespace) -> Result<String, String> {
-    render_described(catalog, namespace, &NO_DOCS)
+    render_described(catalog, namespace, &NO_DOCS, None)
 }
 
 /// [`render`], with the schema's descriptions of the classes as the doc comments of the types and their members.
@@ -1748,8 +1836,10 @@ pub(super) fn render_described(
     catalog: &Catalog,
     namespace: &Namespace,
     docs: &NamespaceDocs,
+    declarations: Option<&Declarations>,
 ) -> Result<String, String> {
-    let gen_ = Renderer::new(catalog, namespace, docs)?;
+    let mut gen_ = Renderer::new(catalog, namespace, docs)?;
+    gen_.declarations = declarations;
     let mut body = String::new();
     let mut ids = String::new();
     let mut fields = Vec::new();
@@ -1832,4 +1922,45 @@ impl Objects {
     text.push_str(&body);
     text.push_str(&ids);
     Ok(text)
+}
+
+/// How the typed API spells the types of a member, for the reference model.
+pub(super) struct Spelling<'a>(Renderer<'a>);
+
+impl<'a> Spelling<'a> {
+    pub(super) fn new(
+        catalog: &'a Catalog,
+        namespace: &'a Namespace,
+        docs: &'a NamespaceDocs,
+    ) -> Result<Spelling<'a>, String> {
+        Renderer::new(catalog, namespace, docs).map(Spelling)
+    }
+
+    /// A property as it is read.
+    pub(super) fn property(&self, property: &Property) -> Result<String, String> {
+        match property.ty {
+            // A closure is given to the library and never read back: the property is the closure type its setter takes.
+            Type::Callback(_) => self.0.param(&property.ty),
+            _ => self.0.getter_type(property),
+        }
+    }
+
+    /// A parameter as the function takes it.
+    pub(super) fn input(&self, field: &Field) -> Result<String, String> {
+        let param = self.0.param(&field.ty)?;
+        Ok(if field.optional {
+            format!("Option<{param}>")
+        } else {
+            param
+        })
+    }
+
+    /// What a method answers.
+    pub(super) fn returns(&self, method: &Method) -> Result<String, String> {
+        Ok(match &method.returns {
+            Some(ty) if method.optional => format!("Option<{}>", self.0.owned(ty)?),
+            Some(ty) => self.0.owned(ty)?,
+            None => "()".to_owned(),
+        })
+    }
 }

@@ -170,6 +170,7 @@ fn examples_command(args: &[String]) -> Result<ExitCode, String> {
         examples.extend(found);
         problems.extend(mistakes);
     }
+    examples.extend(schema_examples(&repo)?);
     if !problems.is_empty() {
         for problem in &problems {
             eprintln!("{problem}");
@@ -636,6 +637,50 @@ fn reference_command(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// The examples the schema files carry (`example` on a class, property, method or signal of a library's catalog), as the examples of a page
+/// are: each is checked in its own language. They are named `schema:<namespace>.<class>[.<member>]` where a page's name goes.
+fn schema_examples(repo: &Path) -> Result<Vec<Example>, String> {
+    let spec = gnoblin_sdkgen::SdkSpec::load(repo)?;
+    let mut found = Vec::new();
+    let mut add = |name: String, notes: &gnoblin_schema::Notes| {
+        let Some(example) = &notes.example else { return };
+        for (language, code) in [
+            (Language::TypeScript, &example.typescript),
+            (Language::Python, &example.python),
+            (Language::Rust, &example.rust),
+        ] {
+            if let Some(code) = code {
+                found.push(Example {
+                    page: name.clone(),
+                    fence_line: 0,
+                    language,
+                    code: code.clone(),
+                    skip: None,
+                    client: false,
+                });
+            }
+        }
+    };
+    for schema in spec.objects.schemas().iter().filter(|schema| schema.local) {
+        for object in schema.objects.iter().filter(|object| object.augment_of.is_none()) {
+            let at = |member: Option<&str>| match member {
+                Some(member) => format!("schema:{}.{}.{member}", schema.namespace, object.name),
+                None => format!("schema:{}.{}", schema.namespace, object.name),
+            };
+            add(at(None), &object.notes);
+            for property in &object.properties {
+                add(at(Some(&property.name)), &property.notes);
+            }
+            for method in &object.methods {
+                add(at(Some(&method.name)), &method.notes);
+            }
+            for signal in &object.signals {
+                add(at(Some(&signal.name)), &signal.notes);
+            }
+        }
+    }
+    Ok(found)
+}
 #[cfg(test)]
 mod tests {
     use super::*;

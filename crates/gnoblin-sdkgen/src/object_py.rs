@@ -496,7 +496,7 @@ fn param_name(field: &Field) -> String {
 }
 
 /// The name of the member of an enum: the value in capitals.
-fn enum_member(value: &str) -> String {
+pub(super) fn enum_member(value: &str) -> String {
     let name = value.replace('-', "_").to_ascii_uppercase();
     if name.starts_with(|ch: char| ch.is_ascii_digit()) {
         format!("V_{name}")
@@ -524,6 +524,8 @@ struct ScriptEvent {
     params: Vec<(String, String)>,
     /// What the event is, for the docstring of `on`.
     doc: String,
+    /// The schema's member the event is of: the signal, or `<property>#changed`.
+    schema: String,
 }
 
 /// A member of a class's lookup list, as the runtime is asked for it.
@@ -785,6 +787,9 @@ impl<'a> Py<'a> {
         }
         for (index, value) in declared.values.iter().enumerate() {
             c.line(format!("{} = {}", enum_member(value), index + 1));
+            c.pydoc(self.view.enum_value_doc(&declared.name, value));
+            self.view
+                .declared(&declared.name, value, format!("{} = {}", enum_member(value), index + 1));
         }
         c.dedent();
         c.blank();
@@ -897,6 +902,14 @@ impl<'a> Py<'a> {
             let field = py_field(property);
             let ty = self.ty(&property.ty, false)?;
             let described = self.stub.then(|| self.view.member_doc(class.name, &property.name));
+            if self.stub {
+                let line = match absent(property) {
+                    Absent::Default(_) => format!("{field}: {ty} = ..."),
+                    Absent::None => format!("{field}: {ty} | None = ..."),
+                    Absent::Required => format!("{field}: {ty}"),
+                };
+                self.view.declared(class.name, &property.name, line);
+            }
             match absent(property) {
                 Absent::Default(default) => {
                     let value = self.default_expr(&property.ty, default)?;
@@ -916,7 +929,7 @@ impl<'a> Py<'a> {
                 )),
                 Absent::Required => c.line(format!("{field}: {ty}")),
             }
-            if let Some(text) = described {
+            if let Some(text) = &described {
                 c.pydoc(text);
             }
         }
@@ -1288,7 +1301,8 @@ impl<'a> Py<'a> {
                         at: Self::at(&lookups, 's', &signal.name),
                         decoders,
                         params,
-                        doc: self.view.member_doc(&object.name, &signal.name).to_owned(),
+                        doc: self.view.description(&object.name, &signal.name).to_owned(),
+                        schema: signal.name.clone(),
                     });
                 }
                 Member::Property(property) if !matches!(property.ty, Type::Callback(_)) => events.push(ScriptEvent {
@@ -1301,6 +1315,7 @@ impl<'a> Py<'a> {
                         self.ty_read(&property.ty, property.always || object.augment_of.is_some())?,
                     )],
                     doc: format!("The property `{}` changed.", property.name),
+                    schema: format!("{}#changed", property.name),
                 }),
                 _ => {}
             }
@@ -1420,7 +1435,7 @@ impl<'a> Py<'a> {
             self.assign_source(c, &format!("self, {}", quote(&name)))?;
         }
         if self.stub && has_instance_members {
-            self.on_stubs(c, &events, !root);
+            self.on_stubs(c, &object.name, &events, !root);
         }
         c.dedent();
         c.blank();
@@ -1521,34 +1536,32 @@ impl<'a> Py<'a> {
     }
 
     /// The overloads of `on` in a stub: a handler for each event, and the decorator form.
-    fn on_stubs(&self, c: &mut CodeWriter, events: &[ScriptEvent], destroy: bool) {
+    fn on_stubs(&self, c: &mut CodeWriter, class: &str, events: &[ScriptEvent], destroy: bool) {
         // The docstring is the first overload's: the events of the class and what each is.
         let mut described = false;
         for event in events {
             let (name, params) = (&event.name, &event.params);
             let types: Vec<&str> = params.iter().map(|(_, ty)| ty.as_str()).collect();
             let handler = format!("Callable[[{}], object]", types.join(", "));
+            let handler_header = format!(
+                "def on(self, event: Literal[{}], handler: {handler}) -> Listener",
+                quote(name)
+            );
+            let decorator_header = format!("def on(self, event: Literal[{}]) -> Callable[[_F], _F]", quote(name));
+            self.view.declared(class, &event.schema, &handler_header);
+            self.view.declared(class, &event.schema, &decorator_header);
             c.line("@overload");
             if described || !self.view.has_docs() {
-                c.line(format!(
-                    "def on(self, event: Literal[{}], handler: {handler}) -> Listener: ...",
-                    quote(name)
-                ));
+                c.line(format!("{handler_header}: ..."));
             } else {
                 described = true;
-                c.line(format!(
-                    "def on(self, event: Literal[{}], handler: {handler}) -> Listener:",
-                    quote(name)
-                ));
+                c.line(format!("{handler_header}:"));
                 c.indent();
                 c.pydoc(&on_doc(events));
                 c.dedent();
             }
             c.line("@overload");
-            c.line(format!(
-                "def on(self, event: Literal[{}]) -> Callable[[_F], _F]: ...",
-                quote(name)
-            ));
+            c.line(format!("{decorator_header}: ..."));
         }
         if events.is_empty() {
             // The base class has `on` whatever the class: with no event to name it raises, and the stub says what it takes.
@@ -1656,8 +1669,10 @@ impl<'a> Py<'a> {
         if callback {
             // Written, never read back: a plain attribute in a stub, a write-only property in the module.
             if self.stub {
+                self.view
+                    .declared(&object.name, &property.name, format!("{ident}: {write_ty}"));
                 c.line(format!("{ident}: {write_ty}"));
-                c.pydoc(schema);
+                c.pydoc(&schema);
             } else {
                 self.named(c, class, &ident, false, Some(&spell));
                 c.line(format!("def _set_{ident}(self, value):"));
@@ -1669,6 +1684,8 @@ impl<'a> Py<'a> {
         // The member an augment adds to a class of another library is read as the object, as in TypeScript and Rust: it is the augmenting
         // library's own, and `T | None` is for what the library the object belongs to may not have.
         let read = self.ty_read(&property.ty, property.always || object.augment_of.is_some())?;
+        self.view
+            .declared(&object.name, &property.name, format!("def {ident}(self) -> {read}"));
         c.line("@builtins.property");
         self.named(c, class, &ident, false, Some(&spell));
         // A property the catalog says the library `always` has an object for is read as one: a none answer is the library breaking its word,
@@ -1682,11 +1699,16 @@ impl<'a> Py<'a> {
         self.def_described(
             c,
             &format!("def {ident}(self) -> {read}"),
-            schema,
+            &schema,
             &format!("The property `{}`.", property.name),
             &[format!("return {body}")],
         );
         if !property.readonly {
+            self.view.declared(
+                &object.name,
+                &property.name,
+                format!("def {ident}(self, value: {write_ty}) -> None"),
+            );
             c.line(format!("@{ident}.setter"));
             self.named(c, class, &ident, false, Some(&spell));
             self.def(
@@ -1697,6 +1719,11 @@ impl<'a> Py<'a> {
             );
             if property.animated {
                 let timed = format!("set_{ident}_timed");
+                self.view.declared(
+                    &object.name,
+                    &property.name,
+                    format!("def {timed}(self, value: {write_ty}, timing: Timing) -> None"),
+                );
                 claim(&timed)?;
                 self.named(c, class, &timed, false, Some(&spell));
                 self.def(
@@ -1753,7 +1780,12 @@ impl<'a> Py<'a> {
         if method.function {
             c.line("@staticmethod");
             self.named(c, class, &ident, true, Some(&spell));
-            self.def_described(c, &format!("def {ident}({params}) -> {returns}"), schema, &doc, &body);
+            self.view.declared(
+                &object.name,
+                &method.name,
+                format!("def {ident}({params}) -> {returns}"),
+            );
+            self.def_described(c, &format!("def {ident}({params}) -> {returns}"), &schema, &doc, &body);
         } else {
             let params = if params.is_empty() {
                 "self".to_owned()
@@ -1761,7 +1793,12 @@ impl<'a> Py<'a> {
                 format!("self, {params}")
             };
             self.named(c, class, &ident, false, Some(&spell));
-            self.def_described(c, &format!("def {ident}({params}) -> {returns}"), schema, &doc, &body);
+            self.view.declared(
+                &object.name,
+                &method.name,
+                format!("def {ident}({params}) -> {returns}"),
+            );
+            self.def_described(c, &format!("def {ident}({params}) -> {returns}"), &schema, &doc, &body);
         }
         Ok(())
     }
@@ -1811,11 +1848,16 @@ impl<'a> Py<'a> {
                 Some(ty) => self.ty(ty, true)?,
                 None => "None".to_owned(),
             };
+            self.view.declared(
+                &object.name,
+                &method.name,
+                format!("def {ident}({params}) -> {returns}"),
+            );
             if self.stub {
                 self.def_described(
                     c,
                     &format!("def {ident}({params}) -> {returns}"),
-                    self.view.member_doc(&object.name, &method.name),
+                    &self.view.member_doc(&object.name, &method.name),
                     "",
                     &[],
                 );
@@ -1937,11 +1979,16 @@ impl Py<'_> {
         ));
         for property in &class.properties {
             let ident = member_name(&property.name, &property.extras.export.py);
+            self.view.declared(
+                &class.name,
+                &property.name,
+                format!("def {ident}(self) -> {}", self.ty_read(&property.ty, true)?),
+            );
             c.line("@builtins.property");
             self.def_described(
                 c,
                 &format!("def {ident}(self) -> {}", self.ty_read(&property.ty, true)?),
-                self.view.member_doc(&class.name, &property.name),
+                &self.view.member_doc(&class.name, &property.name),
                 "",
                 &[],
             );
@@ -1966,7 +2013,9 @@ impl Py<'_> {
             let doc = self.view.member_doc(&class.name, &method.name);
             if getters.is_some_and(|getters| getters.contains(&method.name)) {
                 c.line("@builtins.property");
-                self.def_described(c, &format!("def {ident}(self) -> {returns}"), doc, "", &[]);
+                self.view
+                    .declared(&class.name, &method.name, format!("def {ident}(self) -> {returns}"));
+                self.def_described(c, &format!("def {ident}(self) -> {returns}"), &doc, "", &[]);
                 if class.augment_setters.contains(&method.name) {
                     let ty = method
                         .returns
@@ -1979,6 +2028,11 @@ impl Py<'_> {
                         input
                     };
                     c.line(format!("@{ident}.setter"));
+                    self.view.declared(
+                        &class.name,
+                        &method.name,
+                        format!("def {ident}(self, value: {input}) -> None"),
+                    );
                     self.def_described(c, &format!("def {ident}(self, value: {input}) -> None"), "", "", &[]);
                 }
             } else {
@@ -1988,7 +2042,9 @@ impl Py<'_> {
                 } else {
                     format!("self, {params}")
                 };
-                self.def_described(c, &format!("def {ident}({params}) -> {returns}"), doc, "", &[]);
+                self.view
+                    .declared(&class.name, &method.name, format!("def {ident}({params}) -> {returns}"));
+                self.def_described(c, &format!("def {ident}({params}) -> {returns}"), &doc, "", &[]);
             }
         }
         c.dedent();
@@ -2157,4 +2213,30 @@ pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String
         }
     }
     Ok(c.finish())
+}
+
+/// How the stubs spell the types of a member, for the reference model: the property as it is read, a parameter or a field as it is given,
+/// a result as it is returned.
+pub(super) mod spelling {
+    use gnoblin_schema::{Field, Method, ObjectType, Property};
+
+    use super::Py;
+    use crate::object_script::ScriptView;
+
+    pub(crate) fn property(view: &ScriptView<'_>, object: &ObjectType, property: &Property) -> Result<String, String> {
+        Py { view, stub: true }.ty_read(&property.ty, property.always || object.augment_of.is_some())
+    }
+
+    pub(crate) fn input(view: &ScriptView<'_>, field: &Field) -> Result<String, String> {
+        Py { view, stub: true }.ty(&field.ty, true)
+    }
+
+    pub(crate) fn returns(view: &ScriptView<'_>, method: &Method) -> Result<String, String> {
+        let py = Py { view, stub: true };
+        Ok(match &method.returns {
+            Some(ty) if method.optional => py.ty_read(ty, false)?,
+            Some(ty) => py.ty(ty, false)?,
+            None => "None".to_owned(),
+        })
+    }
 }

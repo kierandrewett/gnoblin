@@ -539,7 +539,7 @@ fn class_name(object: &ObjectType) -> String {
     values::js_class(&object.name, &object.export)
 }
 
-fn member_name(name: &str, export: &Option<String>) -> String {
+pub(super) fn member_name(name: &str, export: &Option<String>) -> String {
     export.clone().unwrap_or_else(|| camel(name))
 }
 
@@ -1812,16 +1812,18 @@ impl Js<'_> {
         c.line(format!("interface {} {{", class_name(target)));
         c.indent();
         for property in &class.properties {
-            c.jsdoc(self.view.member_doc(&class.name, &property.name));
+            c.jsdoc(&self.view.member_doc(&class.name, &property.name));
             let ident = member_name(&property.name, &property.extras.export.js);
-            c.line(format!("readonly {ident}: {};", self.ts(&property.ty, false)?));
+            let line = format!("readonly {ident}: {};", self.ts(&property.ty, false)?);
+            self.view.declared(&class.name, &property.name, &line);
+            c.line(line);
         }
         let getters = class.augment_getters.as_deref();
         for method in &class.methods {
             if is_augment_setter(class, &method.name) {
                 continue;
             }
-            c.jsdoc(self.view.member_doc(&class.name, &method.name));
+            c.jsdoc(&self.view.member_doc(&class.name, &method.name));
             let ident = member_name(&method.name, &method.extras.export.js);
             let returns = match &method.returns {
                 Some(ty) if method.optional => self.ts_read(ty)?,
@@ -1847,13 +1849,22 @@ impl Js<'_> {
                     } else {
                         input
                     };
-                    c.line(format!("get {ident}(): {returns};"));
-                    c.line(format!("set {ident}(value: {input});"));
+                    for line in [
+                        format!("get {ident}(): {returns};"),
+                        format!("set {ident}(value: {input});"),
+                    ] {
+                        self.view.declared(&class.name, &method.name, &line);
+                        c.line(line);
+                    }
                 } else {
-                    c.line(format!("readonly {ident}: {returns};"));
+                    let line = format!("readonly {ident}: {returns};");
+                    self.view.declared(&class.name, &method.name, &line);
+                    c.line(line);
                 }
             } else {
-                c.line(format!("{ident}({}): {returns};", self.params_dts(params)?));
+                let line = format!("{ident}({}): {returns};", self.params_dts(params)?);
+                self.view.declared(&class.name, &method.name, &line);
+                c.line(line);
             }
         }
         for (kind, method) in augment_finds(class) {
@@ -2052,15 +2063,17 @@ impl Js<'_> {
         c.line(format!("export class {name} {{"));
         c.indent();
         for property in class.properties {
-            c.jsdoc(self.view.member_doc(class.name, &property.name));
+            c.jsdoc(&self.view.member_doc(class.name, &property.name));
             let field = js_field(property);
             let ty = self.ts(&property.ty, false)?;
             let readonly = if class.immutable { "readonly " } else { "" };
-            if property.optional {
-                c.line(format!("{readonly}{field}?: {ty} | undefined;"));
+            let line = if property.optional {
+                format!("{readonly}{field}?: {ty} | undefined;")
             } else {
-                c.line(format!("{readonly}{field}: {ty};"));
-            }
+                format!("{readonly}{field}: {ty};")
+            };
+            self.view.declared(class.name, &property.name, &line);
+            c.line(line);
         }
         let all_optional = class
             .properties
@@ -2078,7 +2091,7 @@ impl Js<'_> {
         c.line(format!("export interface {name}Init {{"));
         c.indent();
         for property in class.properties {
-            c.jsdoc(self.view.member_doc(class.name, &property.name));
+            c.jsdoc(&self.view.member_doc(class.name, &property.name));
             let field = js_field(property);
             let ty = self.ts(&property.ty, true)?;
             if property.default.is_some() || property.optional {
@@ -2123,7 +2136,7 @@ impl Js<'_> {
         c.line(format!("export interface {} {{", self.options_type(object)?));
         c.indent();
         for property in &ctor.options {
-            self.doc_or(c, self.view.member_doc(&object.name, &property.name), || {
+            self.doc_or(c, &self.view.member_doc(&object.name, &property.name), || {
                 format!("The property `{}`.", property.name)
             });
             c.line(format!(
@@ -2176,9 +2189,9 @@ impl Js<'_> {
                     Some(property) => c.jsdoc(&format!(
                         "The property `{}` changed. {}",
                         property.name,
-                        self.view.member_doc(&object.name, &property.name)
+                        self.view.description(&object.name, &property.name)
                     )),
-                    None => c.jsdoc(self.view.member_doc(&object.name, &lookup.name)),
+                    None => c.jsdoc(&self.view.member_doc(&object.name, &lookup.name)),
                 }
                 let args: Vec<String> = match property {
                     Some(property) => vec![format!(
@@ -2198,7 +2211,14 @@ impl Js<'_> {
                         })
                         .collect::<Result<_, String>>()?,
                 };
-                c.line(format!("{event}: [{}];", args.join(", ")));
+                let line = format!("{event}: [{}];", args.join(", "));
+                if property.is_none() {
+                    self.view.declared(&object.name, &lookup.name, &line);
+                } else {
+                    self.view
+                        .declared(&object.name, &format!("{}#changed", lookup.name), &line);
+                }
+                c.line(line);
             }
             c.dedent();
             c.line("}");
@@ -2243,34 +2263,40 @@ impl Js<'_> {
             match &slot.member {
                 Member::Property(property) => self.property_dts(c, &object.name, property)?,
                 Member::Method(method) => {
-                    c.jsdoc(self.view.member_doc(&object.name, &method.name));
+                    c.jsdoc(&self.view.member_doc(&object.name, &method.name));
                     let ident = member_name(&method.name, &method.extras.export.js);
                     let returns = match &method.returns {
                         Some(ty) if method.optional => self.ts_read(ty)?,
                         Some(ty) => self.ts(ty, false)?,
                         None => "void".to_owned(),
                     };
-                    c.line(format!(
+                    let line = format!(
                         "{}{ident}({}): {returns};",
                         if method.function { "static " } else { "" },
                         self.params_dts(&method.params)?
-                    ));
+                    );
+                    self.view.declared(&object.name, &method.name, &line);
+                    c.line(line);
                 }
                 Member::Signal(_) => {}
             }
         }
         if has_instance_members {
             if !events.is_empty() {
-                c.line(format!(
+                let line = format!(
                     "on<K extends keyof {name}Events>(event: K, handler: (...args: {name}Events[K]) => void): Listener;"
-                ));
+                );
+                self.view.declared(&object.name, "#on", &line);
+                c.line(line);
                 if object.name == "gnoblin" {
                     for (event, lookup, _, _) in events.iter().filter(|(_, lookup, _, _)| lookup.kind == 's') {
-                        c.line(format!(
+                        let line = format!(
                             "on{}(handler: (...args: {name}Events[{}]) => void): Listener;",
                             pascal(&lookup.name),
                             quote(event)
-                        ));
+                        );
+                        self.view.declared(&object.name, &lookup.name, &line);
+                        c.line(line);
                     }
                 }
             }
@@ -2307,7 +2333,7 @@ impl Js<'_> {
     }
 
     fn property_dts(&self, c: &mut CodeWriter, class: &str, property: &Property) -> Result<(), String> {
-        c.jsdoc(self.view.member_doc(class, &property.name));
+        c.jsdoc(&self.view.member_doc(class, &property.name));
         let ident = member_name(&property.name, &property.extras.export.js);
         let callback = matches!(property.ty, Type::Callback(_));
         let read = if callback {
@@ -2316,23 +2342,28 @@ impl Js<'_> {
             self.ts_read_property(property)?
         };
         let write = self.ts(&property.ty, true)?;
+        let mut lines: Vec<String> = Vec::new();
         if property.readonly {
-            c.line(format!("readonly {ident}: {read};"));
-            return Ok(());
-        }
-        if callback {
-            c.line(format!("set {ident}(value: {write});"));
-        } else if read == write {
-            c.line(format!("{ident}: {read};"));
+            lines.push(format!("readonly {ident}: {read};"));
         } else {
-            c.line(format!("get {ident}(): {read};"));
-            c.line(format!("set {ident}(value: {write});"));
+            if callback {
+                lines.push(format!("set {ident}(value: {write});"));
+            } else if read == write {
+                lines.push(format!("{ident}: {read};"));
+            } else {
+                lines.push(format!("get {ident}(): {read};"));
+                lines.push(format!("set {ident}(value: {write});"));
+            }
+            if property.animated {
+                lines.push(format!(
+                    "set{}Timed(value: {write}, timing: Timing): void;",
+                    pascal(&ident)
+                ));
+            }
         }
-        if property.animated {
-            c.line(format!(
-                "set{}Timed(value: {write}, timing: Timing): void;",
-                pascal(&ident)
-            ));
+        for line in lines {
+            self.view.declared(class, &property.name, &line);
+            c.line(line);
         }
         Ok(())
     }
@@ -2348,7 +2379,7 @@ impl Js<'_> {
         c.line(format!("export declare abstract class {name} {{"));
         c.indent();
         for method in &object.methods {
-            c.jsdoc(self.view.member_doc(&object.name, &method.name));
+            c.jsdoc(&self.view.member_doc(&object.name, &method.name));
             let ident = member_name(&method.name, &method.extras.export.js);
             let returns = match &method.returns {
                 // The script's method may answer nothing, which the library reads as the method's comment says.
@@ -2356,14 +2387,13 @@ impl Js<'_> {
                 Some(ty) => self.ts(ty, true)?,
                 None => "void".to_owned(),
             };
-            if method.required {
-                c.line(format!(
-                    "abstract {ident}({}): {returns};",
-                    self.params_dts(&method.params)?
-                ));
+            let line = if method.required {
+                format!("abstract {ident}({}): {returns};", self.params_dts(&method.params)?)
             } else {
-                c.line(format!("{ident}?({}): {returns};", self.params_dts(&method.params)?));
-            }
+                format!("{ident}?({}): {returns};", self.params_dts(&method.params)?)
+            };
+            self.view.declared(&object.name, &method.name, &line);
+            c.line(line);
         }
         c.dedent();
         c.line("}");
@@ -2417,14 +2447,32 @@ pub(super) fn render_dts(view: &ScriptView<'_>) -> Result<String, String> {
     c.blank();
     for declared in view.enums.values() {
         let values: Vec<String> = declared.values.iter().map(|value| quote(value)).collect();
+        for value in &declared.values {
+            view.declared(&declared.name, value, quote(value));
+        }
         js.doc_or(&mut c, view.enum_doc(&declared.name), || {
             format!("The enum `{}`.", declared.name)
         });
-        c.line(format!(
-            "export type {} = {};",
-            pascal(&declared.name),
-            values.join(" | ")
-        ));
+        if declared
+            .values
+            .iter()
+            .any(|value| !view.enum_value_doc(&declared.name, value).is_empty())
+        {
+            c.line(format!("export type {} =", pascal(&declared.name)));
+            c.indent();
+            for (index, value) in declared.values.iter().enumerate() {
+                c.jsdoc(view.enum_value_doc(&declared.name, value));
+                let end = if index + 1 == declared.values.len() { ";" } else { "" };
+                c.line(format!("| {}{end}", quote(value)));
+            }
+            c.dedent();
+        } else {
+            c.line(format!(
+                "export type {} = {};",
+                pascal(&declared.name),
+                values.join(" | ")
+            ));
+        }
     }
     c.blank();
     for object in view.objects.values() {
@@ -2448,4 +2496,30 @@ pub(super) fn render_dts(view: &ScriptView<'_>) -> Result<String, String> {
         js.augment_dts(&mut c, class, target)?;
     }
     Ok(c.finish())
+}
+
+/// How the declarations spell the types of a member, for the reference model: the property as it is read, a parameter or a field as it is
+/// given, a result as it is returned.
+pub(super) mod spelling {
+    use gnoblin_schema::{Field, Method, Property};
+
+    use super::Js;
+    use crate::object_script::ScriptView;
+
+    pub(crate) fn property(view: &ScriptView<'_>, property: &Property) -> Result<String, String> {
+        Js { view }.ts_read_property(property)
+    }
+
+    pub(crate) fn input(view: &ScriptView<'_>, field: &Field) -> Result<String, String> {
+        Js { view }.ts(&field.ty, true)
+    }
+
+    pub(crate) fn returns(view: &ScriptView<'_>, method: &Method) -> Result<String, String> {
+        let js = Js { view };
+        Ok(match &method.returns {
+            Some(ty) if method.optional => js.ts_read(ty)?,
+            Some(ty) => js.ts(ty, false)?,
+            None => "void".to_owned(),
+        })
+    }
 }

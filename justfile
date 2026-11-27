@@ -180,6 +180,15 @@ oracle-check:
 docs-parity:
     cargo xtask docs-parity
 
+# Count the schema tables that have no description comment (classes, properties, methods, parameters, signals, signal fields, variants,
+# enums, enum values, callbacks) and the schema files that have no `title`. Report-only: it exits 0. `just docs-coverage-fail` fails on a gap.
+docs-coverage:
+    cargo xtask docs-coverage --counts
+
+# The same, failing when any table has no description or any file has no title.
+docs-coverage-fail:
+    cargo xtask docs-coverage --fail
+
 # Minimum supported Rust version: `rust-version` in Cargo.toml, measured against the
 # exact pinned dependencies. Needs `rustup toolchain install 1.97.0 --profile minimal`
 # locally; the CI `msrv` job installs it. Keep this version equal to `rust-version`.
@@ -276,7 +285,7 @@ js-check:
     git ls-files -z '*.ts' '*.d.ts' | xargs -0 npx --yes prettier@3.9.6 --check
 
 # The root workspace's whole gate, in the order that fails fastest.
-workspace-ci: js-check fmt-check build clippy test deps logging dupes docs-parity abi-check native-libs gen-sdks-check deny
+workspace-ci: js-check fmt-check build clippy test deps logging dupes docs-parity docs-coverage abi-check native-libs gen-sdks-check deny
 
 # Everything CI runs: the root workspace, the extension workspace and the core build with no std providers.
 ci: workspace-ci ext-ci core-only

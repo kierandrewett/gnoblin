@@ -13,30 +13,63 @@
 namespace = "gnoblin.model"
 version = "0.2.0"
 local = true
+title = "Input and shortcuts"
 
 # Where a binding comes from. A device's binding runs before a layout's, and a layout's before the context's own.
 [[enum]]
 name = "binding_tier"
 since = "0.2.0"
-values = ["context", "layout", "device"]
+values = [
+    # The context's own bindings.
+    "context",
+    # The bindings of a layout.
+    "layout",
+    # The bindings of one device.
+    "device",
+]
 
 # What a trigger names.
 [[enum]]
 name = "trigger_kind"
 since = "0.2.0"
-values = ["key", "pointer", "wheel", "gesture"]
+values = [
+    # A key or a chord of keys.
+    "key",
+    # A pointer button.
+    "pointer",
+    # A scroll wheel.
+    "wheel",
+    # A touchpad gesture.
+    "gesture",
+]
 
 # The step of a drag or a gesture that an event reports. A gesture's first step is `start`, as a drag's is.
 [[enum]]
 name = "binding_phase"
 since = "0.2.0"
-values = ["start", "update", "end", "cancel"]
+values = [
+    # The drag or the gesture begins.
+    "start",
+    # The drag or the gesture moves on.
+    "update",
+    # The drag or the gesture ends.
+    "end",
+    # The drag or the gesture is abandoned.
+    "cancel",
+]
 
 # How a pointer or a touchpad moves the pointer: the compositor's own curve, no curve, or the curve that follows the speed.
 [[enum]]
 name = "acceleration_profile"
 since = "0.2.0"
-values = ["default", "flat", "adaptive"]
+values = [
+    # The compositor's own curve.
+    "default",
+    # No curve: the pointer moves by what the device reports.
+    "flat",
+    # The curve that follows the speed of the hand.
+    "adaptive",
+]
 
 # A binding's function: it handles the press, or declines it by answering `false`, which gives the press to the next candidate. Any other
 # answer, nothing included, is handled.
@@ -1092,6 +1125,9 @@ name = "repeat_rate"
 type = "double"
 since = "0.2.0"
 optional = true
+range = [0.1, 1000]
+unit = "keys/s"
+raises = ["invalid_argument"]
 
 # Milliseconds a key is held before it repeats, a whole number from 1 to 10000, or none for the system's. The document holds it as
 # `input.keyboard.delay`.
@@ -1100,12 +1136,17 @@ name = "repeat_delay"
 type = "uint"
 since = "0.2.0"
 optional = true
+range = [1, 10000]
+unit = "ms"
+raises = ["invalid_argument"]
 
 # Takes the setting `name` (`repeat_rate` or `repeat_delay`) back to the system's. Refused for another name.
 [[object.method]]
 name = "reset"
 since = "0.2.0"
+raises = ["invalid_argument"]
 
+# The setting to take back: `repeat_rate` or `repeat_delay`. Any other name is refused.
 [[object.method.param]]
 name = "name"
 type = "string"
@@ -1123,6 +1164,24 @@ name = "sensitivity"
 type = "double"
 since = "0.2.0"
 optional = true
+range = [-1, 1]
+raises = ["invalid_argument"]
+example.typescript = '''
+import { gnoblin, Mouse } from "gnoblin-core/generated/objects";
+
+for (const device of gnoblin.input.devices) {
+    if (device instanceof Mouse) {
+        device.sensitivity = -0.2;
+    }
+}
+'''
+example.python = '''
+from gnoblin.objects.model import Gnoblin, Mouse
+
+for device in Gnoblin.get().input.devices:
+    if isinstance(device, Mouse):
+        device.sensitivity = -0.2
+'''
 
 # The acceleration curve, or none for the system's. The document holds it as `input.mouse.accel-profile`.
 [[object.property]]
@@ -1130,6 +1189,7 @@ name = "acceleration"
 type = "enum:acceleration_profile"
 since = "0.2.0"
 optional = true
+raises = ["invalid_argument"]
 
 # Reverses the scroll direction, or none for the system's. The document holds it as `input.mouse.natural-scroll`.
 [[object.property]]
@@ -1137,12 +1197,15 @@ name = "natural_scroll"
 type = "bool"
 since = "0.2.0"
 optional = true
+raises = ["invalid_argument"]
 
 # Takes the setting `name` (`sensitivity`, `acceleration` or `natural_scroll`) back to the system's. Refused for another name.
 [[object.method]]
 name = "reset"
 since = "0.2.0"
+raises = ["invalid_argument"]
 
+# The setting to take back: `sensitivity`, `acceleration` or `natural_scroll`. Any other name is refused.
 [[object.method.param]]
 name = "name"
 type = "string"
@@ -1160,6 +1223,8 @@ name = "sensitivity"
 type = "double"
 since = "0.2.0"
 optional = true
+range = [-1, 1]
+raises = ["invalid_argument"]
 
 # As `mouse.acceleration`, for `input.touchpad.accel-profile`.
 [[object.property]]
@@ -1167,6 +1232,7 @@ name = "acceleration"
 type = "enum:acceleration_profile"
 since = "0.2.0"
 optional = true
+raises = ["invalid_argument"]
 
 # As `mouse.natural_scroll`, for `input.touchpad.natural-scroll`.
 [[object.property]]
@@ -1174,6 +1240,7 @@ name = "natural_scroll"
 type = "bool"
 since = "0.2.0"
 optional = true
+raises = ["invalid_argument"]
 
 # Makes a tap act as a click, or none for the system's. The document holds it as `input.touchpad.tap-to-click`.
 [[object.property]]
@@ -1181,12 +1248,15 @@ name = "tap_to_click"
 type = "bool"
 since = "0.2.0"
 optional = true
+raises = ["invalid_argument"]
 
 # Takes the setting `name` (`sensitivity`, `acceleration`, `natural_scroll` or `tap_to_click`) back to the system's. Refused for another name.
 [[object.method]]
 name = "reset"
 since = "0.2.0"
+raises = ["invalid_argument"]
 
+# The setting to take back: `sensitivity`, `acceleration`, `natural_scroll` or `tap_to_click`. Any other name is refused.
 [[object.method.param]]
 name = "name"
 type = "string"

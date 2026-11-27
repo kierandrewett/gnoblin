@@ -15,10 +15,12 @@
 //!
 //! Adding a language is one [`Target`] implementation and one line in [`targets`]; `docs/sdk-generator.md` is the contract.
 //!
-//! The descriptions of the classes (the comments above each class, property, method, signal and enum in the schema files) are read once
-//! into [`SdkSpec::docs`], and the declaration targets (`object-types`, `object-api`) write them as the doc comments of their language
-//! (`/** */`, a docstring, `///`). The generated reference of the website is the tool of each language run over those declarations, so
-//! a description is the same sentence in an editor, in TypeDoc, in Sphinx and in rustdoc.
+//! The descriptions of the classes (the comments above each class, property, method, parameter, signal, signal field, enum and enum value
+//! in the schema files) are read once into [`SdkSpec::docs`], and the declaration targets (`object-types`, `object-api`) write them, with
+//! the range, unit, default, error codes and example of a member, as the doc comments of their language (`/** */`, a docstring, `///`).
+//! The generated reference of the website is the tool of each language run over those declarations, so a description is the same sentence
+//! in an editor, in TypeDoc, in Sphinx and in rustdoc. The `reference` target writes the same facts, and the declarations the other
+//! targets wrote, as one JSON file.
 //!
 //! The targets, and the logical paths they write (relative to the output directory):
 //!
@@ -28,10 +30,14 @@
 //! | `std-dyn`    | `rust-std-dyn/generated.rs`: the dynamic call of every std table function                      |
 //! | `python`     | `python/gnoblin/`: typed node classes and `.pyi`, ABI constants, verbs, the std bindings       |
 //! | `typescript` | `js/gnoblin-core/generated/` and `js/gnoblin-std/generated/`: types, schema table, ABI, verbs  |
+//! | `reference`  | `reference/reference.json`: every class, member, enum and callback of the libraries, with its docs |
 
 pub mod abi_c;
 #[cfg(test)]
 mod augment_tests;
+mod coverage;
+mod declarations;
+mod describe;
 mod docs;
 mod layout_schema;
 mod layouts;
@@ -43,6 +49,7 @@ mod object_script;
 mod objects;
 mod python;
 mod python_std;
+mod reference;
 mod rust;
 mod std_dyn;
 mod surface;
@@ -56,6 +63,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub use coverage::{Coverage, KindCoverage, coverage};
 pub use docs::{DocLanguage, Docs, NamespaceDocs};
 pub use model::SdkSpec;
 pub use surface::{LockReport, check_surface_lock, render_surface_locks, surface_lines};
@@ -103,6 +111,7 @@ pub fn targets() -> Vec<Box<dyn Target>> {
         Box::new(object_script::ObjectJsTarget),
         Box::new(object_script::ObjectPyTarget),
         Box::new(object_script::ObjectTypesTarget),
+        Box::new(reference::ReferenceTarget),
     ]
 }
 
@@ -406,9 +415,16 @@ mod tests {
         let spec = SdkSpec::load(&root()).expect("the specification loads");
         for (path, _) in files_of(&render(&spec, None).expect("every target renders")) {
             assert!(
-                ["rust-core/", "rust-std-dyn/", "rust-objects/", "python/", "js/"]
-                    .iter()
-                    .any(|prefix| path.starts_with(prefix)),
+                [
+                    "rust-core/",
+                    "rust-std-dyn/",
+                    "rust-objects/",
+                    "python/",
+                    "js/",
+                    "reference/"
+                ]
+                .iter()
+                .any(|prefix| path.starts_with(prefix)),
                 "{path}"
             );
         }
