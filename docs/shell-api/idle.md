@@ -76,7 +76,9 @@ A watch is not idle when it starts. It becomes idle once the session has been id
 - `onIdle(watch)` runs for every idle period until you cancel the watch.
 - `onResume(watch)` runs on the first input after an idle period, or when a hold appears.
 - `onClosed(watch, reason)` runs once when the watch ends. `reason` is `"cancelled"`.
-- A watch made while the session is already idle runs `onIdle` at once.
+- A watch made while the session is already idle runs `onIdle` from the next turn, after the call that made it has returned.
+  A listener passed to `watch` hears it, and so does one added to the returned watch straight after, such as
+  `watch.on("idle", ...)` in TypeScript.
 
 An `IdleListener` is a class with optional methods, or an object that has some of them. All three methods are optional.
 
