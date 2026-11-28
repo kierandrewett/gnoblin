@@ -133,8 +133,15 @@ pub fn schema_text() -> String {
             out.push_str("[[enum]]\n");
             let _ = writeln!(out, "name = {}", toml_text(&name));
             out.push_str("since = \"0.2.0\"\n");
-            let names: Vec<String> = members.iter().map(|member| toml_text(member.name)).collect();
-            let _ = writeln!(out, "values = [{}]", names.join(", "));
+            // One value to a line with the comment of its doc above it, which is where the descriptions of an enum's values are read.
+            out.push_str("values = [\n");
+            for member in members {
+                if !member.doc.is_empty() {
+                    comment(&mut out, member.doc);
+                }
+                let _ = writeln!(out, "{},", toml_text(member.name));
+            }
+            out.push_str("]\n");
         }
         out.push('\n');
         comment(&mut out, kind.doc);
@@ -185,7 +192,11 @@ pub fn schema_text() -> String {
                 );
             }
             for arg in action.args {
-                out.push_str("\n[[object.method.param]]\n");
+                out.push('\n');
+                if !arg.doc.is_empty() {
+                    comment(&mut out, arg.doc);
+                }
+                out.push_str("[[object.method.param]]\n");
                 let _ = writeln!(out, "name = {}", toml_text(arg.name));
                 let _ = writeln!(out, "type = {}", toml_text(&type_of(kind.name, arg.name, &arg.value)));
                 if arg.value.optional {
@@ -274,6 +285,46 @@ mod tests {
         assert!(rust.contains("pub fn move_split"));
         assert!(rust.contains("pub set_split: Option<"));
         assert!(!rust.contains("pub move_split: Option<"));
+    }
+
+    /// The docs of a layout's enum values and method arguments are in `layouts.rs`, and the catalog keeps them: a value or an argument of
+    /// the table that has a doc has the same words as the comment above it in the schema text.
+    #[test]
+    fn the_docs_of_enum_values_and_method_arguments_reach_the_schema_text() {
+        let (_, docs) = crate::docs::parse_docs(&schema_text());
+        let words = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let mut values = 0;
+        let mut arguments = 0;
+        for kind in LAYOUT_KINDS {
+            for (name, members) in enums_of(kind.name, kind.options, kind.actions) {
+                for member in members.iter().filter(|member| !member.doc.is_empty()) {
+                    assert_eq!(
+                        docs.enum_value(&name, member.name),
+                        words(member.doc),
+                        "{name}.{}",
+                        member.name
+                    );
+                    values += 1;
+                }
+            }
+            for action in kind.actions.iter().filter(|action| !action.is_reading()) {
+                for arg in action.args.iter().filter(|arg| !arg.doc.is_empty()) {
+                    let described = docs.child(&class_name(kind.name), action.name, arg.name, |_| None);
+                    assert_eq!(described, words(arg.doc), "{}.{}({})", kind.name, action.name, arg.name);
+                    arguments += 1;
+                }
+            }
+        }
+        assert!(
+            values > 0 && arguments > 0,
+            "the table documents values ({values}) and arguments ({arguments})"
+        );
+        // One of each, by name.
+        let angle = docs.child("dwindle_layout", "rotate_split", "angle", |_| None);
+        assert_eq!(
+            angle,
+            "Degrees clockwise, a multiple of 90; negative turns the other way."
+        );
     }
 
     #[test]
