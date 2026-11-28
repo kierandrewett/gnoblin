@@ -21,19 +21,54 @@ title = "Displays"
 [[enum]]
 name = "present_mode"
 since = "0.2.0"
-values = ["single", "mirror", "span"]
+values = [
+    # The display presents one output.
+    "single",
+    # The first output is copied to the others.
+    "mirror",
+    # One workspace is laid out over the union of the outputs, which show a part each.
+    "span",
+]
 
 # The transforms an output takes. `rotate-90`, `rotate-180` and `rotate-270` are the compositor's `90`, `180` and `270`.
 [[enum]]
 name = "output_transform"
 since = "0.2.0"
-values = ["normal", "rotate-90", "rotate-180", "rotate-270", "flipped", "flipped-90", "flipped-180", "flipped-270"]
+values = [
+    # No rotation and no reflection.
+    "normal",
+    # Rotated by 90 degrees, the compositor's `90`.
+    "rotate-90",
+    # Rotated by 180 degrees, the compositor's `180`.
+    "rotate-180",
+    # Rotated by 270 degrees, the compositor's `270`.
+    "rotate-270",
+    # Reflected.
+    "flipped",
+    # Reflected and rotated by 90 degrees.
+    "flipped-90",
+    # Reflected and rotated by 180 degrees.
+    "flipped-180",
+    # Reflected and rotated by 270 degrees.
+    "flipped-270",
+]
 
 # Where a profile puts its output: at a pixel position, or against a side of another output.
 [[enum]]
 name = "position_kind"
 since = "0.2.0"
-values = ["absolute", "right_of", "left_of", "above", "below"]
+values = [
+    # At the pixel position `x`, `y`.
+    "absolute",
+    # To the right of another output.
+    "right_of",
+    # To the left of another output.
+    "left_of",
+    # Above another output.
+    "above",
+    # Below another output.
+    "below",
+]
 
 # ---- records -------------------------------------------------------------------------------------------------------------------------
 
@@ -91,6 +126,7 @@ since = "0.2.0"
 name = "x"
 type = "int"
 since = "0.2.0"
+unit = "px"
 optional = true
 
 # For `absolute`: the vertical position in logical pixels.
@@ -98,6 +134,7 @@ optional = true
 name = "y"
 type = "int"
 since = "0.2.0"
+unit = "px"
 optional = true
 
 # For a relative position: the profile whose output this one is placed against.
@@ -140,6 +177,7 @@ optional = true
 name = "scale"
 type = "double"
 since = "0.2.0"
+range = [0.5, 4]
 optional = true
 
 # Composes the output at this multiple of its mode, from 1 to 16. Values 1, 2 and 4 are recommended; another value is accepted with a
@@ -148,6 +186,7 @@ optional = true
 name = "supersample"
 type = "double"
 since = "0.2.0"
+range = [1, 16]
 optional = true
 
 # Rotation and reflection to request.
@@ -224,6 +263,7 @@ readonly = true
 name = "id"
 type = "string"
 since = "0.2.0"
+raises = ["invalid_state"]
 
 # What the profile asks of its output. Setting it replaces every key. A position that depends on itself through other profiles is refused.
 [[object.property]]
@@ -246,17 +286,23 @@ since = "0.2.0"
 function = true
 returns = "string"
 
+# The width of the mode in pixels, a whole number above 0.
 [[object.method.param]]
 name = "width"
 type = "double"
+unit = "px"
 
+# The height of the mode in pixels, a whole number above 0.
 [[object.method.param]]
 name = "height"
 type = "double"
+unit = "px"
 
+# The refresh rate in hertz, a number above 0.
 [[object.method.param]]
 name = "refresh_rate"
 type = "double"
+unit = "Hz"
 
 # ---- the viewport --------------------------------------------------------------------------------------------------------------------
 
@@ -323,6 +369,7 @@ readonly = true
 name = "id"
 type = "string"
 since = "0.2.0"
+raises = ["invalid_state"]
 
 # How the display presents its outputs; changing it takes effect on the next reconciliation. `single` presents one output.
 [[object.property]]
@@ -344,6 +391,7 @@ readonly = true
 name = "viewport"
 type = "object:viewport"
 since = "0.2.0"
+raises = ["busy"]
 
 # Whether the library made the display for an output that no display of the shell presents.
 [[object.property]]
@@ -386,7 +434,9 @@ readonly = true
 [[object.method]]
 name = "add_profile"
 since = "0.2.0"
+raises = ["already_exists"]
 
+# The profile to add.
 [[object.method.param]]
 name = "profile"
 type = "object:output_profile"
@@ -397,6 +447,7 @@ name = "remove_profile"
 since = "0.2.0"
 returns = "bool"
 
+# The profile to take out.
 [[object.method.param]]
 name = "profile"
 type = "object:output_profile"
@@ -408,6 +459,7 @@ since = "0.2.0"
 returns = "object:output_profile"
 optional = true
 
+# The id to look for.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -417,7 +469,9 @@ type = "string"
 [[object.method]]
 name = "add_display"
 since = "0.2.0"
+raises = ["already_exists", "busy"]
 
+# The display to add.
 [[object.method.param]]
 name = "display"
 type = "object:display"
@@ -429,6 +483,7 @@ name = "remove_display"
 since = "0.2.0"
 returns = "bool"
 
+# The display to remove.
 [[object.method.param]]
 name = "display"
 type = "object:display"
@@ -438,11 +493,14 @@ type = "object:display"
 [[object.method]]
 name = "replace_display"
 since = "0.2.0"
+raises = ["not_found", "already_exists", "busy"]
 
+# The display to replace. It must be a display of the shell's that is in the list.
 [[object.method.param]]
 name = "old"
 type = "object:display"
 
+# The display that takes its place. It must not be in the list.
 [[object.method.param]]
 name = "next"
 type = "object:display"
@@ -459,6 +517,7 @@ since = "0.2.0"
 returns = "object:display"
 optional = true
 
+# The id to look for.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -470,13 +529,17 @@ since = "0.2.0"
 returns = "object:display"
 optional = true
 
+# Horizontal position in the compositor's logical space, in logical pixels.
 [[object.method.param]]
 name = "x"
 type = "double"
+unit = "px"
 
+# Vertical position in the compositor's logical space, in logical pixels.
 [[object.method.param]]
 name = "y"
 type = "double"
+unit = "px"
 
 # Has the library apply the profiles and settle the displays now, as it does each turn.
 [[object.method]]
@@ -495,6 +558,7 @@ returns = "uint"
 name = "restore"
 since = "0.2.0"
 
+# The number `snapshot` answered.
 [[object.method.param]]
 name = "token"
 type = "uint"
@@ -510,10 +574,12 @@ since = "0.2.0"
 name = "applied"
 since = "0.2.0"
 
+# The node of the output the request was for.
 [[object.signal.field]]
 name = "output"
 type = "uint"
 
+# What the compositor said when it refused. Empty when it took the request.
 [[object.signal.field]]
 name = "error"
 type = "string"
@@ -524,6 +590,7 @@ type = "string"
 name = "noted"
 since = "0.2.0"
 
+# The sentence.
 [[object.signal.field]]
 name = "text"
 type = "string"
@@ -554,7 +621,9 @@ readonly = true
 [[object.method]]
 name = "add"
 since = "0.2.0"
+raises = ["already_exists", "busy"]
 
+# The display to add.
 [[object.method.param]]
 name = "display"
 type = "object:display"
@@ -566,6 +635,7 @@ name = "remove"
 since = "0.2.0"
 returns = "bool"
 
+# The display to remove.
 [[object.method.param]]
 name = "display"
 type = "object:display"
@@ -580,11 +650,14 @@ since = "0.2.0"
 [[object.method]]
 name = "replace"
 since = "0.2.0"
+raises = ["not_found", "already_exists", "busy"]
 
+# The display to replace. It must be a display of the shell's that is in the list.
 [[object.method.param]]
 name = "old"
 type = "object:display"
 
+# The display that takes its place. It must not be in the list.
 [[object.method.param]]
 name = "next"
 type = "object:display"
@@ -596,6 +669,7 @@ since = "0.2.0"
 returns = "object:display"
 optional = true
 
+# The id to look for.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -630,7 +704,9 @@ readonly = true
 [[object.method]]
 name = "add"
 since = "0.2.0"
+raises = ["already_exists"]
 
+# The profile to add.
 [[object.method.param]]
 name = "profile"
 type = "object:output_profile"
@@ -641,6 +717,7 @@ name = "remove"
 since = "0.2.0"
 returns = "bool"
 
+# The profile to take out.
 [[object.method.param]]
 name = "profile"
 type = "object:output_profile"
@@ -657,6 +734,7 @@ since = "0.2.0"
 returns = "object:output_profile"
 optional = true
 
+# The id to look for.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -679,6 +757,7 @@ type = "object:displays"
 since = "0.2.0"
 readonly = true
 
+# The members the library adds to every collection of outputs.
 [[augment]]
 target = "core.output_collection"
 since = "0.2.0"
