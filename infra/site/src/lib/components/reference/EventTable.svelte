@@ -23,7 +23,7 @@
                     <th scope="row" data-only="typescript python"
                         ><a class="anchor" href="#{row.id}">{@html row.nameHtml}</a></th
                     >
-                    <td data-only="typescript python" data-label="Arguments"><code>{@html row.argsHtml}</code></td>
+                    <td class="args" data-only="typescript python" data-label="Arguments">{@html row.argsHtml}</td>
                     <th scope="row" data-only="rust">{@html row.declHtml}</th>
                     <td data-label="Description">
                         {@html row.descHtml}
