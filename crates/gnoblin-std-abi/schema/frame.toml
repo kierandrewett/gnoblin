@@ -21,43 +21,102 @@ title = "Window frames"
 [[enum]]
 name = "frame_kind"
 since = "0.2.0"
-values = ["server", "layers"]
+values = [
+    # The shell frames the window: the frame has edges and an inset.
+    "server",
+    # The window draws its own frame or has none: only an underlay and an overlay.
+    "layers",
+]
 
 # The four edges of a frame.
 [[enum]]
 name = "frame_side"
 since = "0.2.0"
-values = ["top", "right", "bottom", "left"]
+values = [
+    # The top edge.
+    "top",
+    # The right edge.
+    "right",
+    # The bottom edge.
+    "bottom",
+    # The left edge.
+    "left",
+]
 
 # The four corners of a frame.
 [[enum]]
 name = "frame_corner"
 since = "0.2.0"
-values = ["top-left", "top-right", "bottom-left", "bottom-right"]
+values = [
+    # The top left corner.
+    "top-left",
+    # The top right corner.
+    "top-right",
+    # The bottom left corner.
+    "bottom-left",
+    # The bottom right corner.
+    "bottom-right",
+]
 
 # Which side of the window's content a layer sits: `under` it or `over` it.
 [[enum]]
 name = "frame_layer"
 since = "0.2.0"
-values = ["under", "over"]
+values = [
+    # Behind the window's content.
+    "under",
+    # In front of the window's content.
+    "over",
+]
 
 # The three window buttons.
 [[enum]]
 name = "window_button_name"
 since = "0.2.0"
-values = ["minimise", "maximise", "close"]
+values = [
+    # The button that minimises the window.
+    "minimise",
+    # The button that maximises the window, or restores it.
+    "maximise",
+    # The button that closes the window.
+    "close",
+]
 
 # The side or corner of the window a resize handle holds: it moves with the pointer, the opposite one stays.
 [[enum]]
 name = "resize_side"
 since = "0.2.0"
-values = ["top-left", "top-right", "bottom-left", "bottom-right", "left", "right", "top", "bottom"]
+values = [
+    # The top left corner: the handle moves the top and left edges.
+    "top-left",
+    # The top right corner: the handle moves the top and right edges.
+    "top-right",
+    # The bottom left corner: the handle moves the bottom and left edges.
+    "bottom-left",
+    # The bottom right corner: the handle moves the bottom and right edges.
+    "bottom-right",
+    # The left edge.
+    "left",
+    # The right edge.
+    "right",
+    # The top edge.
+    "top",
+    # The bottom edge.
+    "bottom",
+]
 
 # The three clicks the seat gives an action to.
 [[enum]]
 name = "seat_gesture"
 since = "0.2.0"
-values = ["double_click", "middle_click", "right_click"]
+values = [
+    # A double click on the titlebar.
+    "double_click",
+    # A middle click on the titlebar.
+    "middle_click",
+    # A right click on the titlebar.
+    "right_click",
+]
 
 # ---- callbacks -----------------------------------------------------------------------------------------------------------------------
 
@@ -69,10 +128,12 @@ name = "frame_fill"
 since = "0.2.0"
 returns = "bool"
 
+# The window being framed, as it is now.
 [[callback.param]]
 name = "client"
 type = "object:frame_client"
 
+# The frame to fill. Read its outlets and add canvases to them.
 [[callback.param]]
 name = "frame"
 type = "object:window_frame"
@@ -83,6 +144,7 @@ name = "frame_question"
 since = "0.2.0"
 returns = "bool"
 
+# The window the question is about.
 [[callback.param]]
 name = "client"
 type = "object:frame_client"
@@ -93,6 +155,7 @@ name = "frame_colour"
 since = "0.2.0"
 returns = "string"
 
+# The window the colour is for.
 [[callback.param]]
 name = "client"
 type = "object:frame_client"
@@ -107,6 +170,7 @@ since = "0.2.0"
 name = "frame_action"
 since = "0.2.0"
 
+# The window whose frame was clicked.
 [[callback.param]]
 name = "client"
 type = "object:frame_client"
@@ -116,10 +180,12 @@ type = "object:frame_client"
 name = "frame_maximise"
 since = "0.2.0"
 
+# The window to maximise or restore.
 [[callback.param]]
 name = "client"
 type = "object:frame_client"
 
+# `true` to maximise the window, `false` to restore it.
 [[callback.param]]
 name = "on"
 type = "bool"
@@ -129,10 +195,12 @@ type = "bool"
 name = "frame_press"
 since = "0.2.0"
 
+# The window whose frame the button went down or came up on.
 [[callback.param]]
 name = "client"
 type = "object:frame_client"
 
+# Where the button was and which button it was.
 [[callback.param]]
 name = "event"
 type = "object:frame_press_event"
@@ -192,24 +260,28 @@ since = "0.2.0"
 name = "x"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The content's y coordinate in logical pixels.
 [[object.property]]
 name = "y"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The content's width in logical pixels.
 [[object.property]]
 name = "width"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The content's height in logical pixels.
 [[object.property]]
 name = "height"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # Who draws the window's frame as the compositor negotiated it: `server`, `client` or `none`.
 [[object.property]]
@@ -229,15 +301,19 @@ name = "frame_press_event"
 since = "0.2.0"
 kind = "record"
 
+# The horizontal position, in logical pixels.
 [[object.property]]
 name = "x"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
+# The vertical position, in logical pixels.
 [[object.property]]
 name = "y"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The button, as the compositor numbers them (Linux `BTN_LEFT` is 272).
 [[object.property]]
@@ -251,25 +327,33 @@ name = "frame_content"
 since = "0.2.0"
 kind = "record"
 
+# The left edge of the client's surface, in logical pixels from the window's left edge.
 [[object.property]]
 name = "x"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
+# The top edge of the client's surface, in logical pixels from the window's top edge.
 [[object.property]]
 name = "y"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
+# The width of the client's surface, in logical pixels.
 [[object.property]]
 name = "width"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
+# The height of the client's surface, in logical pixels.
 [[object.property]]
 name = "height"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The room the frame leaves round the content.
 [[object.property]]
@@ -283,18 +367,21 @@ name = "button_icons"
 since = "0.2.0"
 kind = "record"
 
+# The icon name of the minimise button.
 [[object.property]]
 name = "minimise"
 type = "string"
 since = "0.2.0"
 default = "window-minimize-symbolic"
 
+# The icon name of the maximise button.
 [[object.property]]
 name = "maximise"
 type = "string"
 since = "0.2.0"
 default = "window-maximize-symbolic"
 
+# The icon name of the close button.
 [[object.property]]
 name = "close"
 type = "string"
@@ -308,32 +395,40 @@ since = "0.2.0"
 kind = "record"
 
 # The bar's height.
+# Finite and at least 0: another value is refused.
 [[object.property]]
 name = "height"
 type = "double"
 since = "0.2.0"
 default = 28.0
+unit = "px"
 
 # The space between the bar's edge and what it holds.
+# Finite and at least 0: another value is refused.
 [[object.property]]
 name = "padding"
 type = "double"
 since = "0.2.0"
 default = 6.0
+unit = "px"
 
 # The space between the drag area and the buttons, and between the buttons.
+# Finite and at least 0: another value is refused.
 [[object.property]]
 name = "gap"
 type = "double"
 since = "0.2.0"
 default = 8.0
+unit = "px"
 
 # The bar's corner radius.
+# Finite and at least 0: another value is refused.
 [[object.property]]
 name = "radius"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # The fill while the window has the focus.
 [[object.property]]
@@ -350,11 +445,13 @@ since = "0.2.0"
 default = "#232634"
 
 # The title's size.
+# Finite and at least 0: another value is refused.
 [[object.property]]
 name = "title_size"
 type = "double"
 since = "0.2.0"
 default = 13.0
+unit = "px"
 
 # The title's colour.
 [[object.property]]
@@ -378,11 +475,13 @@ since = "0.2.0"
 optional = true
 
 # A button icon's size.
+# Finite and at least 0: another value is refused.
 [[object.property]]
 name = "button_size"
 type = "double"
 since = "0.2.0"
 default = 16.0
+unit = "px"
 
 # A button icon's colour.
 [[object.property]]
@@ -563,17 +662,22 @@ readonly = true
 name = "resize_handles"
 since = "0.2.0"
 returns = "object:resize_handles"
+raises = ["not_found"]
 
+# How far the handles reach outside the frame, in pixels. Left out, 6.
 [[object.method.param]]
 name = "thickness"
 type = "double"
 optional = true
+default = 6.0
+unit = "px"
 
 # The room the frame reserves round the content changed. Told from the next turn.
 [[object.signal]]
 name = "room_changed"
 since = "0.2.0"
 
+# The room the frame reserves now, on each side.
 [[object.signal.field]]
 name = "inset"
 type = "object:frame_inset"
@@ -642,7 +746,9 @@ readonly = true
 [[object.method]]
 name = "add_node"
 since = "0.2.0"
+raises = ["not_found", "denied"]
 
+# The node to mount, by its node number.
 [[object.method.param]]
 name = "node"
 type = "uint"
@@ -677,6 +783,7 @@ readonly = true
 name = "size"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The room the edge takes while the window is not fullscreen: 0 when the edge is hidden.
 [[object.property]]
@@ -684,6 +791,7 @@ name = "reserved"
 type = "double"
 since = "0.2.0"
 readonly = true
+unit = "px"
 
 # The room the edge takes now: nothing while the window is fullscreen.
 [[object.property]]
@@ -691,6 +799,7 @@ name = "thickness"
 type = "double"
 since = "0.2.0"
 readonly = true
+unit = "px"
 
 # The first zone of the edge.
 [[object.property]]
@@ -738,6 +847,7 @@ readonly = true
 name = "size"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # Goes back to the thicker of the two edges.
 [[object.method]]
@@ -767,6 +877,7 @@ name = "bleed"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # ---- actions and drag ----------------------------------------------------------------------------------------------------------------
 
@@ -831,6 +942,7 @@ since = "0.2.0"
 name = "gesture"
 since = "0.2.0"
 
+# The click whose action runs.
 [[object.method.param]]
 name = "property"
 type = "enum:seat_gesture"
@@ -858,6 +970,7 @@ readonly = true
 name = "attach"
 since = "0.2.0"
 
+# The canvas that becomes the drag area.
 [[object.method.param]]
 name = "canvas"
 type = "object:canvas"
@@ -867,6 +980,7 @@ type = "object:canvas"
 name = "press"
 since = "0.2.0"
 
+# The press, as the canvas heard it.
 [[object.method.param]]
 name = "event"
 type = "object:ui_pointer_event"
@@ -876,6 +990,7 @@ type = "object:ui_pointer_event"
 name = "motion"
 since = "0.2.0"
 
+# The movement, as the canvas heard it.
 [[object.method.param]]
 name = "event"
 type = "object:ui_pointer_event"
@@ -885,6 +1000,7 @@ type = "object:ui_pointer_event"
 name = "release"
 since = "0.2.0"
 
+# The release, as the canvas heard it.
 [[object.method.param]]
 name = "event"
 type = "object:ui_pointer_event"
@@ -954,10 +1070,12 @@ since = "0.2.0"
 function = true
 returns = "bool"
 
+# The frame to add the titlebar to. It must be a server frame.
 [[object.method.param]]
 name = "frame"
 type = "object:window_frame"
 
+# The look of this titlebar. Left out, it follows the style of `decorations`.
 [[object.method.param]]
 name = "style"
 type = "object:titlebar_style"
@@ -1043,6 +1161,7 @@ since = "0.2.0"
 name = "button_size"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The colour of each button's icon.
 [[object.property]]
@@ -1063,6 +1182,7 @@ since = "0.2.0"
 returns = "object:window_button"
 optional = true
 
+# The button to read: `minimise`, `maximise` or `close`.
 [[object.method.param]]
 name = "name"
 type = "enum:window_button_name"
@@ -1089,6 +1209,7 @@ name = "size"
 type = "double"
 since = "0.2.0"
 default = 16.0
+unit = "px"
 
 # The lettering colour.
 [[object.property]]
@@ -1104,6 +1225,7 @@ since = "0.2.0"
 function = true
 returns = "object:app_tile"
 
+# The application id, such as `org.gnome.Nautilus`.
 [[object.method.param]]
 name = "app_id"
 type = "string"
@@ -1156,6 +1278,7 @@ name = "thickness"
 type = "double"
 since = "0.2.0"
 default = 1.0
+unit = "px"
 
 # The ring's colour.
 [[object.property]]
@@ -1176,6 +1299,7 @@ name = "radius"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # A soft halo behind the window's frame. The paint list has no blur, so the halo is made of growing, fading rounded rectangles drawn into the
 # underlay's `bleed`: set `frame.underlay.bleed` to its reach. It fills the layer, so the rings grow from the frame's edge out to the layer's.
@@ -1198,6 +1322,7 @@ name = "strength"
 type = "double"
 since = "0.2.0"
 default = 0.5
+range = [0, 1]
 
 # The rounded corners of the frame the halo follows.
 [[object.property]]
@@ -1205,6 +1330,7 @@ name = "radius"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # The rings the halo is made of: more are smoother.
 [[object.property]]
@@ -1270,6 +1396,7 @@ name = "thickness"
 type = "double"
 since = "0.2.0"
 default = 6.0
+unit = "px"
 
 # How far a handle reaches inside the frame.
 [[object.property]]
@@ -1277,6 +1404,7 @@ name = "inside"
 type = "double"
 since = "0.2.0"
 default = 2.0
+unit = "px"
 
 # The side of a corner handle, which is also how far an edge handle stops short of the corner.
 [[object.property]]
@@ -1284,6 +1412,7 @@ name = "corner"
 type = "double"
 since = "0.2.0"
 default = 14.0
+unit = "px"
 
 # Each handle, in the order top-left, top-right, bottom-left, bottom-right, top, bottom, left, right.
 [[object.property]]
@@ -1332,6 +1461,7 @@ name = "resize_handles"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # The clock the frames time double clicks and fades by, in milliseconds. Left out, the core's (`timers.now`), the clock the toolkit's wake timer runs by.
 [[object.property]]
@@ -1392,21 +1522,25 @@ since = "0.2.0"
 name = "rule"
 since = "0.2.0"
 
+# The application id the window must have. Left out, any application id matches.
 [[object.method.param]]
 name = "app_id"
 type = "string"
 optional = true
 
+# The title the window must have. Left out, any title matches.
 [[object.method.param]]
 name = "title"
 type = "string"
 optional = true
 
+# Answers `true` for a window the rule applies to. Left out, the rule has no test of its own.
 [[object.method.param]]
 name = "test"
 type = "callback:frame_question"
 optional = true
 
+# Fills the frame of a window the rule matches. Left out, a matching window has no frame.
 [[object.method.param]]
 name = "fill"
 type = "callback:frame_fill"
@@ -1419,6 +1553,7 @@ since = "0.2.0"
 returns = "object:window_frame"
 optional = true
 
+# The window to look up.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -1429,6 +1564,7 @@ name = "inset_of"
 since = "0.2.0"
 returns = "object:frame_inset"
 
+# The window to measure.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -1439,6 +1575,7 @@ name = "reserved_of"
 since = "0.2.0"
 returns = "object:frame_inset"
 
+# The window to measure.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -1449,6 +1586,7 @@ type = "object:gnoblin.model.client"
 name = "reframe"
 since = "0.2.0"
 
+# The window whose frame is made again.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
