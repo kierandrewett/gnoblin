@@ -21,38 +21,76 @@ title = "XR"
 [[enum]]
 name = "extension_status"
 since = "0.2.0"
-values = ["ready", "unloaded"]
+values = [
+    # The extension serves a session.
+    "ready",
+    # The extension is absent: there is no session.
+    "unloaded",
+]
 
 # How the headset draws the panels of a room: as flat layers (`auto`, `layers`) or through the head camera as projection layers
 # (`projection`, which gives every panel of the room the head camera as its `camera`).
 [[enum]]
 name = "xr_composition"
 since = "0.2.0"
-values = ["auto", "layers", "projection"]
+values = [
+    # The panels are flat layers, as with `layers`.
+    "auto",
+    # Each panel is a flat layer.
+    "layers",
+    # Each panel is drawn through the head camera as a projection layer.
+    "projection",
+]
 
 # Whether any controller of a session is tracked. The tree does not say whether the head is.
 [[enum]]
 name = "xr_tracking"
 since = "0.2.0"
-values = ["tracked", "untracked"]
+values = [
+    # At least one controller is tracked.
+    "tracked",
+    # No controller is tracked.
+    "untracked",
+]
 
 # What a panel that a move drags follows: the hand (`controller`, six degrees of freedom) or where the ray points (`ray`).
 [[enum]]
 name = "view_tracking"
 since = "0.2.0"
-values = ["controller", "ray"]
+values = [
+    # The panel follows the hand, in six degrees of freedom.
+    "controller",
+    # The panel follows where the ray points.
+    "ray",
+]
 
 # Whether a moved panel turns with the hand (`follow`) or keeps its own rotation (`keep`).
 [[enum]]
 name = "view_rotation"
 since = "0.2.0"
-values = ["follow", "keep"]
+values = [
+    # The panel turns with the hand.
+    "follow",
+    # The panel keeps its own rotation.
+    "keep",
+]
 
 # The corner a resize pulls: the one nearest where the ray struck (`quadrant`), or always one corner.
 [[enum]]
 name = "resize_corner"
 since = "0.2.0"
-values = ["quadrant", "top-left", "top-right", "bottom-left", "bottom-right"]
+values = [
+    # The corner nearest where the ray struck.
+    "quadrant",
+    # Always the top left corner.
+    "top-left",
+    # Always the top right corner.
+    "top-right",
+    # Always the bottom left corner.
+    "bottom-left",
+    # Always the bottom right corner.
+    "bottom-right",
+]
 
 # Whether a window gets a panel in the stock room. A secure window never does, whatever this answers. It runs once a frame, so a window
 # comes in when it starts to answer true.
@@ -61,6 +99,7 @@ name = "xr_accept"
 since = "0.2.0"
 returns = "bool"
 
+# The window to decide for.
 [[callback.param]]
 name = "client"
 type = "object:xr_client"
@@ -97,12 +136,14 @@ since = "0.2.0"
 name = "width"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The height in pixels.
 [[object.property]]
 name = "height"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # Whether the window is minimised.
 [[object.property]]
@@ -195,6 +236,7 @@ name = "x"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "m"
 
 # Metres above the head.
 [[object.property]]
@@ -202,6 +244,7 @@ name = "y"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "m"
 
 # Metres in front of the head: negative z is forward.
 [[object.property]]
@@ -209,6 +252,7 @@ name = "z"
 type = "double"
 since = "0.2.0"
 default = -1.2
+unit = "m"
 
 # Millimetres of panel for one pixel of window; left out, the ring's.
 [[object.property]]
@@ -216,6 +260,7 @@ name = "scale"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "mm/px"
 
 # The dimensions of a ring of panels, in millimetres and radians.
 [[object]]
@@ -229,6 +274,7 @@ name = "radius"
 type = "double"
 since = "0.2.0"
 default = 1600.0
+unit = "mm"
 
 # The height of a panel's centre above the room's floor.
 [[object.property]]
@@ -236,6 +282,7 @@ name = "eye"
 type = "double"
 since = "0.2.0"
 default = 1400.0
+unit = "mm"
 
 # One window pixel is this many millimetres.
 [[object.property]]
@@ -243,6 +290,7 @@ name = "mm_per_px"
 type = "double"
 since = "0.2.0"
 default = 0.75
+unit = "mm/px"
 
 # The focused panel is this much larger ...
 [[object.property]]
@@ -257,6 +305,7 @@ name = "focus_pull"
 type = "double"
 since = "0.2.0"
 default = 100.0
+unit = "mm"
 
 # The angle between neighbouring panels.
 [[object.property]]
@@ -264,6 +313,7 @@ name = "gap"
 type = "double"
 since = "0.2.0"
 default = 0.05235987755982988
+unit = "rad"
 
 # The most the panels reach to either side of the front: panels shrink together to fit.
 [[object.property]]
@@ -271,6 +321,7 @@ name = "half_arc"
 type = "double"
 since = "0.2.0"
 default = 2.6179938779914944
+unit = "rad"
 
 # Panels on the ring; the rest stack behind it.
 [[object.property]]
@@ -285,6 +336,7 @@ name = "stack_step"
 type = "double"
 since = "0.2.0"
 default = 250.0
+unit = "mm"
 
 # The pixel size of one panel to place on a ring.
 [[object]]
@@ -297,12 +349,14 @@ kind = "record"
 name = "width"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The window's height in pixels.
 [[object.property]]
 name = "height"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # Where a panel goes on the ring.
 [[object]]
@@ -315,30 +369,35 @@ kind = "record"
 name = "x"
 type = "double"
 since = "0.2.0"
+unit = "mm"
 
 # Millimetres up.
 [[object.property]]
 name = "y"
 type = "double"
 since = "0.2.0"
+unit = "mm"
 
 # Millimetres back: the panels in front are at negative z.
 [[object.property]]
 name = "z"
 type = "double"
 since = "0.2.0"
+unit = "mm"
 
 # The turn about y, in radians, that makes the panel face the viewer.
 [[object.property]]
 name = "yaw"
 type = "double"
 since = "0.2.0"
+unit = "rad"
 
 # Millimetres of panel for one pixel of window.
 [[object.property]]
 name = "scale"
 type = "double"
 since = "0.2.0"
+unit = "mm/px"
 
 # Whether this is the focused panel.
 [[object.property]]
@@ -413,12 +472,15 @@ kind = "record"
 name = "timestamp"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 
 # Seconds since the hook last ran for this drag, at most 0.1; 0 for `on_start`.
 [[object.property]]
 name = "delta_time"
 type = "double"
 since = "0.2.0"
+range = [0, 0.1]
+unit = "s"
 
 # The controller that holds the drag.
 [[object.property]]
@@ -469,6 +531,7 @@ since = "0.2.0"
 name = "unit"
 type = "double"
 since = "0.2.0"
+unit = "m"
 
 # ---- the extension ---------------------------------------------------------------------------------------------------------------
 
@@ -484,6 +547,7 @@ kind = "interface"
 name = "on_session_started"
 since = "0.2.0"
 
+# The session that began.
 [[object.method.param]]
 name = "session"
 type = "object:xr_session"
@@ -493,6 +557,7 @@ type = "object:xr_session"
 name = "on_session_ended"
 since = "0.2.0"
 
+# The session that ended.
 [[object.method.param]]
 name = "session"
 type = "object:xr_session"
@@ -525,25 +590,30 @@ readonly = true
 name = "configure"
 since = "0.2.0"
 
+# The extension to configure. Only `xr` exists; another name is refused as a bad argument.
 [[object.method.param]]
 name = "name"
 type = "string"
 
+# What the stock shell builds for the extension.
 [[object.method.param]]
 name = "options"
 type = "object:xr_options"
 
+# Chooses the windows that get a panel, as `xr_accept` does. Left out, every window gets one.
 [[object.method.param]]
 name = "accept"
 type = "callback:xr_accept"
 optional = true
 
-# Throws unless the extension `name` can be used now: the session declared XR (`GNOBLIN_XR=1`), or the program has a session. The message
-# says how to guard a use with `gnoblin.extensions.xr`.
+# Raises `unavailable` unless the extension `name` can be used now: the session declared XR (`GNOBLIN_XR=1`), or the program has a
+# session. The message says how to guard a use with `gnoblin.extensions.xr`. Any name but `xr` is unavailable.
 [[object.method]]
 name = "require"
 since = "0.2.0"
+raises = ["unavailable"]
 
+# The extension that is needed, such as `xr`.
 [[object.method.param]]
 name = "name"
 type = "string"
@@ -553,6 +623,7 @@ type = "string"
 name = "add_listener"
 since = "0.2.0"
 
+# The listener to add.
 [[object.method.param]]
 name = "listener"
 type = "object:xr_listener"
@@ -562,6 +633,7 @@ type = "object:xr_listener"
 name = "remove_listener"
 since = "0.2.0"
 
+# The listener to remove.
 [[object.method.param]]
 name = "listener"
 type = "object:xr_listener"
@@ -653,12 +725,14 @@ since = "0.2.0"
 readonly = true
 
 # What the headset shows. Assigning a viewport names its room `room` and its camera `head` for the program, puts the camera under the
-# room, and replaces the stock room. Refused once the session ended.
+# room, and replaces the stock room. Raises `invalid_state` once the session ended, and `not_found` if the viewport's room or camera was
+# destroyed.
 [[object.property]]
 name = "viewport"
 type = "object:xr_viewport"
 optional = true
 since = "0.2.0"
+raises = ["invalid_state", "not_found"]
 
 # The head.
 [[object.property]]
@@ -674,14 +748,16 @@ type = "list<object:xr_controller>"
 since = "0.2.0"
 readonly = true
 
-# How long, in milliseconds, a chord must have been held before a drag starts and claims its buttons: 50 by default, at most 60. The
-# program holds a press back from the window for 150 ms to wait for a claim, and a claim needs about as long again as the settle time
-# to reach it, so a larger value reads back as 60. A value below 0 reads back as 0; one that is not a number is refused.
+# How long, in milliseconds, a chord must have been held before a drag starts and claims its buttons. The program holds a press back from
+# the window for 150 ms to wait for a claim, and a claim needs about as long again as the settle time to reach it, so a value above 60
+# reads back as 60. A value below 0 reads back as 0; one that is not a number is refused as a bad argument.
 [[object.property]]
 name = "chord_settle_ms"
 type = "double"
 since = "0.2.0"
 default = 50.0
+range = [0, 60]
+unit = "ms"
 
 # The controller whose id (its node number as text) is `id`, or none.
 [[object.method]]
@@ -690,6 +766,7 @@ since = "0.2.0"
 returns = "object:xr_controller"
 optional = true
 
+# The controller's node number as text.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -699,6 +776,7 @@ type = "string"
 name = "controller_added"
 since = "0.2.0"
 
+# The controller that joined.
 [[object.signal.field]]
 name = "controller"
 type = "object:xr_controller"
@@ -708,6 +786,7 @@ type = "object:xr_controller"
 name = "controller_removed"
 since = "0.2.0"
 
+# The controller that left.
 [[object.signal.field]]
 name = "controller"
 type = "object:xr_controller"
@@ -788,6 +867,7 @@ name = "trigger"
 type = "double"
 since = "0.2.0"
 readonly = true
+range = [0, 1]
 
 # How far the grip is squeezed, 0 to 1.
 [[object.property]]
@@ -795,6 +875,7 @@ name = "grip"
 type = "double"
 since = "0.2.0"
 readonly = true
+range = [0, 1]
 
 # The thumbstick's sideways position, -1 to 1.
 [[object.property]]
@@ -802,6 +883,7 @@ name = "thumbstick_x"
 type = "double"
 since = "0.2.0"
 readonly = true
+range = [-1, 1]
 
 # The thumbstick's forward position, -1 to 1, up positive.
 [[object.property]]
@@ -809,6 +891,7 @@ name = "thumbstick_y"
 type = "double"
 since = "0.2.0"
 readonly = true
+range = [-1, 1]
 
 # The buttons that are down as of the last frame, in canonical order: `Trigger`, `Grip`, `Thumbstick`, `Primary`, `Secondary`. A
 # trigger or a grip goes down at 0.75 and up at 0.25, so a half pull neither presses nor chatters.
@@ -826,16 +909,21 @@ type = "list<string>"
 since = "0.2.0"
 readonly = true
 
-# Claims `inputs` for the owner named `owner`, in place of that owner's earlier claim; other owners' claims stand. A name that is not
-# one of the five inputs in lower case is refused, and so is an empty owner; a controller that is gone refuses with `not_found`.
+# Claims `inputs` for the owner named `owner`, in place of that owner's earlier claim; other owners' claims stand. A name that is not one
+# of the five inputs in lower case is refused as a bad argument, and so is an empty owner. Raises `not_found` for a controller that is
+# gone.
 [[object.method]]
 name = "claim"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The name the claim is held under. It must not be empty.
 [[object.method.param]]
 name = "owner"
 type = "string"
 
+# The inputs to withhold from the window under the ray: any of `trigger`, `grip`, `thumbstick`, `primary` and `secondary`, in lower case.
+# An empty list drops the owner's claim.
 [[object.method.param]]
 name = "inputs"
 type = "list<string>"
@@ -845,6 +933,7 @@ type = "list<string>"
 name = "release"
 since = "0.2.0"
 
+# The name the claim is held under.
 [[object.method.param]]
 name = "owner"
 type = "string"
@@ -898,6 +987,7 @@ name = "layout"
 type = "object:spatial_layout"
 optional = true
 since = "0.2.0"
+raises = ["not_found"]
 
 # Whether a window gets a panel; left out, every window does. A secure window never does.
 [[object.property]]
@@ -905,6 +995,7 @@ name = "accept"
 type = "callback:xr_accept"
 optional = true
 since = "0.2.0"
+raises = ["not_found"]
 
 # Metres in one room unit: the head camera's.
 [[object.property]]
@@ -912,6 +1003,7 @@ name = "unit"
 type = "double"
 since = "0.2.0"
 readonly = true
+unit = "m"
 
 # The panels of the room's windows, in the order the windows gained them.
 [[object.property]]
@@ -920,13 +1012,15 @@ type = "list<object:view>"
 since = "0.2.0"
 readonly = true
 
-# The panel that shows `client`, or none.
+# The panel that shows `client`, or none. Raises `not_found` for a window that is gone.
 [[object.method]]
 name = "view_of"
 since = "0.2.0"
 returns = "object:view"
 optional = true
+raises = ["not_found"]
 
+# The window to find the panel of.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -935,7 +1029,9 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "pin"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The panel to keep where it is. It must be a `view` of this room.
 [[object.method.param]]
 name = "view"
 type = "object:view"
@@ -944,7 +1040,9 @@ type = "object:view"
 [[object.method]]
 name = "unpin"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The panel to let the ring place again.
 [[object.method.param]]
 name = "view"
 type = "object:view"
@@ -954,7 +1052,9 @@ type = "object:view"
 name = "is_pinned"
 since = "0.2.0"
 returns = "bool"
+raises = ["not_found"]
 
+# The panel to ask about.
 [[object.method.param]]
 name = "view"
 type = "object:view"
@@ -965,11 +1065,14 @@ type = "object:view"
 name = "pin_to_head"
 since = "0.2.0"
 returns = "object:view"
+raises = ["not_found"]
 
+# The window to show. A window that is gone raises `not_found`.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
+# Where the panel is in front of the eyes and how large. Left out, it is 1.2 m in front and as large as the ring's panels.
 [[object.method.param]]
 name = "options"
 type = "object:head_panel_options"
@@ -1016,6 +1119,7 @@ name = "radius"
 type = "double"
 since = "0.2.0"
 default = 1.6
+unit = "m"
 
 # The height of a panel's centre above the room's floor, in metres.
 [[object.property]]
@@ -1023,6 +1127,7 @@ name = "eye"
 type = "double"
 since = "0.2.0"
 default = 1.4
+unit = "m"
 
 # The angle between neighbouring panels, in radians.
 [[object.property]]
@@ -1030,6 +1135,7 @@ name = "spacing"
 type = "double"
 since = "0.2.0"
 default = 0.05235987755982988
+unit = "rad"
 
 # The metres of panel for one pixel of window.
 [[object.property]]
@@ -1037,6 +1143,7 @@ name = "metres_per_pixel"
 type = "double"
 since = "0.2.0"
 default = 0.00075
+unit = "m/px"
 
 # How much larger the focused panel is.
 [[object.property]]
@@ -1051,6 +1158,7 @@ name = "focus_pull"
 type = "double"
 since = "0.2.0"
 default = 0.1
+unit = "m"
 
 # The most the panels reach to either side of the front, in radians.
 [[object.property]]
@@ -1058,6 +1166,7 @@ name = "half_arc"
 type = "double"
 since = "0.2.0"
 default = 2.6179938779914944
+unit = "rad"
 
 # Panels on the ring; the rest stack behind it.
 [[object.property]]
@@ -1072,6 +1181,7 @@ name = "stack_step"
 type = "double"
 since = "0.2.0"
 default = 0.25
+unit = "m"
 
 # The triggers of the stock bindings. Set when the layout is made, it makes `move`, `resize` and `rotate` with them; set later, it
 # replaces those three in `bindings`.
@@ -1100,10 +1210,12 @@ name = "arrange"
 since = "0.2.0"
 returns = "object:ring_result"
 
+# The panels to place, as the size in window pixels of each.
 [[object.method.param]]
 name = "views"
 type = "list<object:ring_view>"
 
+# The index of the focused view, counted from 0. Left out, or an index that names no view, the first is at the front.
 [[object.method.param]]
 name = "focus"
 type = "int"
@@ -1118,15 +1230,18 @@ since = "0.2.0"
 function = true
 returns = "object:ring_result"
 
+# The panels to place, as the size in window pixels of each.
 [[object.method.param]]
 name = "views"
 type = "list<object:ring_view>"
 
+# The index of the focused view, counted from 0. Left out, or an index that names no view, the first is at the front.
 [[object.method.param]]
 name = "focus"
 type = "int"
 optional = true
 
+# The dimensions of the ring, in millimetres and radians. Left out, the defaults of `ring_params`.
 [[object.method.param]]
 name = "ring"
 type = "object:ring_params"
@@ -1151,11 +1266,14 @@ type = "list<object:xr_drag_binding>"
 since = "0.2.0"
 readonly = true
 
-# Adds `binding`. Refused when its id is taken, or when another binding has its chord and its priority.
+# Adds `binding`. Raises `already_exists` when its id is taken, or when another binding has its chord and its priority; a binding with an
+# empty id is refused as a bad argument.
 [[object.method]]
 name = "add"
 since = "0.2.0"
+raises = ["already_exists"]
 
+# The binding to add.
 [[object.method.param]]
 name = "binding"
 type = "object:xr_drag_binding"
@@ -1166,6 +1284,7 @@ name = "remove"
 since = "0.2.0"
 returns = "bool"
 
+# The id of the binding to remove.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -1177,6 +1296,7 @@ since = "0.2.0"
 returns = "object:xr_drag_binding"
 optional = true
 
+# The id of the binding to look for.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -1187,6 +1307,7 @@ name = "has"
 since = "0.2.0"
 returns = "bool"
 
+# The id to look for.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -1213,6 +1334,7 @@ returns = "bool"
 default = "native"
 optional = true
 
+# The drag that is starting.
 [[object.method.param]]
 name = "event"
 type = "object:xr_drag_event"
@@ -1223,6 +1345,7 @@ name = "on_update"
 since = "0.2.0"
 default = "native"
 
+# The drag, with this frame's pose.
 [[object.method.param]]
 name = "event"
 type = "object:xr_drag_event"
@@ -1233,6 +1356,7 @@ name = "on_end"
 since = "0.2.0"
 default = "native"
 
+# The drag that ended.
 [[object.method.param]]
 name = "event"
 type = "object:xr_drag_event"
@@ -1244,6 +1368,7 @@ name = "on_cancel"
 since = "0.2.0"
 default = "native"
 
+# The drag that was cancelled.
 [[object.method.param]]
 name = "event"
 type = "object:xr_drag_event"
@@ -1262,7 +1387,7 @@ name = "xr_drag_binding"
 export = { js = "XRControllerDragBinding", py = "XRControllerDragBinding" }
 since = "0.2.0"
 
-# The binding's id in its collection.
+# The binding's id in its collection. Setting an empty one is refused as a bad argument.
 [[object.property]]
 name = "id"
 type = "string"
@@ -1319,6 +1444,7 @@ since = "0.2.0"
 function = true
 returns = "object:controller_trigger"
 
+# The trigger to read, such as `Grip+Drag` or `Right.Grip+Drag`.
 [[object.method.param]]
 name = "trigger"
 type = "string"
@@ -1343,7 +1469,8 @@ type = "enum:view_rotation"
 since = "0.2.0"
 default = "follow"
 
-# How a ray drag keeps the panel's distance: only `preserve`, the distance at which the ray struck it.
+# How a ray drag keeps the panel's distance: only `preserve`, the distance at which the ray struck it. Any other text is refused as a bad
+# argument.
 [[object.property]]
 name = "distance"
 type = "string"
@@ -1359,26 +1486,30 @@ name = "view_resize_binding"
 since = "0.2.0"
 base = "xr_drag_binding"
 
-# Window pixels for one metre of panel, for the size asked for on release.
+# Window pixels for one metre of panel, for the size asked for on release. A value that is not a number above 0 is refused as a bad
+# argument.
 [[object.property]]
 name = "pixels_per_metre"
 type = "double"
 since = "0.2.0"
 default = 1200.0
+unit = "px/m"
 
-# The narrowest the panel may be made, in metres.
+# The narrowest the panel may be made, in metres. A value that is not a number above 0 is refused as a bad argument.
 [[object.property]]
 name = "min_width"
 type = "double"
 since = "0.2.0"
 default = 0.25
+unit = "m"
 
-# The lowest the panel may be made, in metres.
+# The lowest the panel may be made, in metres. A value that is not a number above 0 is refused as a bad argument.
 [[object.property]]
 name = "min_height"
 type = "double"
 since = "0.2.0"
 default = 0.15
+unit = "m"
 
 # The corner the drag pulls.
 [[object.property]]
@@ -1401,14 +1532,14 @@ name = "view_scale_binding"
 since = "0.2.0"
 base = "xr_drag_binding"
 
-# The smallest scale a drag may leave.
+# The smallest scale a drag may leave. A value that is not a number above 0, or is above `max_scale`, is refused as a bad argument.
 [[object.property]]
 name = "min_scale"
 type = "double"
 since = "0.2.0"
 default = 0.2
 
-# The largest scale a drag may leave.
+# The largest scale a drag may leave. A value that is not a number above 0, or is below `min_scale`, is refused as a bad argument.
 [[object.property]]
 name = "max_scale"
 type = "double"
