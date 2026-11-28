@@ -14,25 +14,69 @@ title = "UI toolkit"
 [[enum]]
 name = "placement"
 since = "0.2.0"
-values = ["frame", "over", "under"]
+values = [
+    # In front of the window's content, and part of the window's frame.
+    "frame",
+    # In front of the window's content, and not part of the frame.
+    "over",
+    # Behind the window's content, and not part of the frame.
+    "under",
+]
 
 # How a box places its children.
 [[enum]]
 name = "direction"
 since = "0.2.0"
-values = ["row", "column", "none"]
+values = [
+    # The children go left to right.
+    "row",
+    # The children go top to bottom.
+    "column",
+    # The box leaves its children where they are.
+    "none",
+]
 
 # What the pointer did.
 [[enum]]
 name = "pointer_kind"
 since = "0.2.0"
-values = ["press", "release", "motion", "scroll", "enter", "leave"]
+values = [
+    # A button went down.
+    "press",
+    # A button came up.
+    "release",
+    # The pointer moved.
+    "motion",
+    # A scroll wheel or a touchpad scrolled.
+    "scroll",
+    # The pointer came over the canvas.
+    "enter",
+    # The pointer left the canvas.
+    "leave",
+]
 
 # The operation a `paint_op` is.
 [[enum]]
 name = "paint_kind"
 since = "0.2.0"
-values = ["rect", "line", "text", "icon", "push-clip", "pop-clip", "push-opacity", "pop-opacity"]
+values = [
+    # A rectangle, filled, outlined or both.
+    "rect",
+    # A line.
+    "line",
+    # A string of text.
+    "text",
+    # An icon from the installed theme.
+    "icon",
+    # Starts clipping what follows to a rectangle.
+    "push-clip",
+    # Ends the last clip.
+    "pop-clip",
+    # Starts a group that is painted at one opacity.
+    "push-opacity",
+    # Ends the last opacity group.
+    "pop-opacity",
+]
 
 # A handler of a pointer event. It answers `true` to keep the event from the canvas's parents.
 [[callback]]
@@ -40,6 +84,7 @@ name = "pointer_handler"
 since = "0.2.0"
 returns = "bool"
 
+# The pointer event.
 [[callback.param]]
 name = "event"
 type = "object:ui_pointer_event"
@@ -50,6 +95,7 @@ name = "key_handler"
 since = "0.2.0"
 returns = "bool"
 
+# The key event.
 [[callback.param]]
 name = "event"
 type = "object:ui_key_event"
@@ -64,6 +110,7 @@ since = "0.2.0"
 name = "request_hook"
 since = "0.2.0"
 
+# The request: which window, what kind and where.
 [[callback.param]]
 name = "request"
 type = "object:ui_request"
@@ -85,12 +132,14 @@ since = "0.2.0"
 name = "x"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # Vertical position in logical pixels, relative to the canvas whose handler is running.
 [[object.property]]
 name = "y"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The button number of a press or a release.
 [[object.property]]
@@ -103,12 +152,14 @@ since = "0.2.0"
 name = "dx"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # Vertical movement or scroll distance in logical pixels.
 [[object.property]]
 name = "dy"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The canvas the compositor addressed.
 [[object.property]]
@@ -169,12 +220,14 @@ since = "0.2.0"
 name = "x"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # Vertical anchor position in logical screen pixels.
 [[object.property]]
 name = "y"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The measured width and height of text, and the distance from the top to its first baseline, in logical pixels.
 [[object]]
@@ -182,21 +235,26 @@ name = "text_metrics"
 since = "0.2.0"
 kind = "record"
 
+# The width of the text, in logical pixels.
 [[object.property]]
 name = "width"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
+# The height of the text, in logical pixels.
 [[object.property]]
 name = "height"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The baseline's distance from the top of the first line.
 [[object.property]]
 name = "ascent"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # A size in logical pixels.
 [[object]]
@@ -204,15 +262,19 @@ name = "ui_size"
 since = "0.2.0"
 kind = "record"
 
+# The width, in logical pixels.
 [[object.property]]
 name = "width"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
+# The height, in logical pixels.
 [[object.property]]
 name = "height"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # A place in logical screen pixels.
 [[object]]
@@ -220,15 +282,19 @@ name = "ui_point"
 since = "0.2.0"
 kind = "record"
 
+# The horizontal place, in logical screen pixels.
 [[object.property]]
 name = "x"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
+# The vertical place, in logical screen pixels.
 [[object.property]]
 name = "y"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # One drawing operation. Later operations paint over earlier ones; coordinates are the canvas's logical pixels. Which fields an
 # operation reads depends on its `op`; every other field is ignored, and a field it reads and the caller left out has the default
@@ -251,6 +317,7 @@ name = "x"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # `rect`, `text`, `icon` and `push-clip`: the top edge (default 0).
 [[object.property]]
@@ -258,6 +325,7 @@ name = "y"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # `rect` and `push-clip`: the width (default 0). `line`: the stroke width (default 1), as in the TypeScript op. A line does not read `size`.
 [[object.property]]
@@ -265,6 +333,7 @@ name = "width"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # `rect` and `push-clip`: the height (default 0).
 [[object.property]]
@@ -272,6 +341,7 @@ name = "height"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # `rect` and `push-clip`: the corner radius (default 0).
 [[object.property]]
@@ -279,6 +349,7 @@ name = "radius"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # `rect`: the fill colour (default transparent).
 [[object.property]]
@@ -300,6 +371,7 @@ name = "stroke_width"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # `line`: where it starts (default 0).
 [[object.property]]
@@ -307,12 +379,15 @@ name = "x1"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
+# `line`: the vertical place where it starts (default 0).
 [[object.property]]
 name = "y1"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # `line`: where it ends (default 0).
 [[object.property]]
@@ -320,12 +395,15 @@ name = "x2"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
+# `line`: the vertical place where it ends (default 0).
 [[object.property]]
 name = "y2"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # `text`: the font size in pixels (default 14). `icon`: the icon size (default 16). A `line` reads `width` and ignores this.
 [[object.property]]
@@ -333,6 +411,7 @@ name = "size"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # `line`, `text` and `icon`: the colour (default opaque white).
 [[object.property]]
@@ -417,6 +496,7 @@ since = "0.2.0"
 returns = "bool"
 default = "native"
 
+# The pointer event.
 [[object.method.param]]
 name = "event"
 type = "object:ui_pointer_event"
@@ -428,6 +508,7 @@ since = "0.2.0"
 returns = "bool"
 default = "native"
 
+# The key event.
 [[object.method.param]]
 name = "event"
 type = "object:ui_key_event"
@@ -468,6 +549,7 @@ name = "x"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # Vertical position in logical pixels relative to the parent.
 [[object.property]]
@@ -475,18 +557,21 @@ name = "y"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # The width in logical pixels: the assigned width, or the content's natural width. `clear_width` returns to the natural width.
 [[object.property]]
 name = "width"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The height in logical pixels: the assigned height, or the content's natural height. `clear_height` returns to the natural height.
 [[object.property]]
 name = "height"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # Whether the canvas is painted and receives pointer input.
 [[object.property]]
@@ -501,6 +586,7 @@ name = "opacity"
 type = "double"
 since = "0.2.0"
 default = 1.0
+range = [0, 1]
 
 # Whether a capture of the screen masks this canvas. Set it on what shows a secure window's text.
 [[object.property]]
@@ -556,6 +642,7 @@ name = "natural_width"
 type = "double"
 since = "0.2.0"
 readonly = true
+unit = "px"
 
 # The natural height: what a height the canvas was never given reads as.
 [[object.property]]
@@ -563,6 +650,7 @@ name = "natural_height"
 type = "double"
 since = "0.2.0"
 readonly = true
+unit = "px"
 
 # What a shell implements of this canvas (`widget`): its refresh, arrange, paint, natural size and handlers. A shell that subclasses a
 # canvas in its own language sets this to the subclass.
@@ -597,7 +685,9 @@ since = "0.2.0"
 [[object.method]]
 name = "add"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The canvas to add. It must not be this canvas or one of its ancestors.
 [[object.method.param]]
 name = "child"
 type = "object:canvas"
@@ -607,6 +697,7 @@ type = "object:canvas"
 name = "remove"
 since = "0.2.0"
 
+# The child to remove.
 [[object.method.param]]
 name = "child"
 type = "object:canvas"
@@ -615,7 +706,9 @@ type = "object:canvas"
 [[object.method]]
 name = "mount"
 since = "0.2.0"
+raises = ["not_found", "denied"]
 
+# The node to mount under, by its node number.
 [[object.method.param]]
 name = "parent"
 type = "uint"
@@ -624,11 +717,13 @@ type = "uint"
 [[object.method]]
 name = "mount_top"
 since = "0.2.0"
+raises = ["not_found", "denied"]
 
 # Gives this canvas the seat's keyboard focus: the keys go to its handlers here and up through its parents.
 [[object.method]]
 name = "focus"
 since = "0.2.0"
+raises = ["not_found", "unavailable"]
 
 # Whether `other` is this canvas or one of its descendants.
 [[object.method]]
@@ -636,6 +731,7 @@ name = "contains"
 since = "0.2.0"
 returns = "bool"
 
+# The canvas to look for.
 [[object.method.param]]
 name = "other"
 type = "object:canvas"
@@ -662,19 +758,24 @@ name = "to_global"
 since = "0.2.0"
 returns = "object:ui_point"
 
+# The horizontal position in this canvas, in logical pixels.
 [[object.method.param]]
 name = "x"
 type = "double"
+unit = "px"
 
+# The vertical position in this canvas, in logical pixels.
 [[object.method.param]]
 name = "y"
 type = "double"
+unit = "px"
 
 # A pointer event reached this canvas (target or an ancestor of it, before a handler stopped it). Told from the next turn.
 [[object.signal]]
 name = "pointer"
 since = "0.2.0"
 
+# The pointer event.
 [[object.signal.field]]
 name = "event"
 type = "object:ui_pointer_event"
@@ -684,6 +785,7 @@ type = "object:ui_pointer_event"
 name = "key"
 since = "0.2.0"
 
+# The key event.
 [[object.signal.field]]
 name = "event"
 type = "object:ui_key_event"
@@ -693,6 +795,7 @@ type = "object:ui_key_event"
 name = "focus_changed"
 since = "0.2.0"
 
+# `true` when the canvas gained the focus, `false` when it lost it.
 [[object.signal.field]]
 name = "focused"
 type = "bool"
@@ -725,6 +828,7 @@ name = "gap"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # Logical-pixel space around arranged children.
 [[object.property]]
@@ -732,6 +836,7 @@ name = "padding"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # Relative share of the main-axis space left over in the parent's row or column; zero keeps the child's own size.
 [[object.property]]
@@ -753,6 +858,7 @@ name = "radius"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # Places children in a near-square grid of equal cells, with `padding` around the grid and `gap` between cells. Cell sizes are rounded
 # down to whole pixels; the spare pixels stay along the right and bottom edges.
@@ -781,6 +887,7 @@ name = "size"
 type = "double"
 since = "0.2.0"
 default = 14.0
+unit = "px"
 
 # The text colour.
 [[object.property]]
@@ -816,6 +923,7 @@ name = "ascent"
 type = "double"
 since = "0.2.0"
 readonly = true
+unit = "px"
 
 # The string that is drawn: the whole text, or the part that fits the width with an ellipsis when `ellipsize` is on.
 [[object.method]]
@@ -842,6 +950,7 @@ name = "size"
 type = "double"
 since = "0.2.0"
 default = 16.0
+unit = "px"
 
 # The icon's colour.
 [[object.property]]
@@ -875,13 +984,16 @@ since = "0.2.0"
 function = true
 returns = "object:text_metrics"
 
+# The text to measure.
 [[object.method.param]]
 name = "text"
 type = "string"
 
+# The font size, in logical pixels.
 [[object.method.param]]
 name = "size"
 type = "double"
+unit = "px"
 
 # The bytes a canvas's `content` holds for `ops`: `GNPL`, a version byte, the number of operations as a `u32`, then each operation's tag
 # and fields, little-endian. A list that cannot be encoded is refused as a whole, and the message names the operation (`draw op 2: ...`).
@@ -891,6 +1003,7 @@ since = "0.2.0"
 function = true
 returns = "bytes"
 
+# The operations to encode, in the order they paint.
 [[object.method.param]]
 name = "ops"
 type = "list<object:paint_op>"
@@ -914,7 +1027,9 @@ returns = "uint"
 name = "focus"
 since = "0.2.0"
 function = true
+raises = ["not_found", "denied", "unavailable"]
 
+# The node to focus, or 0 to take the focus away.
 [[object.method.param]]
 name = "node"
 type = "uint"
@@ -947,6 +1062,7 @@ since = "0.2.0"
 function = true
 returns = "string"
 
+# Which click: `double_click`, `middle_click` or `right_click`.
 [[object.method.param]]
 name = "key"
 type = "string"
@@ -965,6 +1081,7 @@ since = "0.2.0"
 function = true
 returns = "object:ui_hook"
 
+# Called once each frame.
 [[object.method.param]]
 name = "hook"
 type = "callback:frame_hook"
@@ -976,6 +1093,7 @@ since = "0.2.0"
 function = true
 returns = "object:ui_hook"
 
+# Called with each request.
 [[object.method.param]]
 name = "hook"
 type = "callback:request_hook"
