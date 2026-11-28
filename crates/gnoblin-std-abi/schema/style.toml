@@ -20,14 +20,40 @@ title = "Window style"
 [[enum]]
 name = "style_property"
 since = "0.2.0"
-values = ["opacity", "corner_radius", "background", "borders", "shadows", "filter", "backdrop_filter"]
+values = [
+    # The window's opacity.
+    "opacity",
+    # The radius of the window's corners.
+    "corner_radius",
+    # The window's background colour.
+    "background",
+    # The borders round the window.
+    "borders",
+    # The shadows of the window.
+    "shadows",
+    # The filters of the window's own picture.
+    "filter",
+    # The filters of what is behind the window.
+    "backdrop_filter",
+]
 
 # What a filter does to the picture. A `blur` softens it, `saturate`, `brightness` and `contrast` grade its colours, and a `shader` is a
 # program of the shell's own.
 [[enum]]
 name = "filter_kind"
 since = "0.2.0"
-values = ["blur", "saturate", "brightness", "contrast", "shader"]
+values = [
+    # Softens the picture.
+    "blur",
+    # Grades the colour saturation.
+    "saturate",
+    # Grades the brightness.
+    "brightness",
+    # Grades the contrast.
+    "contrast",
+    # A program of the shell's own.
+    "shader",
+]
 
 # A shadow behind a window, or inside it with `inset`. `x` and `y` move it, `blur` softens its edge and `spread` grows it, all in pixels.
 [[object]]
@@ -41,6 +67,7 @@ name = "x"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # The vertical offset in pixels.
 [[object.property]]
@@ -48,6 +75,7 @@ name = "y"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # The blur radius in pixels, from 0 to 100.
 [[object.property]]
@@ -55,6 +83,8 @@ name = "blur"
 type = "double"
 since = "0.2.0"
 default = 12.0
+range = [0, 100]
+unit = "px"
 
 # The spread in pixels, from -100 to 100.
 [[object.property]]
@@ -62,6 +92,8 @@ name = "spread"
 type = "double"
 since = "0.2.0"
 default = 0.0
+range = [-100, 100]
+unit = "px"
 
 # The colour as `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`: translucent black until one is given.
 [[object.property]]
@@ -89,6 +121,7 @@ name = "width"
 type = "double"
 since = "0.2.0"
 default = 1.0
+unit = "px"
 
 # The colour as `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`: white until one is given.
 [[object.property]]
@@ -103,6 +136,7 @@ name = "offset"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # Draws the stroke inside the frame.
 [[object.property]]
@@ -178,6 +212,8 @@ type = "double"
 since = "0.2.0"
 default = 12.0
 field = "amount"
+range = [0, 100]
+unit = "px"
 
 # The colour saturation: 1 changes nothing, 0 is grey, and 2 is the most.
 [[object.variant]]
@@ -192,6 +228,7 @@ type = "double"
 since = "0.2.0"
 default = 1.0
 field = "amount"
+range = [0, 2]
 
 # The brightness gain: 1 changes nothing.
 [[object.variant]]
@@ -206,6 +243,7 @@ type = "double"
 since = "0.2.0"
 default = 1.0
 field = "amount"
+range = [0, 2]
 
 # The contrast gain about mid grey: 1 changes nothing.
 [[object.variant]]
@@ -220,6 +258,7 @@ type = "double"
 since = "0.2.0"
 default = 1.0
 field = "amount"
+range = [0, 2]
 
 # A shader of the shell's own, drawn over the window: the `shader` record, as a filter.
 [[object.variant]]
@@ -256,6 +295,7 @@ name = "all"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # The top left corner.
 [[object.property]]
@@ -263,6 +303,7 @@ name = "top_left"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # The top right corner.
 [[object.property]]
@@ -270,6 +311,7 @@ name = "top_right"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # The bottom right corner.
 [[object.property]]
@@ -277,6 +319,7 @@ name = "bottom_right"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # The bottom left corner.
 [[object.property]]
@@ -284,6 +327,7 @@ name = "bottom_left"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # What a style sets, as one value: a property left out is not set by it. `values` answers it for a style, and `assign` makes a style hold
 # exactly it.
@@ -298,6 +342,7 @@ name = "opacity"
 type = "double"
 since = "0.2.0"
 optional = true
+range = [0, 1]
 
 # The corner radii.
 [[object.property]]
@@ -513,6 +558,7 @@ kind = "record"
 name = "opacity"
 type = "double"
 since = "0.2.0"
+range = [0, 1]
 
 # The corner radii: `all`, or the four corners.
 [[object.property]]
@@ -590,6 +636,7 @@ since = "0.2.0"
 name = "opacity"
 type = "double"
 since = "0.2.0"
+range = [0, 1]
 
 # The corner radii: one for all corners or one each. The compositor draws one radius for all; a window whose corners differ is told so in
 # `warnings`.
@@ -635,6 +682,7 @@ name = "is_set"
 since = "0.2.0"
 returns = "bool"
 
+# The property to ask about.
 [[object.method.param]]
 name = "property"
 type = "enum:style_property"
@@ -644,6 +692,7 @@ type = "enum:style_property"
 name = "unset"
 since = "0.2.0"
 
+# The property to take back to inheriting.
 [[object.method.param]]
 name = "property"
 type = "enum:style_property"
@@ -665,6 +714,7 @@ returns = "object:style_values"
 name = "assign"
 since = "0.2.0"
 
+# What the scope sets. A property it leaves out is taken back to inheriting.
 [[object.method.param]]
 name = "values"
 type = "object:style_values"
@@ -677,14 +727,17 @@ name = "where"
 since = "0.2.0"
 returns = "object:style"
 
+# Which of the scope's windows the selection holds.
 [[object.method.param]]
 name = "query"
 type = "object:style_query"
 
+# The selection's rank: the higher wins. Left out, 0.
 [[object.method.param]]
 name = "priority"
 type = "double"
 optional = true
+default = 0.0
 
 # The shadows as a list to edit in place.
 [[object.method]]
@@ -723,7 +776,9 @@ name = "of_client"
 since = "0.2.0"
 function = true
 returns = "object:style"
+raises = ["not_found"]
 
+# The window's node number.
 [[object.method.param]]
 name = "client"
 type = "uint"
@@ -734,7 +789,9 @@ name = "of_workspace"
 since = "0.2.0"
 function = true
 returns = "object:style"
+raises = ["not_found"]
 
+# The workspace's id.
 [[object.method.param]]
 name = "workspace"
 type = "string"
@@ -746,6 +803,7 @@ since = "0.2.0"
 function = true
 returns = "object:computed_style"
 
+# The window's node number.
 [[object.method.param]]
 name = "client"
 type = "uint"
@@ -758,6 +816,7 @@ since = "0.2.0"
 function = true
 returns = "list<string>"
 
+# The window's node number.
 [[object.method.param]]
 name = "client"
 type = "uint"
@@ -801,7 +860,9 @@ readonly = true
 [[object.method]]
 name = "remove"
 since = "0.2.0"
+raises = ["not_found"]
 
+# Which entry, counted from the end when negative. An index outside the list is refused.
 [[object.method.param]]
 name = "index"
 type = "int"
@@ -833,7 +894,9 @@ since = "0.2.0"
 name = "at"
 since = "0.2.0"
 returns = "object:shadow"
+raises = ["not_found"]
 
+# Which entry, counted from the end when negative. An index outside the list is refused.
 [[object.method.param]]
 name = "index"
 type = "int"
@@ -844,6 +907,7 @@ name = "add"
 since = "0.2.0"
 returns = "object:shadow"
 
+# The entry to append.
 [[object.method.param]]
 name = "entry"
 type = "object:shadow"
@@ -852,11 +916,14 @@ type = "object:shadow"
 [[object.method]]
 name = "insert"
 since = "0.2.0"
+raises = ["not_found"]
 
+# Where to put the entry: before this index, counted from the end when negative. The length of the list appends.
 [[object.method.param]]
 name = "index"
 type = "int"
 
+# The entry to put in.
 [[object.method.param]]
 name = "entry"
 type = "object:shadow"
@@ -865,11 +932,14 @@ type = "object:shadow"
 [[object.method]]
 name = "replace"
 since = "0.2.0"
+raises = ["not_found"]
 
+# Which entry, counted from the end when negative. An index outside the list is refused.
 [[object.method.param]]
 name = "index"
 type = "int"
 
+# The entry to put in its place.
 [[object.method.param]]
 name = "entry"
 type = "object:shadow"
@@ -891,7 +961,9 @@ since = "0.2.0"
 name = "at"
 since = "0.2.0"
 returns = "object:border"
+raises = ["not_found"]
 
+# Which entry, counted from the end when negative. An index outside the list is refused.
 [[object.method.param]]
 name = "index"
 type = "int"
@@ -902,6 +974,7 @@ name = "add"
 since = "0.2.0"
 returns = "object:border"
 
+# The entry to append.
 [[object.method.param]]
 name = "entry"
 type = "object:border"
@@ -910,11 +983,14 @@ type = "object:border"
 [[object.method]]
 name = "insert"
 since = "0.2.0"
+raises = ["not_found"]
 
+# Where to put the entry: before this index, counted from the end when negative. The length of the list appends.
 [[object.method.param]]
 name = "index"
 type = "int"
 
+# The entry to put in.
 [[object.method.param]]
 name = "entry"
 type = "object:border"
@@ -923,11 +999,14 @@ type = "object:border"
 [[object.method]]
 name = "replace"
 since = "0.2.0"
+raises = ["not_found"]
 
+# Which entry, counted from the end when negative. An index outside the list is refused.
 [[object.method.param]]
 name = "index"
 type = "int"
 
+# The entry to put in its place.
 [[object.method.param]]
 name = "entry"
 type = "object:border"
@@ -949,7 +1028,9 @@ since = "0.2.0"
 name = "at"
 since = "0.2.0"
 returns = "object:filter"
+raises = ["not_found"]
 
+# Which entry, counted from the end when negative. An index outside the list is refused.
 [[object.method.param]]
 name = "index"
 type = "int"
@@ -960,6 +1041,7 @@ name = "add"
 since = "0.2.0"
 returns = "object:filter"
 
+# The entry to append.
 [[object.method.param]]
 name = "entry"
 type = "object:filter"
@@ -968,11 +1050,14 @@ type = "object:filter"
 [[object.method]]
 name = "insert"
 since = "0.2.0"
+raises = ["not_found"]
 
+# Where to put the entry: before this index, counted from the end when negative. The length of the list appends.
 [[object.method.param]]
 name = "index"
 type = "int"
 
+# The entry to put in.
 [[object.method.param]]
 name = "entry"
 type = "object:filter"
@@ -981,11 +1066,14 @@ type = "object:filter"
 [[object.method]]
 name = "replace"
 since = "0.2.0"
+raises = ["not_found"]
 
+# Which entry, counted from the end when negative. An index outside the list is refused.
 [[object.method.param]]
 name = "index"
 type = "int"
 
+# The entry to put in its place.
 [[object.method.param]]
 name = "entry"
 type = "object:filter"
