@@ -20,14 +20,32 @@ title = "Transitions"
 [[enum]]
 name = "easing"
 since = "0.2.0"
-values = ["linear", "ease", "ease-in", "ease-out", "ease-in-out"]
+values = [
+    # No curve: the same speed throughout.
+    "linear",
+    # `cubic-bezier(0.25, 0.1, 0.25, 1)`: starts quickly, ends slowly.
+    "ease",
+    # `cubic-bezier(0.42, 0, 1, 1)`: starts slowly.
+    "ease-in",
+    # `cubic-bezier(0, 0, 0.58, 1)`: ends slowly.
+    "ease-out",
+    # `cubic-bezier(0.42, 0, 0.58, 1)`: starts and ends slowly.
+    "ease-in-out",
+]
 
 # What a transition is. It is `running` until its tracks end, `finished` when they reached their targets, and `cancelled` when a newer
 # write took the last of them, it was cancelled, or it ran back to its start.
 [[enum]]
 name = "transition_state"
 since = "0.2.0"
-values = ["running", "finished", "cancelled"]
+values = [
+    # The tracks are still playing.
+    "running",
+    # The tracks reached their targets.
+    "finished",
+    # A newer write took the last track, it was cancelled, or it ran back to its start.
+    "cancelled",
+]
 
 # The callback of `request`: it stages the changes with `Transition.set`, with the writes of scene nodes and styles, and with whatever
 # else the library holds. It runs once, and at once.
@@ -53,6 +71,7 @@ kind = "record"
 name = "duration"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 default = 250.0
 
 # The curve of every track.
@@ -67,6 +86,7 @@ default = "ease-out"
 name = "delay"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 default = 0.0
 
 # False stages the transition with its tracks held at the start: `progress` scrubs them, `play` and `reverse` run them, `pause` holds
@@ -137,6 +157,7 @@ readonly = true
 name = "duration"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 readonly = true
 
 # What it is now.
@@ -174,22 +195,27 @@ readonly = true
 name = "progress"
 type = "double"
 since = "0.2.0"
+range = [0, 1]
+raises = ["invalid_state", "not_found"]
 
 # Lets the tracks run on towards the target, from where they are. Refused inside a callback; nothing happens once the transition ended.
 [[object.method]]
 name = "play"
 since = "0.2.0"
+raises = ["invalid_state", "not_found"]
 
 # Holds the tracks where they are. Refused inside a callback; nothing happens once the transition ended.
 [[object.method]]
 name = "pause"
 since = "0.2.0"
+raises = ["invalid_state", "not_found"]
 
 # Runs the tracks back towards their start from where they are. When they get there the transition is `cancelled` and the start values are
 # back in the tree. Refused inside a callback; nothing happens once the transition ended.
 [[object.method]]
 name = "reverse"
 since = "0.2.0"
+raises = ["invalid_state", "not_found"]
 
 # Stops the transition: every property it still owns is written at its end value at once, which ends the compositor's track, and the
 # transition is `cancelled`. The target was committed when the transition began, so cancelling puts what is drawn there and does not go
@@ -197,6 +223,7 @@ since = "0.2.0"
 [[object.method]]
 name = "cancel"
 since = "0.2.0"
+raises = ["invalid_state", "not_found"]
 
 # The transition ended: `cancelled` is true when it did not reach its target (`cancel`, a newer write that took its last track, or a run
 # back to the start). A listener added after the end is told from the next turn.
@@ -204,6 +231,7 @@ since = "0.2.0"
 name = "finished"
 since = "0.2.0"
 
+# Whether the transition did not reach its target.
 [[object.signal.field]]
 name = "cancelled"
 type = "bool"
@@ -213,12 +241,15 @@ type = "bool"
 [[object.method]]
 name = "begin"
 since = "0.2.0"
+raises = ["invalid_state"]
 function = true
 
+# How the transition plays.
 [[object.method.param]]
 name = "options"
 type = "object:transition_options"
 
+# Puts back the state of the shell's own that the callback changed. Left out, nothing of the shell's is put back.
 [[object.method.param]]
 name = "rollback"
 type = "callback:rollback"
@@ -230,16 +261,20 @@ optional = true
 [[object.method]]
 name = "set"
 since = "0.2.0"
+raises = ["not_found", "read_only"]
 function = true
 
+# The number of the node in the compositor's tree.
 [[object.method.param]]
 name = "node"
 type = "uint"
 
+# The name of the property, such as `opacity` or `x`.
 [[object.method.param]]
 name = "key"
 type = "string"
 
+# The value to write. Exactly one field is given, of the kind the property takes.
 [[object.method.param]]
 name = "value"
 type = "object:transition_value"
@@ -252,10 +287,12 @@ since = "0.2.0"
 function = true
 returns = "object:transition_value"
 
+# The number of the node in the compositor's tree.
 [[object.method.param]]
 name = "node"
 type = "uint"
 
+# The name of the property, such as `opacity` or `x`.
 [[object.method.param]]
 name = "key"
 type = "string"
@@ -266,10 +303,12 @@ name = "release"
 since = "0.2.0"
 function = true
 
+# The number of the node in the compositor's tree.
 [[object.method.param]]
 name = "node"
 type = "uint"
 
+# The name of the property, such as `opacity` or `x`.
 [[object.method.param]]
 name = "key"
 type = "string"
@@ -280,6 +319,7 @@ type = "string"
 [[object.method]]
 name = "commit"
 since = "0.2.0"
+raises = ["invalid_state", "denied", "internal"]
 function = true
 returns = "object:transition"
 
@@ -295,18 +335,22 @@ function = true
 [[object.method]]
 name = "request"
 since = "0.2.0"
+raises = ["invalid_state", "denied", "internal"]
 function = true
 returns = "object:transition"
 
+# The callback that stages the changes. It runs once and at once.
 [[object.method.param]]
 name = "work"
 type = "callback:staged_work"
 
+# How the transition plays. Left out, the defaults of `transition_options`.
 [[object.method.param]]
 name = "options"
 type = "object:transition_options"
 optional = true
 
+# Puts back the state of the shell's own that the callback changed. Left out, nothing of the shell's is put back.
 [[object.method.param]]
 name = "rollback"
 type = "callback:rollback"
@@ -317,22 +361,27 @@ optional = true
 [[object.method]]
 name = "animate"
 since = "0.2.0"
+raises = ["not_found", "read_only", "unsupported", "denied"]
 function = true
 returns = "object:transition"
 optional = true
 
+# The number of the node in the compositor's tree.
 [[object.method.param]]
 name = "node"
 type = "uint"
 
+# The name of the property, such as `opacity` or `x`.
 [[object.method.param]]
 name = "key"
 type = "string"
 
+# The value to write. Exactly one field is given, of the kind the property takes.
 [[object.method.param]]
 name = "value"
 type = "object:transition_value"
 
+# How the transition plays.
 [[object.method.param]]
 name = "options"
 type = "object:transition_options"
@@ -344,13 +393,16 @@ since = "0.2.0"
 function = true
 returns = "double"
 
+# The curve.
 [[object.method.param]]
 name = "easing"
 type = "enum:easing"
 
+# How far through the duration, from 0 to 1.
 [[object.method.param]]
 name = "t"
 type = "double"
+range = [0, 1]
 
 # `gnoblin.requestTransition` of the core's root once this library is loaded: the core has no transaction of the shell's own writes.
 [[augment]]
@@ -362,17 +414,21 @@ since = "0.2.0"
 [[augment.method]]
 name = "request_transition"
 since = "0.2.0"
+raises = ["invalid_state", "denied", "internal"]
 returns = "object:transition"
 
+# The callback that stages the changes. It runs once and at once.
 [[augment.method.param]]
 name = "work"
 type = "callback:staged_work"
 
+# How the transition plays. Left out, the defaults of `transition_options`.
 [[augment.method.param]]
 name = "options"
 type = "object:transition_options"
 optional = true
 
+# Puts back the state of the shell's own that the callback changed. Left out, nothing of the shell's is put back.
 [[augment.method.param]]
 name = "rollback"
 type = "callback:rollback"
