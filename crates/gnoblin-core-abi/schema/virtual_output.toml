@@ -11,7 +11,10 @@ title = "Virtual outputs"
 [[enum]]
 name = "virtual_output_attachment"
 since = "0.2.0"
-values = ["viewer"]
+values = [
+    # The output is attached to the viewer: it stays in front of the headset and follows the head.
+    "viewer",
+]
 
 # What a virtual output is: a name, a size in pixels, and optionally where it is attached. Checked when it is made: a name that is
 # empty, a size that is not a whole number of pixels above zero, a scale that is not above zero or an attachment that is not `viewer`
@@ -35,6 +38,7 @@ name = "width"
 type = "uint"
 since = "0.2.0"
 readonly = true
+unit = "px"
 
 # The height in pixels. A whole number above zero.
 [[object.property]]
@@ -42,6 +46,7 @@ name = "height"
 type = "uint"
 since = "0.2.0"
 readonly = true
+unit = "px"
 
 # The scale of the output's pixels. 1 when it is left out.
 [[object.property]]

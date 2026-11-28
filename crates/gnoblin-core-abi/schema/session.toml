@@ -13,13 +13,27 @@ title = "Session"
 [[enum]]
 name = "lock_state"
 since = "0.2.0"
-values = ["unlocked", "covering", "locked", "failsafe"]
+values = [
+    # The session is not locked.
+    "unlocked",
+    # A cover is going up or coming down.
+    "covering",
+    # The session is locked and every output is covered. Only this confirms that a lock took.
+    "locked",
+    # The cover is up and the lock client failed. The session stays locked until a lock client takes over.
+    "failsafe",
+]
 
 # Whether the session connection is there. `unavailable` means there is no compositor connection, not that the session is unlocked.
 [[enum]]
 name = "session_state"
 since = "0.2.0"
-values = ["running", "unavailable"]
+values = [
+    # The connection to the compositor is open.
+    "running",
+    # There is no connection to the compositor.
+    "unavailable",
+]
 
 # The latest published session state.
 [[object]]
@@ -216,6 +230,7 @@ kind = "interface"
 name = "on_ready"
 since = "0.2.0"
 
+# The session service.
 [[object.method.param]]
 name = "session"
 type = "object:session"
@@ -225,10 +240,12 @@ type = "object:session"
 name = "on_bell"
 since = "0.2.0"
 
+# The session service.
 [[object.method.param]]
 name = "session"
 type = "object:session"
 
+# How many bells the session has rung.
 [[object.method.param]]
 name = "count"
 type = "uint"
@@ -238,10 +255,12 @@ type = "uint"
 name = "on_reload_requested"
 since = "0.2.0"
 
+# The session service.
 [[object.method.param]]
 name = "session"
 type = "object:session"
 
+# The generation that is running.
 [[object.method.param]]
 name = "generation"
 type = "uint"
@@ -251,14 +270,17 @@ type = "uint"
 name = "on_lock_state_changed"
 since = "0.2.0"
 
+# The session service.
 [[object.method.param]]
 name = "session"
 type = "object:session"
 
+# The lock state the session now has.
 [[object.method.param]]
 name = "state"
 type = "enum:lock_state"
 
+# How many lock state changes the session has published.
 [[object.method.param]]
 name = "revision"
 type = "uint"
@@ -274,10 +296,12 @@ kind = "interface"
 name = "on_config_reloaded"
 since = "0.2.0"
 
+# The runtime service.
 [[object.method.param]]
 name = "runtime"
 type = "object:runtime"
 
+# What the compositor accepted.
 [[object.method.param]]
 name = "reload"
 type = "object:config_reloaded"
@@ -287,10 +311,12 @@ type = "object:config_reloaded"
 name = "on_config_reload_failed"
 since = "0.2.0"
 
+# The runtime service.
 [[object.method.param]]
 name = "runtime"
 type = "object:runtime"
 
+# Why the compositor refused it.
 [[object.method.param]]
 name = "failure"
 type = "object:config_reload_failed"
@@ -349,6 +375,7 @@ returns = "object:operation"
 name = "add_listener"
 since = "0.2.0"
 
+# The listener to attach or detach.
 [[object.method.param]]
 name = "listener"
 type = "object:session_listener"
@@ -358,6 +385,7 @@ type = "object:session_listener"
 name = "remove_listener"
 since = "0.2.0"
 
+# The listener to attach or detach.
 [[object.method.param]]
 name = "listener"
 type = "object:session_listener"
@@ -367,6 +395,7 @@ type = "object:session_listener"
 name = "ready"
 since = "0.2.0"
 
+# The session service.
 [[object.signal.field]]
 name = "session"
 type = "object:session"
@@ -376,10 +405,12 @@ type = "object:session"
 name = "bell"
 since = "0.2.0"
 
+# The session service.
 [[object.signal.field]]
 name = "session"
 type = "object:session"
 
+# How many bells the session has rung.
 [[object.signal.field]]
 name = "count"
 type = "uint"
@@ -389,10 +420,12 @@ type = "uint"
 name = "reload_requested"
 since = "0.2.0"
 
+# The session service.
 [[object.signal.field]]
 name = "session"
 type = "object:session"
 
+# The generation that is running.
 [[object.signal.field]]
 name = "generation"
 type = "uint"
@@ -402,14 +435,17 @@ type = "uint"
 name = "lock_state_changed"
 since = "0.2.0"
 
+# The session service.
 [[object.signal.field]]
 name = "session"
 type = "object:session"
 
+# The lock state the session now has.
 [[object.signal.field]]
 name = "state"
 type = "enum:lock_state"
 
+# How many lock state changes the session has published.
 [[object.signal.field]]
 name = "revision"
 type = "uint"
@@ -434,12 +470,14 @@ readonly = true
 name = "reload_config"
 since = "0.2.0"
 returns = "object:operation"
+raises = ["busy"]
 
 # Attaches a listener; adding the same listener twice has no effect.
 [[object.method]]
 name = "add_listener"
 since = "0.2.0"
 
+# The listener to attach or detach.
 [[object.method.param]]
 name = "listener"
 type = "object:runtime_listener"
@@ -449,6 +487,7 @@ type = "object:runtime_listener"
 name = "remove_listener"
 since = "0.2.0"
 
+# The listener to attach or detach.
 [[object.method.param]]
 name = "listener"
 type = "object:runtime_listener"
@@ -458,10 +497,12 @@ type = "object:runtime_listener"
 name = "config_reloaded"
 since = "0.2.0"
 
+# The runtime service.
 [[object.signal.field]]
 name = "runtime"
 type = "object:runtime"
 
+# What the compositor accepted.
 [[object.signal.field]]
 name = "reload"
 type = "object:config_reloaded"
@@ -471,10 +512,12 @@ type = "object:config_reloaded"
 name = "config_reload_failed"
 since = "0.2.0"
 
+# The runtime service.
 [[object.signal.field]]
 name = "runtime"
 type = "object:runtime"
 
+# Why the compositor refused it.
 [[object.signal.field]]
 name = "failure"
 type = "object:config_reload_failed"
@@ -495,13 +538,16 @@ kind = "service"
 name = "user_shaders"
 type = "bool"
 since = "0.2.0"
+raises = ["invalid_argument"]
 
 # Takes the setting `name` (`user_shaders`) back to the default: the document the host commits no longer sets it, and the property reads what
 # the running compositor holds again. Refused for another name.
 [[object.method]]
 name = "reset"
 since = "0.2.0"
+raises = ["invalid_argument"]
 
+# The setting to take back: `user_shaders`. Any other name is refused.
 [[object.method.param]]
 name = "name"
 type = "string"

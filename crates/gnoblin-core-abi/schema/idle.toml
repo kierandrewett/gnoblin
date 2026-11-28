@@ -76,6 +76,7 @@ since = "0.2.0"
 name = "idle"
 since = "0.2.0"
 
+# The watch that became idle.
 [[object.signal.field]]
 name = "watch"
 type = "object:idle_watch"
@@ -85,6 +86,7 @@ type = "object:idle_watch"
 name = "resume"
 since = "0.2.0"
 
+# The watch that saw the session active again.
 [[object.signal.field]]
 name = "watch"
 type = "object:idle_watch"
@@ -94,10 +96,12 @@ type = "object:idle_watch"
 name = "closed"
 since = "0.2.0"
 
+# The watch that ended.
 [[object.signal.field]]
 name = "watch"
 type = "object:idle_watch"
 
+# Why the watch ended. Always `cancelled`.
 [[object.signal.field]]
 name = "reason"
 type = "string"
@@ -113,6 +117,7 @@ kind = "interface"
 name = "on_idle"
 since = "0.2.0"
 
+# The watch that became idle.
 [[object.method.param]]
 name = "watch"
 type = "object:idle_watch"
@@ -122,6 +127,7 @@ type = "object:idle_watch"
 name = "on_resume"
 since = "0.2.0"
 
+# The watch that saw the session active again.
 [[object.method.param]]
 name = "watch"
 type = "object:idle_watch"
@@ -131,10 +137,12 @@ type = "object:idle_watch"
 name = "on_closed"
 since = "0.2.0"
 
+# The watch that ended.
 [[object.method.param]]
 name = "watch"
 type = "object:idle_watch"
 
+# Why the watch ended. Always `cancelled`.
 [[object.method.param]]
 name = "reason"
 type = "string"
@@ -205,11 +213,16 @@ readonly = true
 name = "watch"
 since = "0.2.0"
 returns = "object:idle_watch"
+raises = ["invalid_argument"]
 
+# How long the session must go without input before the watch is idle, in milliseconds. A number above 0 and at most 86400000 (a day);
+# anything else is refused.
 [[object.method.param]]
 name = "ms"
 type = "double"
+unit = "ms"
 
+# Told when the watch becomes idle, resumes and ends. Without one the watch can still be read and listened to as an object.
 [[object.method.param]]
 name = "listener"
 type = "object:idle_listener"
@@ -222,7 +235,9 @@ optional = true
 name = "inhibit"
 since = "0.2.0"
 returns = "object:idle_inhibitor"
+raises = ["invalid_argument"]
 
+# A name for the hold, of your choice. It must not be empty. Holding again under a name that is held returns the hold that exists.
 [[object.method.param]]
 name = "holder"
 type = "string"

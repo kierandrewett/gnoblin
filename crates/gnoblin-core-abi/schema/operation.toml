@@ -8,7 +8,14 @@ title = "Operations and timers"
 [[enum]]
 name = "operation_status"
 since = "0.2.0"
-values = ["pending", "succeeded", "failed"]
+values = [
+    # The operation has not settled.
+    "pending",
+    # The operation succeeded.
+    "succeeded",
+    # The operation failed: `error` and `error_code` say why.
+    "failed",
+]
 
 # Runs when an operation succeeded.
 [[callback]]
@@ -20,10 +27,12 @@ since = "0.2.0"
 name = "operation_failed"
 since = "0.2.0"
 
+# The compositor's words for the failure.
 [[callback.param]]
 name = "error"
 type = "string"
 
+# The failure's code, such as `denied` or `timed_out`.
 [[callback.param]]
 name = "code"
 type = "string"
@@ -36,6 +45,7 @@ name = "operation_map"
 since = "0.2.0"
 returns = "any"
 
+# What the operation succeeded with: none, a boolean, a number, text or a list.
 [[callback.param]]
 name = "value"
 type = "any"
@@ -89,6 +99,7 @@ readonly = true
 name = "then"
 since = "0.2.0"
 
+# The function to run.
 [[object.method.param]]
 name = "run"
 type = "callback:operation_done"
@@ -98,6 +109,7 @@ type = "callback:operation_done"
 name = "catch"
 since = "0.2.0"
 
+# The function to run with the failure's words and code.
 [[object.method.param]]
 name = "run"
 type = "callback:operation_failed"
@@ -110,6 +122,7 @@ name = "map"
 since = "0.2.0"
 returns = "object:operation"
 
+# The function that turns the value into the new operation's value.
 [[object.method.param]]
 name = "run"
 type = "callback:operation_map"
@@ -121,10 +134,14 @@ type = "callback:operation_map"
 name = "timeout"
 since = "0.2.0"
 returns = "object:operation"
+raises = ["invalid_argument"]
 
+# How long to wait, in milliseconds, from 0 to 86400000 (a day).
 [[object.method.param]]
 name = "ms"
 type = "double"
+range = [0, 86400000]
+unit = "ms"
 
 # Stops waiting: a pending operation fails with code `cancelled` and its listeners are told from the next turn. Returns true when it
 # did, and false when the operation had settled already. It does not undo the request: work already sent to the compositor still
@@ -139,6 +156,7 @@ returns = "bool"
 name = "settled"
 since = "0.2.0"
 
+# The operation that settled.
 [[object.signal.field]]
 name = "operation"
 type = "object:operation"
@@ -187,11 +205,16 @@ kind = "service"
 name = "after"
 since = "0.2.0"
 returns = "object:timer"
+raises = ["invalid_argument", "busy"]
 
+# How long to wait, in milliseconds, from 0 to 86400000 (a day).
 [[object.method.param]]
 name = "ms"
 type = "double"
+range = [0, 86400000]
+unit = "ms"
 
+# The function to run when the time comes.
 [[object.method.param]]
 name = "run"
 type = "callback:timer_fn"

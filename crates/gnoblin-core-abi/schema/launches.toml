@@ -13,7 +13,17 @@ title = "Launches"
 [[enum]]
 name = "launch_state"
 since = "0.2.0"
-values = ["pending", "started", "timed_out", "ended"]
+values = [
+    # The launch waits for a window or its deadline.
+    "pending",
+    # A window of the application appeared or took focus.
+    "started",
+    # The deadline passed before a window appeared.
+    "timed_out",
+    # The launch ended without a window: `finish` ended it, a launch with the same token replaced it, or the registry could
+    # not take it.
+    "ended",
+]
 
 # Observes one launch: pass it to `launches.begin` as `listener`. Every method is optional.
 [[object]]
@@ -26,10 +36,12 @@ kind = "interface"
 name = "on_changed"
 since = "0.2.0"
 
+# The launch that changed.
 [[object.method.param]]
 name = "launch"
 type = "object:launch"
 
+# The names of the properties of the launch that changed: `state`, `alive` and `revision`.
 [[object.method.param]]
 name = "fields"
 type = "list<string>"
@@ -39,6 +51,7 @@ type = "list<string>"
 name = "on_started"
 since = "0.2.0"
 
+# The launch that started.
 [[object.method.param]]
 name = "launch"
 type = "object:launch"
@@ -48,6 +61,7 @@ type = "object:launch"
 name = "on_timed_out"
 since = "0.2.0"
 
+# The launch that timed out.
 [[object.method.param]]
 name = "launch"
 type = "object:launch"
@@ -57,10 +71,12 @@ type = "object:launch"
 name = "on_closed"
 since = "0.2.0"
 
+# The launch that left `pending`.
 [[object.method.param]]
 name = "launch"
 type = "object:launch"
 
+# Why it left `pending`: `started`, `timed_out`, `replaced` or `ended`, or the refusal that ended it at once.
 [[object.method.param]]
 name = "reason"
 type = "string"
@@ -77,6 +93,8 @@ name = "timeout_ms"
 type = "int"
 since = "0.2.0"
 optional = true
+range = [100, 10000]
+unit = "ms"
 
 # Told of the launch's changes.
 [[object.property]]
@@ -111,6 +129,7 @@ name = "timeout_ms"
 type = "uint"
 since = "0.2.0"
 readonly = true
+unit = "ms"
 
 # Unix time in milliseconds when `begin` was called.
 [[object.property]]
@@ -118,6 +137,7 @@ name = "started_at"
 type = "double"
 since = "0.2.0"
 readonly = true
+unit = "ms"
 
 # The current state, from `pending` to one terminal state.
 [[object.property]]
@@ -150,10 +170,12 @@ since = "0.2.0"
 name = "changed"
 since = "0.2.0"
 
+# The launch that changed.
 [[object.signal.field]]
 name = "launch"
 type = "object:launch"
 
+# The names of the properties of the launch that changed: `state`, `alive` and `revision`.
 [[object.signal.field]]
 name = "fields"
 type = "list<string>"
@@ -163,6 +185,7 @@ type = "list<string>"
 name = "started"
 since = "0.2.0"
 
+# The launch that started.
 [[object.signal.field]]
 name = "launch"
 type = "object:launch"
@@ -172,6 +195,7 @@ type = "object:launch"
 name = "timed_out"
 since = "0.2.0"
 
+# The launch that timed out.
 [[object.signal.field]]
 name = "launch"
 type = "object:launch"
@@ -181,10 +205,12 @@ type = "object:launch"
 name = "closed"
 since = "0.2.0"
 
+# The launch that left `pending`.
 [[object.signal.field]]
 name = "launch"
 type = "object:launch"
 
+# Why it left `pending`: `started`, `timed_out`, `replaced` or `ended`, or the refusal that ended it at once.
 [[object.signal.field]]
 name = "reason"
 type = "string"
@@ -216,15 +242,19 @@ returns = "list<object:launch>"
 name = "begin"
 since = "0.2.0"
 returns = "object:launch"
+raises = ["invalid_argument"]
 
+# The caller's key for the launch, 1 to 128 characters. A token already in use replaces the earlier launch.
 [[object.method.param]]
 name = "token"
 type = "string"
 
+# The application identifier a window is matched against, 1 to 512 characters, such as `org.example.App.desktop`.
 [[object.method.param]]
 name = "application"
 type = "string"
 
+# The deadline and a listener. Without it the launch times out after 3000 ms and has no listener.
 [[object.method.param]]
 name = "options"
 type = "object:launch_options"
