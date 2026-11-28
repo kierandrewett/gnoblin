@@ -21,33 +21,64 @@ title = "Workspaces and layouts"
 [[enum]]
 name = "place_mode"
 since = "0.2.0"
-values = ["smart", "center", "cascade"]
+values = [
+    # The first spot of the area that overlaps no window. A spot that is taken is cascaded from.
+    "smart",
+    # The middle of the area.
+    "center",
+    # A cascade from the area's top left.
+    "cascade",
+]
 
 # How the outputs share workspaces: each shows its own (`separate`), every output shows what the lead output shows and the compositor
 # mirrors them (`duplicate`), or one workspace is laid out over the union of the outputs, which show a part each (`extend`).
 [[enum]]
 name = "output_policy_mode"
 since = "0.2.0"
-values = ["separate", "duplicate", "extend"]
+values = [
+    # Each output shows its own workspace.
+    "separate",
+    # Every output shows what the lead output shows, and the compositor mirrors them.
+    "duplicate",
+    # One workspace is laid out over the union of the outputs, which show a part each.
+    "extend",
+]
 
 # Where workspaces come from: the shell adds and removes every one (`manual`), or the library adds one for each output that appears and
 # removes it when the output goes (`per_output`).
 [[enum]]
 name = "workspace_policy_mode"
 since = "0.2.0"
-values = ["manual", "per_output"]
+values = [
+    # The shell adds and removes every workspace.
+    "manual",
+    # The library adds a workspace for each output that appears and removes it when the output goes.
+    "per_output",
+]
 
 # The pointer's axis that carries a divider.
 [[enum]]
 name = "split_axis"
 since = "0.2.0"
-values = ["horizontal", "vertical"]
+values = [
+    # The divider moves with the pointer's travel left and right.
+    "horizontal",
+    # The divider moves with the pointer's travel up and down.
+    "vertical",
+]
 
 # The part of the work area a snapped window tiles to: the left half, the right half, or all of it.
 [[enum]]
 name = "snap_zone"
 since = "0.2.0"
-values = ["left", "right", "top"]
+values = [
+    # The left half of the work area.
+    "left",
+    # The right half of the work area.
+    "right",
+    # All of the work area.
+    "top",
+]
 
 # ---- records -------------------------------------------------------------------------------------------------------------------------
 
@@ -62,6 +93,7 @@ kind = "record"
 name = "x"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # Top edge.
@@ -69,6 +101,7 @@ default = 0.0
 name = "y"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # Width, 0 or more.
@@ -76,6 +109,7 @@ default = 0.0
 name = "width"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # Height, 0 or more.
@@ -83,6 +117,7 @@ default = 0.0
 name = "height"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # The gaps of a workspace's layout, in logical pixels, each a finite number of at least 0.
@@ -96,6 +131,7 @@ kind = "record"
 name = "inner"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # The gap between the tiles and the edge of the area.
@@ -103,6 +139,7 @@ default = 0.0
 name = "outer"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # How a workspace is shown.
@@ -116,6 +153,7 @@ kind = "record"
 name = "duration"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 default = 0.0
 
 # How much of the slide a touchpad gesture has made already, 0 to 1.
@@ -123,6 +161,7 @@ default = 0.0
 name = "progress"
 type = "double"
 since = "0.2.0"
+range = [0, 1]
 default = 0.0
 
 # The output to show it on; left out, the one under the pointer (the primary output when no pointer says).
@@ -163,6 +202,7 @@ since = "0.2.0"
 name = "inner_gap"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # The workspace's gap between the tiles and the edge of the area.
@@ -170,6 +210,7 @@ default = 0.0
 name = "outer_gap"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # The child that has the keyboard; left out when none has.
@@ -226,6 +267,7 @@ default = 0.0
 name = "rotation"
 type = "list<double>"
 since = "0.2.0"
+unit = "rad"
 optional = true
 
 # Scale along the x, y and z axes; left out, 1 along each.
@@ -240,6 +282,7 @@ optional = true
 name = "offset_x"
 type = "double"
 since = "0.2.0"
+unit = "px"
 optional = true
 
 # How far the rectangle moves along y.
@@ -247,6 +290,7 @@ optional = true
 name = "offset_y"
 type = "double"
 since = "0.2.0"
+unit = "px"
 optional = true
 
 # A divider a drag moves, as a layout describes it: dragging the pointer `span` pixels along `axis` moves `ratio` by one, in the direction
@@ -282,6 +326,7 @@ default = 1
 name = "span"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 1.0
 
 # The lowest ratio the layout allows.
@@ -324,6 +369,7 @@ default = 1
 name = "cross_span"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 1.0
 
 # The lowest ratio of the second divider.
@@ -406,6 +452,7 @@ default = "smart"
 name = "cascade_step"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # What the desk knows about an output: whether it shows a workspace, which, and the room it has.
@@ -481,6 +528,7 @@ kind = "record"
 name = "top"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # Room to the right of the content.
@@ -488,6 +536,7 @@ default = 0.0
 name = "right"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # Room below the content.
@@ -495,6 +544,7 @@ default = 0.0
 name = "bottom"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # Room to the left of the content.
@@ -502,6 +552,7 @@ default = 0.0
 name = "left"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # A width and a height a window may be resized to, in logical pixels.
@@ -515,12 +566,14 @@ kind = "record"
 name = "width"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The height.
 [[object.property]]
 name = "height"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # Where a window is snapped, and where it floated before.
 [[object]]
@@ -614,6 +667,7 @@ default = "smart"
 name = "step"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # The window's width, frame included. Below 1 it is read as 1.
@@ -621,12 +675,14 @@ default = 0.0
 name = "width"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The window's height, frame included. Below 1 it is read as 1.
 [[object.property]]
 name = "height"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The rectangle the window goes in.
 [[object.property]]
@@ -667,6 +723,7 @@ since = "0.2.0"
 returns = "list<object:layout_placement>"
 required = true
 
+# The workspace as the layout sees it now: its clients, area and gaps.
 [[object.method.param]]
 name = "context"
 type = "object:layout_context"
@@ -677,10 +734,12 @@ name = "client_added"
 since = "0.2.0"
 default = "native"
 
+# The workspace as the layout sees it now.
 [[object.method.param]]
 name = "context"
 type = "object:layout_context"
 
+# The client that joined.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -691,10 +750,12 @@ name = "client_removed"
 since = "0.2.0"
 default = "native"
 
+# The workspace as the layout sees it now.
 [[object.method.param]]
 name = "context"
 type = "object:layout_context"
 
+# The client that left.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -705,10 +766,12 @@ name = "area_changed"
 since = "0.2.0"
 default = "native"
 
+# The rectangle the workspace had.
 [[object.method.param]]
 name = "before"
 type = "object:layout_rect"
 
+# The rectangle the workspace has now.
 [[object.method.param]]
 name = "now"
 type = "object:layout_rect"
@@ -719,10 +782,12 @@ name = "clients_swapped"
 since = "0.2.0"
 default = "native"
 
+# One of the two clients.
 [[object.method.param]]
 name = "a"
 type = "object:gnoblin.model.client"
 
+# The other client.
 [[object.method.param]]
 name = "b"
 type = "object:gnoblin.model.client"
@@ -743,17 +808,22 @@ since = "0.2.0"
 returns = "list<object:layout_split>"
 default = "native"
 
+# The client the press was on.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
+# Horizontal position of the press, in logical pixels.
 [[object.method.param]]
 name = "x"
 type = "double"
+unit = "px"
 
+# Vertical position of the press, in logical pixels.
 [[object.method.param]]
 name = "y"
 type = "double"
+unit = "px"
 
 # Moves the dividers `find_split` returned. (On a Rust handle the method is `move_split`, because `set_split` is the setter of the dwindle's `split` option; the field of `LayoutHandlers` is `set_split`.)
 [[object.method]]
@@ -762,14 +832,17 @@ since = "0.2.0"
 default = "native"
 export = { rust = "move_split" }
 
+# The `token` of the divider `find_split` returned.
 [[object.method.param]]
 name = "token"
 type = "uint"
 
+# The divider's new position, as a ratio.
 [[object.method.param]]
 name = "ratio"
 type = "double"
 
+# The second divider's new position, as a ratio. Left out when the drag has one divider.
 [[object.method.param]]
 name = "cross_ratio"
 type = "double"
@@ -781,6 +854,7 @@ name = "reset_split"
 since = "0.2.0"
 default = "native"
 
+# The `token` of the divider `find_split` returned.
 [[object.method.param]]
 name = "token"
 type = "uint"
@@ -804,6 +878,7 @@ default = "smart"
 name = "cascade_step"
 type = "double"
 since = "0.2.0"
+unit = "px"
 default = 0.0
 
 # Where a new window of a size goes among the windows already there: the rectangle the floating layout would give it. A function that
@@ -814,6 +889,7 @@ since = "0.2.0"
 function = true
 returns = "object:layout_rect"
 
+# The size of the window and the rectangle and windows it is placed among.
 [[object.method.param]]
 name = "query"
 type = "object:floating_query"
@@ -844,9 +920,11 @@ readonly = true
 # Whether `client` is in the collection now.
 [[object.method]]
 name = "contains"
+raises = ["not_found"]
 since = "0.2.0"
 returns = "bool"
 
+# The client to look for.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -857,6 +935,7 @@ name = "where"
 since = "0.2.0"
 returns = "object:client_collection"
 
+# What a client must match to be in the selection.
 [[object.method.param]]
 name = "query"
 type = "object:client_query"
@@ -865,8 +944,10 @@ type = "object:client_query"
 # selection.
 [[object.method]]
 name = "add"
+raises = ["read_only", "invalid_state", "not_found"]
 since = "0.2.0"
 
+# The client to move here. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -874,27 +955,33 @@ type = "object:gnoblin.model.client"
 # Takes `client` out of the workspace: it has no workspace until it is given one, and no window is closed. Answers whether it was there.
 [[object.method]]
 name = "remove"
+raises = ["read_only", "not_found"]
 since = "0.2.0"
 returns = "bool"
 
+# The client to take out.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
 # Takes every client out of the workspace.
 [[object.method]]
+raises = ["read_only"]
 name = "clear"
 since = "0.2.0"
 
 # Trades the places of two clients in the workspace's order; its layout hears of it from its next pass.
 [[object.method]]
 name = "swap"
+raises = ["read_only", "invalid_argument", "not_found"]
 since = "0.2.0"
 
+# One of the two clients. Both must be in the collection.
 [[object.method.param]]
 name = "a"
 type = "object:gnoblin.model.client"
 
+# The other client.
 [[object.method.param]]
 name = "b"
 type = "object:gnoblin.model.client"
@@ -911,6 +998,7 @@ returns = "object:client_collection"
 name = "added"
 since = "0.2.0"
 
+# The client that joined.
 [[object.signal.field]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -920,6 +1008,7 @@ type = "object:gnoblin.model.client"
 name = "removed"
 since = "0.2.0"
 
+# The client that left.
 [[object.signal.field]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -950,18 +1039,21 @@ optional = true
 name = "floating"
 type = "bool"
 since = "0.2.0"
+raises = ["not_found"]
 
 # The room the client's frame takes round its content.
 [[object.property]]
 name = "inset"
 type = "object:frame_inset"
 since = "0.2.0"
+raises = ["not_found"]
 
 # The least the client may be resized to; none when the shell said nothing.
 [[object.property]]
 name = "min_size"
 type = "object:size_limit"
 since = "0.2.0"
+raises = ["not_found"]
 optional = true
 
 # The most the client may be resized to; none when the shell said nothing.
@@ -969,6 +1061,7 @@ optional = true
 name = "max_size"
 type = "object:size_limit"
 since = "0.2.0"
+raises = ["not_found"]
 optional = true
 
 # The rectangle the client floats at, when the shell kept one.
@@ -993,6 +1086,7 @@ name = "move_to_workspace"
 since = "0.2.0"
 returns = "bool"
 
+# The workspace to move to.
 [[object.method.param]]
 name = "workspace"
 type = "object:workspace"
@@ -1005,17 +1099,21 @@ name = "snap_to"
 since = "0.2.0"
 returns = "bool"
 
+# The part of `area` the client tiles to.
 [[object.method.param]]
 name = "zone"
 type = "enum:snap_zone"
 
+# The rectangle the zone is taken from, in logical pixels.
 [[object.method.param]]
 name = "area"
 type = "object:layout_rect"
 
+# Whether edges tile. Left out, they do.
 [[object.method.param]]
 name = "edge_tiling"
 type = "bool"
+default = true
 optional = true
 
 # Takes the client out of its snap zone and puts it back where it floated. Answers whether it was snapped.
@@ -1034,9 +1132,11 @@ returns = "bool"
 [[object.method]]
 name = "of"
 since = "0.2.0"
+raises = ["not_found"]
 function = true
 returns = "object:client_state"
 
+# The window whose state is wanted. Refused with `not_found` when it is not a window.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -1079,6 +1179,7 @@ since = "0.2.0"
 name = "layout"
 type = "object:layout"
 since = "0.2.0"
+raises = ["busy"]
 optional = true
 
 # The workspace's clients, in order.
@@ -1120,7 +1221,9 @@ readonly = true
 [[object.method]]
 name = "show"
 since = "0.2.0"
+raises = ["invalid_state", "not_found", "unavailable"]
 
+# How and where to show it. Left out, it is shown at once on the output under the pointer.
 [[object.method.param]]
 name = "options"
 type = "object:show_options"
@@ -1137,6 +1240,7 @@ since = "0.2.0"
 name = "walk"
 since = "0.2.0"
 
+# How many windows to move along: 1 for the next, -1 for the previous.
 [[object.method.param]]
 name = "step"
 type = "int"
@@ -1148,31 +1252,39 @@ since = "0.2.0"
 returns = "object:layout_split"
 optional = true
 
+# The client the press was on.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
+# Horizontal position of the press, in logical pixels. A number that is not finite is refused as a bad argument.
 [[object.method.param]]
 name = "x"
 type = "double"
+unit = "px"
 
+# Vertical position of the press, in logical pixels. A number that is not finite is refused as a bad argument.
 [[object.method.param]]
 name = "y"
 type = "double"
+unit = "px"
 
 # Moves the dividers `find_split` returned to `ratio` (and `cross_ratio` when the drag has a second).
 [[object.method]]
 name = "set_split"
 since = "0.2.0"
 
+# The `token` of the divider `find_split` returned.
 [[object.method.param]]
 name = "token"
 type = "uint"
 
+# The divider's new position, as a ratio. A number that is not finite is refused as a bad argument.
 [[object.method.param]]
 name = "ratio"
 type = "double"
 
+# The second divider's new position, as a ratio. Left out when the drag has one divider.
 [[object.method.param]]
 name = "cross_ratio"
 type = "double"
@@ -1183,6 +1295,7 @@ optional = true
 name = "reset_split"
 since = "0.2.0"
 
+# The `token` of the divider `find_split` returned.
 [[object.method.param]]
 name = "token"
 type = "uint"
@@ -1192,6 +1305,7 @@ type = "uint"
 name = "shown"
 since = "0.2.0"
 
+# The node of the output it is shown on.
 [[object.signal.field]]
 name = "output"
 type = "uint"
@@ -1206,6 +1320,7 @@ since = "0.2.0"
 name = "client_added"
 since = "0.2.0"
 
+# The client that joined.
 [[object.signal.field]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -1215,6 +1330,7 @@ type = "object:gnoblin.model.client"
 name = "client_removed"
 since = "0.2.0"
 
+# The client that left.
 [[object.signal.field]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -1244,7 +1360,9 @@ readonly = true
 [[object.method]]
 name = "add"
 since = "0.2.0"
+raises = ["already_exists"]
 
+# The workspace to add.
 [[object.method.param]]
 name = "workspace"
 type = "object:workspace"
@@ -1255,6 +1373,7 @@ name = "remove"
 since = "0.2.0"
 returns = "bool"
 
+# The workspace to take out.
 [[object.method.param]]
 name = "workspace"
 type = "object:workspace"
@@ -1271,6 +1390,7 @@ since = "0.2.0"
 returns = "object:workspace"
 optional = true
 
+# The id to look for.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -1279,9 +1399,11 @@ type = "string"
 [[object.method]]
 name = "of_client"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "object:workspace"
 optional = true
 
+# The client whose workspace is wanted. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -1293,6 +1415,7 @@ since = "0.2.0"
 returns = "object:workspace"
 optional = true
 
+# The output's node number.
 [[object.method.param]]
 name = "output"
 type = "uint"
@@ -1312,11 +1435,14 @@ optional = true
 [[object.method]]
 name = "show"
 since = "0.2.0"
+raises = ["invalid_state", "not_found", "unavailable"]
 
+# The workspace to show. It must be in the list.
 [[object.method.param]]
 name = "workspace"
 type = "object:workspace"
 
+# How and where to show it. Left out, it is shown at once on the output under the pointer.
 [[object.method.param]]
 name = "options"
 type = "object:show_options"
@@ -1326,11 +1452,14 @@ optional = true
 [[object.method]]
 name = "show_by_id"
 since = "0.2.0"
+raises = ["not_found", "invalid_state", "unavailable"]
 
+# The id of the workspace to show.
 [[object.method.param]]
 name = "id"
 type = "string"
 
+# How and where to show it. Left out, it is shown at once on the output under the pointer.
 [[object.method.param]]
 name = "options"
 type = "object:show_options"
@@ -1341,6 +1470,7 @@ optional = true
 name = "added"
 since = "0.2.0"
 
+# The workspace that joined.
 [[object.signal.field]]
 name = "workspace"
 type = "object:workspace"
@@ -1350,6 +1480,7 @@ type = "object:workspace"
 name = "removed"
 since = "0.2.0"
 
+# The workspace that left.
 [[object.signal.field]]
 name = "workspace"
 type = "object:workspace"
@@ -1377,8 +1508,10 @@ since = "0.2.0"
 [[object.method]]
 name = "output"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "object:output_desk"
 
+# The output's node number. Refused with `not_found` when it is not an output.
 [[object.method.param]]
 name = "output"
 type = "uint"
@@ -1387,28 +1520,37 @@ type = "uint"
 [[object.method]]
 name = "set_insets"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The output's node number. Refused with `not_found` when it is not an output.
 [[object.method.param]]
 name = "output"
 type = "uint"
 
+# The room taken at the top, in logical pixels. A number that is below 0 or not finite is refused as a bad argument.
 [[object.method.param]]
 name = "top"
 type = "double"
+unit = "px"
 
+# The room taken at the bottom, in logical pixels. A number that is below 0 or not finite is refused as a bad argument.
 [[object.method.param]]
 name = "bottom"
 type = "double"
+unit = "px"
 
 # Stretches one workspace over the outputs `members` (the lead first); an empty list ends the span.
 [[object.method]]
 name = "span"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The output the span starts from. Refused with `not_found` when it is not an output.
 [[object.method.param]]
 name = "lead"
 type = "uint"
 
+# The nodes of the outputs the workspace stretches over, the lead first. An empty list ends the span.
 [[object.method.param]]
 name = "members"
 type = "list<uint>"
@@ -1419,6 +1561,7 @@ name = "areas"
 since = "0.2.0"
 returns = "object:client_areas"
 
+# The window whose output is wanted. Left out, the primary output's.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -1431,14 +1574,17 @@ name = "restore_client"
 since = "0.2.0"
 returns = "bool"
 
+# The workspace to give the client back to.
 [[object.method.param]]
 name = "workspace"
 type = "object:workspace"
 
+# The client to give back.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
+# Whether a layout may place the client: it has arrived and was not there before.
 [[object.method.param]]
 name = "arrived"
 type = "bool"
@@ -1448,14 +1594,17 @@ type = "bool"
 name = "restore_snap"
 since = "0.2.0"
 
+# The client whose snap is given back.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
+# The zone the client was in.
 [[object.method.param]]
 name = "zone"
 type = "enum:snap_zone"
 
+# The rectangle the client floated at.
 [[object.method.param]]
 name = "floating"
 type = "object:layout_rect"
@@ -1515,6 +1664,7 @@ since = "0.2.0"
 returns = "list<object:workspace>"
 find = "Workspace"
 
+# What a workspace must equal to be listed. Left out, every workspace is.
 [[augment.method.param]]
 name = "query"
 type = "object:workspace_query"
@@ -1525,11 +1675,14 @@ optional = true
 [[augment.method]]
 name = "show"
 since = "0.2.0"
+raises = ["invalid_state", "not_found", "unavailable"]
 
+# The workspace to show. It must be in the list.
 [[augment.method.param]]
 name = "workspace"
 type = "object:workspace"
 
+# How and where to show it. Left out, it is shown at once on the output under the pointer.
 [[augment.method.param]]
 name = "options"
 type = "object:show_options"
@@ -1558,6 +1711,7 @@ name = "move_to_workspace"
 since = "0.2.0"
 returns = "bool"
 
+# The workspace to move the window to.
 [[augment.method.param]]
 name = "workspace"
 type = "object:workspace"
@@ -1577,6 +1731,7 @@ name = "move_to_output"
 since = "0.2.0"
 returns = "bool"
 
+# The output whose workspace the window moves to.
 [[augment.method.param]]
 name = "output"
 type = "object:gnoblin.model.output"
@@ -1631,11 +1786,14 @@ optional = true
 [[augment.method]]
 name = "show"
 since = "0.2.0"
+raises = ["invalid_state", "not_found", "unavailable"]
 
+# The workspace to show. It must be in the list.
 [[augment.method.param]]
 name = "workspace"
 type = "object:workspace"
 
+# How to show it. Its `output` is not read.
 [[augment.method.param]]
 name = "options"
 type = "object:show_options"
