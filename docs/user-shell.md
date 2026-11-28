@@ -23,10 +23,10 @@ The library is two parts, in every language:
 - `gnoblin-core` is the host bridge and the core objects: `gnoblin`, `Client`, `Output`, collections, listeners, input
   contexts and bindings, `process`, `session`, and the dialog, idle and authentication services. It is the package
   `gnoblin-core` in TypeScript.
-  In Python it is the module `gnoblin.objects.model`, and in Rust the crate `gnoblin-core`.
+  In Python it is the module `gnoblin`, and in Rust the crate `gnoblin-core`.
 - `gnoblin-std` is the desktop policy built on it: workspaces, layouts, the move and resize bindings, focus, snapping,
   the window frame and menus, styles, transitions, scenes, the toolkit and XR. It is the package `gnoblin-std` in TypeScript.
-  In Python it is the module `gnoblin.objects.std`, and in Rust the crate `gnoblin-std`.
+  In Python it is the module `gnoblin.std`, and in Rust the crate `gnoblin-std`.
 
 `gnoblin-std` builds on `gnoblin-core`, never the reverse. Import from the part a name lives in.
 

@@ -32,6 +32,137 @@ const USAGE: &str = "usage: cargo xtask docs-examples [--lang typescript|python|
 const SCRATCH: &str = "target/docs-examples";
 const SITE_BIN: &str = "infra/site/node_modules/.bin";
 
+/// The paths a shell author must not be taught, by language. The closer a name is to the root of a package, the more public it is: the
+/// classes of the object model are written in `objects` modules and re-exported at the root, and the pages, the examples and the starters
+/// name the root. The rest is plumbing: the host layer the language runtimes stand on (`gnoblin_core::host`, `gnoblin.host`), the entry
+/// macro's support module, the library handle `gnoblin_std` attaches with, and the generated modules of the TypeScript library.
+fn internal_paths(language: Language) -> &'static [&'static str] {
+    match language {
+        Language::Rust => &[
+            "gnoblin_core::host",
+            "gnoblin_core::__private",
+            "gnoblin_core::objects",
+            "gnoblin_std::objects",
+            "gnoblin_std::api",
+            "gnoblin_std::Std",
+        ],
+        Language::Python => &["gnoblin.objects", "gnoblin.host"],
+        Language::TypeScript => &["/generated/"],
+    }
+}
+
+/// Whether `line` names `path` as a whole path: `gnoblin_std::Std` is named by `gnoblin_std::Std::open` and not by
+/// `gnoblin_std::StdError`. A path that ends in a separator (`/generated/`) is a whole path wherever it is followed.
+fn names_path(line: &str, path: &str) -> bool {
+    let ends_a_name = path.ends_with(|last: char| last.is_alphanumeric() || last == '_');
+    line.match_indices(path).any(|(at, _)| {
+        !ends_a_name
+            || line[at + path.len()..]
+                .chars()
+                .next()
+                .is_none_or(|next| !(next.is_alphanumeric() || next == '_'))
+    })
+}
+
+/// The lines of `text` that name an internal path of `language`, as `where:line: text`.
+fn internal_lines(language: Language, place: &str, text: &str) -> Vec<String> {
+    text.lines()
+        .enumerate()
+        .filter(|(_, line)| internal_paths(language).iter().any(|path| names_path(line, path)))
+        .map(|(at, line)| format!("{place}:{}: names an internal path: {}", at + 1, line.trim()))
+        .collect()
+}
+
+/// The language a fence names, for the three the SDK has.
+fn fence_language(info: &str) -> Option<Language> {
+    match info.split_whitespace().next()? {
+        "rust" => Some(Language::Rust),
+        "python" | "py" => Some(Language::Python),
+        "ts" | "typescript" => Some(Language::TypeScript),
+        _ => None,
+    }
+}
+
+/// The lines of the fenced code of a page that name an internal path, whatever the fence is inside of (a tab, a list, a quote).
+fn internal_lines_in_page(place: &str, text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut open: Option<Option<Language>> = None;
+    for (at, line) in text.lines().enumerate() {
+        if let Some(info) = line.trim_start().strip_prefix("```") {
+            open = match open {
+                Some(_) => None,
+                None => Some(fence_language(info)),
+            };
+        } else if let Some(Some(language)) = open
+            && internal_paths(language).iter().any(|path| names_path(line, path))
+        {
+            found.push(format!("{place}:{}: names an internal path: {}", at + 1, line.trim()));
+        }
+    }
+    found
+}
+
+/// Every place a shell author reads code: the code of every page of `docs/`, the shells of `examples/` and the starters of
+/// `shells/starters`, in each language. None of them may name an internal path of the SDK.
+fn internal_imports(repo: &Path) -> Result<Vec<String>, String> {
+    let mut found = Vec::new();
+    let docs = repo.join("docs");
+    let mut pages = Vec::new();
+    pages_under(&docs, &docs, &mut pages)?;
+    for page in pages {
+        let text = fs::read_to_string(&page).map_err(|error| format!("cannot read {}: {error}", page.display()))?;
+        let place = format!("docs/{}", page.strip_prefix(&docs).unwrap_or(&page).display());
+        found.extend(internal_lines_in_page(&place, &text));
+    }
+    for dir in ["examples", "shells/starters"] {
+        let mut sources = Vec::new();
+        shell_sources(&repo.join(dir), &mut sources)?;
+        for (source, language) in sources {
+            let text =
+                fs::read_to_string(&source).map_err(|error| format!("cannot read {}: {error}", source.display()))?;
+            let place = source.strip_prefix(repo).unwrap_or(&source).display().to_string();
+            if HOST_LAYER_EXAMPLES.iter().any(|example| place.starts_with(example)) {
+                continue;
+            }
+            found.extend(internal_lines(language, &place, &text));
+        }
+    }
+    Ok(found)
+}
+
+/// The shipped examples that teach the host layer on purpose, because the object model has no counterpart of what they show (kept state,
+/// adopted nodes and posters across a reload).
+const HOST_LAYER_EXAMPLES: [&str; 1] = ["examples/10-hot-reload"];
+
+/// The sources of shells under `dir` (`.rs`, `.py`, `.ts`), without descending into a `target` or `node_modules` directory, and the
+/// language of each.
+fn shell_sources(dir: &Path, out: &mut Vec<(PathBuf, Language)>) -> Result<(), String> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Ok(());
+    };
+    for entry in entries {
+        let path = entry
+            .map_err(|error| format!("cannot list {}: {error}", dir.display()))?
+            .path();
+        if path.is_dir() {
+            if path
+                .file_name()
+                .is_some_and(|name| name != "target" && name != "node_modules")
+            {
+                shell_sources(&path, out)?;
+            }
+        } else if let Some(language) = path.extension().and_then(|extension| match extension.to_str() {
+            Some("rs") => Some(Language::Rust),
+            Some("py") => Some(Language::Python),
+            Some("ts") => Some(Language::TypeScript),
+            _ => None,
+        }) {
+            out.push((path, language));
+        }
+    }
+    Ok(())
+}
+
 /// One thing a checker said about an example.
 #[derive(Debug, PartialEq, Eq)]
 struct Finding {
@@ -173,6 +304,18 @@ fn examples_command(args: &[String]) -> Result<ExitCode, String> {
     if examples.is_empty() {
         println!("[docs-examples] no `::: tabs` groups in {} page(s)", files.len());
         return Ok(ExitCode::SUCCESS);
+    }
+
+    let internal = internal_imports(&repo)?;
+    if !internal.is_empty() {
+        for line in &internal {
+            eprintln!("{line}");
+        }
+        eprintln!(
+            "[docs-examples] {} import(s) of an internal path: pages, examples and starters teach the root paths",
+            internal.len()
+        );
+        return Ok(ExitCode::FAILURE);
     }
 
     let scratch = out.unwrap_or_else(|| repo.join(SCRATCH));
@@ -635,6 +778,78 @@ fn schema_examples(repo: &Path) -> Result<Vec<Example>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_page_or_example_that_names_an_internal_path_is_refused() {
+        let taught = "use gnoblin_core::host::Host;\nfn main() {}\n";
+        let found = internal_lines(Language::Rust, "docs/x.md", taught);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].starts_with("docs/x.md:1:"), "{found:?}");
+        for line in [
+            "use gnoblin_core::__private::entry;",
+            "use gnoblin_core::objects::Client;",
+            "use gnoblin_std::objects::Workspace;",
+            "let std = gnoblin_std::Std::open(host)?;",
+        ] {
+            assert_eq!(internal_lines(Language::Rust, "a.rs", line).len(), 1, "{line}");
+        }
+        for line in [
+            "from gnoblin.objects.model import Client",
+            "from gnoblin.host import Window",
+            "import gnoblin.host as host",
+        ] {
+            assert_eq!(internal_lines(Language::Python, "a.py", line).len(), 1, "{line}");
+        }
+        assert_eq!(
+            internal_lines(
+                Language::TypeScript,
+                "a.ts",
+                "import { Client } from \"gnoblin-core/generated/objects\";"
+            )
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn the_root_paths_are_not_refused() {
+        // The root paths, prose that merely says `host`, and a longer name that starts like an internal one, are fine.
+        let rust = "use gnoblin_core::{Client, Gnoblin};\n// the host of the session\nuse gnoblin_std::StdError;\nuse gnoblin_std::prelude::*;";
+        assert!(internal_lines(Language::Rust, "a.rs", rust).is_empty());
+        assert!(
+            internal_lines(
+                Language::Python,
+                "a.py",
+                "from gnoblin import Client\nfrom gnoblin.std import Workspace"
+            )
+            .is_empty()
+        );
+        assert!(
+            internal_lines(
+                Language::TypeScript,
+                "a.ts",
+                "import { Client, verbs } from \"gnoblin-core\";"
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn the_pages_the_examples_and_the_starters_name_no_internal_path() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        assert_eq!(internal_imports(&repo).expect("the sources read"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_fenced_block_that_names_an_internal_path_is_found_inside_a_tab_and_a_list() {
+        let page = "::: tabs\n```rust\nuse gnoblin_core::host::Host;\n```\n:::\n\n- item\n\n  ```python\n  from gnoblin.objects import std\n  ```\n\n```text\ngnoblin_core::host::Host in prose\n```\n";
+        let found = internal_lines_in_page("docs/x.md", page);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(
+            found[0].starts_with("docs/x.md:3:") && found[1].starts_with("docs/x.md:10:"),
+            "{found:?}"
+        );
+    }
 
     #[test]
     fn a_tsc_error_is_found_in_its_example_and_a_continuation_joins_it() {

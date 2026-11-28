@@ -7,7 +7,7 @@ The call is the same in the three languages a shell can be written in:
 
 - TypeScript has `gnoblin.requestTransition`.
 - Python has `GnoblinAugment.get().request_transition`.
-- Rust has `model.request_transition(..)` on the `ModelRoot`.
+- Rust has `model.request_transition(..)` on the `Gnoblin`.
 
 Each is also the static `Transition.request` of the std library.
 

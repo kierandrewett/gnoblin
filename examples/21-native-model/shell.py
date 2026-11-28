@@ -3,7 +3,7 @@
     gnoblin ./shell.py
 
 The windows are not nodes this shell walks: ``gnoblin.clients`` is a live collection, and a window is an object with properties and
-signals. The classes of the ``gnoblin.model`` catalog are generated from the catalog the library serves, so ``gnoblin.objects.model`` has a
+signals. The classes of the ``gnoblin.model`` catalog are generated from the catalog the library serves, so ``gnoblin`` has a
 class for each of them. This shell does what the Rust shell of the same example (``21-native-model``) does, and logs the same lines:
 
 - reads the windows that are there and logs how many;

@@ -4,7 +4,7 @@ The runtime API is what a shell sees. Use it to read compositor state, place and
 and ask the session for things. Each language imports it its own way:
 
 - TypeScript: the `gnoblin` global and classes from `"gnoblin-core"` and `"gnoblin-std"`.
-- Python: `gnoblin.objects.model` and `gnoblin.objects.std`.
+- Python: `gnoblin` and `gnoblin.std`.
 - Rust: the `gnoblin_core` and `gnoblin_std` crates.
 
 ::: tabs

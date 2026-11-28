@@ -4,8 +4,8 @@ A shell draws its own interface with a small toolkit. It is a class library of `
 a Rust shell use the same classes with the same members, each spelled its own way.
 
 - TypeScript imports them with `import { Box, Text } from "gnoblin-std"`.
-- Python imports them with `from gnoblin.objects.std import Box, Text`.
-- Rust takes them from `gnoblin_std::objects`, where the box is `UiBox` because `Box` is a Rust type.
+- Python imports them with `from gnoblin.std import Box, Text`.
+- Rust takes them from `gnoblin_std`, where the box is `UiBox` because `Box` is a Rust type.
 
 Properties are `camelCase` in TypeScript, `snake_case` attributes in Python, and a getter with a `set_` method in Rust.
 
@@ -463,7 +463,7 @@ made. A bar takes its room from the windows there:
 ::: tabs
 
 ```typescript
-import { Bar } from "gnoblin-std/generated/objects";
+import { Bar } from "gnoblin-std";
 
 const bar = new Bar({ edge: "top", height: 32 });
 console.log(Bar.insets().top, bar.shown);
@@ -471,7 +471,7 @@ bar.destroy();
 ```
 
 ```python
-from gnoblin.objects.std import Bar
+from gnoblin.std import Bar
 
 bar = Bar(edge="top", height=32.0)
 print(Bar.insets().top, bar.shown)
@@ -479,12 +479,12 @@ bar.destroy()
 ```
 
 ```rust
-use gnoblin_std::objects::{Bar, BarEdge};
 use gnoblin_std::prelude::*;
+use gnoblin_std::{Bar, BarEdge};
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     let bar = Bar::new(&objects)?;
     bar.set_edge(BarEdge::Top)?;

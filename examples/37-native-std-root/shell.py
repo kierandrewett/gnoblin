@@ -2,7 +2,7 @@
 
     gnoblin ./shell.py
 
-Importing ``gnoblin.objects.std`` gives the core's ``Gnoblin`` the members ``workspaces``, ``displays``, ``scene``, ``gestures`` and
+Importing ``gnoblin.std`` gives the core's ``Gnoblin`` the members ``workspaces``, ``displays``, ``scene``, ``gestures`` and
 ``request_transition``, its ``outputs`` the member ``profiles``, each input context ``active_display`` and each collection of windows
 ``style``. A shell that never imports it (example 35) has none of them. This shell:
 

@@ -11,8 +11,8 @@ publish.workspace = true
 name = "native_clients"
 crate-type = ["cdylib"]
 
-# The shell depends on the std SDK and the core SDK and nothing else. The typed classes it uses (`gnoblin_core::objects`,
-# `gnoblin_std::objects`) are written at build time from the libraries' catalogs and call the libraries through their object tables.
+# The shell depends on the std SDK and the core SDK and nothing else. The typed classes it uses (at the roots of `gnoblin_core`
+# and `gnoblin_std`) are written at build time from the libraries' catalogs and call the libraries through their object tables.
 [dependencies]
 gnoblin-core = { path = "../../crates/gnoblin-core" }
 gnoblin-std = { path = "../../crates/gnoblin-std" }

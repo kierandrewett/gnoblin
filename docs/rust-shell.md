@@ -372,8 +372,8 @@ A shell names the crates for the libraries it uses.
 | `gnoblin-std`  | `libgnoblin-std`  | Workspaces, layouts, clients and the pointer bindings. Needs `gnoblin-core` too. |
 
 A shell with only `gnoblin-core` runs on a machine that has no std library. [Build a desktop](build-a-desktop.md) shows when
-to add `gnoblin-std`. The crates take the names `gnoblin_core::objects` (the core's classes) and `gnoblin_std::objects` (the
-std classes), and `use gnoblin_std::prelude::*;` brings in the traits that give the core's classes their std members.
+to add `gnoblin-std`. The classes are at the root of the crates: `gnoblin_core::Client` is the core's class and `gnoblin_std::Workspace` the
+std library's, and `use gnoblin_std::prelude::*;` brings in both, with the traits that give the core's classes their std members.
 
 ### Where the crates come from
 
@@ -448,7 +448,7 @@ libraries.
 
 ### Read the root object of the core
 
-The typed object model of the core starts at `ModelRoot`. Its members are the ones a script reads on `gnoblin`: `timers()` (`after` and
+The typed object model of the core starts at `Gnoblin`. Its members are the ones a script reads on `gnoblin`: `timers()` (`after` and
 `now`), `version()`, `motion(duration)`, `compositor()` (`user_shaders`, `set_user_shaders` and `reset`), and `find`.
 
 ```rust
@@ -479,7 +479,7 @@ setting takes it back.
 Gnoblin keeps the settings only for the shell the stored configuration belongs to: a shell run by another path (`gnoblin --shell ./dev.so`)
 while another shell is installed in the configuration directory commits nothing, and the log says so.
 
-`find` takes the kind as a type. A kind the core does not list has no `Finds<ModelRoot>` impl, so asking for it is an error when the
+`find` takes the kind as a type. A kind the core does not list has no `Finds<Gnoblin>` impl, so asking for it is an error when the
 shell is built and not when it runs. `find` takes a filter record. For a test a record cannot say, `find_matching` takes a closure that
 answers `Ok(true)` for each object to keep, as `find(kind, function)` does in TypeScript and Python:
 
@@ -492,7 +492,7 @@ this.
 
 ### Read the std members of the root object
 
-`use gnoblin_std::prelude::*;` brings in `ModelRootStdExt` and `OutputCollectionStdExt`, which give the core's typed `ModelRoot` the members
+`use gnoblin_std::prelude::*;` brings in `GnoblinStdExt` and `OutputCollectionStdExt`, which give the core's typed `Gnoblin` the members
 the std library adds: `workspaces()`, `displays()`, `scene()`, `gestures()` and `request_transition(..)`, and `profiles()` for the
 `outputs()` of the root.
 
@@ -623,7 +623,7 @@ A handler that fails is logged as a failed listener, and the next event is deliv
 
 ### Reach the classes of both libraries
 
-`g.objects()?` is the `Objects` of the core and `g.std()?.objects()?` the `Objects` of the std library. They are two types, because a class is
+`g.objects()?` is the `Objects` of the core and `g.objects()?.std()?` the `Objects` of the std library. They are two types, because a class is
 made from the library that serves it. A shell that makes classes of both takes the second from the first, or from `g`:
 
 ```rust
@@ -631,7 +631,7 @@ let core = g.objects()?;
 let std = core.std()?; // the same as g.objects()?.std()?
 ```
 
-`core.std()` is `ObjectsStdExt`, and `g.std_objects()` is `GnoblinStdExt`; both are in `gnoblin_std::prelude`.
+`core.std()` is `ObjectsStdExt`, which `gnoblin_std::prelude` brings in.
 
 ### Check which class an object is
 
@@ -735,7 +735,7 @@ call that was still waiting for its answer is dropped with it.
 
 Python and TypeScript have the same two calls, generated from the same schema: `verbs.session.on_bell(fn)` and
 `verbs.idle.inhibit("holder", on_answer=fn)` in Python, `verbs.session.onBell(fn)` and `verbs.idle.inhibit("holder", answer =>
-...)` in TypeScript (`import { verbs } from "gnoblin-core/generated/verbs"`).
+...)` in TypeScript (`import { verbs } from "gnoblin-core"`).
 
 ### Session, processes, idle and timers
 
@@ -786,12 +786,12 @@ Only the shell thread may call `dispatch`.
 ### Draw your own interface
 
 `libgnoblin-std` carries a toolkit for the interface a shell draws itself: bars, entries, toasts and your own widgets. A canvas is a
-node of the compositor's tree that paints a list of drawing operations. The classes are in `gnoblin_std::objects`:
+node of the compositor's tree that paints a list of drawing operations. The classes are at the root of `gnoblin_std`:
 
 - `Canvas`, `UiBox`, `Grid`, `Text` and `Icon` for layout and drawing;
 - `Entry`, `Clock`, `Bar` and `Toast` for the widgets the library keeps up to date.
 
-A member of `gnoblin_std::objects` that takes a window takes `&gnoblin_core::objects::Client`, the core's own class. Text where a window
+A member of `gnoblin_std` that takes a window takes `&gnoblin_core::Client`, the core's own class. Text where a window
 is expected is a build error. `examples/36-native-clients` makes these calls:
 
 ```rust
@@ -804,7 +804,7 @@ How the library passes a window back to your shell:
 
 - A window that has closed is still a `Client`, and a member called with it fails with `the client is gone`.
 - The workspace classes give the core's `Client`: `members`, `on_added` and a layout's `children`. It is equal to the one
-  `ModelRoot::clients()` and `get_by_id` give.
+  `Gnoblin::clients()` and `get_by_id` give.
 - The frame, menu, policy and shell classes still give a window's id as text.
 
 The library lays out, measures text, encodes the paint list and delivers pointer events and keys. You set properties and hear

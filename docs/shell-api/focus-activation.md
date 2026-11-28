@@ -14,7 +14,7 @@ A file that decides focus itself calls `FocusPolicy.get().stop()` before it does
 
 `FocusPolicy.get().start()` starts the stock policy again, and does nothing while it runs.
 
-In Rust the call is `FocusPolicy::get(&objects)?.stop()?`, with the `objects` of `g.std()?.objects()?`.
+In Rust the call is `FocusPolicy::get(&objects)?.stop()?`, with the `objects` of `g.objects()?.std()?`.
 
 A shell that is not a desktop of the library, one written on the core alone, has no focus policy: nothing moves its keyboard
 until it calls `client.focus()`.

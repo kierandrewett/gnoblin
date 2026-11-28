@@ -12,7 +12,7 @@ name = "native_options"
 crate-type = ["cdylib"]
 
 # The shell depends on the std SDK and the core SDK and nothing else. The classes are the typed classes of the library's catalog
-# (`gnoblin_std::objects`); the core's typed root gives the lists the objects are added to.
+# (at the root of `gnoblin_std`); the core's typed root gives the lists the objects are added to.
 [dependencies]
 gnoblin-core = { path = "../../crates/gnoblin-core" }
 gnoblin-std = { path = "../../crates/gnoblin-std" }

@@ -42,11 +42,11 @@ names the library.
 
 Each language reaches the two layers the same way:
 
-| Language   | Core                                    | Std                                   | Where the file goes                              |
-| ---------- | --------------------------------------- | ------------------------------------- | ------------------------------------------------ |
-| TypeScript | `import ... from "gnoblin-core"`        | `import ... from "gnoblin-std"`       | `~/.config/gnoblin/shell.ts`                     |
-| Python     | `from gnoblin.objects.model import ...` | `from gnoblin.objects.std import ...` | `~/.config/gnoblin/shell.py`                     |
-| Rust       | the `gnoblin-core` crate                | the `gnoblin-std` crate               | a library crate: `gnoblin ./target/debug/lib.so` |
+| Language   | Core                             | Std                             | Where the file goes                              |
+| ---------- | -------------------------------- | ------------------------------- | ------------------------------------------------ |
+| TypeScript | `import ... from "gnoblin-core"` | `import ... from "gnoblin-std"` | `~/.config/gnoblin/shell.ts`                     |
+| Python     | `from gnoblin import ...`        | `from gnoblin.std import ...`   | `~/.config/gnoblin/shell.py`                     |
+| Rust       | the `gnoblin-core` crate         | the `gnoblin-std` crate         | a library crate: `gnoblin ./target/debug/lib.so` |
 
 ## A tiling window manager on the core alone
 
@@ -202,7 +202,7 @@ master window, in Rust and in Python.
 
 ## A shell that uses std
 
-Add the std library to the shell. A TypeScript shell imports `gnoblin-std`, a Python shell imports `gnoblin.objects.std`, and
+Add the std library to the shell. A TypeScript shell imports `gnoblin-std`, a Python shell imports `gnoblin.std`, and
 a Rust shell adds `gnoblin-std` to `Cargo.toml` next to `gnoblin-core`:
 
 ```toml
@@ -309,9 +309,9 @@ fn main(gnoblin: &Gnoblin) -> gnoblin_std::Result<()> {
 | `gaps`                         | Two numbers of at least 0, in pixels: `inner`, then `outer`                                                                                                           | Space between windows, then between windows and the edge.    |
 | `ratio` of `MasterStackLayout` | 0.1 to 0.9                                                                                                                                                            | The share of the width the master window takes. Default 0.5. |
 
-In Rust the workspace is made with `Workspace::builder(id)`, and `.gaps(inner, outer)` takes the two numbers; the
-object-model spelling `Workspace::new_with(&objects, id, WorkspaceOptions { .. })` is the same call the TypeScript and Python
-constructors make, as [Rust shell](rust-shell.md#make-an-object-with-options) shows.
+In Rust the workspace is made with `Workspace::new_with(&objects, id, WorkspaceOptions { .. })`, the same call the TypeScript and
+Python constructors make, as [Rust shell](rust-shell.md#make-an-object-with-options) shows. `gnoblin.objects()?.std()?` is the
+handle the classes of the std library are made from.
 
 Windows that open join the workspace and the library tiles them. A Rust shell links `libgnoblin-std.so.1`, which links the
 core, and a session loads one copy of each. If Gnoblin is installed outside the system library path, give the shell a

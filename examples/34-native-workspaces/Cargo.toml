@@ -12,7 +12,7 @@ name = "native_workspaces"
 crate-type = ["cdylib"]
 
 # The shell depends on the std SDK and the core SDK and nothing else. The workspaces, the layouts and the divider go through the typed
-# classes of the library's catalog (`gnoblin_std::objects`); the chords and the drag are bindings on the seat's input context of the core.
+# classes of the library's catalog (at the root of `gnoblin_std`); the chords and the drag are bindings on the seat's input context of the core.
 [dependencies]
 gnoblin-core = { path = "../../crates/gnoblin-core" }
 gnoblin-std = { path = "../../crates/gnoblin-std" }

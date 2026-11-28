@@ -181,9 +181,8 @@ list of those: any other answer fails the new operation.
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
+import { gnoblin } from "gnoblin-core";
 
-const gnoblin = Gnoblin.get();
 const sleep = gnoblin.process.spawn(["sleep", "30"]);
 const label = sleep
     .wait()
@@ -197,7 +196,7 @@ gnoblin.input.primary.bind("Super+Escape", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin
+from gnoblin import BindingEvent, Gnoblin
 
 gnoblin = Gnoblin.get()
 sleep = gnoblin.process.spawn(["sleep", "30"])
@@ -224,12 +223,11 @@ gnoblin.input.primary.bind("Super+Escape", stop)
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let sleep = model.process()?.spawn(&["sleep".to_owned(), "30".to_owned()], None)?;
     let label = Rc::new(sleep.wait()?.timeout(5000.0)?.map(|_value| Ok("sleep ended".into()))?);
     let (ended, answer) = (Rc::clone(&model), Rc::clone(&label));
@@ -504,9 +502,7 @@ The handler here throws on every press:
 ::: tabs
 
 ```typescript
-import { Gnoblin } from "gnoblin-core/generated/objects";
-
-const gnoblin = Gnoblin.get();
+import { gnoblin } from "gnoblin-core";
 
 gnoblin.input.primary.bind("Super+Shift+q", () => {
     throw new Error("not wired up yet");
@@ -514,7 +510,7 @@ gnoblin.input.primary.bind("Super+Shift+q", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin
+from gnoblin import BindingEvent, Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -527,12 +523,11 @@ gnoblin.input.primary.bind("Super+Shift+q", broken)
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Fail, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let context = ModelRoot::get(&g.objects()?)?.input()?.primary()?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let context = Gnoblin::get(&g.objects()?)?.input()?.primary()?;
     context.bind("Super+Shift+q", Some(move |_event| Err(Fail::err("not wired up yet"))), None)?;
     Ok(())
 }

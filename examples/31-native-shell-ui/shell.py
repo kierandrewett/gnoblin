@@ -2,7 +2,7 @@
 
     gnoblin ./shell.py
 
-The classes are generated from the catalog the library serves, so ``gnoblin.objects.std`` has one for each of them. This shell:
+The classes are generated from the catalog the library serves, so ``gnoblin.std`` has one for each of them. This shell:
 
 - starts the not-responding alert, which looks at the windows and opens a card for one that stops answering the compositor's pings: Escape
   waits, Tab moves to Force quit, and Force quit takes a press only after ``arm_ms``;

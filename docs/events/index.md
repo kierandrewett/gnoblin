@@ -7,7 +7,7 @@ happens. Each method receives the object first and the event's own values after 
 Each language writes a listener in its own way:
 
 - **TypeScript:** a class that extends a listener class from `gnoblin-core`, attached with `addListener`.
-- **Python:** a class that subclasses a listener class from `gnoblin.objects.model`, attached with `add_listener`.
+- **Python:** a class that subclasses a listener class from `gnoblin`, attached with `add_listener`.
 - **Rust:** a struct of closures, built with `implement` and attached with `add_listener`, or a closure registered
   directly with an `on_*` method.
 

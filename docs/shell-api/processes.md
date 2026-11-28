@@ -7,7 +7,7 @@ Its `spawn` takes the program and its arguments:
 
 - TypeScript: `gnoblin.process.spawn(argv, options?)`
 - Python: `gnoblin.process.spawn(argv, options)`
-- Rust: `processes.spawn(&argv, options)`, where `processes` is the `Processes` service from `ModelRoot::process()`.
+- Rust: `processes.spawn(&argv, options)`, where `processes` is the `Processes` service from `Gnoblin::process()`.
 
 The root object's `spawn` (`gnoblin.spawn` in TypeScript and Python, `model.spawn` in Rust) is the same call. `shell` runs one
 command line through `/bin/sh`, with the same options.

@@ -3,7 +3,7 @@
     gnoblin ./shell.py
 
 The classes of the ``gnoblin.std`` catalog (an entry model, the focus policy, the records and enums they take) are not written by hand: they
-are generated from the catalog the library serves and call it through one object table, so ``gnoblin.objects.std`` has a class for each of
+are generated from the catalog the library serves and call it through one object table, so ``gnoblin.std`` has a class for each of
 them and the stubs come from the same catalog. This shell uses them the way a toolkit would:
 
 - makes an ``EntryModel`` and reads its properties (``text``, ``length``, ``caret``, ``selection``);

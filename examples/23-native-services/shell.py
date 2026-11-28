@@ -2,7 +2,7 @@
 
     gnoblin ./shell.py
 
-The classes of the ``gnoblin.model`` catalog are generated from the catalog the library serves, so ``gnoblin.objects.model`` has a class for
+The classes of the ``gnoblin.model`` catalog are generated from the catalog the library serves, so ``gnoblin`` has a class for
 each of them. This shell does what the Rust shell of the same example (``23-native-services``) does, and logs the same lines:
 
 - starts a command line and logs how it ended and what it printed;

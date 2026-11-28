@@ -11,7 +11,7 @@ publish.workspace = true
 name = "native_input"
 crate-type = ["cdylib"]
 
-# The shell depends on the core SDK and nothing else. The classes it uses (`gnoblin_core::objects`) are written at build time from the
+# The shell depends on the core SDK and nothing else. The classes it uses (at the root of `gnoblin_core`) are written at build time from the
 # library's catalog and call the library through its object table.
 [dependencies]
 gnoblin-core = { path = "../../crates/gnoblin-core" }

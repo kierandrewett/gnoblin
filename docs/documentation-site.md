@@ -53,12 +53,12 @@ gnoblin.idle.watch(300_000, { onIdle: () => gnoblin.session.lock() });
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, IdleListener
+from gnoblin import Gnoblin, IdleListener
 ...
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::Gnoblin;
 ...
 ```
 

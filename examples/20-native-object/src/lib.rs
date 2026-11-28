@@ -1,8 +1,8 @@
 //! Example 20: the typed object API of `libgnoblin-std`.
 //!
 //! The classes of `gnoblin.std` (an entry model, the focus policy, the records and enums they take) are not functions of the library's
-//! table: they are served through one object table, and `gnoblin_std::objects` is the typed Rust API written from the library's
-//! catalog. This shell uses it the way a toolkit would:
+//! table: they are served through one object table, and `gnoblin_std` has them as typed Rust classes written from the library's
+//! catalog. This shell uses them the way a toolkit would:
 //!
 //! - makes an [`EntryModel`] and reads its properties (`text`, `length`, `caret`, `selection`);
 //! - calls its methods (`insert`, `select_all`), which change it at once, and listens to its `changed` signal, which the library tells
