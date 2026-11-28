@@ -178,6 +178,8 @@ export interface ClassPage {
     properties: PropertyRow[];
     methods: MethodRow[];
     events: EventRow[];
+    /** The events the schema declares: the count of the section (the generic row is not counted). */
+    eventCount: number;
     /** What the other library adds to this class, and what this library adds to others. */
     added: { package: string; properties: PropertyRow[]; methods: MethodRow[] } | null;
     addedElsewhere: AddedRow[];

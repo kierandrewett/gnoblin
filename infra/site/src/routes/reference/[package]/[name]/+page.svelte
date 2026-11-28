@@ -94,7 +94,7 @@
     {/if}
 
     {#if c.events.length}
-        <h2 id="sec-events">Events <span class="cnt">{c.events.length}</span></h2>
+        <h2 id="sec-events">Events <span class="cnt">{c.eventCount}</span></h2>
         <p class="ref-note">
             <span data-only="typescript"
                 >Listen with <code>object.on(event, handler)</code>, which returns a <code>Listener</code>. The handler

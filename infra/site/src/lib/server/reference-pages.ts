@@ -26,7 +26,6 @@ import {
     type LanguageId,
     type Declared,
     type Field,
-    type GeneratedEvent,
     type Method,
     type Property,
     type RawAugment,
@@ -170,18 +169,30 @@ function fieldsTable(pkg: Pkg, record: RawClass): string {
                     `<b class="nm">${spelled(p.names)}</b>`,
                     typeHtml(pkg, p.type),
                     p.readonly ? "read-only" : "read/write",
-                    `${text.first}${extra}`,
+                    `${text.first}${extra}${p.type.refs
+                        .filter((r) => r.kind === "enum")
+                        .map((r) => enumValues(pkg, r.name))
+                        .join("")}`,
                 ],
             };
         }),
     );
 }
 
+/** The values of an enum, each as its language writes it: a word in TypeScript, `Enum.VALUE` in Python and `Enum::Value` in Rust. */
 function enumValues(pkg: Pkg, name: string): string {
     const entity = resolve(pkg, name);
     const declared = entity && reference().enums.get(key(entity.pkg, entity.name));
     if (!declared) return "";
-    return `<span class="vals">${declared.values.map((v) => `<code>${spelled(v.names)}</code>`).join(" ")}</span>`;
+    const values = declared.values.map((v) => {
+        const html = {
+            typescript: esc(v.names.typescript),
+            python: esc(`${declared.names.python}.${v.names.python}`),
+            rust: esc(`${declared.names.rust}::${v.names.rust}`),
+        };
+        return `<code>${spell(html)}</code>`;
+    });
+    return `<span class="vals">${values.join(" ")}</span>`;
 }
 
 function parameterTable(pkg: Pkg, m: Method): string {
@@ -323,24 +334,46 @@ function eventRow(pkg: Pkg, s: Signal): EventRow {
     };
 }
 
-/** The `<property>Changed` event of a property: one row, like the events the schema declares. */
-function generatedEventRow(pkg: Pkg, e: GeneratedEvent): EventRow {
+/**
+ * The one row for every `<property>Changed` event: each property has one, and the SDKs spell it by a rule. The rule is read from the events the
+ * file lists, as what comes before and after the property's own name, so the row says `<property>Changed` in each language as the SDK does.
+ */
+function genericEventRow(pkg: Pkg, c: RawClass): EventRow | null {
+    const first = c.events[0];
+    if (!first) return null;
+    const around = {} as Record<LanguageId, [string, string]>;
+    for (const lang of LANGUAGE_IDS) {
+        for (const e of c.events) {
+            const property = c.properties.find((p) => p.name === e.property)!;
+            const event = lang === "rust" ? e.listener.rust.method : e.listener[lang].event;
+            // The property's own name, or its schema name where the language escapes it (`match_`, `r#match`).
+            const own = [property.names[lang], property.name].find((word) => event.includes(word));
+            if (own === undefined)
+                throw new Error(`${pkg} ${c.name}: the event ${event} does not contain its property ${property.name}`);
+            const at = event.indexOf(own);
+            const parts: [string, string] = [event.slice(0, at), event.slice(at + own.length)];
+            if (around[lang] && (around[lang][0] !== parts[0] || around[lang][1] !== parts[1])) {
+                throw new Error(`${pkg} ${c.name}: the property events are not spelled by one rule (${event})`);
+            }
+            around[lang] = parts;
+        }
+    }
+    const word = (lang: LanguageId) => `${around[lang][0]}<property>${around[lang][1]}`;
     const name = {
-        typescript: `"${e.listener.typescript.event}"`,
-        python: `"${e.listener.python.event}"`,
-        rust: e.listener.rust.method,
+        typescript: `"${word("typescript")}"`,
+        python: `"${word("python")}"`,
+        rust: word("rust"),
     };
-    const refs = e.payload.flatMap((f) => f.type.refs);
-    const rustName = { typescript: "", python: "", rust: e.listener.rust.method };
-    const fields = e.payload.map(
-        (f) => ({ names: { typescript: f.name, python: f.name, rust: f.name }, type: f.type }) as Field,
-    );
+    // An example of the spelling: the first property's own event.
+    const example = {} as Record<LanguageId, string>;
+    for (const lang of LANGUAGE_IDS)
+        example[lang] = esc(lang === "rust" ? first.listener.rust.method : first.listener[lang].event);
     return {
-        id: `event-${e.name}`,
+        id: "event-property_changed",
         nameHtml: spelled(name),
-        declHtml: declHtml(pkg, e.declarations, rustName, refs, `event-${e.name}`),
-        argsHtml: declHtml(pkg, eventArgs(e.declarations, fields), null, refs),
-        descHtml: `The value of ${inline(`\`${e.property}\``)} changed; the handler receives the new value.`,
+        declHtml: `<span class="dl"><a class="anchor" href="#event-property_changed"><b>${esc(word("rust"))}</b></a></span>`,
+        argsHtml: spell({ typescript: "(value)", python: "(value)", rust: "" }),
+        descHtml: `Every property has one, with its new value: <code>${spell(example)}</code>. The properties are listed under <a class="ty" href="#sec-properties">Properties</a>.`,
         moreHtml: "",
     };
 }
@@ -655,10 +688,8 @@ export async function classPage(pkg: Pkg, c: RawClass): Promise<ClassPage> {
 
     const properties = unique(c.properties.map((p) => propertyRow(pkg, p)));
     const methods = unique(await Promise.all(c.methods.map((m) => methodRow(pkg, m))));
-    const events = unique([
-        ...c.signals.map((s) => eventRow(pkg, s)),
-        ...c.events.map((e) => generatedEventRow(pkg, e)),
-    ]);
+    const generic = genericEventRow(pkg, c);
+    const events = unique([...c.signals.map((s) => eventRow(pkg, s)), ...(generic ? [generic] : [])]);
     const ctor = constructorRow(pkg, c);
     const addedProperties = unique(added.flatMap((a) => a.augment.properties.map((p) => propertyRow(a.from, p))));
     const addedMethods = unique(
@@ -707,7 +738,7 @@ export async function classPage(pkg: Pkg, c: RawClass): Promise<ClassPage> {
         ...(ctor ? [{ id: "sec-constructor", label: "Constructor" }] : []),
         { id: "sec-properties", label: "Properties", count: count(properties.length) },
         { id: "sec-methods", label: "Methods", count: count(methods.length) },
-        { id: "sec-events", label: "Events", count: count(events.length) },
+        { id: "sec-events", label: "Events", count: count(c.signals.length) },
         ...(added.length
             ? [
                   {
@@ -745,6 +776,7 @@ export async function classPage(pkg: Pkg, c: RawClass): Promise<ClassPage> {
         properties,
         methods,
         events,
+        eventCount: c.signals.length,
         added: added.length
             ? { package: packageName("std"), properties: addedProperties, methods: addedMethods }
             : null,
@@ -937,6 +969,23 @@ export function searchRecords(): SearchRecord[] {
                 out.push(
                     record(`${entity.href}#${m.name}`, "method", qualify(m.names, "()"), memberTrail, m.description),
                 );
+            // A property's change event is found by its own name too, and points to the property's row.
+            for (const e of c.events) {
+                const names = {
+                    typescript: e.listener.typescript.event,
+                    python: e.listener.python.event,
+                    rust: e.listener.rust.method,
+                };
+                out.push(
+                    record(
+                        `${entity.href}#${e.property}`,
+                        "event",
+                        qualify(names, ""),
+                        memberTrail,
+                        `The value of ${e.property} changed.`,
+                    ),
+                );
+            }
             for (const s of c.signals) {
                 const names = {
                     typescript: s.listener.typescript.event,
