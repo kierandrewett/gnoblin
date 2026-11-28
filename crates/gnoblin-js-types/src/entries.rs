@@ -10,7 +10,9 @@
 #[must_use]
 pub fn package_entry(package: &str) -> Option<&'static str> {
     match package {
-        "gnoblin-core" => Some("export * from \"gnoblin-core/generated/objects\";\n"),
+        "gnoblin-core" => {
+            Some("export * from \"gnoblin-core/generated/verbs\";\nexport * from \"gnoblin-core/generated/objects\";\n")
+        }
         "gnoblin-std" => Some("import \"gnoblin-core\";\nexport * from \"gnoblin-std/generated/objects\";\n"),
         _ => None,
     }

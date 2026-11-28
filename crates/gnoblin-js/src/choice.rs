@@ -28,12 +28,13 @@ use oxc_span::SourceType;
 
 use crate::loader::resolve_file;
 
-/// The modules of the stock packages the native library serves: the package entries and the generated object modules.
-const NATIVE_MODULES: [&str; 5] = [
+/// The modules of the stock packages the native library serves: the package entries, the generated object modules and the verbs.
+const NATIVE_MODULES: [&str; 6] = [
     "gnoblin-core",
     "gnoblin-std",
     "gnoblin-core/generated/objects",
     "gnoblin-core/generated/object_base",
+    "gnoblin-core/generated/verbs",
     "gnoblin-std/generated/objects",
 ];
 
@@ -379,5 +380,19 @@ mod tests {
             Choice::Typescript(_)
         ));
         assert_eq!(choose_source(&root, path, OBJECTS), Choice::Generated);
+    }
+
+    /// The compositor's verbs are the bare entry's too, and the native library serves the module under its explicit path, so neither
+    /// spelling runs a shell on the TypeScript library.
+    #[test]
+    fn the_verbs_are_served_by_the_native_library() {
+        let (_dir, root) = root_with(&[]);
+        let path = Path::new("/stock/shell.ts");
+        for source in [
+            "import { verbs } from \"gnoblin-core\";\n",
+            "import { verbs } from \"gnoblin-core/generated/verbs\";\n",
+        ] {
+            assert_eq!(choose_source(&root, path, source), Choice::Generated, "{source}");
+        }
     }
 }

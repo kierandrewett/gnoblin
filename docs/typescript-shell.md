@@ -492,11 +492,11 @@ See [Session and runtime](/shell-api/session-runtime), [Processes](/shell-api/pr
 
 ### Verbs and signals by name
 
-`gnoblin-core/generated/verbs` is the compositor's `gnoblin` namespace as the schema spells it (generated, like the node-class
-types), over the core's own `call` and `subscribe`. Each object of the namespace is a member of `verbs`:
+`verbs` is the compositor's `gnoblin` namespace as the schema spells it (generated, like the node-class types), over the core's own
+`call` and `subscribe`. The bare `gnoblin-core` exports it. Each object of the namespace is a member of `verbs`:
 
 ```ts
-import { verbs } from "gnoblin-core/generated/verbs";
+import { verbs } from "gnoblin-core";
 
 verbs.idle.inhibit("my-shell", (answer) => console.log(answer.error ?? "held"));
 verbs.session.onBell((count) => console.log(`the bell has rung ${count} time(s)`));

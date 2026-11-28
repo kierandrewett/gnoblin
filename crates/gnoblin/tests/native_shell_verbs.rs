@@ -190,7 +190,7 @@ fn a_typescript_shell_calls_the_generated_verbs_and_hears_the_bell() {
     let shell = directory.path().join("shell.ts");
     std::fs::write(
         &shell,
-        "import { verbs } from \"gnoblin-core/generated/verbs\";\n\n\
+        "import { verbs } from \"gnoblin-core\";\n\n\
          verbs.idle.inhibit(\"ts-shell\", (answer) => console.log(`ts inhibit answered value=${answer.value} error=${answer.error}`));\n\
          verbs.session.logout((answer) => console.log(`ts logout on a missing object refused error=${answer.error !== null}`), 2147483647);\n\
          verbs.session.onBell((count) => console.log(`ts bell count=${count}`));\n\
