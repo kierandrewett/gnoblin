@@ -14,11 +14,13 @@ name = "text_range"
 since = "0.2.0"
 kind = "record"
 
+# The first code point of the range, counted from the start of the text.
 [[object.property]]
 name = "start"
 type = "uint"
 since = "0.2.0"
 
+# The code point after the last one of the range.
 [[object.property]]
 name = "end"
 type = "uint"
@@ -77,6 +79,7 @@ readonly = true
 name = "insert"
 since = "0.2.0"
 
+# The text to type. Control characters in it are dropped.
 [[object.method.param]]
 name = "text"
 type = "string"
@@ -96,10 +99,12 @@ since = "0.2.0"
 name = "move"
 since = "0.2.0"
 
+# The new caret place, in code points from the start of the text. A place past either end is moved to that end.
 [[object.method.param]]
 name = "at"
 type = "int"
 
+# `true` to keep the selection anchor where it is, so the selection grows. Without it the anchor moves with the caret.
 [[object.method.param]]
 name = "extend"
 type = "bool"
@@ -110,6 +115,7 @@ optional = true
 name = "left"
 since = "0.2.0"
 
+# `true` to extend the selection instead of collapsing it.
 [[object.method.param]]
 name = "extend"
 type = "bool"
@@ -120,6 +126,7 @@ optional = true
 name = "right"
 since = "0.2.0"
 
+# `true` to extend the selection instead of collapsing it.
 [[object.method.param]]
 name = "extend"
 type = "bool"
@@ -130,6 +137,7 @@ optional = true
 name = "home"
 since = "0.2.0"
 
+# `true` to keep the selection anchor where it is, so the selection grows.
 [[object.method.param]]
 name = "extend"
 type = "bool"
@@ -140,6 +148,7 @@ optional = true
 name = "end"
 since = "0.2.0"
 
+# `true` to keep the selection anchor where it is, so the selection grows.
 [[object.method.param]]
 name = "extend"
 type = "bool"
@@ -161,6 +170,7 @@ name = "before"
 since = "0.2.0"
 returns = "string"
 
+# The place to stop at, in code points from the start of the text.
 [[object.method.param]]
 name = "at"
 type = "int"
@@ -180,6 +190,7 @@ since = "0.2.0"
 name = "submit_handler"
 since = "0.2.0"
 
+# The text of the entry.
 [[callback.param]]
 name = "text"
 type = "string"
@@ -208,6 +219,7 @@ name = "cover_question"
 since = "0.2.0"
 returns = "bool"
 
+# The output to ask about, by its node number. 0 asks about the primary output.
 [[callback.param]]
 name = "output"
 type = "uint"
@@ -216,7 +228,12 @@ type = "uint"
 [[enum]]
 name = "bar_edge"
 since = "0.2.0"
-values = ["top", "bottom"]
+values = [
+    # The top edge.
+    "top",
+    # The bottom edge.
+    "bottom",
+]
 
 # The room the bars take from the top and the bottom of an output.
 [[object]]
@@ -224,15 +241,19 @@ name = "bar_insets"
 since = "0.2.0"
 kind = "record"
 
+# The height the top bars take, in logical pixels.
 [[object.property]]
 name = "top"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
+# The height the bottom bars take, in logical pixels.
 [[object.property]]
 name = "bottom"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # A line of text you type into. Give it the keyboard (`focus`) and it reads the keys: letters type, BackSpace and Delete remove, Left,
 # Right, Home and End move the caret (with Shift held they select), Control+A selects all, and Return calls `on_submit` with the text.
@@ -271,6 +292,7 @@ name = "size"
 type = "double"
 since = "0.2.0"
 default = 14.0
+unit = "px"
 
 # The text colour.
 [[object.property]]
@@ -305,6 +327,7 @@ name = "shown"
 since = "0.2.0"
 returns = "string"
 
+# The text to show.
 [[object.method.param]]
 name = "text"
 type = "string"
@@ -314,6 +337,7 @@ type = "string"
 name = "submit"
 since = "0.2.0"
 
+# The text that was in the entry.
 [[object.signal.field]]
 name = "text"
 type = "string"
@@ -388,6 +412,7 @@ name = "give_way_to"
 since = "0.2.0"
 function = true
 
+# Answers whether a fullscreen window covers the output it is asked about. Left out, the library answers from its own record of the fullscreen windows.
 [[object.method.param]]
 name = "covered"
 type = "callback:cover_question"
@@ -399,6 +424,7 @@ name = "on_outputs"
 since = "0.2.0"
 function = true
 
+# Answers the node of the primary output. Left out, the library's choice stands: the output flagged primary, else the first.
 [[object.method.param]]
 name = "primary"
 type = "callback:output_source"
@@ -412,6 +438,7 @@ since = "0.2.0"
 function = true
 returns = "object:bar_insets"
 
+# The output to measure, by its node number. Left out, the primary output.
 [[object.method.param]]
 name = "output"
 type = "uint"
@@ -442,6 +469,7 @@ readonly = true
 name = "fade_in"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 default = 120.0
 
 # Milliseconds at full strength.
@@ -449,6 +477,7 @@ default = 120.0
 name = "hold"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 default = 4000.0
 
 # Milliseconds to fade out.
@@ -456,6 +485,7 @@ default = 4000.0
 name = "fade_out"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 default = 300.0
 
 # The clock in milliseconds. Left out, the core's (`timers.now`), the clock the toolkit's wake timer runs by.
@@ -471,25 +501,36 @@ since = "0.2.0"
 function = true
 returns = "object:toast"
 
+# The message to show.
 [[object.method.param]]
 name = "text"
 type = "string"
 
+# Milliseconds to fade in. Left out, 120.
 [[object.method.param]]
 name = "fade_in"
 type = "double"
 optional = true
+default = 120.0
+unit = "ms"
 
+# Milliseconds at full strength. Left out, 4000.
 [[object.method.param]]
 name = "hold"
 type = "double"
 optional = true
+default = 4000.0
+unit = "ms"
 
+# Milliseconds to fade out. Left out, 300.
 [[object.method.param]]
 name = "fade_out"
 type = "double"
 optional = true
+default = 300.0
+unit = "ms"
 
+# The clock in milliseconds. Left out, the core's (`timers.now`).
 [[object.method.param]]
 name = "clock"
 type = "callback:time_source"
@@ -500,16 +541,19 @@ optional = true
 name = "time_format"
 since = "0.2.0"
 
+# Writes `milliseconds` as local time in the way `format` says.
 [[object.method]]
 name = "format_time"
 since = "0.2.0"
 function = true
 returns = "string"
 
+# The format. `%H`, `%M`, `%S`, `%I`, `%p`, `%d`, `%e`, `%m`, `%y`, `%Y`, `%j`, `%a`, `%A`, `%b`, `%B`, `%T`, `%R`, `%F` and `%%` are replaced; any other `%` sequence stays as written.
 [[object.method.param]]
 name = "format"
 type = "string"
 
+# The time, in milliseconds since the Unix epoch.
 [[object.method.param]]
 name = "milliseconds"
 type = "double"
