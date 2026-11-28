@@ -2,12 +2,13 @@
 //
 // 1. Copies files from docs/ that are not pages: docs/public/* to the site root (not CNAME, a GitHub Pages file)
 //    and everything else, such as docs/images, to /docs/.
-// 2. Writes small redirect pages for the old URLs. The VitePress site served docs pages at the root (/config,
-//    /install-fedora); they now live under /docs/. Older moved pages keep pointing at their new place too.
+// 2. Collects the redirects of the old URLs into build/redirects.json, which the Worker (infra/terraform/worker.js) answers with a 301 for
+//    a path that has no page. The VitePress site served docs pages at the root (/config, /install-fedora); they now live under /docs/.
+//    Older moved pages keep pointing at their new place too.
 // 3. Builds the Pagefind search index into build/pagefind/ from the docs pages (data-pagefind-body).
-// 4. Redirects the roots of the old per-language references (/reference/typescript/, /reference/python/ and /reference/rust/, which
-//    TypeDoc, Sphinx and rustdoc wrote) to /reference, the one API reference of the site, and writes the `_redirects` file that
-//    sends their subpaths there too.
+// 4. The old per-language references (/reference/typescript/, /python/ and /rust/, which TypeDoc, Sphinx and rustdoc wrote) and every page
+//    under them redirect to /reference, the one API reference of the site; so does the docs page that led to them.
+//    No `_redirects` file and no redirect page is written: Cloudflare does not read `_redirects` from this deploy, and a page answers 200.
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,34 +59,21 @@ const pages = new Set(
 );
 const docsUrl = (slug) => (slug === "" ? "/docs" : `/docs/${slug}`);
 
-function writeRedirect(from, target, { folder = false } = {}) {
-    // A folder redirect is the folder's own index page, which the Worker serves at /from/.
-    const file = folder ? path.join(out, from, "index.html") : path.join(out, `${from}.html`);
-    // Never replace a real page (for example /bingux, which is now the Bingux page).
-    if (existsSync(file) || existsSync(path.join(out, from, "index.html"))) return false;
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(
-        file,
-        `<!doctype html>
-<html lang="en-GB">
-<head>
-<meta charset="utf-8">
-<meta name="robots" content="noindex">
-<meta http-equiv="refresh" content="0; url=${target}">
-<link rel="canonical" href="https://gnoblin.org${target}">
-<title>Moved</title>
-<script>location.replace(${JSON.stringify(target)} + location.hash);</script>
-</head>
-<body><p>This page moved to <a href="${target}">${target}</a>.</p></body>
-</html>
-`,
-    );
+/** An exact old path -> its new path. */
+const exact = {};
+/** Old paths and everything below them -> one new path. */
+const prefixes = [];
+
+function addRedirect(from, target) {
+    // Never shadow a real page (for example /bingux, which is now the Bingux page).
+    if (existsSync(path.join(out, `${from}.html`)) || existsSync(path.join(out, from, "index.html"))) return false;
+    exact[`/${from}`] = target;
     return true;
 }
 
 let redirects = 0;
 for (const slug of pages) {
-    if (slug !== "" && writeRedirect(slug, docsUrl(slug))) redirects++;
+    if (slug !== "" && addRedirect(slug, docsUrl(slug))) redirects++;
 }
 // Pages that moved before the switch to /docs/ (from scripts/docs-vitepress-postbuild.mjs).
 const MOVED = {
@@ -153,7 +141,7 @@ for (const [from, to] of Object.entries(FOLDED)) {
 }
 for (const [from, to] of Object.entries(MOVED)) {
     if (!pages.has(to)) throw new Error(`Redirect target docs/${to}.md does not exist (from /${from})`);
-    if (writeRedirect(from, docsUrl(to))) redirects++;
+    if (addRedirect(from, docsUrl(to))) redirects++;
 }
 
 // 3. Search index.
@@ -197,15 +185,17 @@ for (const file of readdirSync(path.join(out, "pagefind"))) {
 }
 
 // 4. The old per-language references, and the docs page that led to them.
-if (writeRedirect("docs/reference", "/reference")) redirects++;
-for (const language of OLD_REFERENCES) {
-    if (writeRedirect(`reference/${language}`, "/reference", { folder: true })) redirects++;
+if (addRedirect("docs/reference", "/reference")) redirects++;
+for (const language of OLD_REFERENCES) prefixes.push({ from: `/reference/${language}`, to: "/reference" });
+
+// Every target must be a page of the build, or the redirect is a dead end.
+const isPage = (url) => existsSync(path.join(out, `${url}.html`)) || existsSync(path.join(out, url, "index.html"));
+for (const target of new Set([...Object.values(exact), ...prefixes.map((p) => p.to)])) {
+    if (!isPage(target)) throw new Error(`A redirect points to ${target}, which is not a page of the build`);
 }
-writeFileSync(
-    path.join(out, "_redirects"),
-    `${OLD_REFERENCES.map((language) => `/reference/${language}/* /reference 301`).join("\n")}\n`,
-);
+const sorted = Object.fromEntries(Object.entries(exact).sort(([a], [b]) => a.localeCompare(b)));
+writeFileSync(path.join(out, "redirects.json"), `${JSON.stringify({ exact: sorted, prefixes }, null, 1)}\n`);
 
 console.log(
-    `postbuild: copied ${copied} files from docs/, wrote ${redirects} redirects, indexed ${added.page_count} pages and ${records.length} reference entries`,
+    `postbuild: copied ${copied} files from docs/, listed ${redirects + prefixes.length} redirects, indexed ${added.page_count} pages and ${records.length} reference entries`,
 );

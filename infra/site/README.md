@@ -21,9 +21,10 @@ yarn preview    # serves build/ like the Cloudflare Worker does, at http://local
 1. `scripts/reference.mjs` writes `.generated/reference.json`, the data of the API reference (see below).
 2. `scripts/examples.mjs` checks the examples of every `::: tabs` group with `cargo xtask docs-examples`.
 3. `vite build` builds the site.
-4. `scripts/postbuild.mjs` copies files from `docs/` that are not pages, writes redirect pages for old URLs (the old
-   `/reference/typescript/`, `/python/` and `/rust/` go to `/reference`) and builds the Pagefind search index into
-   `build/pagefind/`, with the API reference's classes and members.
+4. `scripts/postbuild.mjs` copies files from `docs/` that are not pages, builds the Pagefind search index into `build/pagefind/` (with the
+   API reference's classes and members), and writes the old URLs to `build/redirects.json`.
+    - The old `/reference/typescript/`, `/python/` and `/rust/`, and everything below them, go to `/reference`.
+    - The Worker (`infra/terraform/worker.js`) answers a path that has no page with a 301 from that file, and `yarn preview` does the same.
 
 Steps 1 and 2 need the Rust toolchain of the repository.
 

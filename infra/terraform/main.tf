@@ -68,18 +68,23 @@ resource "cloudflare_workers_route" "repo_index" {
 }
 
 # Website Worker. It serves the SvelteKit build as static assets. CI builds infra/site/build before Terraform runs.
-# Old URLs redirect through pages that the build writes. The old per-language reference subpaths (/reference/typescript/*, /python/* and
-# /rust/*) redirect to /reference through the _redirects file that scripts/postbuild.mjs writes into the build:
-# https://developers.cloudflare.com/workers/static-assets/redirects/
-# Verified with `wrangler dev` (4.x) on a throwaway config with this Worker script and these assets settings: a request for
-# /reference/rust/gnoblin_core/struct.Foo.html or /reference/python/x/y.html answers 301 with Location: /reference although the Worker has a
-# fetch handler (the rules apply to env.ASSETS.fetch). Not verified on Cloudflare itself; check one old URL after the first deploy.
+# Old URLs answer a real 301. A path with no file reaches worker.js, which looks it up in redirects.json (written into the build by
+# scripts/postbuild.mjs): the old VitePress paths, /install and /docs/reference by exact match, and /reference/typescript, /python and /rust
+# with everything below them by prefix. Any other unknown path keeps the 404 page (not_found_handling applies to env.ASSETS.fetch).
+# Not used, and why: a `_redirects` file was not read from this deploy (Terraform uploads the assets itself; in production
+# https://gnoblin.org/_redirects was served as a file with status 200 and /reference/python/x/y.html answered 404), and a redirect page or
+# a script in the 404 page answers 200 or 404, so a crawler or a client never sees a redirect. `wrangler dev` does read `_redirects`, which is
+# why a local check of that file passed and proved nothing about this deploy.
 resource "cloudflare_workers_script" "website" {
   account_id         = var.account_id
   script_name        = "gnoblin-website"
   main_module        = "worker.js"
-  content            = "export default { fetch: (request, env) => env.ASSETS.fetch(request) };"
+  content            = file("${path.module}/worker.js")
   compatibility_date = "2026-10-01"
+  # From a compatibility date of 2025-04-01 a navigation request (Sec-Fetch-Mode: navigate, which every browser sends for a click or a typed
+  # URL) does not invoke the Worker when no asset matches: it gets 404.html, and the redirects of worker.js would never run for a visitor.
+  # This flag turns that off. https://developers.cloudflare.com/workers/static-assets/routing/static-site-generation/#navigation-requests
+  compatibility_flags = ["assets_navigation_has_no_effect"]
 
   assets = {
     directory = "${path.module}/../site/build"

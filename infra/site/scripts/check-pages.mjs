@@ -8,7 +8,7 @@
 // Options: --base URL (use a running server instead), --shots DIR (save full-page screenshots there).
 // CHROME points at the browser (default: google-chrome, google-chrome-stable or chromium on PATH).
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
@@ -883,15 +883,70 @@ for (const width of [375, 1280, 1300, 1312, 1323, 1324, 1440]) {
     await context.close();
 }
 
-// 7. The old roots of the per-language references redirect to /reference, and nothing on the site links to them.
+// 7. Old URLs answer a real 301 from the Worker (infra/terraform/worker.js, which the preview server repeats) with the table in
+//    build/redirects.json: the old VitePress paths, /install and /docs/reference exactly, and /reference/typescript, /python and /rust with
+//    everything below them by prefix. No `_redirects` file and no redirect page is in the build (Cloudflare does not read the file from this
+//    deploy, and a page answers 200). Every target is a page, no old path is a page, and any other unknown path stays a 404.
 {
-    const page = await browser.newPage();
-    for (const url of ["/reference/typescript/", "/reference/python/", "/reference/rust/", "/docs/reference"]) {
-        await page.goto(base + url, { waitUntil: "networkidle" });
-        const at = new URL(page.url());
-        if (at.pathname !== "/reference") failures.push(`redirect: ${url} ends at ${at.pathname}, expected /reference`);
+    const buildDir = path.join(site, "build");
+    const isPage = (url) =>
+        existsSync(path.join(buildDir, `${url}.html`)) || existsSync(path.join(buildDir, url, "index.html"));
+    if (existsSync(path.join(buildDir, "_redirects")))
+        failures.push("redirect: build/_redirects exists, and the Worker would serve it as a file");
+    const table = JSON.parse(readFileSync(path.join(buildDir, "redirects.json"), "utf8"));
+    for (const [from, to] of Object.entries(table.exact)) {
+        if (!isPage(to)) failures.push(`redirect: ${from} goes to ${to}, which is not a page`);
+        if (isPage(from)) failures.push(`redirect: ${from} is a page and has a redirect too`);
     }
-    await page.close();
+    for (const rule of table.prefixes)
+        if (!isPage(rule.to)) failures.push(`redirect: ${rule.from}/* goes to ${rule.to}, which is not a page`);
+    for (const from of ["/install", "/docs/reference"])
+        if (!(from in table.exact)) failures.push(`redirect: ${from} is not in redirects.json`);
+    for (const language of ["typescript", "python", "rust"]) {
+        if (!table.prefixes.some((rule) => rule.from === `/reference/${language}` && rule.to === "/reference"))
+            failures.push(`redirect: /reference/${language}/* is not in redirects.json`);
+    }
+    const refresh = (dir) =>
+        readdirSync(dir).flatMap((name) => {
+            const file = path.join(dir, name);
+            if (statSync(file).isDirectory()) return name === "pagefind" || name === "_app" ? [] : refresh(file);
+            return name.endsWith(".html") && /http-equiv="refresh"/.test(readFileSync(file, "utf8")) ? [file] : [];
+        });
+    for (const file of refresh(buildDir))
+        failures.push(`redirect: ${path.relative(buildDir, file)} is a redirect page`);
+
+    const answer = async (url) => {
+        const response = await fetch(base + url, { redirect: "manual" });
+        return { status: response.status, location: response.headers.get("location") };
+    };
+    const redirects = [
+        ["/install", "/docs/installation"],
+        ["/docs/reference", "/reference"],
+        ["/reference/typescript/", "/reference"],
+        ["/reference/typescript", "/reference"],
+        ["/reference/python/x/y.html", "/reference"],
+        ["/reference/rust/", "/reference"],
+        ["/reference/rust/gnoblin_core/struct.Foo.html", "/reference"],
+        ["/reference/typescript/classes/gnoblin-core.IdleWatch.html?x=1", "/reference"],
+    ];
+    for (const [url, target] of redirects) {
+        const got = await answer(url);
+        if (got.status !== 301 || got.location !== target)
+            failures.push(`redirect: ${url} answers ${got.status} ${got.location}, expected 301 ${target}`);
+    }
+    for (const url of ["/reference/core/client", "/reference", "/docs/installation"]) {
+        const got = await answer(url);
+        if (got.status !== 200) failures.push(`redirect: ${url} answers ${got.status}, expected 200`);
+    }
+    for (const url of [
+        "/reference/pythonic/x",
+        "/reference/other/x.html",
+        "/reference/core/no-such-class",
+        "/k8q2v7x1",
+    ]) {
+        const got = await answer(url);
+        if (got.status !== 404) failures.push(`redirect: ${url} answers ${got.status}, expected 404`);
+    }
     const old = /href="\/reference\/(typescript|python|rust)(\/|")/;
     const walkHtml = (dir) =>
         readdirSync(dir).flatMap((name) => {
