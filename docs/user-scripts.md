@@ -28,7 +28,7 @@ gnoblin.clients.addListener(new WindowLog());
 ```
 
 ```python
-from gnoblin.objects.model import ClientCollectionListener, Gnoblin
+from gnoblin import ClientCollectionListener, Gnoblin
 
 
 class WindowLog(ClientCollectionListener):

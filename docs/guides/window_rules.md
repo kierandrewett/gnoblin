@@ -24,7 +24,7 @@ gnoblin.clients.on("added", (client) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 
 @Gnoblin.get().clients.on("added")
@@ -94,8 +94,8 @@ gnoblin.clients.on("added", (client) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Workspace, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import Workspace, Workspaces
 
 code = Workspace("code")
 Workspaces.get().add(code)
@@ -158,7 +158,7 @@ gnoblin.clients.on("added", (client) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 
 @Gnoblin.get().clients.on("added")

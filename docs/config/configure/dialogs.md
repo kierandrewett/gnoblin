@@ -30,7 +30,7 @@ gnoblin.dialogs.addListener(new NoScreenshots());
 ```
 
 ```python
-from gnoblin.objects.model import DialogListener, DialogRequest, Gnoblin
+from gnoblin import DialogListener, DialogRequest, Gnoblin
 
 gnoblin = Gnoblin.get()
 

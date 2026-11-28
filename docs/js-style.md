@@ -29,8 +29,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientAugment, ClientStyle, Shadow, StyleQuery
+from gnoblin import Gnoblin
+from gnoblin.std import ClientAugment, ClientStyle, Shadow, StyleQuery
 
 gnoblin = Gnoblin.get()
 
@@ -117,8 +117,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientAugment, StyleProperty
+from gnoblin import Gnoblin
+from gnoblin.std import ClientAugment, StyleProperty
 
 gnoblin = Gnoblin.get()
 
@@ -175,8 +175,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientAugment, StyleProperty
+from gnoblin import Gnoblin
+from gnoblin.std import ClientAugment, StyleProperty
 
 gnoblin = Gnoblin.get()
 
@@ -281,7 +281,7 @@ console.log(style.backdropFilter[0] instanceof BlurFilter); // true
 ```
 
 ```python
-from gnoblin.objects.std import BlurFilter, ClientStyle, SaturateFilter
+from gnoblin.std import BlurFilter, ClientStyle, SaturateFilter
 
 style = ClientStyle.of_clients()
 style.backdrop_filter = [{"blur": 18}, {"saturate": 1.25}]  # the shorthand
@@ -325,7 +325,7 @@ style.shadows = shadows; // every client that inherits the list follows
 ```
 
 ```python
-from gnoblin.objects.std import ClientStyle, Shadow
+from gnoblin.std import ClientStyle, Shadow
 
 style = ClientStyle.of_clients()
 style.shadows = [Shadow(blur=10)]
@@ -380,7 +380,7 @@ style.backdropFilterList().add(new BlurFilter({ radius: 18 }));
 ```
 
 ```python
-from gnoblin.objects.std import BlurFilter, Border, ClientStyle, Shadow
+from gnoblin.std import BlurFilter, Border, ClientStyle, Shadow
 
 style = ClientStyle.of_clients()
 style.corner_radius = 12
@@ -518,7 +518,7 @@ style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];
 ```
 
 ```python
-from gnoblin.objects.std import Border, ClientStyle, CornerRadius, Shadow
+from gnoblin.std import Border, ClientStyle, CornerRadius, Shadow
 
 style = ClientStyle.of_clients()
 style.corner_radius = CornerRadius(all=12)

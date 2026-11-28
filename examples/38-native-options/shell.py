@@ -15,8 +15,8 @@ one test reads all three.
 """
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Gaps, MasterStackLayout, OutputMatch, OutputProfile, ProfileSettings, Workspace
+from gnoblin import Gnoblin
+from gnoblin.std import Gaps, MasterStackLayout, OutputMatch, OutputProfile, ProfileSettings, Workspace
 
 
 def say(text):

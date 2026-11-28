@@ -60,7 +60,7 @@ gnoblin.clients.on("focusChanged", (client, focused) => {
 ```
 
 ```python
-from gnoblin.objects.model import Client, Gnoblin
+from gnoblin import Client, Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -145,7 +145,7 @@ gnoblin.clients.on("focusChanged", logFocus);
 
 ```python
 # ~/.config/gnoblin/focus_log.py
-from gnoblin.objects.model import Client, Gnoblin
+from gnoblin import Client, Gnoblin
 
 
 def log_focus(client: Client, has_focus: bool) -> None:
@@ -156,7 +156,7 @@ def log_focus(client: Client, has_focus: bool) -> None:
 ```python
 # ~/.config/gnoblin/shell.py
 from focus_log import log_focus
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 Gnoblin.get().clients.on("focus_changed", log_focus)
 ```

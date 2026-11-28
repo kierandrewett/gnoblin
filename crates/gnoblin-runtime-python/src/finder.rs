@@ -1,8 +1,8 @@
 //! The `gnoblin` package, served from the library itself.
 //!
-//! Nothing of the package is read from disk. `gnoblin-sdkgen` renders the typed node classes, the ABI constants, the verbs and the std
-//! bindings (`gnoblin._generated.*`, `gnoblin.std`, `gnoblin.objects.*`) in `build.rs`, and the rest of the package (`gnoblin`,
-//! `gnoblin._base`, `gnoblin.api`, `gnoblin.errors`, `gnoblin.events`, `gnoblin._std_base`, `gnoblin._std_sugar`) is Rust in this crate.
+//! Nothing of the package is read from disk. `gnoblin-sdkgen` renders the typed node classes, the ABI constants, the verbs and the object
+//! classes (`gnoblin._generated.*`, `gnoblin.std`, `gnoblin.objects.*`) in `build.rs`, and the rest of the package (`gnoblin`,
+//! `gnoblin._base`, `gnoblin.api`, `gnoblin.errors`, `gnoblin.events`, `gnoblin.host`) is Rust in this crate.
 //! A module can never describe a different catalog from the libraries the runtime was built with, and a prefix needs no Python source.
 //!
 //! The finder sits first on `sys.meta_path`, so an older file of the same name left in a prefix is never imported instead. It answers
@@ -14,7 +14,7 @@ use pyo3::exceptions::PyImportError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
-use crate::{descriptors, errors, singleton, std_base, std_sugar, subscription};
+use crate::{descriptors, errors, singleton, subscription};
 
 // `MODULES`: `(dotted name, is a package, source)` for every generated module. `build.rs` writes the table.
 include!(concat!(env!("OUT_DIR"), "/python_embedded.rs"));
@@ -26,7 +26,7 @@ struct RustModule {
     build: fn(&Bound<'_, PyModule>) -> PyResult<()>,
 }
 
-const NATIVE: [RustModule; 7] = [
+const NATIVE: [RustModule; 6] = [
     RustModule {
         name: "gnoblin",
         package: true,
@@ -53,14 +53,9 @@ const NATIVE: [RustModule; 7] = [
         build: subscription::build,
     },
     RustModule {
-        name: "gnoblin._std_base",
+        name: "gnoblin.host",
         package: false,
-        build: std_base::build,
-    },
-    RustModule {
-        name: "gnoblin._std_sugar",
-        package: false,
-        build: std_sugar::build,
+        build: build_host,
     },
 ];
 
@@ -79,97 +74,112 @@ A shell is an ordinary script. Run it with ``gnoblin ./shell.py``; the shell rel
     def terminal():
         gnoblin.spawn(\"foot\")
 
-See ``docs/python-shell.md``. The typed classes of the tree (``Window``, ``Seat``, ...) are generated from the schema; the rest of
-the package is a thin spelling of the core's C ABI and holds no compositor logic.
+See ``docs/python-shell.md``. The package root has the classes of the object model (``Gnoblin``, ``Client``, ``Output``, ...), generated
+from the schema, the ``gnoblin`` object, the ``verbs`` and the errors. The tree layer under them (the node classes ``Window``, ``Seat``,
+... and the event values) is ``gnoblin.host``, which the runtime and its tests use.
 ";
 
-/// The names `gnoblin` exports besides the generated classes.
-const EXPORTS: [&str; 27] = [
+/// The error classes the root re-exports from `gnoblin.errors`: the one thing of the runtime besides the `gnoblin` object and the `verbs`
+/// that a script takes from the package root.
+const ERRORS: [&str; 9] = [
     "BusyError",
-    "CLASSES",
-    "ChordEvent",
-    "Event",
-    "GestureEvent",
-    "Gnoblin",
     "GnoblinError",
     "MemberError",
-    "Method",
-    "Node",
-    "NodeEvent",
     "NodeGoneError",
+    "RefusedError",
+    "RetiredError",
+    "StaleError",
+    "ThreadError",
+    "UnsupportedError",
+];
+
+/// The event values `gnoblin.host` re-exports from `gnoblin.events`.
+const EVENTS: [&str; 9] = [
+    "ChordEvent",
+    "GestureEvent",
+    "NodeEvent",
     "PointerButton",
     "PointerDrag",
     "Process",
     "ProcessExit",
-    "Property",
-    "RefusedError",
-    "RetiredError",
-    "Signal",
-    "StaleError",
     "Subscription",
-    "ThreadError",
-    "UnsupportedError",
     "WindowRequest",
-    "gnoblin",
-    "verbs",
 ];
 
-/// Fills the package `gnoblin`: the base, the generated classes and verbs, the object a script uses, the errors and the event values.
+/// Fills the package `gnoblin`: the classes of the object model, the object a script uses, the verbs and the errors.
 fn build_package(module: &Bound<'_, PyModule>) -> PyResult<()> {
     let py = module.py();
     module.add("__doc__", DOC)?;
     module.add("__version__", "0.2.0")?;
-    let copy = |from: &Bound<'_, PyModule>, names: &[&str]| -> PyResult<()> {
-        for name in names {
-            module.add(*name, from.getattr(*name)?)?;
-        }
-        Ok(())
-    };
-    copy(
-        &py.import("gnoblin._base")?,
-        &["CLASSES", "Method", "Node", "Property", "Signal"],
-    )?;
-    let classes = py.import("gnoblin._generated.classes")?;
-    let generated: Vec<String> = classes.getattr("__all__")?.extract()?;
-    for name in &generated {
-        module.add(name.as_str(), classes.getattr(name.as_str())?)?;
-    }
+    // The node classes are not names of the root, but defining them is what fills `CLASSES`, which the tree reads to give a node its typed
+    // handle. They are defined with the package, as they were when the root exported them, and `gnoblin.host` only names them.
+    py.import("gnoblin._generated.classes")?;
     module.add("verbs", py.import("gnoblin._generated.verbs")?)?;
-    copy(&py.import("gnoblin.api")?, &["Event", "Gnoblin", "gnoblin"])?;
-    copy(
-        &py.import("gnoblin.errors")?,
-        &[
-            "BusyError",
-            "GnoblinError",
-            "MemberError",
-            "NodeGoneError",
-            "RefusedError",
-            "RetiredError",
-            "StaleError",
-            "ThreadError",
-            "UnsupportedError",
-        ],
-    )?;
-    copy(
-        &py.import("gnoblin.events")?,
-        &[
-            "ChordEvent",
-            "GestureEvent",
-            "NodeEvent",
-            "PointerButton",
-            "PointerDrag",
-            "Process",
-            "ProcessExit",
-            "Subscription",
-            "WindowRequest",
-        ],
-    )?;
-    let all = PyList::new(py, EXPORTS)?;
-    for name in &generated {
-        all.append(name)?;
+    module.add("gnoblin", py.import("gnoblin.api")?.getattr("gnoblin")?)?;
+    let errors = py.import("gnoblin.errors")?;
+    for name in ERRORS {
+        module.add(name, errors.getattr(name)?)?;
+    }
+    let all = PyList::new(py, ERRORS)?;
+    all.append("gnoblin")?;
+    all.append("verbs")?;
+    let model = py.import("gnoblin.objects.model")?;
+    for name in defined_in(&model)? {
+        module.add(name.as_str(), model.getattr(name.as_str())?)?;
+        if !all.contains(name.as_str())? {
+            all.append(name)?;
+        }
     }
     module.add("__all__", all)?;
     Ok(())
+}
+
+/// Fills `gnoblin.host`, the tree layer under the object model: the node classes generated from the schema and their descriptors, and
+/// the event values the `gnoblin` object hands to a callback. The runtime and its tests use it; a shell is written on the package root.
+fn build_host(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    let py = module.py();
+    let base = py.import("gnoblin._base")?;
+    let classes = py.import("gnoblin._generated.classes")?;
+    let events = py.import("gnoblin.events")?;
+    let all = PyList::empty(py);
+    let add = |from: &Bound<'_, PyModule>, name: &str| -> PyResult<()> {
+        module.add(name, from.getattr(name)?)?;
+        all.append(name)
+    };
+    for name in ["CLASSES", "Method", "Node", "Property", "Signal"] {
+        add(&base, name)?;
+    }
+    let generated: Vec<String> = classes.getattr("__all__")?.extract()?;
+    for name in &generated {
+        add(&classes, name)?;
+    }
+    add(&py.import("gnoblin.api")?, "Event")?;
+    for name in EVENTS {
+        add(&events, name)?;
+    }
+    module.add("__all__", all)?;
+    Ok(())
+}
+
+/// The public names a generated module defines itself, as opposed to the ones it imported.
+fn defined_in(module: &Bound<'_, PyModule>) -> PyResult<Vec<String>> {
+    let own: String = module.getattr("__name__")?.extract()?;
+    let mut names = Vec::new();
+    for name in module.dir()?.iter() {
+        let name: String = name.extract()?;
+        if name.starts_with('_') {
+            continue;
+        }
+        let item = module.getattr(name.as_str())?;
+        let home = item
+            .getattr("__module__")
+            .and_then(|home| home.extract::<String>())
+            .ok();
+        if home.as_deref() == Some(own.as_str()) {
+            names.push(name);
+        }
+    }
+    Ok(names)
 }
 
 /// The generated module `name`, if there is one.

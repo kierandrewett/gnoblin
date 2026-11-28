@@ -20,7 +20,7 @@ gnoblin.input.primary.bind("Super+Return", () => {
 
 ```python
 from gnoblin import gnoblin
-from gnoblin.objects.std import Workspace, Workspaces
+from gnoblin.std import Workspace, Workspaces
 
 Workspaces.get().add(Workspace("main"))  # floating is the default layout
 

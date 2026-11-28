@@ -121,8 +121,8 @@ input.bind("Super+space", () => {
 # Check changes with `gnoblinctl check shell.py`; see the shell API pages for each object's details.
 
 from gnoblin import gnoblin
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import (
+from gnoblin import Gnoblin
+from gnoblin.std import (
     Decorations,
     FloatingLayout,
     InputContextAugment,
@@ -140,7 +140,7 @@ from gnoblin.objects.std import (
 )
 
 # To use the examples below, add what they name to the import above.
-# from gnoblin.objects.std import MasterStackLayout
+# from gnoblin.std import MasterStackLayout
 
 # Four floating workspaces. The first is shown until another is selected.
 # Choose a layout: FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout, DwindleLayout or StripLayout.
@@ -420,7 +420,7 @@ gnoblin.input.primary.bind("Super+Return", () => {
 
 ```python
 from gnoblin import gnoblin
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 def open_terminal(_event):
     gnoblin.spawn(["foot"])

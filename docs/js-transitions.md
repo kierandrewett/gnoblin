@@ -33,8 +33,8 @@ if (workspace && client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Easing, GnoblinAugment, MasterStackLayout, TransitionOptions, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import Easing, GnoblinAugment, MasterStackLayout, TransitionOptions, Workspaces
 
 gnoblin = Gnoblin.get()
 
@@ -171,8 +171,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import GnoblinAugment, TransitionOptions
+from gnoblin import Gnoblin
+from gnoblin.std import GnoblinAugment, TransitionOptions
 
 gnoblin = Gnoblin.get()
 
@@ -262,8 +262,8 @@ gnoblin.requestTransition(
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Easing, GnoblinAugment, MasterStackLayout, TransitionOptions, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import Easing, GnoblinAugment, MasterStackLayout, TransitionOptions, Workspaces
 
 gnoblin = Gnoblin.get()
 

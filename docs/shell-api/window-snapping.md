@@ -26,8 +26,8 @@ input.bind("Super+Shift+Down", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientState, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import ClientState, Workspaces
 
 gnoblin = Gnoblin.get()
 workspaces = Workspaces.get()

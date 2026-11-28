@@ -1,4 +1,4 @@
-"""The built-in layouts of ``gnoblin.objects.std`` from Python: one workspace and a chord for each tiling layout the library runs.
+"""The built-in layouts of ``gnoblin.std`` from Python: one workspace and a chord for each tiling layout the library runs.
 
     gnoblin ./layouts.py
 
@@ -11,8 +11,8 @@ defaults and their enumerations are the library's, and so is the algorithm. The 
 """
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import (
+from gnoblin import Gnoblin
+from gnoblin.std import (
     Gaps,
     GridFill,
     GridLayout,

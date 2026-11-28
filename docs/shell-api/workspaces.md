@@ -23,8 +23,8 @@ gnoblin.input?.primary?.bind("Super+Tab", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import GridLayout, MasterStackLayout, Workspace, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import GridLayout, MasterStackLayout, Workspace, Workspaces
 
 gnoblin = Gnoblin.get()
 workspaces = Workspaces.get()
@@ -160,7 +160,7 @@ gnoblin.workspaces.show(web, { duration: 250 });
 ```
 
 ```python
-from gnoblin.objects.std import ShowOptions, Workspace, Workspaces
+from gnoblin.std import ShowOptions, Workspace, Workspaces
 
 web = Workspace("web")
 Workspaces.get().add(web)
@@ -243,7 +243,7 @@ gnoblin.workspaces.add(new Workspace("columns", { layout: new Columns() }));
 ```
 
 ```python
-from gnoblin.objects.std import Layout, LayoutPlacement, LayoutRect, Workspace, Workspaces
+from gnoblin.std import Layout, LayoutPlacement, LayoutRect, Workspace, Workspaces
 
 
 class Columns(Layout):
@@ -384,8 +384,8 @@ for (const [key, side] of [
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import InputContextAugment, StripLayout
+from gnoblin import Gnoblin
+from gnoblin.std import InputContextAugment, StripLayout
 
 input = Gnoblin.get().input.primary
 

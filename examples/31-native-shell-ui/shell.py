@@ -19,7 +19,7 @@ reads all three.
 import struct
 
 from gnoblin import gnoblin
-from gnoblin.objects.std import Launcher, LockScreen, NotRespondingAlerts, Overview, PaintKind, PaintOp, Toast, Ui
+from gnoblin.std import Launcher, LockScreen, NotRespondingAlerts, Overview, PaintKind, PaintOp, Toast, Ui
 
 
 def say(text):

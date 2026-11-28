@@ -89,7 +89,7 @@ gnoblin.input.primary.bind("Super+Return", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin, Rect
+from gnoblin import BindingEvent, Gnoblin, Rect
 
 gnoblin = Gnoblin.get()
 GAP = 10.0
@@ -234,8 +234,8 @@ gnoblin.input.primary.bind("Super+Return", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin
-from gnoblin.objects.std import Gaps, MasterStackLayout, Workspace, Workspaces
+from gnoblin import BindingEvent, Gnoblin
+from gnoblin.std import Gaps, MasterStackLayout, Workspace, Workspaces
 
 gnoblin = Gnoblin.get()
 
@@ -408,7 +408,7 @@ input.bind("Super+Return", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin
+from gnoblin import BindingEvent, Gnoblin
 
 gnoblin = Gnoblin.get()
 

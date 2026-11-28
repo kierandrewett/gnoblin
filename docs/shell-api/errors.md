@@ -21,7 +21,7 @@ gnoblin.input.primary.bind("Super+Shift+q", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin
+from gnoblin import BindingEvent, Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -110,7 +110,7 @@ gnoblin.timers.after(5000, () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 sleep = gnoblin.process.spawn(["sleep", "30"])
@@ -313,8 +313,8 @@ try {
 
 ```python
 from gnoblin import GnoblinError
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Workspace, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import Workspace, Workspaces
 
 gnoblin = Gnoblin.get()
 
@@ -444,8 +444,8 @@ timer.cancel();
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import Workspaces
 
 gnoblin = Gnoblin.get()
 

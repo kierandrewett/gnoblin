@@ -26,8 +26,8 @@ gnoblin.input?.primary?.bind("Super+o", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Transition, TransitionOptions
+from gnoblin import Gnoblin
+from gnoblin.std import Transition, TransitionOptions
 
 gnoblin = Gnoblin.get()
 
@@ -142,8 +142,8 @@ gnoblin.input.primary.focusedClient?.set({ x: 0, y: 0 }, { duration: 400, easing
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Easing, Transition, TransitionOptions
+from gnoblin import Gnoblin
+from gnoblin.std import Easing, Transition, TransitionOptions
 
 client = Gnoblin.get().input.primary.focused_client
 if client is not None:
@@ -216,8 +216,8 @@ if (client !== undefined) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Easing, Transition, TransitionOptions
+from gnoblin import Gnoblin
+from gnoblin.std import Easing, Transition, TransitionOptions
 
 client = Gnoblin.get().input.primary.focused_client
 if client is not None:
@@ -287,7 +287,7 @@ const duration = gnoblin.motion(300);
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 duration = Gnoblin.get().motion(300.0)
 ```
@@ -334,8 +334,8 @@ if (client !== undefined) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Transition, TransitionOptions
+from gnoblin import Gnoblin
+from gnoblin.std import Transition, TransitionOptions
 
 client = Gnoblin.get().input.primary.focused_client
 if client is not None:

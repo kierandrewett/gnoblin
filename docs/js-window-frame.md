@@ -37,7 +37,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, FrameClient, Titlebar, WindowFrame
+from gnoblin.std import Decorations, FrameClient, Titlebar, WindowFrame
 
 decorations = Decorations.get()
 decorations.resize_handles = 6.0
@@ -110,7 +110,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, FrameClient, WindowFrame
+from gnoblin.std import Decorations, FrameClient, WindowFrame
 
 decorations = Decorations.get()
 
@@ -213,7 +213,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, FrameClient, Titlebar, WindowFrame
+from gnoblin.std import Decorations, FrameClient, Titlebar, WindowFrame
 
 decorations = Decorations.get()
 
@@ -309,8 +309,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Decorations
+from gnoblin import Gnoblin
+from gnoblin.std import Decorations
 
 gnoblin = Gnoblin.get()
 
@@ -404,7 +404,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, FrameClient, Titlebar, WindowFrame
+from gnoblin.std import Decorations, FrameClient, Titlebar, WindowFrame
 
 decorations = Decorations.get()
 

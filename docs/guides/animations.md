@@ -63,8 +63,8 @@ gnoblin.clients.addListener(
 ```
 
 ```python
-from gnoblin.objects.model import Client, Gnoblin
-from gnoblin.objects.std import Easing, GnoblinAugment, TransitionOptions
+from gnoblin import Client, Gnoblin
+from gnoblin.std import Easing, GnoblinAugment, TransitionOptions
 
 gnoblin = Gnoblin.get()
 

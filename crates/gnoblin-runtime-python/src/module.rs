@@ -1,7 +1,7 @@
 //! The built-in module `_gnoblin_core`: the whole of what Python can reach of the core.
 //!
 //! It is generic on purpose. A class, property, method or signal is named as the schema catalog names it, and the typed classes
-//! a script uses (`gnoblin.Window` and the rest) are generated from that catalog, so adding a property to the schema changes no line
+//! a script uses (`gnoblin.host.Window` and the rest) are generated from that catalog, so adding a property to the schema changes no line
 //! here. What is left is the verbs: read, write and call a node, call the compositor's own verbs and hear its signals, listen, claim
 //! input, start a program, keep state across a reload, log and post work to the shell thread.
 //!

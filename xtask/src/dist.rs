@@ -1514,6 +1514,7 @@ mod tests {
             "share/gnoblin/types/python/gnoblin/api.pyi",
             "share/gnoblin/types/python/gnoblin/errors.pyi",
             "share/gnoblin/types/python/gnoblin/events.pyi",
+            "share/gnoblin/types/python/gnoblin/host.pyi",
             "share/gnoblin/types/python/gnoblin/py.typed",
             "share/gnoblin/types/python/_gnoblin_core.pyi",
         ] {

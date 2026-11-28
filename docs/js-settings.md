@@ -47,7 +47,7 @@ for (const device of gnoblin.input.devices) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, Keyboard, Mouse, Touchpad
+from gnoblin import Gnoblin, Keyboard, Mouse, Touchpad
 
 gnoblin = Gnoblin.get()
 
@@ -133,7 +133,7 @@ profiles.add(
 ```
 
 ```python
-from gnoblin.objects.std import OutputMatch, OutputPosition, OutputProfile, OutputProfiles, PositionKind, ProfileSettings
+from gnoblin.std import OutputMatch, OutputPosition, OutputProfile, OutputProfiles, PositionKind, ProfileSettings
 
 profiles = OutputProfiles.get()
 
@@ -229,7 +229,7 @@ ClientStyle.ofClients().where({ appId: "foot" }).opacity = 0.9;
 ```
 
 ```python
-from gnoblin.objects.std import ClientStyle, CornerRadius, StyleQuery
+from gnoblin.std import ClientStyle, CornerRadius, StyleQuery
 
 ClientStyle.of_clients().corner_radius = CornerRadius(all=12)
 ClientStyle.of_clients().where(StyleQuery(app_id="foot")).opacity = 0.9
@@ -280,7 +280,7 @@ gnoblin.workspaces.add(
 ```
 
 ```python
-from gnoblin.objects.std import Gaps, MasterStackLayout, Workspace, Workspaces
+from gnoblin.std import Gaps, MasterStackLayout, Workspace, Workspaces
 
 Workspaces.get().add(
     Workspace(
@@ -345,7 +345,7 @@ input.bind("Swipe4Up", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 seat = gnoblin.input.primary
@@ -421,7 +421,7 @@ gnoblin.dialogs.addListener(
 ```
 
 ```python
-from gnoblin.objects.model import DialogListener, DialogRequest, Gnoblin
+from gnoblin import DialogListener, DialogRequest, Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -478,7 +478,7 @@ gnoblin.compositor.userShaders = false;
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 

@@ -96,8 +96,8 @@ menus.start();
 ```
 
 ```python
-from gnoblin.objects.model import ClientQuery, Gnoblin
-from gnoblin.objects.std import MenuEntry, MenuProvider, WindowMenus
+from gnoblin import ClientQuery, Gnoblin
+from gnoblin.std import MenuEntry, MenuProvider, WindowMenus
 
 
 class CopyTitle(MenuProvider):
@@ -217,8 +217,8 @@ menus.start();
 ```
 
 ```python
-from gnoblin.objects.model import ClientQuery, Gnoblin
-from gnoblin.objects.std import Box, MenuProvider, Text, WindowMenus
+from gnoblin import ClientQuery, Gnoblin
+from gnoblin.std import Box, MenuProvider, Text, WindowMenus
 
 
 class OwnMenu(MenuProvider):
@@ -325,7 +325,7 @@ Repositioning.get().start();
 ```
 
 ```python
-from gnoblin.objects.std import Repositioning
+from gnoblin.std import Repositioning
 
 Repositioning.get().start()
 ```

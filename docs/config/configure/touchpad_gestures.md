@@ -33,8 +33,8 @@ new WorkspaceSlideBinding({ trigger: "Swipe3" }).install();
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, GestureBinding
-from gnoblin.objects.std import WorkspaceSlideBinding
+from gnoblin import Gnoblin, GestureBinding
+from gnoblin.std import WorkspaceSlideBinding
 
 
 class CloseOnSwipe(GestureBinding):

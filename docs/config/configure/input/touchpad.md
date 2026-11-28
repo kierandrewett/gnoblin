@@ -18,7 +18,7 @@ for (const device of gnoblin.input.devices) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, Touchpad
+from gnoblin import Gnoblin, Touchpad
 
 for device in Gnoblin.get().input.devices:
     if isinstance(device, Touchpad):

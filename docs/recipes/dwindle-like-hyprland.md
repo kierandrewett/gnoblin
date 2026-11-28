@@ -45,8 +45,8 @@ for (const [trigger, action] of Object.entries(keys)) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import DwindleLayout, Workspace, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import DwindleLayout, Workspace, Workspaces
 
 # `pointer="seat"` is what `force_split="by_pointer"` and `smart_split` read.
 dwindle = DwindleLayout(gap=8, preserve_split=True, pointer="seat")

@@ -36,8 +36,8 @@ gnoblin.clients.addListener(
 ```
 
 ```python
-from gnoblin.objects.model import ClientCollectionListener, Gnoblin
-from gnoblin.objects.std import FloatingLayout, Workspace, Workspaces
+from gnoblin import ClientCollectionListener, Gnoblin
+from gnoblin.std import FloatingLayout, Workspace, Workspaces
 
 homes = {
     "org.gnome.TextEditor": "code",

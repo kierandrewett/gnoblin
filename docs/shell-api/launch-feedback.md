@@ -19,7 +19,7 @@ gnoblin.input.primary.bind("Super+e", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin, Launch, LaunchListener, LaunchOptions
+from gnoblin import BindingEvent, Gnoblin, Launch, LaunchListener, LaunchOptions
 
 gnoblin = Gnoblin.get()
 

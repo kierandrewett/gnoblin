@@ -17,8 +17,8 @@ The layout is an ordinary object: it may keep state between calls, and the libra
 import math
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Gaps, Layout, LayoutPlacement, LayoutRect, Workspace, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import Gaps, Layout, LayoutPlacement, LayoutRect, Workspace, Workspaces
 
 
 class Columns(Layout):

@@ -19,7 +19,7 @@ input.bind("Super+x", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 context = gnoblin.input.primary
@@ -142,7 +142,7 @@ binding.unbind();
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 context = gnoblin.input.primary

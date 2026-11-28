@@ -31,7 +31,7 @@ gnoblin.outputs.profiles.add(side);
 ```
 
 ```python
-from gnoblin.objects.std import OutputCollectionAugment, OutputMatch, OutputPosition, OutputProfile, PositionKind, ProfileSettings, OutputTransform
+from gnoblin.std import OutputCollectionAugment, OutputMatch, OutputPosition, OutputProfile, PositionKind, ProfileSettings, OutputTransform
 
 main = OutputProfile(
     OutputMatch(connector="DP-1"),

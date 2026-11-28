@@ -51,7 +51,7 @@ class Method:
 class Signal:
     """A signal of a node class. ``Window.closed`` listens to every window, ``window.closed`` to that one; both are used as a decorator
     (``@Window.closed``) or called with the function (``Window.closed(fn)``), which returns the function. ``.subscribe(fn)`` returns the
-    :class:`gnoblin.Subscription` instead."""
+    :class:`gnoblin.host.Subscription` instead."""
 
     name: str
     fields: tuple[tuple[Any, ...], ...]

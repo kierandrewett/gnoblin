@@ -126,7 +126,8 @@ place.place()
     module_text: |edited| {
         let gap = if edited { 24 } else { 10 };
         format!(
-            r#"from gnoblin import Screen, gnoblin
+            r#"from gnoblin import gnoblin
+from gnoblin.host import Screen
 
 GAP = {gap}
 

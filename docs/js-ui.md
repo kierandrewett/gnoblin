@@ -52,7 +52,7 @@ canvas.invalidate();
 ```
 
 ```python
-from gnoblin.objects.std import Canvas, PaintKind, PaintOp, Widget
+from gnoblin.std import Canvas, PaintKind, PaintOp, Widget
 
 
 class Meter(Widget):
@@ -181,7 +181,7 @@ bar.mountTop();
 ```
 
 ```python
-from gnoblin.objects.std import Box, Icon, Text
+from gnoblin.std import Box, Icon, Text
 
 bar = Box(width=300.0, height=32.0, direction="row", gap=8.0, padding=6.0, fill="#1e1e2e")
 bar.add(Text(text="Files", grow=1.0))
@@ -286,7 +286,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, TitlebarStyle, WindowButtonName
+from gnoblin.std import Decorations, TitlebarStyle, WindowButtonName
 
 decorations = Decorations.get()
 decorations.style = TitlebarStyle(height=36.0, buttons=[WindowButtonName.CLOSE], focused_fill="#223344")
@@ -404,7 +404,7 @@ entry.focus();
 ```
 
 ```python
-from gnoblin.objects.std import Entry
+from gnoblin.std import Entry
 
 entry = Entry(x=20.0, y=48.0, width=320.0, height=36.0, fill="#313244")
 entry.mount_top()
@@ -521,8 +521,8 @@ Toast.show("The shell is running");
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin
-from gnoblin.objects.std import Launcher, NotRespondingAlerts, Toast, WindowMenus
+from gnoblin import BindingEvent, Gnoblin
+from gnoblin.std import Launcher, NotRespondingAlerts, Toast, WindowMenus
 
 gnoblin = Gnoblin.get()
 

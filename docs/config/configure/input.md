@@ -26,7 +26,7 @@ if (input) {
 
 ```python
 from gnoblin import gnoblin
-from gnoblin.objects.model import Keyboard, Mouse
+from gnoblin import Keyboard, Mouse
 
 for device in gnoblin.input.devices:
     if isinstance(device, Keyboard):

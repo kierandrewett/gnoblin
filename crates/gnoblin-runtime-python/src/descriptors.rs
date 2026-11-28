@@ -26,7 +26,7 @@ use crate::{events, tree};
 /// Every generated class by its schema name (`"window"`), filled as the classes are defined.
 static CLASSES: PyOnceLock<Py<PyDict>> = PyOnceLock::new();
 
-/// The registry of the classes: `gnoblin.CLASSES`.
+/// The registry of the classes: `gnoblin.host.CLASSES`.
 pub(crate) fn classes(py: Python<'_>) -> &Bound<'_, PyDict> {
     CLASSES.get_or_init(py, || PyDict::new(py).unbind()).bind(py)
 }

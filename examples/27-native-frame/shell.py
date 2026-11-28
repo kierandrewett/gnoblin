@@ -8,7 +8,7 @@ example spells it.
 """
 
 from gnoblin import gnoblin
-from gnoblin.objects.std import Decorations, Titlebar
+from gnoblin.std import Decorations, Titlebar
 
 
 def fill(client, frame):

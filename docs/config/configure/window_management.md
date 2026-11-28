@@ -33,7 +33,7 @@ new ResizeBinding({ trigger: "Alt+MouseRight+Drag" }).install();
 ```
 
 ```python
-from gnoblin.objects.std import FloatingLayout, MoveBinding, ResizeBinding, Workspace, Workspaces
+from gnoblin.std import FloatingLayout, MoveBinding, ResizeBinding, Workspace, Workspaces
 
 Workspaces.get().add(Workspace("main", layout=FloatingLayout()))
 MoveBinding(trigger="Alt+MouseLeft+Drag").install()

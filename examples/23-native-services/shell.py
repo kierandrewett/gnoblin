@@ -14,7 +14,7 @@ each of them. This shell does what the Rust shell of the same example (``23-nati
 import json
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import Gnoblin, LaunchOptions, SpawnOptions, StreamMode
+from gnoblin import Gnoblin, LaunchOptions, SpawnOptions, StreamMode
 
 
 def say(text):

@@ -1,7 +1,7 @@
 //! Hides every export of the library but its entry symbol, with a linker version script (`exports.map`), and embeds the generated
 //! half of the `gnoblin` package.
 //!
-//! PyO3 exports `PyInit__gnoblin_core`, `PyInit__gnoblin_std` and `PyInit__gnoblin_objects`, the initialisers of the built-in modules the runtime registers with the interpreter's
+//! PyO3 exports `PyInit__gnoblin_core` and `PyInit__gnoblin_objects`, the initialisers of the built-in modules the runtime registers with the interpreter's
 //! inittab. The interpreter reaches it by address, so the name need not be exported, and a runtime that exports a second
 //! name could answer a `dlsym` it was never asked for. rustc passes its own version script that lists the symbols as global; the one
 //! here names them as local, which wins. `cargo xtask dist-check` and `cargo xtask stage` refuse a runtime that

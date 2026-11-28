@@ -13,7 +13,7 @@ gnoblin.input.primary.bind("Super+f", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -90,7 +90,7 @@ const primary = gnoblin.find("Output", { primary: true })[0];
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 focused_notes = gnoblin.find("Window", {"app_id": "org.gnome.Notes", "focused": True})
@@ -146,7 +146,7 @@ const drafts = gnoblin.find("Window", (window) => window.title.includes("draft")
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 drafts = gnoblin.find("Window", lambda window: "draft" in window.title)
@@ -189,8 +189,8 @@ terminals.style.opacity = 0.9;
 ```
 
 ```python
-from gnoblin.objects.model import ClientQuery, Gnoblin
-from gnoblin.objects.std import ClientCollectionAugment
+from gnoblin import ClientQuery, Gnoblin
+from gnoblin.std import ClientCollectionAugment
 
 gnoblin = Gnoblin.get()
 terminals = gnoblin.clients.where(ClientQuery(app_id="foot"))

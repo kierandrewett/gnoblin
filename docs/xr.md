@@ -129,7 +129,7 @@ Extensions.get().configure("xr", { room: true }, (client) => !client.appId.start
 ```
 
 ```python
-from gnoblin.objects.std import Extensions, XROptions
+from gnoblin.std import Extensions, XROptions
 
 Extensions.get().configure("xr", XROptions(room=True), lambda client: not client.app_id.startswith("org.keepassxc"))
 ```
@@ -337,8 +337,8 @@ if (extensions.xr?.session) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Extensions, XRListener, XRSession
+from gnoblin import Gnoblin
+from gnoblin.std import Extensions, XRListener, XRSession
 
 gnoblin = Gnoblin.get()
 
@@ -422,7 +422,7 @@ Extensions.get().configure("xr", { room: true, layout });
 ```
 
 ```python
-from gnoblin.objects.std import Extensions, SpatialLayout, SpatialTriggers, XROptions
+from gnoblin.std import Extensions, SpatialLayout, SpatialTriggers, XROptions
 
 layout = SpatialLayout(
     radius=1.8,
@@ -476,7 +476,7 @@ if (session) {
 ```
 
 ```python
-from gnoblin.objects.std import Extensions, XRCamera3D, XRRoom, XRViewport, XrComposition
+from gnoblin.std import Extensions, XRCamera3D, XRRoom, XRViewport, XrComposition
 
 xr = Extensions.get().xr
 session = xr.session if xr is not None else None
@@ -543,8 +543,8 @@ if (room && client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Extensions, HeadPanelOptions
+from gnoblin import Gnoblin
+from gnoblin.std import Extensions, HeadPanelOptions
 
 xr = Extensions.get().xr
 room = xr.room if xr is not None else None
@@ -622,7 +622,7 @@ if (room) {
 ```
 
 ```python
-from gnoblin.objects.std import (
+from gnoblin.std import (
     Extensions,
     SpatialLayout,
     SpatialTriggers,
@@ -746,7 +746,7 @@ bindings?.add(new XRControllerDragBinding({ id: "nudge", trigger: "Primary+Drag"
 ```
 
 ```python
-from gnoblin.objects.std import Extensions, XRControllerDragBinding, XRDragEvent, XRDragHandler
+from gnoblin.std import Extensions, XRControllerDragBinding, XRDragEvent, XRDragHandler
 
 
 class Nudge(XRDragHandler):
@@ -928,7 +928,7 @@ hand?.release("menu");
 ```
 
 ```python
-from gnoblin.objects.std import Extensions
+from gnoblin.std import Extensions
 
 xr = Extensions.get().xr
 session = xr.session if xr is not None else None

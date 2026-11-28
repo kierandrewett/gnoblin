@@ -441,7 +441,8 @@ gnoblin.bind("Super+Return", lambda: None)
 /// The module the shell imports: columns with no gap, or (the edit) rows 24 apart.
 fn place_module(edited: bool) -> &'static str {
     if edited {
-        r#"from gnoblin import Screen, gnoblin
+        r#"from gnoblin import gnoblin
+from gnoblin.host import Screen
 
 
 def place():
@@ -456,7 +457,8 @@ def place():
         window.height = height
 "#
     } else {
-        r#"from gnoblin import Screen, gnoblin
+        r#"from gnoblin import gnoblin
+from gnoblin.host import Screen
 
 
 def place():
@@ -719,7 +721,8 @@ fn the_tree_timers_and_state_are_reached_by_name_from_a_python_shell() {
     let dir = project("services");
     let marker = dir.join("marker");
     let source = format!(
-        r#"from gnoblin import MemberError, Screen, Window, gnoblin
+        r#"from gnoblin import MemberError, gnoblin
+from gnoblin.host import Screen, Window
 
 
 def note(text):
@@ -883,7 +886,12 @@ for module_name in ("gnoblin._base", "gnoblin.api", "gnoblin.errors", "gnoblin.e
 
 package = importlib.import_module("gnoblin")
 generated = set(importlib.import_module("gnoblin._generated.classes").__all__)
-gnoblin.log("reflect gnoblin " + " ".join(sorted(n for n in package.__all__ if n not in generated)))
+model = importlib.import_module("gnoblin.objects.model")
+modelled = {n for n in package.__all__ if getattr(getattr(package, n), "__module__", None) == model.__name__}
+gnoblin.log("reflect gnoblin " + " ".join(sorted(n for n in package.__all__ if n not in modelled)))
+# The tree layer has the node classes, which the generated stubs declare, and the names the stub imports itself.
+host = importlib.import_module("gnoblin.host")
+gnoblin.log("reflect gnoblin.host " + " ".join(sorted(n for n in host.__all__ if n not in generated)))
 gnoblin.log("reflect done")
 "#;
 
@@ -894,9 +902,9 @@ import sys
 
 for path, label in zip(sys.argv[1::2], sys.argv[2::2]):
     tree = ast.parse(open(path, encoding="utf-8").read())
-    if label == "gnoblin":
+    if label in ("gnoblin", "gnoblin.host"):
         names = sorted(a.asname for n in tree.body if isinstance(n, ast.ImportFrom) for a in n.names if a.name != "*" and a.asname)
-        print("reflect gnoblin " + " ".join(names))
+        print("reflect " + label + " " + " ".join(names))
         continue
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and not node.name.startswith("_"):
@@ -952,6 +960,7 @@ fn the_stubs_of_the_package_agree_with_what_the_runtime_reflects() {
     command.arg(&script);
     for (file, label) in [
         ("gnoblin/__init__.pyi", "gnoblin"),
+        ("gnoblin/host.pyi", "gnoblin.host"),
         ("gnoblin/_base.pyi", "gnoblin._base"),
         ("gnoblin/api.pyi", "gnoblin.api"),
         ("gnoblin/errors.pyi", "gnoblin.errors"),
@@ -990,12 +999,21 @@ fn served_shell(data: &Path) -> String {
 import sys
 
 from gnoblin import gnoblin
-from gnoblin import _base, api, errors, events, std, verbs, objects
+from gnoblin import _base, api, errors, events, host, std, verbs, objects
 import importlib
 
 importlib.import_module("gnoblin.objects.std")
 from gnoblin.objects import model
-from gnoblin.std import Collection, Workspace, clients
+from gnoblin.std import Workspace
+import gnoblin as root
+from gnoblin import Client, Gnoblin
+
+assert Client is model.Client and root.Client is model.Client and Gnoblin is model.Gnoblin
+assert Workspace is sys.modules["gnoblin.objects.std"].Workspace
+# The tree layer is `gnoblin.host`, and its classes are not the package root's.
+assert host.Window is sys.modules["gnoblin._generated.classes"].Window and host.Node is _base.Node
+assert not any(hasattr(root, name) for name in ("Window", "Screen", "Node", "Seat", "Subscription", "WindowRequest"))
+gnoblin.log("root names are the model's")
 
 for name in sorted(sys.modules):
     if name == "gnoblin" or name.startswith("gnoblin."):
@@ -1041,6 +1059,7 @@ fn the_package_is_served_by_the_runtime_and_no_file_of_it_is_read() {
         run.dump()
     );
     assert!(run.stderr.contains("served done"), "{}", run.dump());
+    assert!(run.stderr.contains("root names are the model's"), "{}", run.dump());
     let served: Vec<&str> = run
         .stderr
         .lines()
@@ -1052,8 +1071,7 @@ fn the_package_is_served_by_the_runtime_and_no_file_of_it_is_read() {
         "gnoblin.api",
         "gnoblin.errors",
         "gnoblin.events",
-        "gnoblin._std_base",
-        "gnoblin._std_sugar",
+        "gnoblin.host",
         "gnoblin.std",
         "gnoblin._generated.classes",
         "gnoblin._generated.verbs",
@@ -1249,18 +1267,7 @@ fn every_python_example_type_checks_clean_against_the_installed_stubs() {
     type_check(&project("examples-pyright"), &pyright, &examples);
 }
 
-// ---- example 3: a Python shell on the generated std objects -----------------------------------------------------------------
-//
-// Example 3 is written on the generated object API (`gnoblin.objects.std`). `gnoblin.std`, the typed-table binding over `gnoblin._std_base`,
-// still ships in this runtime, so each proof runs a second time on the shells of `tests/fixtures/typed_table`: example 3 as it was before
-// it moved. They stay for as long as that binding does; each test of them says `typed_table` in its name.
-
-/// A shell of `tests/fixtures/typed_table`: the typed-table binding's own proof.
-fn typed_table(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/typed_table")
-        .join(name)
-}
+// ---- example 3: a Python shell on the std classes ---------------------------------------------------------------------------
 
 /// The scenario of example 6 over the Python shell `script`: the same windows, the same chord, the same rectangles the native Rust
 /// shell of example 6 produces (`gnoblin-std-impl/tests/examples.rs`).
@@ -1272,11 +1279,6 @@ fn std_scenario(script: &Path) -> Run {
 #[test]
 fn example_3_a_python_shell_arranges_the_clients_of_a_workspace_in_columns_as_they_open_and_close() {
     assert_columns(&std_scenario(&example("03-python-std/shell.py")));
-}
-
-#[test]
-fn typed_table_a_python_shell_on_gnoblin_std_arranges_the_clients_of_a_workspace_in_columns_as_they_open_and_close() {
-    assert_columns(&std_scenario(&typed_table("shell.py")));
 }
 
 fn assert_columns(run: &Run) {
@@ -1392,11 +1394,6 @@ fn assert_layouts_match_the_native_shell(layouts: &Path) {
 #[test]
 fn the_built_in_layouts_from_python_give_the_rectangles_of_the_native_shell() {
     assert_layouts_match_the_native_shell(&example("03-python-std/layouts.py"));
-}
-
-#[test]
-fn typed_table_the_built_in_layouts_from_gnoblin_std_give_the_rectangles_of_the_native_shell() {
-    assert_layouts_match_the_native_shell(&typed_table("layouts.py"));
 }
 
 /// Starts the shell `script` in the prefix that has the std library beside the core, and ends it when it has evaluated: the scenario of a

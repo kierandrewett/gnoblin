@@ -18,7 +18,7 @@ pad?.bind(
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, BindingOptions, Gnoblin
+from gnoblin import BindingEvent, BindingOptions, Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -215,7 +215,7 @@ for (const device of gnoblin.input.devices) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, Keyboard, Mouse, Touchpad
+from gnoblin import Gnoblin, Keyboard, Mouse, Touchpad
 
 gnoblin = Gnoblin.get()
 
@@ -306,7 +306,7 @@ if (keyboard) {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin, InputContext
+from gnoblin import BindingEvent, Gnoblin, InputContext
 
 gnoblin = Gnoblin.get()
 other = InputContext("secondary")

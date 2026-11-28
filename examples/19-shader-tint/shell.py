@@ -13,7 +13,7 @@ wrong. See docs/custom-shaders.md.
 """
 
 from gnoblin import gnoblin
-from gnoblin.std import StyleEntry, StyleKind, Style, clients
+from gnoblin.std import ClientStyle, ShaderFilter
 
 # ``p[0]`` to ``p[2]`` is the colour, ``p[3]`` the strength from 0 to 1. The window's colour is premultiplied, so the tint is scaled by
 # its alpha.
@@ -24,6 +24,5 @@ fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {
 }
 """
 
-style = Style.scope(StyleKind.SCOPE_COLLECTION, clients().handle)
-style.set_list(StyleKind.FILTER, [StyleEntry.of_shader(TINT, [1.0, 0.55, 0.2, 0.25])])
+ClientStyle.of_clients().filter = [ShaderFilter(source=TINT, params=[1.0, 0.55, 0.2, 0.25])]
 gnoblin.log("python shader tint shell is running")

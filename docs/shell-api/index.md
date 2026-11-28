@@ -18,7 +18,7 @@ for (const client of gnoblin.clients.toList()) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 

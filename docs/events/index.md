@@ -30,8 +30,8 @@ Gnoblin.get().session.addListener(new Bell());
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, SessionListener
-from gnoblin.objects.std import Toast
+from gnoblin import Gnoblin, SessionListener
+from gnoblin.std import Toast
 
 
 class Bell(SessionListener):
@@ -118,7 +118,7 @@ Gnoblin.get().clients.addListener(new Titles());
 ```
 
 ```python
-from gnoblin.objects.model import ClientCollectionListener, Gnoblin
+from gnoblin import ClientCollectionListener, Gnoblin
 
 
 class Titles(ClientCollectionListener):
@@ -171,7 +171,7 @@ gnoblin.session.on("bell", (_session, count) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 

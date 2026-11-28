@@ -22,8 +22,8 @@ for (const output of gnoblin.outputs.toList()) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import FloatingLayout, OutputAugment, Toast, Workspace, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import FloatingLayout, OutputAugment, Toast, Workspace, Workspaces
 
 gnoblin = Gnoblin.get()
 workspaces = Workspaces.get()
@@ -190,7 +190,7 @@ gnoblin.outputs
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, OutputConfig, OutputQuery
+from gnoblin import Gnoblin, OutputConfig, OutputQuery
 
 gnoblin = Gnoblin.get()
 
@@ -251,7 +251,7 @@ Gnoblin.get()
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, OutputConfig
+from gnoblin import Gnoblin, OutputConfig
 
 output = Gnoblin.get().outputs.at(1)
 if output:
@@ -294,7 +294,7 @@ outputs.at(1)?.mirror(); // stop
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 outputs = Gnoblin.get().outputs
 first, second = outputs.at(0), outputs.at(1)
@@ -333,7 +333,7 @@ Gnoblin.get()
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, OutputConfig
+from gnoblin import Gnoblin, OutputConfig
 
 output = Gnoblin.get().outputs.at(1)
 if output:
@@ -406,7 +406,7 @@ if (output) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, OutputConfig, OutputQuery
+from gnoblin import Gnoblin, OutputConfig, OutputQuery
 
 output = Gnoblin.get().outputs.where(OutputQuery(name="output-1")).at(0)
 if output:
@@ -551,7 +551,7 @@ manager.addProfile(side);
 ```
 
 ```python
-from gnoblin.objects.std import (
+from gnoblin.std import (
     DisplayManager,
     OutputMatch,
     OutputPosition,
@@ -693,8 +693,8 @@ seat.bind("Super+2", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import InputContextAugment, Workspace, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import InputContextAugment, Workspace, Workspaces
 
 gnoblin = Gnoblin.get()
 workspaces = Workspaces.get()
@@ -800,7 +800,7 @@ manager.addDisplay(spanned);
 ```
 
 ```python
-from gnoblin.objects.std import (
+from gnoblin.std import (
     Camera2D,
     Display,
     DisplayManager,
@@ -948,8 +948,8 @@ seat.bind("Super+Tab", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import (
+from gnoblin import Gnoblin
+from gnoblin.std import (
     Camera2D,
     Camera3D,
     GnoblinAugment,
@@ -1081,7 +1081,7 @@ gnoblin.outputs.addListener(new Hotplug());
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, Output, OutputCollectionListener
+from gnoblin import Gnoblin, Output, OutputCollectionListener
 
 gnoblin = Gnoblin.get()
 
@@ -1183,8 +1183,8 @@ if (second) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Bar
+from gnoblin import Gnoblin
+from gnoblin.std import Bar
 
 second = Gnoblin.get().outputs.at(1)
 if second:
@@ -1257,8 +1257,8 @@ if (client && target) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientAugment, OutputAugment
+from gnoblin import Gnoblin
+from gnoblin.std import ClientAugment, OutputAugment
 
 gnoblin = Gnoblin.get()
 clients = gnoblin.find("Window", {"focused": True})

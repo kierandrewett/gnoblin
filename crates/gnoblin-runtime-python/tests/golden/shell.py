@@ -4,7 +4,8 @@ It runs in `tests/shells.rs` over the fake compositor, and a type checker holds 
 one), so what the stubs say and what the runtime does are checked against the same script.
 """
 
-from gnoblin import NodeGoneError, Process, ProcessExit, Subscription, Window, WindowRequest, gnoblin
+from gnoblin import NodeGoneError, gnoblin
+from gnoblin.host import Process, ProcessExit, Subscription, Window, WindowRequest
 
 
 def note(text: str) -> None:

@@ -44,8 +44,8 @@ gnoblin.input.primary.bind("Super+Shift+w", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import FloatingLayout, MasterStackLayout, MonocleLayout, Workspace, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import FloatingLayout, MasterStackLayout, MonocleLayout, Workspace, Workspaces
 
 gnoblin = Gnoblin.get()
 workspaces = Workspaces.get()

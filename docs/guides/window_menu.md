@@ -35,7 +35,7 @@ state.start();
 
 ```python
 from gnoblin import gnoblin as session
-from gnoblin.objects.std import ClientRequestKind, RequestListener, WindowState
+from gnoblin.std import ClientRequestKind, RequestListener, WindowState
 
 
 class OwnMenu(RequestListener):

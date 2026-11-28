@@ -22,7 +22,7 @@ export function placeWindows(): void {
 
 ```python
 # windows.py
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 
 def place_windows():

@@ -21,7 +21,7 @@ for (const device of gnoblin.input.devices) {
 ```
 
 ```python
-from gnoblin.objects.model import AccelerationProfile, Gnoblin, Mouse
+from gnoblin import AccelerationProfile, Gnoblin, Mouse
 
 for device in Gnoblin.get().input.devices:
     if isinstance(device, Mouse):

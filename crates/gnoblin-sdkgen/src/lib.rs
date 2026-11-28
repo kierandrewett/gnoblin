@@ -48,7 +48,6 @@ mod object_py;
 mod object_script;
 mod objects;
 mod python;
-mod python_std;
 mod reference;
 mod rust;
 mod std_dyn;
@@ -506,29 +505,6 @@ mod tests {
         let std = generated("object-types", "python/gnoblin/objects/std.pyi");
         assert!(std.contains("class Camera3D(SceneNode):"), "a camera is a scene node");
         assert!(std.contains("class View(SceneNode):"), "a view is a scene node");
-    }
-
-    #[test]
-    fn a_builtin_binding_stub_has_start() {
-        let std = generated("python", "python/gnoblin/std.pyi");
-        let binding = &std[std.find("class SwapBinding").expect("the binding is declared")..];
-        let binding = &binding[..binding.find("\n\n\nclass ").unwrap_or(binding.len())];
-        assert!(binding.contains("def start(self) -> Registration:"), "{binding}");
-    }
-
-    #[test]
-    fn a_std_call_that_answers_a_handle_is_not_optional_unless_it_is_a_lookup() {
-        let std = generated("python", "python/gnoblin/std.pyi");
-        let scope = std
-            .lines()
-            .find(|line| line.contains("def scope("))
-            .expect("Style.scope is declared");
-        assert!(scope.ends_with("-> Style:"), "{scope}");
-        let clients = std
-            .lines()
-            .find(|line| line.contains("def clients(self) ->"))
-            .expect("Workspace.clients");
-        assert!(!clients.contains("Optional"), "{clients}");
     }
 
     /// A service is reached with `get`, in Rust as in TypeScript and Python, so a failure to reach it names `Class.get`: the target a

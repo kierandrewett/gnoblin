@@ -8,7 +8,7 @@ the stock answer does not run. Every line starts with ``policy:``, as the Rust s
 """
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.std import (
+from gnoblin.std import (
     ClientRequestKind,
     FocusPolicy,
     Gestures,

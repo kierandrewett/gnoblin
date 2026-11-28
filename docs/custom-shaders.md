@@ -28,7 +28,7 @@ gnoblin.compositor.userShaders = false;
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 Gnoblin.get().compositor.user_shaders = False
 ```
@@ -83,7 +83,7 @@ gnoblin.clients.style.filter = [new ShaderFilter({ source: tint, params: [1.0, 0
 ```
 
 ```python
-from gnoblin.objects.std import ClientStyle, ShaderFilter
+from gnoblin.std import ClientStyle, ShaderFilter
 
 TINT = """
 fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {

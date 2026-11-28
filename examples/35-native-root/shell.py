@@ -13,7 +13,7 @@ same example (``35-native-root``) does, and logs the same lines:
 """
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 
 def say(text):

@@ -22,7 +22,7 @@ gnoblin.dialogs.addListener(new NoScreenCasts());
 ```
 
 ```python
-from gnoblin.objects.model import DialogListener, DialogRequest, Gnoblin
+from gnoblin import DialogListener, DialogRequest, Gnoblin
 
 
 class NoScreenCasts(DialogListener):

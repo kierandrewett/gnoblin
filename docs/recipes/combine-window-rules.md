@@ -22,8 +22,8 @@ gnoblin.clients.on("added", (client) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientCollectionAugment
+from gnoblin import Gnoblin
+from gnoblin.std import ClientCollectionAugment
 
 
 ClientCollectionAugment.get().style(Gnoblin.get().clients).opacity = 1.0

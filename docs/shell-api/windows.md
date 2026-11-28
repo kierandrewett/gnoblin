@@ -17,7 +17,7 @@ gnoblin.input?.primary?.bind("Super+t", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -95,7 +95,7 @@ const titles = all.map((client) => client.title);
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 

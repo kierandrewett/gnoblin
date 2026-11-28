@@ -25,7 +25,7 @@ gnoblin.authentication.addListener(new NoRoot());
 ```
 
 ```python
-from gnoblin.objects.model import AuthenticationListener, AuthenticationRequest, Gnoblin
+from gnoblin import AuthenticationListener, AuthenticationRequest, Gnoblin
 
 
 class NoRoot(AuthenticationListener):

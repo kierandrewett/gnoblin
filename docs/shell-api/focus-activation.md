@@ -35,7 +35,7 @@ client?.raise();
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 client = next((c for c in gnoblin.clients.to_list() if c.app_id == "foot"), None)
@@ -81,7 +81,7 @@ previous?.focus();
 ```
 
 ```python
-from gnoblin.objects.model import FocusFilter, Gnoblin
+from gnoblin import FocusFilter, Gnoblin
 
 history = Gnoblin.get().focus.history(FocusFilter(limit=2))
 if len(history) > 1:

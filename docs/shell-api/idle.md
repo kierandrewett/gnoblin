@@ -13,7 +13,7 @@ gnoblin.idle.watch(300_000, {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, IdleListener
+from gnoblin import Gnoblin, IdleListener
 
 gnoblin = Gnoblin.get()
 
@@ -125,7 +125,7 @@ hold.release();
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 hold = Gnoblin.get().idle.inhibit("presentation")
 # Later:

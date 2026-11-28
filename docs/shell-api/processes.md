@@ -35,7 +35,7 @@ gnoblin.input.primary.bind("Super+d", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin, Process, ProcessListener, SpawnOptions, StreamMode
+from gnoblin import BindingEvent, Gnoblin, Process, ProcessListener, SpawnOptions, StreamMode
 
 gnoblin = Gnoblin.get()
 
@@ -140,7 +140,7 @@ gnoblin.input.primary.bind("Super+c", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin, SpawnOptions, StreamMode
+from gnoblin import BindingEvent, Gnoblin, SpawnOptions, StreamMode
 
 gnoblin = Gnoblin.get()
 

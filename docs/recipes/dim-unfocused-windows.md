@@ -16,7 +16,7 @@ gnoblin.clients.addListener({
 ```
 
 ```python
-from gnoblin.objects.model import Client, ClientCollectionListener, Gnoblin
+from gnoblin import Client, ClientCollectionListener, Gnoblin
 
 
 class DimUnfocused(ClientCollectionListener):
@@ -75,8 +75,8 @@ gnoblin.clients.addListener({
 ```
 
 ```python
-from gnoblin.objects.model import Client, ClientCollectionListener, Gnoblin
-from gnoblin.objects.std import GnoblinAugment, TransitionOptions
+from gnoblin import Client, ClientCollectionListener, Gnoblin
+from gnoblin.std import GnoblinAugment, TransitionOptions
 
 
 class FadeUnfocused(ClientCollectionListener):

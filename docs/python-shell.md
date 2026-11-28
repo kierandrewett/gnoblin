@@ -16,8 +16,8 @@ A `shell.py` is a program. It runs top to bottom, and each line reads or changes
 short:
 
 ```python
-from gnoblin.objects.model import BindingEvent, ClientQuery, Gnoblin
-from gnoblin.objects.std import Decorations, MasterStackLayout, Workspace
+from gnoblin import BindingEvent, ClientQuery, Gnoblin
+from gnoblin.std import Decorations, MasterStackLayout, Workspace
 
 gnoblin = Gnoblin.get()
 
@@ -134,8 +134,8 @@ Libraries you installed for your Python (`requests`, `numpy`) import as usual.
 Nothing of the package is installed as source or read from disk, and no directory or variable names it. A finder on the
 `sys.meta_path` of the runtime's own interpreter serves it:
 
-- The typed classes (`gnoblin._generated`, `gnoblin.std`, `gnoblin.objects`) are written from the schema and the ABI crates when the
-  runtime is built, so the package cannot describe a different catalog from the libraries it runs with.
+- The typed classes (`gnoblin._generated`, `gnoblin.std` and the classes at the root of `gnoblin`) are written from the schema and the ABI
+  crates when the runtime is built, so the package cannot describe a different catalog from the libraries it runs with.
 - The rest is Rust in `gnoblin-runtime-python`: the loader that isolates each generation, the log routing, the descriptors of the
   typed classes, the `gnoblin` object, the exceptions and the subscriptions.
 
@@ -200,8 +200,8 @@ An editor, `mypy` or `pyright` can check a shell without running it. The package
 the checker is a stub-only package, `<prefix>/share/gnoblin/types/python/`:
 
 - `gnoblin/py.typed`, which marks it;
-- `gnoblin/__init__.pyi` and the stubs of the parts written in Rust (`_base`, `api`, `errors`, `events`);
-- the stubs of the generated classes and of `gnoblin.std` and `gnoblin.objects`, written by `cargo xtask dist` from the schema and the
+- `gnoblin/__init__.pyi` and the stubs of the parts written in Rust (`_base`, `api`, `errors`, `events`, `host`);
+- the stubs of the generated classes and of `gnoblin.std`, written by `cargo xtask dist` from the schema and the
   ABI crates;
 - `_gnoblin_core.pyi`, for the built-in module.
 
@@ -231,33 +231,34 @@ use that name in the function.
 
 A stub differs from the classes at run time in one way, on purpose:
 
-- A class of `gnoblin.objects` that derives from another (`Camera3D` from `SceneNode`) names it as its base, so a checker accepts it
+- A class that derives from another (`Camera3D` from `SceneNode`) names it as its base, so a checker accepts it
   where the base is wanted. At run time the classes are flat, and a call takes any handle.
 
 ## Imports and libraries
 
 A shell imports from these modules, and each is served from a library installed with Gnoblin:
 
-| Module                  | Library                | Gives you                                                                              |
-| ----------------------- | ---------------------- | -------------------------------------------------------------------------------------- |
-| `gnoblin`               | `libgnoblin-core.so.1` | The `gnoblin` handle on the compositor's node tree, its subscriptions and `verbs`.     |
-| `gnoblin.objects.model` | `libgnoblin-core.so.1` | The core's typed objects: `Gnoblin`, clients, outputs, input, the session and timers.  |
-| `gnoblin.objects.std`   | `libgnoblin-std.so.1`  | Workspaces, layouts, styles, bindings, transitions and the UI toolkit, as classes.     |
-| `gnoblin.std`           | `libgnoblin-std.so.1`  | The function table of the std library: collections, layouts and bindings you subclass. |
-| `gnoblin.errors`        | none                   | `GnoblinError` and its subclasses.                                                     |
+| Module           | Library                | Gives you                                                                               |
+| ---------------- | ---------------------- | --------------------------------------------------------------------------------------- |
+| `gnoblin`        | `libgnoblin-core.so.1` | The `gnoblin` object, the core's classes (`Gnoblin`, `Client`, `Output`, ...), `verbs`. |
+| `gnoblin.std`    | `libgnoblin-std.so.1`  | Workspaces, layouts, styles, bindings, transitions and the UI toolkit, as classes.      |
+| `gnoblin.errors` | none                   | `GnoblinError` and its subclasses.                                                      |
 
-Importing `gnoblin.std` or `gnoblin.objects.std` opens `libgnoblin-std.so.1` and raises `ImportError` where it is not
+`gnoblin.objects.model` and `gnoblin.objects.std` are the modules the classes are written in. `gnoblin` and `gnoblin.std` re-export
+them, and those are the paths to import.
+
+Importing `gnoblin.std` opens `libgnoblin-std.so.1` and raises `ImportError` where it is not
 installed: `gnoblin-std is not installed (looked for libgnoblin-std.so.1 in ...)`.
 
-That is the check a core-only install is meant to give. A shell on `gnoblin` and `gnoblin.objects.model` alone is
+That is the check a core-only install is meant to give. A shell on `gnoblin` alone is
 complete: example 8 tiles windows with no workspace.
 
-### The root of the core: `gnoblin.objects.model`
+### The root of the core: `Gnoblin`
 
 `Gnoblin.get()` returns the root of the core's model. It has the members the TypeScript library's `gnoblin` has for the core:
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 gnoblin.timers.after(40, lambda: print("later"))   # `timers.now()` is the monotonic clock in milliseconds
@@ -283,15 +284,15 @@ while another shell is installed in the configuration directory commits nothing,
 `find("Window", ...)` and `find("Output", ...)` raise a `TypeError` for a kind the core does not list (`"Workspace"` in a shell that loads
 no std), naming the kinds that work, and for a field the filter lacks. `examples/35-native-root/shell.py` is this.
 
-### The members std adds to the root: `gnoblin.objects.std`
+### The members std adds to the root
 
-The core has no workspaces, displays, scene or gestures, so its `Gnoblin` has no member of those names. Importing `gnoblin.objects.std`
+The core has no workspaces, displays, scene or gestures, so its `Gnoblin` has no member of those names. Importing `gnoblin.std`
 sets them on the core's class. A shell that does not import it has none: the attribute is missing.
 
 ```python
-import gnoblin.objects.std                       # puts the members on `Gnoblin` and `OutputCollection`
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import TransitionOptions, Workspace
+import gnoblin.std                       # puts the members on `Gnoblin` and `OutputCollection`
+from gnoblin import Gnoblin
+from gnoblin.std import TransitionOptions, Workspace
 
 gnoblin = Gnoblin.get()
 main = Workspace("main")
@@ -304,17 +305,17 @@ print(gnoblin.scene.root, gnoblin.gestures.swipe_threshold)
 ```
 
 - Each member is read through the std library of the generation that is running, so after a reload it is the new generation's.
-- The stubs declare the members on the core's classes, as the TypeScript declarations merge them. The stub of `gnoblin.objects.model`
-  extends a stub-only class for each, written by `gnoblin.objects.std` from the same catalog, so a type checker finds
+- The stubs declare the members on the core's classes, as the TypeScript declarations merge them. The stub of the core's classes
+  extends a stub-only class for each, written by `gnoblin.std` from the same catalog, so a type checker finds
   `gnoblin.workspaces` without a further import.
 - The lowered classes (`GnoblinAugment` and the others) stay, for a call made through the service.
 - `examples/37-native-std-root/shell.py` is this, run by `crates/gnoblin/tests/modular/native_std_root.rs` in a real session beside the
   Rust and TypeScript shells of the same example.
 
-### The object classes: `gnoblin.objects.std`
+### The object classes
 
 The catalog of `libgnoblin-std` (an entry model, the focus policy, and the records and enums they take) is served through the object
-protocol, and `gnoblin.objects.std` has a class for each of its types. `gnoblin.objects.model` is the same for the core's
+protocol, and `gnoblin.std` has a class for each of its types. `gnoblin` is the same for the core's
 `gnoblin.model`.
 
 The classes are **generated** from the catalog the library serves (`gnoblin-sdkgen`, at build time and never committed; [the
@@ -326,7 +327,7 @@ the keyboard with no line of the shell's. A shell with a focus policy of its own
 
 ```python
 from gnoblin import gnoblin
-from gnoblin.objects.std import EntryModel, FocusEvent, FocusEventKind, FocusMode, FocusPolicy, FocusSettings
+from gnoblin.std import EntryModel, FocusEvent, FocusEventKind, FocusMode, FocusPolicy, FocusSettings
 
 entry = EntryModel("héllo")                    # a handle: the library holds the object, the script holds a reference
 entry.insert(", world")                        # a method changes it at once
@@ -350,7 +351,7 @@ action = FocusPolicy.focus_decision(           # a function of a service: record
   `amount` of 1. A call that takes a family refuses anything but an instance of a variant, with a `TypeError` that names them.
 - A record is a detached value. One you read is a copy, so write it or its list back to change anything. The library checks it when it
   takes it, not when you build it.
-- A member that takes a window takes the core's `gnoblin.objects.model.Client`. `examples/36-native-clients/shell.py` shows these calls:
+- A member that takes a window takes the core's `gnoblin.Client`. `examples/36-native-clients/shell.py` shows these calls:
     - `decorations.inset_of(client)`
     - `menus.show(client, x, y)`
     - `workspace.clients.add(client)`
@@ -363,7 +364,7 @@ action = FocusPolicy.focus_decision(           # a function of a service: record
   generation ends, not until the object is collected.
 - One library object is one Python object. Two reads of it, or two events that carry it, give the same object, so `is`, `==`, `in` and a
   dict key work: `Gnoblin.get().clients is Gnoblin.get().clients` is `True`.
-- An **interface** (`gnoblin.objects.std.<Name>` of kind `interface`) is a base class: a subclass defines the methods it wants to answer
+- An **interface** (`gnoblin.std.<Name>` of kind `interface`) is a base class: a subclass defines the methods it wants to answer
   and passes an instance to the library; a method it does not define runs natively.
 - `.destroy()` ends the object and its children whoever else holds them. A reference the script drops is released on the shell thread, so a
   thread of the script may drop one.
@@ -381,7 +382,7 @@ A constructor takes the properties its catalog names as positional arguments, th
 property. Each is `None` unless you give it, and a keyword that is `None` is not sent, so the property keeps the library's default.
 
 ```python
-from gnoblin.objects.std import Gaps, MasterStackLayout, OutputMatch, OutputProfile, ProfileSettings, Workspace
+from gnoblin.std import Gaps, MasterStackLayout, OutputMatch, OutputProfile, ProfileSettings, Workspace
 
 main = Workspace("main", name="Main", gaps=Gaps(inner=6.0, outer=12.0), layout=MasterStackLayout())
 profile = OutputProfile(OutputMatch(connector="HDMI-A-1"), id="tv", settings=ProfileSettings(scale=2.0))
@@ -395,10 +396,10 @@ profile = OutputProfile(OutputMatch(connector="HDMI-A-1"), id="tv", settings=Pro
 
 ### The functions of `gnoblin-std` in the generated classes
 
-A bare function of the TypeScript `gnoblin-std` is a function of a class in `gnoblin.objects.std`, with the same behaviour. The
+A bare function of the TypeScript `gnoblin-std` is a function of a class in `gnoblin.std`, with the same behaviour. The
 Python spellings are `snake_case`.
 
-| `gnoblin-std` (TypeScript) | `gnoblin.objects.std`                                                                                                          |
+| `gnoblin-std` (TypeScript) | `gnoblin.std`                                                                                                                  |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `openLauncher`             | `Launcher.open(spawn=None)`: one launcher lives at a time, and a second call focuses it and returns it                         |
 | `toast`                    | `Toast.show(text, fade_in=None, hold=None, fade_out=None, clock=None)`: the card removes itself after 4420 ms by default       |
@@ -411,43 +412,24 @@ Python spellings are `snake_case`.
 
 ### The desktop library: `gnoblin.std`
 
-`gnoblin.std` is the object model above the core: collections of clients, outputs and workspaces, layouts, pointer bindings,
-transitions, styles and scene nodes. It is **generated** from the function table of `libgnoblin-std.so.1`
-(`gnoblin-sdkgen`, at build time and never committed; [the generator](sdk-generator.md)), so it has every function of the table and none the library lacks.
-
-`std.py` and its `std.pyi` are typed:
+`gnoblin.std` is the classes of the desktop above the core: workspaces and layouts, pointer bindings, transitions, styles and scene
+nodes. They are **generated** from the catalog of `libgnoblin-std.so.1` (`gnoblin-sdkgen`, at build time and never committed;
+[the generator](sdk-generator.md)), so there is a class for every type the library has and none it lacks.
 
 - A record is a dataclass, and a constant group an `IntEnum` or `IntFlag`.
-- A handle is a class: `Collection`, `Workspace`, `Client`, `Transition` or `Registration`.
-- Every call goes through one native function, `_gnoblin_std.call`.
+- Built-in layouts and bindings (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `DwindleLayout`, `StripLayout`, `ArcLayout`,
+  `Carousel3dLayout`, `MoveBinding`, `ResizeBinding`, `SwapBinding`, `SplitResizeBinding`) take their options, defaults and actions from the library.
+- A layout of your own is a subclass of `Layout` with `compute(context)`, as `examples/03-python-std/shell.py` shows.
+- Failures are the exceptions of `gnoblin` (`RefusedError`, `StaleError`, ...), with the library's text.
 
 ```python
 from gnoblin import gnoblin
-from gnoblin.std import DwindleLayout, EventKind, Layout, Placement, Workspace, clients
+from gnoblin.std import Gaps, MasterStackLayout, Workspace, Workspaces
 
-class Columns(Layout):                      # a layout of your own: the library calls compute() when the workspace changes
-    def compute(self, cx):
-        area = cx.inset_area()
-        width = area.width / max(len(cx.children), 1)
-        return [Placement.tile(c, area.x + i * width, area.y, width, area.height) for i, c in enumerate(cx.children)]
-
-main = Workspace.create("main", layout=Columns(), gaps=(10.0, 20.0))
-clients().on(EventKind.ADDED, lambda event: gnoblin.log(f"client {event.member} opened"))
-
-other = Workspace.create("other", gaps=(6.0, 12.0))
-dwindle = other.use(DwindleLayout(ratio=0.6))   # a built-in layout: the algorithm is the library's
-dwindle.toggle_split()                          # the actions of a kind are methods, its options are properties
+main = Workspace("main", gaps=Gaps(inner=6.0, outer=12.0), layout=MasterStackLayout())
+Workspaces.get().add(main)
+gnoblin.log("a workspace of the master and stack layout")
 ```
-
-- **Built-in layouts and bindings** (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `DwindleLayout`, `StripLayout`,
-  `ArcLayout`, `Carousel3dLayout`, `MoveBinding`, `ResizeBinding`, `SwapBinding`, `SplitResizeBinding`) are generated from the
-  library's own table of kinds, so each option, its default, its enumeration and each action is the library's.
-- **A layout of your own** is an object with `compute(cx)` that returns placements, and optionally `client_added`, `client_removed`,
-  `area_changed`, `clients_swapped`, `revision`, `find_split`, `set_split` and `reset_split`. `Layout` is the generated base class.
-- **Failures** are the exceptions of `gnoblin` (`RefusedError`, `StaleError`, ...), with the library's text.
-- The only hand-written parts are `gnoblin._std_base` (the native, handles, argument conversion) and `gnoblin._std_sugar`
-  (`len(collection)`, `client.window`, `Placement.tile`, `Workspace.create`, `Workspace.use`). Both are Rust in
-  `gnoblin-runtime-python`, like the rest of the package.
 
 ## Use the objects
 
@@ -457,7 +439,7 @@ dwindle.toggle_split()                          # the actions of a kind are meth
 of the installed `libgnoblin-core`, and it holds no desktop policy.
 
 It also has every member of the root of the object model, as written from the schema: the object that
-`gnoblin.objects.model.Gnoblin.get()` returns. `gnoblin.input` and `gnoblin.clients` answer what the root answers, and so do the
+`Gnoblin.get()` returns. `gnoblin.input` and `gnoblin.clients` answer what the root answers, and so do the
 rest of its properties and its methods. A member the object has of its own, such as `spawn`, is its own.
 
 | Use                                          | What it does                                                                      |
@@ -532,8 +514,11 @@ then listen.
 
 ### Nodes
 
-The compositor's objects are nodes of one tree, and the classes you meet (`Window`, `Seat`, `Screen`, ...) are generated from
-the schema, so they have exactly the properties, methods and signals the schema has. A property is an attribute:
+The compositor's objects are nodes of one tree. The classes you meet (`Window`, `Seat`, `Screen`, ...) are generated from
+the schema, so they have exactly the properties, methods and signals the schema has.
+
+A shell does not import them. It gets a node from the `gnoblin` object (`gnoblin.windows`, `gnoblin.root`) or from a callback.
+A property is an attribute:
 
 ```python
 window = gnoblin.windows[0]
@@ -549,7 +534,7 @@ window.focus()                                       # a method of the schema
   working, because the node does.
 - `node.get("name")`, `node.set("name", value, seconds)` and `node.call("method", *args)` work by schema name for a member the
   generated class does not have yet.
-- `Window.closed(fn)` listens to a signal of every window; `window.closed(fn)` to one window's.
+- `window.closed(fn)` listens to a signal of one window; `gnoblin.on_signal("window", "closed", fn)` to every window's.
 
 ### Verbs and signals by name
 
@@ -617,8 +602,8 @@ A `RequestListener` with an `on_request(request)` method hears every request fir
 yourself: the built-in answer does not run, and no later listener hears it.
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientRequest, ClientRequestKind, RequestListener, WindowState
+from gnoblin import Gnoblin
+from gnoblin.std import ClientRequest, ClientRequestKind, RequestListener, WindowState
 
 gnoblin = Gnoblin.get()
 state = WindowState.get()
@@ -690,7 +675,7 @@ or run `gnoblin ./shell.py` in a terminal.
 ```python
 import logging
 
-from gnoblin.objects.model import Client, Gnoblin
+from gnoblin import Client, Gnoblin
 
 gnoblin = Gnoblin.get()
 

@@ -17,7 +17,7 @@ for (const device of gnoblin.input?.devices ?? []) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, Keyboard
+from gnoblin import Gnoblin, Keyboard
 
 for device in Gnoblin.get().input.devices:
     if isinstance(device, Keyboard):

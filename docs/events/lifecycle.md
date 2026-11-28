@@ -59,8 +59,8 @@ Gnoblin.get().session.addListener(new LockToast());
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, LockState, SessionListener
-from gnoblin.objects.std import Toast
+from gnoblin import Gnoblin, LockState, SessionListener
+from gnoblin.std import Toast
 
 
 class LockToast(SessionListener):

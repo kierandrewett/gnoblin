@@ -25,7 +25,7 @@ label.mountTop();
 ```
 
 ```python
-from gnoblin.objects.std import Canvas, PaintKind, PaintOp, Widget
+from gnoblin.std import Canvas, PaintKind, PaintOp, Widget
 
 
 class Label(Widget):

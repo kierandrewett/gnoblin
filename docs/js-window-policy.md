@@ -23,8 +23,8 @@ client?.resizeWithKeys();
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientAugment
+from gnoblin import Gnoblin
+from gnoblin.std import ClientAugment
 
 gnoblin = Gnoblin.get()
 
@@ -83,7 +83,7 @@ pinch.install();
 ```
 
 ```python
-from gnoblin.objects.std import GestureEvent, PinchActionBinding, PinchWay, SwipeActionBinding, SwipeWay
+from gnoblin.std import GestureEvent, PinchActionBinding, PinchWay, SwipeActionBinding, SwipeWay
 
 swipe = SwipeActionBinding(trigger="Swipe4")
 swipe.set_action(SwipeWay.UP, "window.toggle-maximise")
@@ -173,8 +173,8 @@ gnoblin.requestTransition(() => {}, { duration });
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import GnoblinAugment, TransitionOptions
+from gnoblin import Gnoblin
+from gnoblin.std import GnoblinAugment, TransitionOptions
 
 gnoblin = Gnoblin.get()
 
@@ -234,7 +234,7 @@ for (const device of gnoblin.input.devices) {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, BindingOptions, Gnoblin, Keyboard
+from gnoblin import BindingEvent, BindingOptions, Gnoblin, Keyboard
 
 gnoblin = Gnoblin.get()
 
@@ -304,7 +304,7 @@ if (dev && !workspaces.remove(dev)) {
 ```
 
 ```python
-from gnoblin.objects.std import Workspaces
+from gnoblin.std import Workspaces
 
 workspaces = Workspaces.get()
 dev = workspaces.by_id("dev")

@@ -48,7 +48,7 @@ gnoblin.input.primary?.bindDrag("Alt+MouseMiddle+Drag", new Nudge(), { id: "nudg
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, BindingOptions, Client, Gnoblin, PointerDragBinding
+from gnoblin import BindingEvent, BindingOptions, Client, Gnoblin, PointerDragBinding
 
 gnoblin = Gnoblin.get()
 
@@ -211,7 +211,7 @@ new SplitResizeBinding({ trigger: "Alt+MouseRight+Drag" }).install();
 ```
 
 ```python
-from gnoblin.objects.std import MasterStackLayout, SplitResizeBinding, SwapBinding, Workspace, Workspaces
+from gnoblin.std import MasterStackLayout, SplitResizeBinding, SwapBinding, Workspace, Workspaces
 
 Workspaces.get().add(Workspace("dev", layout=MasterStackLayout(ratio=0.6)))
 SwapBinding(trigger="Alt+MouseLeft+Drag").install()
@@ -326,8 +326,8 @@ new SplitResizeBinding().install();
 ```
 
 ```python
-from gnoblin.objects.model import Client
-from gnoblin.objects.std import (
+from gnoblin import Client
+from gnoblin.std import (
     Layout,
     LayoutContext,
     LayoutPlacement,
@@ -528,7 +528,7 @@ if (dev?.clients && first && second) {
 ```
 
 ```python
-from gnoblin.objects.std import Workspaces
+from gnoblin.std import Workspaces
 
 dev = Workspaces.get().by_id("dev")
 if dev is not None and dev.clients is not None:
@@ -605,7 +605,7 @@ nudge?.unbind();
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, BindingOptions, InputManager, PointerDragBinding
+from gnoblin import BindingEvent, BindingOptions, InputManager, PointerDragBinding
 
 
 class Decline(PointerDragBinding):

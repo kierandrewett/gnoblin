@@ -21,7 +21,7 @@ export function styleWindows(): void {
 ```python
 # appearance.py
 from gnoblin import gnoblin
-from gnoblin.objects.std import ClientStyle, CornerRadius
+from gnoblin.std import ClientStyle, CornerRadius
 
 
 def style_windows():

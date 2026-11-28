@@ -8,7 +8,7 @@ implements (equal columns); when the fourth joins it goes back to the library's 
 """
 
 from gnoblin import gnoblin
-from gnoblin.objects.std import (
+from gnoblin.std import (
     Desks,
     Gaps,
     Layout,

@@ -42,7 +42,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, DragArea, TitleText, WindowButtons
+from gnoblin.std import Decorations, DragArea, TitleText, WindowButtons
 
 decorations = Decorations.get()
 
@@ -134,7 +134,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, FrameBorder, FrameGlow
+from gnoblin.std import Decorations, FrameBorder, FrameGlow
 
 decorations = Decorations.get()
 
@@ -236,8 +236,8 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Decorations, ResizeHandle, ResizeSide, Text, Titlebar
+from gnoblin import Gnoblin
+from gnoblin.std import Decorations, ResizeHandle, ResizeSide, Text, Titlebar
 
 gnoblin = Gnoblin.get()
 

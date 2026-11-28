@@ -31,7 +31,7 @@ gnoblin.clients.addListener(new Titles());
 ```
 
 ```python
-from gnoblin.objects.model import Client, ClientCollectionListener, Gnoblin
+from gnoblin import Client, ClientCollectionListener, Gnoblin
 
 
 class Titles(ClientCollectionListener):
@@ -110,7 +110,7 @@ focus.stop(); // focus is not logged any more
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -181,8 +181,8 @@ gnoblin.clients.on("added", (client) => {
 ```
 
 ```python
-from gnoblin.objects.model import Client, ClientCollectionListener, Gnoblin
-from gnoblin.objects.std import Toast
+from gnoblin import Client, ClientCollectionListener, Gnoblin
+from gnoblin.std import Toast
 
 
 class Count(ClientCollectionListener):
@@ -245,7 +245,7 @@ gnoblin.outputs.on("connected", (output) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 

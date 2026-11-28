@@ -27,8 +27,8 @@ client?.properties?.bindDouble("opacity", () => (client.focused ? 1 : 0.7));
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ArcLayout, GnoblinAugment, SceneNode, SceneSize, View, Workspace
+from gnoblin import Gnoblin
+from gnoblin.std import ArcLayout, GnoblinAugment, SceneNode, SceneSize, View, Workspace
 
 gnoblin = Gnoblin.get()
 std = GnoblinAugment.get()
@@ -167,7 +167,7 @@ room.place({ rotation: { x: 0, y: Math.PI / 4, z: 0 }, uniformScale: 1 });
 ```
 
 ```python
-from gnoblin.objects.std import SceneNode, TransformParts, Vec3
+from gnoblin.std import SceneNode, TransformParts, Vec3
 
 room = SceneNode(id="xr-room", position=Vec3(x=0.0, y=1.2, z=-2.0))
 room.place(TransformParts(rotation=Vec3(x=0.0, y=3.14159 / 4, z=0.0), uniform_scale=1.0))
@@ -247,8 +247,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import GnoblinAugment, InputMode, PointerEdge, SceneSize, View
+from gnoblin import Gnoblin
+from gnoblin.std import GnoblinAugment, InputMode, PointerEdge, SceneSize, View
 
 gnoblin = Gnoblin.get()
 client = gnoblin.input.primary.focused_client
@@ -343,8 +343,8 @@ gnoblin.scene.add(panel);
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ContentFit, GnoblinAugment, InputMode, SceneSize, View
+from gnoblin import Gnoblin
+from gnoblin.std import ContentFit, GnoblinAugment, InputMode, SceneSize, View
 
 gnoblin = Gnoblin.get()
 panel = View(size=SceneSize(width=0.9, height=0.55), fit=ContentFit.CONTAIN, input=InputMode.FORWARD)
@@ -428,8 +428,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Easing, GnoblinAugment, TransitionOptions
+from gnoblin import Gnoblin
+from gnoblin.std import Easing, GnoblinAugment, TransitionOptions
 
 gnoblin = Gnoblin.get()
 client = gnoblin.input.primary.focused_client
@@ -493,7 +493,7 @@ const arc = new ArcLayout({ radius: 1200, spacing: 0.35 });
 ```
 
 ```python
-from gnoblin.objects.std import ArcLayout
+from gnoblin.std import ArcLayout
 
 arc = ArcLayout(radius=1200, spacing=0.35)
 ```
@@ -555,7 +555,7 @@ client?.properties?.bindDouble("opacity", () => Math.max(0.25, 1 - client.x / 25
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 client = gnoblin.input.primary.focused_client
