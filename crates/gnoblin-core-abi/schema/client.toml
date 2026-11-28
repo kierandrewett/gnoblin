@@ -12,13 +12,37 @@ title = "Windows and outputs"
 [[enum]]
 name = "frame_policy"
 since = "0.2.0"
-values = ["auto", "hold", "throttle"]
+values = [
+    # The client is told to draw after every frame that shows the window.
+    "auto",
+    # The client is never told it may draw its next frame.
+    "hold",
+    # The client is told at most `frame_rate` times a second.
+    "throttle",
+]
 
 # The transforms an output takes. `rotate-90`, `rotate-180` and `rotate-270` are the compositor's `90`, `180` and `270`.
 [[enum]]
 name = "output_transform"
 since = "0.2.0"
-values = ["normal", "rotate-90", "rotate-180", "rotate-270", "flipped", "flipped-90", "flipped-180", "flipped-270"]
+values = [
+    # No rotation and no reflection.
+    "normal",
+    # Rotated by 90 degrees (`90` in the compositor).
+    "rotate-90",
+    # Rotated by 180 degrees (`180` in the compositor).
+    "rotate-180",
+    # Rotated by 270 degrees (`270` in the compositor).
+    "rotate-270",
+    # Reflected.
+    "flipped",
+    # Reflected and rotated by 90 degrees.
+    "flipped-90",
+    # Reflected and rotated by 180 degrees.
+    "flipped-180",
+    # Reflected and rotated by 270 degrees.
+    "flipped-270",
+]
 
 # The compositor's requested GPU memory of an output, in bytes; client-owned buffers are not counted. The last four are the memory
 # budget's numbers for the whole session, the same on every output.
@@ -33,6 +57,7 @@ name = "target"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "bytes"
 
 # The effect scratch targets.
 [[object.property]]
@@ -40,6 +65,7 @@ name = "scratch"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "bytes"
 
 # The host-visible buffers a renderer keeps between frames.
 [[object.property]]
@@ -47,6 +73,7 @@ name = "staging"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "bytes"
 
 # The pictures of the views drawn on the GPU.
 [[object.property]]
@@ -54,6 +81,7 @@ name = "views"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "bytes"
 
 # The last presented frame the capture protocols copy from.
 [[object.property]]
@@ -61,6 +89,7 @@ name = "capture"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "bytes"
 
 # The sum of the five before.
 [[object.property]]
@@ -68,6 +97,7 @@ name = "total"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "bytes"
 
 # The bytes of every client's live buffers.
 [[object.property]]
@@ -75,6 +105,7 @@ name = "clients"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "bytes"
 
 # The budget the compositor holds the clients, the renderers and capture to; zero when it is off.
 [[object.property]]
@@ -82,6 +113,7 @@ name = "budget"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "bytes"
 
 # The requests refused for passing a bound since the session began.
 [[object.property]]
@@ -96,6 +128,7 @@ name = "evicted"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "bytes"
 
 # What an output is told to do, as the argument of `output.apply`: a field left out keeps the output's value. The compositor
 # applies it through its transactional engine and keeps it as the output's profile, so the same monitor on the same port gets it
@@ -119,6 +152,7 @@ name = "scale"
 type = "double"
 since = "0.2.0"
 optional = true
+range = [0.5, 4]
 
 # Composes the output at this multiple of its mode and shows it at its mode, so the desktop keeps its logical size while
 # screenshots have higher resolution. From 1 to 16; 1, 2 and 4 are recommended, and other values are accepted when `mode *
@@ -128,6 +162,7 @@ name = "supersample"
 type = "double"
 since = "0.2.0"
 optional = true
+range = [1, 16]
 
 # Rotation and optional reflection.
 [[object.property]]
@@ -143,6 +178,7 @@ name = "position_x"
 type = "int"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # The output's top-left corner in the one desktop coordinate space, `y`.
 [[object.property]]
@@ -150,6 +186,7 @@ name = "position_y"
 type = "int"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # `false` switches the output off: it shows black and has no place in the desktop.
 [[object.property]]
@@ -212,12 +249,14 @@ readonly = true
 name = "fullscreen"
 type = "bool"
 since = "0.2.0"
+raises = ["not_found"]
 
 # Whether the window is kept out of screen captures.
 [[object.property]]
 name = "secure"
 type = "bool"
 since = "0.2.0"
+raises = ["not_found"]
 
 # Whether the client has left a liveness ping unanswered too long. The compositor writes it and clears it on an answer.
 [[object.property]]
@@ -248,6 +287,7 @@ name = "frame_policy"
 type = "enum:frame_policy"
 since = "0.2.0"
 default = "auto"
+raises = ["not_found", "invalid_argument"]
 
 # The most frame callbacks a second a `throttle` window's client is answered, in hertz: above 0 and at most 1000. Read only while
 # `frame_policy` is `throttle`.
@@ -256,6 +296,8 @@ name = "frame_rate"
 type = "double"
 since = "0.2.0"
 default = 30.0
+raises = ["not_found", "invalid_argument"]
+unit = "Hz"
 
 # Whether the compositor tells the shell when the window's pixels reach the screen: while it is true each frame that draws the
 # window writes `presented`. False by default, because a window written every frame is a change in every batch.
@@ -263,6 +305,7 @@ default = 30.0
 name = "report_presented"
 type = "bool"
 since = "0.2.0"
+raises = ["not_found"]
 
 # When the last frame that showed the window reached the screen, in milliseconds on the compositor's monotonic clock, or 0 until a
 # frame was presented with `report_presented` true.
@@ -271,6 +314,7 @@ name = "presented"
 type = "uint"
 since = "0.2.0"
 readonly = true
+unit = "ms"
 
 # Horizontal position in logical pixels.
 [[object.property]]
@@ -278,6 +322,8 @@ name = "x"
 type = "double"
 since = "0.2.0"
 animated = true
+raises = ["not_found", "invalid_argument"]
+unit = "px"
 
 # Vertical position in logical pixels.
 [[object.property]]
@@ -285,6 +331,8 @@ name = "y"
 type = "double"
 since = "0.2.0"
 animated = true
+raises = ["not_found", "invalid_argument"]
+unit = "px"
 
 # Width in logical pixels.
 [[object.property]]
@@ -292,6 +340,8 @@ name = "width"
 type = "double"
 since = "0.2.0"
 animated = true
+raises = ["not_found", "invalid_argument"]
+unit = "px"
 
 # Height in logical pixels.
 [[object.property]]
@@ -299,12 +349,15 @@ name = "height"
 type = "double"
 since = "0.2.0"
 animated = true
+raises = ["not_found", "invalid_argument"]
+unit = "px"
 
 # The layout geometry. Assigning writes all four values.
 [[object.property]]
 name = "bounds"
 type = "object:rect"
 since = "0.2.0"
+raises = ["not_found", "invalid_argument"]
 
 # The size the compositor last published for the window: what the client committed, as against `width` and `height`, which are
 # what the shell asked for.
@@ -319,24 +372,28 @@ readonly = true
 name = "maximised"
 type = "bool"
 since = "0.2.0"
+raises = ["not_found"]
 
 # Whether the window is minimised. Writing asks the compositor to minimise or restore it.
 [[object.property]]
 name = "minimised"
 type = "bool"
 since = "0.2.0"
+raises = ["not_found"]
 
 # Whether the window sits in a tiled layout, so its client drops the border and rounding it draws itself.
 [[object.property]]
 name = "tiled"
 type = "bool"
 since = "0.2.0"
+raises = ["not_found"]
 
 # Whether the window is drawn and hit. A workspace that is not shown hides its windows.
 [[object.property]]
 name = "visible"
 type = "bool"
 since = "0.2.0"
+raises = ["not_found"]
 
 # How opaque the window is drawn, from 0 to 1 (the compositor clamps it).
 [[object.property]]
@@ -344,6 +401,8 @@ name = "opacity"
 type = "double"
 since = "0.2.0"
 animated = true
+raises = ["not_found", "invalid_argument"]
+range = [0, 1]
 
 # The window's place in depth; negative is in front of the camera.
 [[object.property]]
@@ -351,6 +410,7 @@ name = "z"
 type = "double"
 since = "0.2.0"
 animated = true
+raises = ["not_found", "invalid_argument"]
 
 # Rotation about the x, y and z axes in radians.
 [[object.property]]
@@ -358,6 +418,8 @@ name = "rotation"
 type = "list<double>"
 since = "0.2.0"
 animated = true
+raises = ["not_found", "invalid_argument"]
+unit = "rad"
 
 # Scale along the x, y and z axes. Assigning one number is not accepted here: give three.
 [[object.property]]
@@ -365,12 +427,14 @@ name = "scale"
 type = "list<double>"
 since = "0.2.0"
 animated = true
+raises = ["not_found", "invalid_argument"]
 
 # Where the window is: `x`, `y` and its depth `z`. Assigning writes the three.
 [[object.property]]
 name = "position"
 type = "list<double>"
 since = "0.2.0"
+raises = ["not_found", "invalid_argument"]
 
 # The window this one is a dialog of (`xdg_toplevel.set_parent`), or none. A dialog is centred in its parent when it opens, moves
 # with it, stays on its workspace and output, and is left out of the layout's tiling.
@@ -399,27 +463,32 @@ readonly = true
 [[object.method]]
 name = "close"
 since = "0.2.0"
+raises = ["not_found"]
 
 # Gives the window the keyboard focus: a write of the seat's `focus`, which is how a shell hands it out.
 [[object.method]]
 name = "focus"
 since = "0.2.0"
+raises = ["not_found", "unavailable"]
 
 # Puts the window on top of every other window. A fullscreen sibling keeps the top.
 [[object.method]]
 name = "raise"
 since = "0.2.0"
+raises = ["not_found"]
 
 # Puts the window under every other window.
 [[object.method]]
 name = "lower"
 since = "0.2.0"
+raises = ["not_found"]
 
 # Kills the process that owns the window with SIGKILL: the not-responding alert's Force quit. The compositor refuses, and does
 # nothing, when the owner is unknown, has gone, changed since the window mapped, or is the compositor itself or init.
 [[object.method]]
 name = "kill"
 since = "0.2.0"
+raises = ["not_found"]
 
 # Adds a listener of this window. It is told of each event as `client_listener` says; adding one that is added already has no
 # effect.
@@ -427,6 +496,7 @@ since = "0.2.0"
 name = "add_listener"
 since = "0.2.0"
 
+# The listener to add or remove.
 [[object.method.param]]
 name = "listener"
 type = "object:client_listener"
@@ -436,6 +506,7 @@ type = "object:client_listener"
 name = "remove_listener"
 since = "0.2.0"
 
+# The listener to add or remove.
 [[object.method.param]]
 name = "listener"
 type = "object:client_listener"
@@ -446,10 +517,12 @@ name = "title_changed"
 since = "0.2.0"
 export = { rust = "client_title_changed" }
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# The new title.
 [[object.signal.field]]
 name = "title"
 type = "string"
@@ -460,10 +533,12 @@ name = "app_id_changed"
 since = "0.2.0"
 export = { rust = "client_app_id_changed" }
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# The new application id.
 [[object.signal.field]]
 name = "app_id"
 type = "string"
@@ -474,10 +549,12 @@ name = "decoration_changed"
 since = "0.2.0"
 export = { rust = "client_decoration_changed" }
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Who draws the frame now: `client`, `server` or `none`.
 [[object.signal.field]]
 name = "decoration"
 type = "string"
@@ -487,10 +564,12 @@ type = "string"
 name = "pointer_enter"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -500,10 +579,12 @@ type = "object:pointer_event"
 name = "pointer_motion"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -513,10 +594,12 @@ type = "object:pointer_event"
 name = "pointer_leave"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -526,10 +609,12 @@ type = "object:pointer_event"
 name = "pointer_press"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -539,10 +624,12 @@ type = "object:pointer_event"
 name = "pointer_release"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -552,10 +639,12 @@ type = "object:pointer_event"
 name = "focus_changed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# `true` when the window gained the keyboard focus, `false` when it lost it.
 [[object.signal.field]]
 name = "focused"
 type = "bool"
@@ -565,10 +654,12 @@ type = "bool"
 name = "geometry_changed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# The window's new position and size, in logical pixels.
 [[object.signal.field]]
 name = "geometry"
 type = "object:rect"
@@ -578,6 +669,7 @@ type = "object:rect"
 name = "closed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
@@ -588,6 +680,7 @@ type = "object:client"
 name = "ready"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
@@ -724,6 +817,7 @@ name = "x"
 type = "double"
 since = "0.2.0"
 readonly = true
+unit = "px"
 
 # The output's top edge in the compositor's coordinates, in logical pixels.
 [[object.property]]
@@ -731,6 +825,7 @@ name = "y"
 type = "double"
 since = "0.2.0"
 readonly = true
+unit = "px"
 
 # The output's width in logical pixels.
 [[object.property]]
@@ -738,6 +833,7 @@ name = "width"
 type = "double"
 since = "0.2.0"
 readonly = true
+unit = "px"
 
 # The output's height in logical pixels.
 [[object.property]]
@@ -745,6 +841,7 @@ name = "height"
 type = "double"
 since = "0.2.0"
 readonly = true
+unit = "px"
 
 # The whole output in the compositor's coordinates.
 [[object.property]]
@@ -769,7 +866,9 @@ readonly = true
 name = "apply"
 since = "0.2.0"
 returns = "object:output_operation"
+raises = ["invalid_argument", "not_found"]
 
+# What to change. Fields left out keep the output's value.
 [[object.method.param]]
 name = "config"
 type = "object:output_config"
@@ -779,7 +878,9 @@ type = "object:output_config"
 name = "mirror"
 since = "0.2.0"
 returns = "object:output_operation"
+raises = ["invalid_argument", "not_found"]
 
+# The output to copy. Without one, mirroring stops.
 [[object.method.param]]
 name = "source"
 type = "object:output"
@@ -791,6 +892,7 @@ optional = true
 name = "add_listener"
 since = "0.2.0"
 
+# The listener to add or remove.
 [[object.method.param]]
 name = "listener"
 type = "object:output_listener"
@@ -800,6 +902,7 @@ type = "object:output_listener"
 name = "remove_listener"
 since = "0.2.0"
 
+# The listener to add or remove.
 [[object.method.param]]
 name = "listener"
 type = "object:output_listener"
@@ -809,10 +912,12 @@ type = "object:output_listener"
 name = "applied"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# Why the request did not take effect, or an empty string when it did.
 [[object.signal.field]]
 name = "error"
 type = "string"
@@ -822,15 +927,17 @@ type = "string"
 name = "connected"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
-# The output is gone. Its last values stay readable and `connected` is false.
+# The output is gone. Its last values stay readable and `alive` is false.
 [[object.signal]]
 name = "disconnected"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
@@ -841,10 +948,12 @@ name = "mode_changed"
 since = "0.2.0"
 export = { rust = "output_mode_changed" }
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The output's new mode, `WxH@Hz`.
 [[object.signal.field]]
 name = "mode"
 type = "string"
@@ -855,10 +964,12 @@ name = "scale_changed"
 since = "0.2.0"
 export = { rust = "output_scale_changed" }
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The output's new scale.
 [[object.signal.field]]
 name = "scale"
 type = "double"
@@ -868,10 +979,12 @@ type = "double"
 name = "geometry_changed"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The output's new place and size in the compositor's coordinates, in logical pixels.
 [[object.signal.field]]
 name = "geometry"
 type = "object:rect"
@@ -1009,6 +1122,7 @@ name = "motion"
 since = "0.2.0"
 returns = "double"
 
+# The duration of the animation, in milliseconds.
 [[object.method.param]]
 name = "duration"
 type = "double"
@@ -1021,6 +1135,7 @@ since = "0.2.0"
 returns = "list<object:client>"
 find = "Window"
 
+# What the windows must match. Without it every window matches.
 [[object.method.param]]
 name = "query"
 type = "object:client_query"
@@ -1033,6 +1148,7 @@ since = "0.2.0"
 returns = "list<object:output>"
 find = "Output"
 
+# What the outputs must match. Without it every one matches.
 [[object.method.param]]
 name = "query"
 type = "object:output_query"
@@ -1044,10 +1160,12 @@ name = "spawn"
 since = "0.2.0"
 returns = "object:process"
 
+# The program and its arguments, as `processes.spawn` takes them.
 [[object.method.param]]
 name = "argv"
 type = "list<string>"
 
+# How to start it, as for `processes.spawn`.
 [[object.method.param]]
 name = "options"
 type = "object:spawn_options"
@@ -1059,10 +1177,12 @@ name = "shell"
 since = "0.2.0"
 returns = "object:process"
 
+# The command line, as `processes.shell` takes it.
 [[object.method.param]]
 name = "command"
 type = "string"
 
+# How to start it, as for `processes.spawn`.
 [[object.method.param]]
 name = "options"
 type = "object:spawn_options"
@@ -1074,10 +1194,12 @@ optional = true
 name = "client_created"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# The collection the window joined.
 [[object.signal.field]]
 name = "collection"
 type = "object:client_collection"
@@ -1087,10 +1209,12 @@ type = "object:client_collection"
 name = "client_title_changed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# The new title.
 [[object.signal.field]]
 name = "title"
 type = "string"
@@ -1100,10 +1224,12 @@ type = "string"
 name = "client_app_id_changed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# The new application id.
 [[object.signal.field]]
 name = "app_id"
 type = "string"
@@ -1114,10 +1240,12 @@ type = "string"
 name = "client_decoration_changed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Who draws the frame now: `client`, `server` or `none`.
 [[object.signal.field]]
 name = "decoration"
 type = "string"
@@ -1127,10 +1255,12 @@ type = "string"
 name = "client_pointer_enter"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -1140,10 +1270,12 @@ type = "object:pointer_event"
 name = "client_pointer_motion"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -1153,10 +1285,12 @@ type = "object:pointer_event"
 name = "client_pointer_leave"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -1166,10 +1300,12 @@ type = "object:pointer_event"
 name = "client_pointer_press"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -1179,10 +1315,12 @@ type = "object:pointer_event"
 name = "client_pointer_release"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -1192,10 +1330,12 @@ type = "object:pointer_event"
 name = "client_focus_changed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# `true` when the window gained the keyboard focus, `false` when it lost it.
 [[object.signal.field]]
 name = "focused"
 type = "bool"
@@ -1205,10 +1345,12 @@ type = "bool"
 name = "client_geometry_changed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# The window's new position and size, in logical pixels.
 [[object.signal.field]]
 name = "geometry"
 type = "object:rect"
@@ -1218,6 +1360,7 @@ type = "object:rect"
 name = "client_closed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
@@ -1228,6 +1371,7 @@ type = "object:client"
 name = "client_ready"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
@@ -1237,10 +1381,12 @@ type = "object:client"
 name = "output_added"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The collection the output joined.
 [[object.signal.field]]
 name = "collection"
 type = "object:output_collection"
@@ -1250,10 +1396,12 @@ type = "object:output_collection"
 name = "output_removed"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The collection the output left.
 [[object.signal.field]]
 name = "collection"
 type = "object:output_collection"
@@ -1264,10 +1412,12 @@ type = "object:output_collection"
 name = "output_applied"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# Why the request did not take effect, or an empty string when it did.
 [[object.signal.field]]
 name = "error"
 type = "string"
@@ -1277,15 +1427,17 @@ type = "string"
 name = "output_connected"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
-# The same as `outputs.disconnected`: the output is gone. Its last values stay readable and `connected` is false.
+# The same as `outputs.disconnected`: the output is gone. Its last values stay readable and `alive` is false.
 [[object.signal]]
 name = "output_disconnected"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
@@ -1295,10 +1447,12 @@ type = "object:output"
 name = "output_mode_changed"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The output's new mode, `WxH@Hz`.
 [[object.signal.field]]
 name = "mode"
 type = "string"
@@ -1308,10 +1462,12 @@ type = "string"
 name = "output_scale_changed"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The output's new scale.
 [[object.signal.field]]
 name = "scale"
 type = "double"
@@ -1321,10 +1477,12 @@ type = "double"
 name = "output_geometry_changed"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The output's new place and size in the compositor's coordinates, in logical pixels.
 [[object.signal.field]]
 name = "geometry"
 type = "object:rect"
