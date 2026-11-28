@@ -992,8 +992,8 @@ a.ty:hover {
         flex: 0 0 100%;
     }
 
-    .ref-tbl tr > td.t::before,
-    .ref-tbl tr > td.flags::before {
+    .ref-tbl tbody tr > td.t[data-label]:not(:first-child)::before,
+    .ref-tbl tbody tr > td.flags[data-label]:not(:first-child)::before {
         display: none;
     }
 

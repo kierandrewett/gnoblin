@@ -689,7 +689,8 @@ export async function classPage(pkg: Pkg, c: RawClass): Promise<ClassPage> {
     const glance: GlanceGroup[] = [
         { label: "Properties", links: properties.map((r) => link(r.nameHtml, r.id)) },
         { label: "Methods", links: methods.map((m) => link(m.nameHtml, m.id)) },
-        { label: "Events", links: events.map((e) => link(e.nameHtml, e.id)) },
+        // The generated `<property>Changed` events are in the table; the list names the ones the schema declares.
+        { label: "Events", links: events.slice(0, c.signals.length).map((e) => link(e.nameHtml, e.id)) },
         {
             label: `From ${packageName("std")}`,
             links: [
