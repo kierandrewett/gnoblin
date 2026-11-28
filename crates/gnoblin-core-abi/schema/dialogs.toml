@@ -60,6 +60,7 @@ name = "deadline"
 type = "double"
 since = "0.2.0"
 readonly = true
+unit = "ms"
 
 # Whether the observation window is still open: a `decline` is heard while it is.
 [[object.property]]
