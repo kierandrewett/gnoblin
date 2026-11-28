@@ -18,7 +18,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
-use gnoblin_core::{Gnoblin, Rect};
+use gnoblin_core::host::{Host, Rect};
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinDropFn, GnoblinStr};
 use gnoblin_std_abi::{GnoblinStdEvent, GnoblinStdEventFn, GnoblinStdRect};
 
@@ -186,7 +186,7 @@ pub(crate) struct Counters {
 
 /// The object model of one generation.
 pub(crate) struct State {
-    pub(crate) g: Gnoblin,
+    pub(crate) g: Host,
     pub(crate) ctx: GnoblinCtx,
     /// The first turn has run: windows that waited get a workspace and a layout starts placing arrivals.
     pub(crate) opened: bool,
@@ -273,7 +273,7 @@ impl Std {
     }
 
     /// The generation's handle on the core.
-    pub(crate) fn g(&self) -> Gnoblin {
+    pub(crate) fn g(&self) -> Host {
         self.st.borrow().g.clone()
     }
 

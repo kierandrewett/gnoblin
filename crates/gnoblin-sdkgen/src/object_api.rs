@@ -281,7 +281,7 @@ impl<'a> Renderer<'a> {
             Some(ty) => self.owned(ty)?,
             None => "()".to_owned(),
         };
-        Ok(format!("FnMut({}) -> go::Res<{returns}> + 'static", params.join(", ")))
+        Ok(format!("FnMut({}) -> crate::Res<{returns}> + 'static", params.join(", ")))
     }
 
     /// A field or an argument as the value a closure or a signal listener receives.
@@ -412,7 +412,7 @@ impl go::typed::ToVal for @Name@ {
 }
 
 impl go::typed::FromVal<Objects> for @Name@ {
-    fn from_val(_: &Objects, value: &go::Val) -> go::Res<@Name@> {
+    fn from_val(_: &Objects, value: &go::Val) -> crate::Res<@Name@> {
         match value.enum_value()? {
             @Reads@
             other => Err(go::Fail::type_error(format!("{other} is not a value of `@Schema@`"))),
@@ -636,7 +636,7 @@ impl go::typed::ToVal for @Name@ {
 }
 
 impl go::typed::FromVal<Objects> for @Name@ {
-    fn from_val(cx: &Objects, value: &go::Val) -> go::Res<@Name@> {
+    fn from_val(cx: &Objects, value: &go::Val) -> crate::Res<@Name@> {
         let fields = value.record()?;
 @Guard@@Setup@        Ok(@Name@ {
 @Reads@
@@ -738,7 +738,7 @@ impl go::typed::ToVal for @Name@ {
 }
 
 impl go::typed::FromVal<Objects> for @Name@ {
-    fn from_val(cx: &Objects, value: &go::Val) -> go::Res<@Name@> {
+    fn from_val(cx: &Objects, value: &go::Val) -> crate::Res<@Name@> {
         let fields = value.record()?;
         let kind: @TagType@ = go::typed::arg(cx, fields, @TagAt@)?;
         match kind {
@@ -832,7 +832,7 @@ struct @Ids@ {
 }
 
 impl @Ids@ {
-    fn of(objects: &Objects) -> go::Res<&@Ids@> {
+    fn of(objects: &Objects) -> crate::Res<&@Ids@> {
         objects.ids.@Field@.get(|| {
             let api = &objects.api;
             let class = api.class(@Schema@)?;
@@ -905,7 +905,7 @@ impl @Ids@ {
     /// # Errors
     ///
     /// The library refuses the arguments.
-    pub fn @New@(objects: &Objects@Params@) -> go::Res<@Name@> {
+    pub fn @New@(objects: &Objects@Params@) -> crate::Res<@Name@> {
         let ids = @Ids@::of(objects)?;
         let object = go::client::Object::create(objects.api, ids.class, &[@Inits@]).map_err(|fail| go::typed::at_class(fail, @NameLit@, @NewLit@))?;
         Ok(@Name@ { object, objects: objects.clone() })
@@ -921,7 +921,7 @@ impl @Ids@ {
     /// # Errors
     ///
     /// The object is already gone.
-    pub fn destroy(&self) -> go::Res<()> {
+    pub fn destroy(&self) -> crate::Res<()> {
         self.object.destroy().map_err(|fail| self.object.at(fail, @NameLit@, "destroy"))
     }
 
@@ -969,12 +969,12 @@ impl @Ids@ {
             let first = self.owned(first)?;
             let _ = write!(
                 methods,
-                "    /// The live objects of the kind `T` that match `filter`, in list order, or every one when it is left out. The kinds are {}: `find::<{first}>(None)`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library refuses the filter.\n    pub fn find<T: Finds<{name}>>(&self, filter: Option<&T::Filter>) -> go::Res<Vec<T>> {{\n        T::find_in(self, filter)\n    }}\n\n",
+                "    /// The live objects of the kind `T` that match `filter`, in list order, or every one when it is left out. The kinds are {}: `find::<{first}>(None)`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library refuses the filter.\n    pub fn find<T: Finds<{name}>>(&self, filter: Option<&T::Filter>) -> crate::Res<Vec<T>> {{\n        T::find_in(self, filter)\n    }}\n\n",
                 kinds.join(", ")
             );
             let _ = write!(
                 methods,
-                "    /// The live objects of the kind `T` for which `keep` answers `true`, in list order: the test a filter record cannot say, written\n    /// as a closure (TypeScript's and Python's `find(kind, function)`). `keep` sees each object of the kind once, and its first error ends\n    /// the call and is the call's error: `find_matching::<{first}>(|window| Ok(window.title()?.contains(\"draft\")))`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, the library refuses the listing, or `keep` fails.\n    pub fn find_matching<T: Finds<{name}>>(&self, mut keep: impl FnMut(&T) -> go::Res<bool>) -> go::Res<Vec<T>> {{\n        let mut found = Vec::new();\n        for item in T::find_in(self, None)? {{\n            if keep(&item)? {{\n                found.push(item);\n            }}\n        }}\n        Ok(found)\n    }}\n\n"
+                "    /// The live objects of the kind `T` for which `keep` answers `true`, in list order: the test a filter record cannot say, written\n    /// as a closure (TypeScript's and Python's `find(kind, function)`). `keep` sees each object of the kind once, and its first error ends\n    /// the call and is the call's error: `find_matching::<{first}>(|window| Ok(window.title()?.contains(\"draft\")))`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, the library refuses the listing, or `keep` fails.\n    pub fn find_matching<T: Finds<{name}>>(&self, mut keep: impl FnMut(&T) -> crate::Res<bool>) -> crate::Res<Vec<T>> {{\n        let mut found = Vec::new();\n        for item in T::find_in(self, None)? {{\n            if keep(&item)? {{\n                found.push(item);\n            }}\n        }}\n        Ok(found)\n    }}\n\n"
             );
             for (kind, method) in &finds {
                 let Some(Type::List(inner)) = &method.returns else {
@@ -985,7 +985,7 @@ impl @Ids@ {
                 };
                 let _ = write!(
                     found_impls,
-                    "impl Finds<{name}> for {found} {{\n    type Filter = {filter};\n    const KIND: &'static str = {kind:?};\n\n    fn find_in(service: &{name}, filter: Option<&{filter}>) -> go::Res<Vec<{found}>> {{\n        service.{ident}(filter)\n    }}\n}}\n\n",
+                    "impl Finds<{name}> for {found} {{\n    type Filter = {filter};\n    const KIND: &'static str = {kind:?};\n\n    fn find_in(service: &{name}, filter: Option<&{filter}>) -> crate::Res<Vec<{found}>> {{\n        service.{ident}(filter)\n    }}\n}}\n\n",
                     found = self.owned(inner)?,
                     filter = self.owned(&method.params[0].ty)?,
                     ident = member_ident(&method.name, &method.extras.export.rust),
@@ -1008,7 +1008,7 @@ impl @Ids@ {
                 };
                 let _ = write!(
                     methods,
-                    "    /// This object as a `{base}`, to pass where a `{base}` is taken. The result holds a reference of its own, so dropping it\n    /// leaves this value and the object as they were.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn as_{snake}(&self) -> go::Res<{class}> {{\n        self.objects.api.retain(self.object.handle()).map_err(|fail| go::typed::at_class(fail, {name:?}, \"as_{snake}\"))?;\n        go::typed::FromVal::from_val(&self.objects, &self.object.val())\n    }}\n\n",
+                    "    /// This object as a `{base}`, to pass where a `{base}` is taken. The result holds a reference of its own, so dropping it\n    /// leaves this value and the object as they were.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn as_{snake}(&self) -> crate::Res<{class}> {{\n        self.objects.api.retain(self.object.handle()).map_err(|fail| go::typed::at_class(fail, {name:?}, \"as_{snake}\"))?;\n        go::typed::FromVal::from_val(&self.objects, &self.object.val())\n    }}\n\n",
                     snake = snake(base),
                     class = class_name(base_object),
                 );
@@ -1018,7 +1018,7 @@ impl @Ids@ {
                 // The other way: a value that holds an object as a base class or an interface, checked against the class the object has.
                 let _ = write!(
                     methods,
-                    "    /// `from` as a `{name}`, when the object it holds is of that class or of a class that extends it, and `None` when it is of\n    /// another: the checked downcast of a value held as a base class or an interface (TypeScript's `instanceof`, Python's `isinstance`).\n    /// The result holds a reference of its own.\n    ///\n    /// # Errors\n    ///\n    /// `from` holds no object, or the object is gone.\n    pub fn downcast(objects: &Objects, from: &impl go::typed::ToVal) -> go::Res<Option<{name}>> {{\n        let obj = match go::typed::ToVal::to_val(from) {{\n            go::Val::Object {{ obj, .. }} => obj,\n            other => return Err(go::Fail::type_error(format!(\"expected an object, got {{}}\", other.kind_name())).at({name:?})),\n        }};\n        let class = objects.api.class_of(obj).map_err(|fail| go::typed::at_class(fail, {name:?}, \"downcast\"))?;\n        if !{ids_name}::of(objects)?.family.contains(&class) {{\n            return Ok(None);\n        }}\n        objects.api.retain(obj).map_err(|fail| go::typed::at_class(fail, {name:?}, \"downcast\"))?;\n        Ok(Some({name} {{ object: go::client::Object::adopt(objects.api, class, obj), objects: objects.clone() }}))\n    }}\n\n",
+                    "    /// `from` as a `{name}`, when the object it holds is of that class or of a class that extends it, and `None` when it is of\n    /// another: the checked downcast of a value held as a base class or an interface (TypeScript's `instanceof`, Python's `isinstance`).\n    /// The result holds a reference of its own.\n    ///\n    /// # Errors\n    ///\n    /// `from` holds no object, or the object is gone.\n    pub fn downcast(objects: &Objects, from: &impl go::typed::ToVal) -> crate::Res<Option<{name}>> {{\n        let obj = match go::typed::ToVal::to_val(from) {{\n            go::Val::Object {{ obj, .. }} => obj,\n            other => return Err(go::Fail::type_error(format!(\"expected an object, got {{}}\", other.kind_name())).at({name:?})),\n        }};\n        let class = objects.api.class_of(obj).map_err(|fail| go::typed::at_class(fail, {name:?}, \"downcast\"))?;\n        if !{ids_name}::of(objects)?.family.contains(&class) {{\n            return Ok(None);\n        }}\n        objects.api.retain(obj).map_err(|fail| go::typed::at_class(fail, {name:?}, \"downcast\"))?;\n        Ok(Some({name} {{ object: go::client::Object::adopt(objects.api, class, obj), objects: objects.clone() }}))\n    }}\n\n",
                 );
             }
             text.push_str(&fill(
@@ -1053,7 +1053,7 @@ impl ::std::hash::Hash for @Name@ {
 }
 
 impl go::typed::FromVal<Objects> for @Name@ {
-    fn from_val(cx: &Objects, value: &go::Val) -> go::Res<@Name@> {
+    fn from_val(cx: &Objects, value: &go::Val) -> crate::Res<@Name@> {
         Ok(@Name@ { object: go::client::Object::from_val(cx.api, value)?, objects: cx.clone() })
     }
 }
@@ -1155,7 +1155,7 @@ pub struct @Options@ {
     /// # Errors
     ///
     /// The library refuses an argument or an option, and no object is made.
-    pub fn new_with(objects: &Objects@Params@, @Mut@options: @Options@) -> go::Res<@Name@> {
+    pub fn new_with(objects: &Objects@Params@, @Mut@options: @Options@) -> crate::Res<@Name@> {
         let ids = @Ids@::of(objects)?;
         let mut inits = vec![@Inits@];
 @Writes@
@@ -1208,7 +1208,7 @@ pub struct @Options@ {
             let value = self.arg_expr("run", &property.ty, false)?;
             let _ = write!(
                 out,
-                "{doc_closure}    ///\n    /// # Errors\n    ///\n    /// The library refuses it.\n    pub fn {setter}(&self, run: {param}) -> go::Res<()> {{\n        let objects = &self.objects;\n        let ids = {ids}::of(objects)?;\n        let value = {value};\n        objects.api.set(self.object.handle(), {id}, &value).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
+                "{doc_closure}    ///\n    /// # Errors\n    ///\n    /// The library refuses it.\n    pub fn {setter}(&self, run: {param}) -> crate::Res<()> {{\n        let objects = &self.objects;\n        let ids = {ids}::of(objects)?;\n        let value = {value};\n        objects.api.set(self.object.handle(), {id}, &value).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
             );
             return Ok(());
         }
@@ -1216,7 +1216,7 @@ pub struct @Options@ {
         let getter = self.getter_type(property)?;
         let _ = write!(
             out,
-            "{doc_get}    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library cannot read it.\n    pub fn {ident}(&self) -> go::Res<{getter}> {{\n        let ids = {ids}::of(&self.objects)?;\n        let value = self.objects.api.get(self.object.handle(), {id}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(&self.objects, &value)\n    }}\n\n"
+            "{doc_get}    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library cannot read it.\n    pub fn {ident}(&self) -> crate::Res<{getter}> {{\n        let ids = {ids}::of(&self.objects)?;\n        let value = self.objects.api.get(self.object.handle(), {id}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(&self.objects, &value)\n    }}\n\n"
         );
         if !property.readonly {
             let setter = format!("set_{}", property_stem(property));
@@ -1224,14 +1224,14 @@ pub struct @Options@ {
             let param = self.param(&property.ty)?;
             let _ = write!(
                 out,
-                "{doc_set}    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    pub fn {setter}(&self, value: {param}) -> go::Res<()> {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value)).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
+                "{doc_set}    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    pub fn {setter}(&self, value: {param}) -> crate::Res<()> {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value)).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
             );
             if property.animated {
                 let timed = format!("set_{}_timed", property_stem(property));
                 claim(&timed)?;
                 let _ = write!(
                     out,
-                    "{doc_timed}    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    pub fn {timed}(&self, value: {param}, timing: &go::Timing) -> go::Res<()> {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set_timed(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value), timing).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
+                    "{doc_timed}    ///\n    /// # Errors\n    ///\n    /// The value is refused.\n    pub fn {timed}(&self, value: {param}, timing: &crate::Timing) -> crate::Res<()> {{\n        let ids = {ids}::of(&self.objects)?;\n        self.objects.api.set_timed(self.object.handle(), {id}, &go::typed::ToVal::to_val(&value), timing).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))\n    }}\n\n"
                 );
             }
         }
@@ -1240,7 +1240,7 @@ pub struct @Options@ {
         let owned = self.owned(&property.ty)?;
         let _ = write!(
             out,
-            "{doc_watch}    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn {watch}(&self, mut run: impl FnMut({owned}) + 'static) -> go::Res<go::typed::Listener> {{\n        let ids = {ids}::of(&self.objects)?;\n        let objects = self.objects.clone();\n        let reg = self.objects.api.listen(self.object.handle(), {id}, move |_, args| {{\n            run(go::typed::arg(&objects, args, 0)?);\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(go::typed::Listener::new(self.objects.api, reg))\n    }}\n\n"
+            "{doc_watch}    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn {watch}(&self, mut run: impl FnMut({owned}) + 'static) -> crate::Res<crate::Listener> {{\n        let ids = {ids}::of(&self.objects)?;\n        let objects = self.objects.clone();\n        let reg = self.objects.api.listen(self.object.handle(), {id}, move |_, args| {{\n            run(go::typed::arg(&objects, args, 0)?);\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(crate::Listener::new(self.objects.api, reg))\n    }}\n\n"
         );
         Ok(())
     }
@@ -1289,13 +1289,13 @@ pub struct @Options@ {
         if method.function {
             let _ = write!(
                 out,
-                "{doc_function}    ///\n    /// # Errors\n    ///\n    /// The library refuses the arguments.\n    pub fn {ident}(objects: &Objects{params}) -> go::Res<{returns}> {{\n        let ids = {ids}::of(objects)?;\n        let value = objects.api.call_static(ids.class, ids.m_{name}, &[{args}]).map_err(|fail| go::typed::at_class(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(objects, &value)\n    }}\n\n",
+                "{doc_function}    ///\n    /// # Errors\n    ///\n    /// The library refuses the arguments.\n    pub fn {ident}(objects: &Objects{params}) -> crate::Res<{returns}> {{\n        let ids = {ids}::of(objects)?;\n        let value = objects.api.call_static(ids.class, ids.m_{name}, &[{args}]).map_err(|fail| go::typed::at_class(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(objects, &value)\n    }}\n\n",
                 name = snake(schema),
             );
         } else {
             let _ = write!(
                 out,
-                "{doc_method}    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library refuses the arguments.\n    pub fn {ident}(&self{params}) -> go::Res<{returns}> {{\n        let objects = &self.objects;\n        let ids = {ids}::of(objects)?;\n        let value = objects.api.call(self.object.handle(), ids.m_{name}, &[{args}]).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(objects, &value)\n    }}\n\n",
+                "{doc_method}    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library refuses the arguments.\n    pub fn {ident}(&self{params}) -> crate::Res<{returns}> {{\n        let objects = &self.objects;\n        let ids = {ids}::of(objects)?;\n        let value = objects.api.call(self.object.handle(), ids.m_{name}, &[{args}]).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        go::typed::FromVal::from_val(objects, &value)\n    }}\n\n",
                 name = snake(schema),
             );
         }
@@ -1322,7 +1322,7 @@ pub struct @Options@ {
             );
             let _ = write!(
                 declared,
-                "{doc}    ///\n    /// # Errors\n    ///\n    /// The generation has retired, or the library cannot read it.\n    fn {ident}(&self) -> go::Res<{owned}>;\n\n",
+                "{doc}    ///\n    /// # Errors\n    ///\n    /// The generation has retired, or the library cannot read it.\n    fn {ident}(&self) -> crate::Res<{owned}>;\n\n",
             );
             let read = if matches!(property.ty, Type::ObjectRef(_)) {
                 format!(
@@ -1334,7 +1334,7 @@ pub struct @Options@ {
             };
             let _ = write!(
                 defined,
-                "    fn {ident}(&self) -> go::Res<{owned}> {{\n        {read}\n    }}\n\n"
+                "    fn {ident}(&self) -> crate::Res<{owned}> {{\n        {read}\n    }}\n\n"
             );
         }
         // A receiver augment's methods take the object they act on first, which the trait's `self` is.
@@ -1373,11 +1373,11 @@ pub struct @Options@ {
             );
             let _ = write!(
                 declared,
-                "{doc}    ///\n    /// # Errors\n    ///\n    /// The generation has retired, or the library refuses the arguments.\n    fn {ident}(&self{params}) -> go::Res<{returns}>;\n\n",
+                "{doc}    ///\n    /// # Errors\n    ///\n    /// The generation has retired, or the library refuses the arguments.\n    fn {ident}(&self{params}) -> crate::Res<{returns}>;\n\n",
             );
             let _ = write!(
                 defined,
-                "    fn {ident}(&self{params}) -> go::Res<{returns}> {{\n        {service}::get(&super::std_objects(self.handle().api())?)?.{ident}({})\n    }}\n\n",
+                "    fn {ident}(&self{params}) -> crate::Res<{returns}> {{\n        {service}::get(&super::std_objects(self.handle().api())?)?.{ident}({})\n    }}\n\n",
                 given.join(", ")
             );
         }
@@ -1393,7 +1393,7 @@ pub struct @Options@ {
             };
             let _ = write!(
                 finds,
-                "impl ::gnoblin_core::objects::Finds<{core}> for {found} {{\n    type Filter = {filter};\n    const KIND: &'static str = {kind:?};\n\n    fn find_in(service: &{core}, filter: Option<&{filter}>) -> go::Res<Vec<{found}>> {{\n        {trait_name}::{ident}(service, filter)\n    }}\n}}\n\n",
+                "impl ::gnoblin_core::objects::Finds<{core}> for {found} {{\n    type Filter = {filter};\n    const KIND: &'static str = {kind:?};\n\n    fn find_in(service: &{core}, filter: Option<&{filter}>) -> crate::Res<Vec<{found}>> {{\n        {trait_name}::{ident}(service, filter)\n    }}\n}}\n\n",
                 found = self.owned(inner)?,
                 filter = self.owned(&method.params[0].ty)?,
                 ident = member_ident(&method.name, &method.extras.export.rust),
@@ -1442,7 +1442,7 @@ pub struct @Options@ {
         };
         let _ = write!(
             out,
-            "{doc_signal}    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn {ident}(&self, mut run: impl FnMut({types}) + 'static) -> go::Res<go::typed::Listener> {{\n        let ids = {ids}::of(&self.objects)?;\n{keep}        let reg = self.objects.api.listen(self.object.handle(), ids.s_{name}, move |_, {args}| {{\n            run({reads});\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(go::typed::Listener::new(self.objects.api, reg))\n    }}\n\n",
+            "{doc_signal}    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn {ident}(&self, mut run: impl FnMut({types}) + 'static) -> crate::Res<crate::Listener> {{\n        let ids = {ids}::of(&self.objects)?;\n{keep}        let reg = self.objects.api.listen(self.object.handle(), ids.s_{name}, move |_, {args}| {{\n            run({reads});\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(crate::Listener::new(self.objects.api, reg))\n    }}\n\n",
             types = types.join(", "),
             reads = reads.join(", "),
             name = snake(schema),
@@ -1491,7 +1491,7 @@ pub struct @Options@ {
                 Some(ty) => self.owned(ty)?,
                 None => "()".to_owned(),
             };
-            let closure = format!("Box<dyn FnMut({}) -> go::Res<{returns}>>", params.join(", "));
+            let closure = format!("Box<dyn FnMut({}) -> crate::Res<{returns}>>", params.join(", "));
             let optional = !method.required;
             let note = format!(
                 "The method `{schema}`{}.",
@@ -1514,7 +1514,7 @@ pub struct @Options@ {
                 starts.push(format!("{ident}: None"));
             } else {
                 required.push(format!(
-                    "{ident}: impl FnMut({}) -> go::Res<{returns}> + 'static",
+                    "{ident}: impl FnMut({}) -> crate::Res<{returns}> + 'static",
                     params.join(", ")
                 ));
                 required_inits.push(format!("{ident}: Box::new({ident})"));
@@ -1570,7 +1570,7 @@ struct @Ids@ {
 }
 
 impl @Ids@ {
-    fn of(objects: &Objects) -> go::Res<&@Ids@> {
+    fn of(objects: &Objects) -> crate::Res<&@Ids@> {
         objects.ids.@Field@.get(|| {
             let api = &objects.api;
             let class = api.class(@Schema@)?;
@@ -1603,7 +1603,7 @@ impl @Ids@ {
     /// # Errors
     ///
     /// The library refuses the object.
-    pub fn implement(self, objects: &Objects) -> go::Res<@Name@> {
+    pub fn implement(self, objects: &Objects) -> crate::Res<@Name@> {
         let ids = @Ids@::of(objects)?;
         let @Handlers@ { @Moves@ } = self;
         let mut implemented = Vec::new();
@@ -1654,7 +1654,7 @@ impl ::std::hash::Hash for @Name@ {
 }
 
 impl go::typed::FromVal<Objects> for @Name@ {
-    fn from_val(cx: &Objects, value: &go::Val) -> go::Res<@Name@> {
+    fn from_val(cx: &Objects, value: &go::Val) -> crate::Res<@Name@> {
         Ok(@Name@ { object: go::client::Object::from_val(cx.api, value)? })
     }
 }
@@ -1732,7 +1732,7 @@ pub trait Finds<S>: Sized {
     /// # Errors
     ///
     /// The service is gone, or the library refuses the filter.
-    fn find_in(service: &S, filter: Option<&Self::Filter>) -> go::Res<Vec<Self>>;
+    fn find_in(service: &S, filter: Option<&Self::Filter>) -> crate::Res<Vec<Self>>;
 }
 
 "#;
@@ -1782,7 +1782,7 @@ pub(super) fn render_described(
         let path = format!("{}::{}", crate_path_of(&home)?, class_name(class));
         let _ = write!(
             body,
-            "impl go::typed::FromVal<Objects> for {path} {{\n    fn from_val(cx: &Objects, value: &go::Val) -> go::Res<{path}> {{\n        let home = {}::for_generation(cx.api.ctx())?;\n        go::typed::FromVal::from_val(&home, &go::typed::foreign_in(value, {:?})?)\n    }}\n}}\n\n",
+            "impl go::typed::FromVal<Objects> for {path} {{\n    fn from_val(cx: &Objects, value: &go::Val) -> crate::Res<{path}> {{\n        let home = {}::for_generation(cx.api.ctx())?;\n        go::typed::FromVal::from_val(&home, &go::typed::foreign_in(value, {:?})?)\n    }}\n}}\n\n",
             crate_path_of(&home)?,
             home.as_str()
         );

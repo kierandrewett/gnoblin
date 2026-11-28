@@ -27,7 +27,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 
-use gnoblin_core::{Gnoblin, LogLevel, Rect};
+use gnoblin_core::host::{Host, LogLevel, Rect};
 use gnoblin_std_abi as abi;
 
 use crate::animation::easing::Easing;
@@ -134,7 +134,7 @@ struct Play {
 }
 
 /// The layout pass: recomputes the workspaces that changed and applies their placements.
-fn layout_pass(std: &Rc<Std>, g: &Gnoblin) {
+fn layout_pass(std: &Rc<Std>, g: &Host) {
     {
         let mut st = std.st.borrow_mut();
         let all = std::mem::take(&mut st.scan_all);
@@ -166,7 +166,7 @@ fn layout_pass(std: &Rc<Std>, g: &Gnoblin) {
 
 /// Once the compositor has answered the transaction that carries this pass's placements, a window that does not hold what the pass
 /// wrote is one whose write was lost. Before it has, the tree may simply not have heard of the change yet.
-fn acknowledge_writes(std: &Rc<Std>, g: &Gnoblin) {
+fn acknowledge_writes(std: &Rc<Std>, g: &Host) {
     let (ctx, pass) = {
         let st = std.st.borrow();
         (st.ctx, st.counters.layout_passes)
@@ -186,7 +186,7 @@ fn acknowledge_writes(std: &Rc<Std>, g: &Gnoblin) {
 /// be a write the compositor has not answered. Once it has answered everything sent, the workspaces' flags are read again: a write that
 /// was refused, or dropped after its resends, is forgotten with no event, and the pass that finds the flags changed asks again, so this
 /// ends when they hold.
-fn reread_when_answered(std: &Rc<Std>, g: &Gnoblin, workspaces: BTreeSet<Id>) {
+fn reread_when_answered(std: &Rc<Std>, g: &Host, workspaces: BTreeSet<Id>) {
     let ctx = std.st.borrow().ctx;
     let _ = g.flush(move |_answer| {
         if let Some(std) = state::find(ctx) {
@@ -218,7 +218,7 @@ struct Compute {
     tiled: Vec<NodeId>,
 }
 
-fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
+fn pass_workspace(std: &Rc<Std>, g: &Host, workspace: Id) {
     // The layout and its revision first: asking for the revision calls into the shell, which must not happen inside a borrow.
     let Some(layout) = std.st.borrow().ws.get(&workspace).map(|ws| Rc::clone(&ws.layout)) else {
         return;
@@ -237,7 +237,7 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
     }
     for client in &plan.departed {
         if let Some(next) = layout.client_removed(&plan.cx, *client) {
-            let _ = g.window_handle(gnoblin_core::NodeId(next)).focus();
+            let _ = g.window_handle(gnoblin_core::host::NodeId(next)).focus();
         }
     }
     let insets: HashMap<NodeId, crate::floating::Inset> = {
@@ -709,7 +709,7 @@ impl State {
 }
 
 /// Carries a slide's windows to where they rest, with the compositor's own tween, and hides the ones that left once it is over.
-fn play_slide(std: &Rc<Std>, g: &Gnoblin, play: Play) {
+fn play_slide(std: &Rc<Std>, g: &Host, play: Play) {
     let ctx = std.st.borrow().ctx;
     let duration = play.duration_ms;
     let moves = play.moves;

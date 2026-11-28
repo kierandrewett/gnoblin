@@ -1,13 +1,13 @@
 //! A std shell for the binding tests: `Super+Button1` moves the window under the pointer, `Alt+Button3` resizes it by the nearest side,
 //! and `Super+Button2` is a drag binding of the shell's own that raises the window it landed on and counts what it was told.
 
-use gnoblin_core::objects::{BindingEvent, BindingOptions, BindingPhase, ModelRoot};
-use gnoblin_std::objects::{MoveBinding, ResizeBinding, ResizeGrip};
+use gnoblin_core::{BindingEvent, BindingOptions, BindingPhase, Gnoblin};
+use gnoblin_std::{MoveBinding, ResizeBinding, ResizeGrip};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let moving = MoveBinding::new(&objects)?;
     moving.install(None)?;
     std::mem::forget(moving);
@@ -18,7 +18,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     std::mem::forget(resizing);
 
     // The shell's own drag: asked to start only past ten pixels, told where the press was, and it raises the window it started on.
-    let context = ModelRoot::get(&g.objects()?)?.input()?.primary()?;
+    let context = Gnoblin::get(&g.objects()?)?.input()?.primary()?;
     let shell = g.clone();
     context.bind(
         "Super+MouseMiddle+Drag",

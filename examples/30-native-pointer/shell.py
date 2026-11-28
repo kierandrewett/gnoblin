@@ -13,7 +13,7 @@ same example (``30-native-pointer``) does, and logs the same lines:
 """
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 # Which generation of the shell this is. A reload test saves the file again with another number.
 GENERATION = 1

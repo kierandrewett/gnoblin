@@ -45,8 +45,8 @@ for (const [trigger, action] of Object.entries(keys)) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import DwindleLayout, Workspace, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import DwindleLayout, Workspace, Workspaces
 
 # `pointer="seat"` is what `force_split="by_pointer"` and `smart_split` read.
 dwindle = DwindleLayout(gap=8, preserve_split=True, pointer="seat")
@@ -82,9 +82,8 @@ for trigger, action in keys.items():
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::{BindingEvent, InputContext, ModelRoot};
-use gnoblin_core::Gnoblin;
-use gnoblin_std::objects::{
+use gnoblin_core::{BindingEvent, InputContext, Gnoblin};
+use gnoblin_std::{
     DwindleDirection, DwindleLayout, DwindleLayoutOptions, DwindlePointer, Workspace, WorkspaceOptions, Workspaces,
 };
 use gnoblin_std::prelude::*;
@@ -105,7 +104,7 @@ fn bind_action<E>(
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     // `pointer: Seat` is what `force_split: ByPointer` and `smart_split` read.
     let dwindle = Rc::new(DwindleLayout::new_with(
@@ -124,7 +123,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     )?;
     Workspaces::get(&objects)?.add(&main)?;
 
-    let input = ModelRoot::get(&g.objects()?)?.input()?.primary()?;
+    let input = Gnoblin::get(&g.objects()?)?.input()?.primary()?;
 
     let d = Rc::clone(&dwindle);
     bind_action(&input, "Super+j", move || d.toggle_split())?;

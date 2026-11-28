@@ -25,7 +25,7 @@ label.mountTop();
 ```
 
 ```python
-from gnoblin.objects.std import Canvas, PaintKind, PaintOp, Widget
+from gnoblin.std import Canvas, PaintKind, PaintOp, Widget
 
 
 class Label(Widget):
@@ -42,12 +42,13 @@ label.mount_top()
 
 ```rust
 use gnoblin_core::{self as gnoblin, Gnoblin};
-use gnoblin_std::objects::{Canvas, CanvasOptions, PaintKind, PaintOp, WidgetHandlers};
+use gnoblin_std::{Canvas, CanvasOptions, PaintKind, PaintOp, WidgetHandlers};
+use gnoblin_std::ObjectsStdExt;
 use gnoblin_std::GnoblinStdExt;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     let widget = WidgetHandlers {
         paint: Some(Box::new(move || {

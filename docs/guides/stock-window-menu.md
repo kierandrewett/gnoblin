@@ -96,8 +96,8 @@ menus.start();
 ```
 
 ```python
-from gnoblin.objects.model import ClientQuery, Gnoblin
-from gnoblin.objects.std import MenuEntry, MenuProvider, WindowMenus
+from gnoblin import ClientQuery, Gnoblin
+from gnoblin.std import MenuEntry, MenuProvider, WindowMenus
 
 
 class CopyTitle(MenuProvider):
@@ -125,19 +125,19 @@ menus.start()
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::{ClientQuery, ModelRoot};
-use gnoblin_std::objects::{MenuEntry, MenuProviderHandlers, WindowMenus};
+use gnoblin_core::{ClientQuery, Gnoblin};
+use gnoblin_std::{MenuEntry, MenuProviderHandlers, WindowMenus};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let menus = WindowMenus::get(&objects)?;
     let core = Rc::new(g.objects()?);
     let model_for_find = core.clone();
     let find = move |id: &str| {
         let query = ClientQuery { id: Some(id.to_string()), ..Default::default() };
-        ModelRoot::get(&model_for_find)
+        Gnoblin::get(&model_for_find)
             .and_then(|model| model.find_clients(Some(&query)))
             .map(|found| found.into_iter().next())
     };
@@ -152,7 +152,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             };
             let copy = MenuEntry::new(&made, "Copy title")?;
             let find = find_on_run.clone();
-            let model = ModelRoot::get(&core)?;
+            let model = Gnoblin::get(&core)?;
             copy.set_run(move |target: String| {
                 if let Some(window) = find(&target)? {
                     model.spawn(&["wl-copy".to_string(), window.title()?], None)?;
@@ -217,8 +217,8 @@ menus.start();
 ```
 
 ```python
-from gnoblin.objects.model import ClientQuery, Gnoblin
-from gnoblin.objects.std import Box, MenuProvider, Text, WindowMenus
+from gnoblin import ClientQuery, Gnoblin
+from gnoblin.std import Box, MenuProvider, Text, WindowMenus
 
 
 class OwnMenu(MenuProvider):
@@ -248,19 +248,19 @@ menus.start()
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::{ClientQuery, ModelRoot};
-use gnoblin_std::objects::{MenuProviderHandlers, PointerKind, Text, UiBox, UiBoxOptions, WindowMenus};
+use gnoblin_core::{ClientQuery, Gnoblin};
+use gnoblin_std::{MenuProviderHandlers, PointerKind, Text, UiBox, UiBoxOptions, WindowMenus};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let core = Rc::new(g.objects()?);
     let made = objects.clone();
     let provider = MenuProviderHandlers {
         show: Some(Box::new(move |id: String, x: f64, y: f64| {
             let query = ClientQuery { id: Some(id), ..Default::default() };
-            let Some(window) = ModelRoot::get(&core)?.find_clients(Some(&query))?.into_iter().next() else {
+            let Some(window) = Gnoblin::get(&core)?.find_clients(Some(&query))?.into_iter().next() else {
                 return Ok(());
             };
             let card = Rc::new(UiBox::new_with(
@@ -325,18 +325,18 @@ Repositioning.get().start();
 ```
 
 ```python
-from gnoblin.objects.std import Repositioning
+from gnoblin.std import Repositioning
 
 Repositioning.get().start()
 ```
 
 ```rust
-use gnoblin_std::objects::Repositioning;
+use gnoblin_std::Repositioning;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    Repositioning::get(&g.std()?.objects()?)?.start()?;
+    Repositioning::get(&g.objects()?.std()?)?.start()?;
     Ok(())
 }
 ```

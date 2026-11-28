@@ -8,7 +8,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::{Gnoblin, Value};
+use gnoblin_core::host::{Host, Value};
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::{Closure, Fail, Obj, Res, Val};
 
@@ -75,7 +75,7 @@ fn fill_for(ui: &Rc<Ui>, node: u64) -> Result<Fill, String> {
 
 /// Writes the seat's `decorations_available`: whether this shell draws window decorations, so a client that asks for server-side is
 /// told so.
-fn declare(g: &Gnoblin, available: bool) {
+fn declare(g: &Host, available: bool) {
     if let Some(seat) = nodes::seat(g) {
         // A seat that is going away, or a tree that refuses, is not an error of the decorations.
         let _ = seat.set("decorations_available", Value::Bool(available));
@@ -85,7 +85,7 @@ fn declare(g: &Gnoblin, available: bool) {
 /// Takes back the declaration of the generation `ctx`, unless another generation's decorations are started: a reload commits the new
 /// generation before the old one retires, so a new generation that started its decorations has declared already and the old one's end
 /// must not undo that, and a generation that was staged and failed must not undo the running one's.
-fn withdraw(g: &Gnoblin, ctx: GnoblinCtx) {
+fn withdraw(g: &Host, ctx: GnoblinCtx) {
     if !decorations_started_besides(ctx) {
         declare(g, false);
     }
@@ -111,7 +111,7 @@ pub(crate) fn start(ui: &Rc<Ui>) -> Res<()> {
     crate::events::open(ui.ctx).map_err(Fail::from)?;
     let ctx = ui.ctx;
     let g = &ui.g;
-    let refuse = |error: gnoblin_core::CoreError| Fail::new(error.kind().code(), error.to_string());
+    let refuse = |error: gnoblin_core::host::CoreError| Fail::new(error.kind().code(), error.to_string());
     let mut listening = Vec::new();
     listening.push(g.on_node_created("window", move |_| wake(ctx)).map_err(refuse)?);
     listening.push(g.on_node_destroyed("window", move |_| wake(ctx)).map_err(refuse)?);

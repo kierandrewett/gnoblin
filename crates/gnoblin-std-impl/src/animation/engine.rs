@@ -12,7 +12,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use gnoblin_core::{ErrorKind, Gnoblin, LogLevel, NodeId, Timing, WriteStage};
+use gnoblin_core::host::{ErrorKind, Host, LogLevel, NodeId, Timing, WriteStage};
 use gnoblin_std_abi as abi;
 
 use super::easing::Easing;
@@ -121,7 +121,7 @@ pub(crate) struct AnimState {
 const KEEP_ENDED: usize = 256;
 
 /// The milliseconds an animation of `duration` takes: 0 while the seat asks for reduced motion.
-pub(crate) fn motion(g: &Gnoblin, duration: f64) -> f64 {
+pub(crate) fn motion(g: &Host, duration: f64) -> f64 {
     match nodes::seat(g) {
         Some(seat) if seat.get_bool("reduced_motion").unwrap_or(false) => 0.0,
         _ => duration,
@@ -129,20 +129,20 @@ pub(crate) fn motion(g: &Gnoblin, duration: f64) -> f64 {
 }
 
 /// Whether a node has a place that is drawn: a size, and not hidden.
-fn placed(g: &Gnoblin, node: u64) -> bool {
+fn placed(g: &Host, node: u64) -> bool {
     nodes::number(g, node, "width") > 0.0
         && nodes::number(g, node, "height") > 0.0
         && nodes::flag_or(g, node, "visible", true)
 }
 
 /// Reads a property as the engine writes them back.
-pub(crate) fn read_prop(g: &Gnoblin, node: u64, key: &str) -> Option<Prop> {
+pub(crate) fn read_prop(g: &Host, node: u64, key: &str) -> Option<Prop> {
     Prop::from_value(&g.node(NodeId(node)).get(key).ok()?)
 }
 
 /// Writes a value that is not a script's (a transition's own): a timed write when `play` is given, else a plain one that ends the
 /// compositor's track on the property. `Ok(false)` is a node that is gone, which is not a refusal.
-fn land(g: &Gnoblin, node: u64, key: &str, value: &Prop, play: Option<(&Curve, f64, Option<u64>)>) -> Res<bool> {
+fn land(g: &Host, node: u64, key: &str, value: &Prop, play: Option<(&Curve, f64, Option<u64>)>) -> Res<bool> {
     let handle = g.node(NodeId(node));
     let result = match play {
         Some((curve, delay_ms, tween)) => handle.set_timed(
@@ -165,7 +165,7 @@ fn land(g: &Gnoblin, node: u64, key: &str, value: &Prop, play: Option<(&Curve, f
 }
 
 /// Makes the `tween` node the tracks of a transition join.
-fn make_tween(g: &Gnoblin) -> Res<u64> {
+fn make_tween(g: &Host) -> Res<u64> {
     g.create_node("tween").map(|node| node.id().0).map_err(|error| {
         Fail::refused(
             ErrorCode::Internal,
@@ -175,7 +175,7 @@ fn make_tween(g: &Gnoblin) -> Res<u64> {
 }
 
 /// Drops a `tween` node; a node already gone is not an error.
-fn drop_tween(g: &Gnoblin, tween: u64) {
+fn drop_tween(g: &Host, tween: u64) {
     let _ = g.node(NodeId(tween)).destroy();
 }
 

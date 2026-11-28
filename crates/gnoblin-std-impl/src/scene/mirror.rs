@@ -5,7 +5,7 @@
 //! the layout pass has written where the windows are, and when the view's size or fit changes. It writes a property only when the node
 //! does not hold the value already, so a steady picture costs no writes. It removes the nodes it made when it stops.
 
-use gnoblin_core::{NodeId, Rect};
+use gnoblin_core::host::{NodeId, Rect};
 use gnoblin_object::{Fail, Res};
 
 use super::registry::SceneWorld;

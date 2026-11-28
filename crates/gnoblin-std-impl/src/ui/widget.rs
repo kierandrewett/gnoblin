@@ -9,8 +9,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
-use gnoblin_core::objects::Timers;
-use gnoblin_core::{Gnoblin, Subscription};
+use gnoblin_core::Timers;
+use gnoblin_core::host::{Host, Subscription};
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::ShellImpl;
 use gnoblin_object::{Closure, MemberId, Obj};
@@ -476,7 +476,7 @@ pub(crate) struct Hook {
 /// The toolkit of one generation.
 pub(crate) struct Ui {
     pub(crate) ctx: GnoblinCtx,
-    pub(crate) g: Gnoblin,
+    pub(crate) g: Host,
     pub(crate) w: RefCell<Canvases>,
     /// A turn is posted and has not run.
     pub(crate) pending: Cell<bool>,

@@ -9,7 +9,7 @@
 //! TypeScript and Python shells of the same example log those refusals at run time.
 //!
 //! For the first window it then reads the members the library adds to a window, an output and the root, through the extension traits
-//! `ClientStdExt`, `OutputStdExt` and `ModelRootStdExt` of the prelude: the window's `workspace`, `move_to_workspace`, `style`,
+//! `ClientStdExt`, `OutputStdExt` and `GnoblinStdExt` of the prelude: the window's `workspace`, `move_to_workspace`, `style`,
 //! `style_warnings`, `move_with_keys`, `output`, `move_to_output` and `frame_inset`, the output's `workspace`, `area` and `show`, and the
 //! root's `show`.
 //!
@@ -18,8 +18,8 @@
 
 use std::cell::Cell;
 
-use gnoblin_core::objects::{Client, ClientQuery, ModelRoot};
-use gnoblin_std::objects::{Decorations, LayoutRect, WindowMenus, Workspace, Workspaces};
+use gnoblin_core::{Client, ClientQuery, Gnoblin};
+use gnoblin_std::{Decorations, LayoutRect, WindowMenus, Workspace, Workspaces};
 use gnoblin_std::prelude::*;
 
 /// What the shell does with a window that appeared: each member takes the `Client` as it is.
@@ -75,7 +75,7 @@ fn check_members(g: &Gnoblin, workspaces: &Workspaces, client: &Client) -> gnobl
     ));
     // A selection styles the windows it holds and no others, and a selection that can hold no window has no style.
     {
-        let clients = ModelRoot::get(&g.objects()?)?.clients()?;
+        let clients = Gnoblin::get(&g.objects()?)?.clients()?;
         let query = |app_id: Option<&str>, any: Option<&[&str]>, title: Option<&str>| ClientQuery {
             app_id: app_id.map(str::to_owned),
             any_app_id: any.map(|any| any.iter().map(|item| (*item).to_owned()).collect()),
@@ -117,7 +117,7 @@ fn check_members(g: &Gnoblin, workspaces: &Workspaces, client: &Client) -> gnobl
         "keyboard move before Repositioning starts: {}",
         client.move_with_keys()?
     ));
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let Some(output) = model.outputs()?.at(0).ok().flatten() else {
         say("there is no output".to_owned());
         return Ok(());
@@ -172,7 +172,7 @@ fn check_members(g: &Gnoblin, workspaces: &Workspaces, client: &Client) -> gnobl
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let decorations = Decorations::get(&objects)?;
     let menus = WindowMenus::get(&objects)?;
     menus.start()?;
@@ -181,7 +181,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     Workspaces::get(&objects)?.add(&main)?;
     Workspaces::get(&objects)?.add(&side)?;
 
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
 
     // The library puts a window on the workspace as it appears and tells the shell of it with the core's `Client`, which `add` and
     // `contains` take as they are.
@@ -189,7 +189,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         g.log("clients: the workspace has no clients");
         return Ok(());
     };
-    let finder = ModelRoot::get(&g.objects()?)?;
+    let finder = Gnoblin::get(&g.objects()?)?;
     let workspaces = Workspaces::get(&objects)?;
     let checked = Cell::new(false);
     members

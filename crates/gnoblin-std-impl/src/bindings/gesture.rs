@@ -2,7 +2,7 @@
 //!
 //! Ports of `data/js/gnoblin-core/input/gesture.ts` and `trigger.ts`, which are the reference. The numbers are the TypeScript ones.
 
-use gnoblin_core::GestureKind;
+use gnoblin_core::host::GestureKind;
 use gnoblin_std_abi::{STD_WAY_DOWN, STD_WAY_IN, STD_WAY_LEFT, STD_WAY_NONE, STD_WAY_OUT, STD_WAY_RIGHT, STD_WAY_UP};
 
 use crate::error::{Fail, Res};

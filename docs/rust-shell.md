@@ -43,14 +43,16 @@ use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    g.bind("<Super>Return", move || {
-        if let Err(error) = g.spawn("foot") {
-            g.log(&format!("cannot start a terminal: {error}"));
+fn main(gnoblin: &Gnoblin) -> gnoblin_core::Res<()> {
+    let shell = gnoblin.clone();
+    gnoblin.bind("<Super>Return", move || {
+        let argv = ["foot".to_owned()];
+        if let Err(error) = shell.spawn(&argv, None) {
+            shell.log(&format!("cannot start a terminal: {error}"));
         }
     })?;
 
-    g.log("myshell is running");
+    gnoblin.log("myshell is running");
     Ok(())
 }
 ```
@@ -80,14 +82,14 @@ Python shells do: decorations, a workspace with a master-and-stack layout, round
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::{ClientQuery, ModelRoot};
-use gnoblin_std::objects::{CornerRadius, Decorations, MasterStackLayout, MasterStackLayoutOptions, Workspace, WorkspaceOptions};
+use gnoblin_core::{ClientQuery, Gnoblin};
+use gnoblin_std::{CornerRadius, Decorations, MasterStackLayout, MasterStackLayoutOptions, Workspace, WorkspaceOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let objects = g.std()?.objects()?;
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
+    let objects = g.objects()?.std()?;
 
     Decorations::get(&objects)?.start()?;
 
@@ -301,7 +303,7 @@ const STARTS: &str = "starts";
 const LAYOUT: u32 = 1;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     // The bytes the previous generation kept; the first start finds none.
     let before = g
         .kept_state(STARTS)?
@@ -370,8 +372,8 @@ A shell names the crates for the libraries it uses.
 | `gnoblin-std`  | `libgnoblin-std`  | Workspaces, layouts, clients and the pointer bindings. Needs `gnoblin-core` too. |
 
 A shell with only `gnoblin-core` runs on a machine that has no std library. [Build a desktop](build-a-desktop.md) shows when
-to add `gnoblin-std`. The crates take the names `gnoblin_core::objects` (the core's classes) and `gnoblin_std::objects` (the
-std classes), and `use gnoblin_std::prelude::*;` brings in the traits that give the core's classes their std members.
+to add `gnoblin-std`. The classes are at the root of the crates: `gnoblin_core::Client` is the core's class and `gnoblin_std::Workspace` the
+std library's, and `use gnoblin_std::prelude::*;` brings in both, with the traits that give the core's classes their std members.
 
 ### Where the crates come from
 
@@ -446,13 +448,13 @@ libraries.
 
 ### Read the root object of the core
 
-The typed object model of the core starts at `ModelRoot`. Its members are the ones a script reads on `gnoblin`: `timers()` (`after` and
+The typed object model of the core starts at `Gnoblin`. Its members are the ones a script reads on `gnoblin`: `timers()` (`after` and
 `now`), `version()`, `motion(duration)`, `compositor()` (`user_shaders`, `set_user_shaders` and `reset`), and `find`.
 
 ```rust
-use gnoblin_core::objects::{Client, ClientQuery, Finds, ModelRoot, Output};
+use gnoblin_core::{Client, ClientQuery, Finds, Gnoblin, Output};
 
-let model = ModelRoot::get(&g.objects()?)?;
+let model = Gnoblin::get(&g.objects()?)?;
 let started = model.timers()?.now()?;
 println!("gnoblin {}", model.version()?.gnoblin);
 let milliseconds = model.motion(200.0)?; // 0 while the seat asks for reduced motion
@@ -477,7 +479,7 @@ setting takes it back.
 Gnoblin keeps the settings only for the shell the stored configuration belongs to: a shell run by another path (`gnoblin --shell ./dev.so`)
 while another shell is installed in the configuration directory commits nothing, and the log says so.
 
-`find` takes the kind as a type. A kind the core does not list has no `Finds<ModelRoot>` impl, so asking for it is an error when the
+`find` takes the kind as a type. A kind the core does not list has no `Finds<Gnoblin>` impl, so asking for it is an error when the
 shell is built and not when it runs. `find` takes a filter record. For a test a record cannot say, `find_matching` takes a closure that
 answers `Ok(true)` for each object to keep, as `find(kind, function)` does in TypeScript and Python:
 
@@ -490,17 +492,17 @@ this.
 
 ### Read the std members of the root object
 
-`use gnoblin_std::prelude::*;` brings in `ModelRootStdExt` and `OutputCollectionStdExt`, which give the core's typed `ModelRoot` the members
+`use gnoblin_std::prelude::*;` brings in `GnoblinStdExt` and `OutputCollectionStdExt`, which give the core's typed `Gnoblin` the members
 the std library adds: `workspaces()`, `displays()`, `scene()`, `gestures()` and `request_transition(..)`, and `profiles()` for the
 `outputs()` of the root.
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::Workspace;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::Workspace;
 use gnoblin_std::prelude::*;
 
-let model = ModelRoot::get(&g.objects()?)?;
-let objects = g.std()?.objects()?;
+let model = Gnoblin::get(&g.objects()?)?;
+let objects = g.objects()?.std()?;
 let workspaces = model.workspaces()?;
 let main = Workspace::new(&objects, "main")?;
 workspaces.add(&main)?;
@@ -523,7 +525,7 @@ The struct has an `Option` field for every other writable property, and it imple
 A `Some` field is sent in the call that makes the object. A `None` field is not sent, so that property keeps the library's default.
 
 ```rust
-use gnoblin_std::objects::{Gaps, MasterStackLayout, Workspace, WorkspaceOptions};
+use gnoblin_std::{Gaps, MasterStackLayout, Workspace, WorkspaceOptions};
 
 let main = Workspace::new_with(
     &objects,
@@ -587,7 +589,7 @@ Every handle and service is `Clone`. A clone is the same object, held through a 
 clone is dropped, and a closure that outlives the entry function owns a clone and needs no `Rc`:
 
 ```rust
-let model = ModelRoot::get(&g.objects()?)?;
+let model = Gnoblin::get(&g.objects()?)?;
 let closer = model.clone();
 model
     .on_client_closed(move |_client| {
@@ -610,7 +612,7 @@ A handler returns `Result<_, Fail>`. `?` works on a call of the core or of the s
 
 ```rust
 on_added: Some(Box::new(move |client, _clients| {
-    let workspaces = g.std()?.workspaces()?; // gnoblin_std::Error
+    let workspaces = g.objects()?.std()?.workspaces()?; // gnoblin_std::Error
     g.class("window")?; // CoreError
     client.set_opacity(0.95)?; // Fail
     Ok(())
@@ -621,15 +623,15 @@ A handler that fails is logged as a failed listener, and the next event is deliv
 
 ### Reach the classes of both libraries
 
-`g.objects()?` is the `Objects` of the core and `g.std()?.objects()?` the `Objects` of the std library. They are two types, because a class is
+`g.objects()?` is the `Objects` of the core and `g.objects()?.std()?` the `Objects` of the std library. They are two types, because a class is
 made from the library that serves it. A shell that makes classes of both takes the second from the first, or from `g`:
 
 ```rust
 let core = g.objects()?;
-let std = core.std()?; // the same as g.std_objects()?
+let std = core.std()?; // the same as g.objects()?.std()?
 ```
 
-`core.std()` is `ObjectsStdExt`, and `g.std_objects()` is `GnoblinStdExt`; both are in `gnoblin_std::prelude`.
+`core.std()` is `ObjectsStdExt`, which `gnoblin_std::prelude` brings in.
 
 ### Check which class an object is
 
@@ -652,9 +654,9 @@ both directions:
 | Rust       | `StripLayout::downcast(&objects, &layout)?` |
 
 ```rust
-use gnoblin_std::objects::{StripLayout, Workspace};
+use gnoblin_std::{StripLayout, Workspace};
 
-fn focus_next_column(objects: &gnoblin_std::objects::Objects, workspace: &Workspace) -> gnoblin_std::Result<()> {
+fn focus_next_column(objects: &gnoblin_std::Objects, workspace: &Workspace) -> gnoblin_std::Result<()> {
     if let Some(layout) = workspace.layout()?
         && let Some(strip) = StripLayout::downcast(objects, &layout)?
     {
@@ -679,7 +681,7 @@ A shell that uses `gnoblin-std` to make workspaces, displays or a window frame g
 - A shell with a focus policy of its own stops the stock one first, so that the two never answer one click:
 
 ```rust
-use gnoblin_std::objects::FocusPolicy;
+use gnoblin_std::FocusPolicy;
 
 FocusPolicy::get(&objects)?.stop()?;
 ```
@@ -700,7 +702,7 @@ use gnoblin_core::schema::gnoblin::{idle, session};
 use gnoblin_core::{Gnoblin, ShellValue, Value};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     // Keep the session awake while this shell runs. The answer arrives later, on the shell thread.
     g.call_verb_with(idle::CLASS, idle::method::INHIBIT, &[Value::Text("my-shell".into())], |answer| {
         match &answer.error {
@@ -784,12 +786,12 @@ Only the shell thread may call `dispatch`.
 ### Draw your own interface
 
 `libgnoblin-std` carries a toolkit for the interface a shell draws itself: bars, entries, toasts and your own widgets. A canvas is a
-node of the compositor's tree that paints a list of drawing operations. The classes are in `gnoblin_std::objects`:
+node of the compositor's tree that paints a list of drawing operations. The classes are at the root of `gnoblin_std`:
 
 - `Canvas`, `UiBox`, `Grid`, `Text` and `Icon` for layout and drawing;
 - `Entry`, `Clock`, `Bar` and `Toast` for the widgets the library keeps up to date.
 
-A member of `gnoblin_std::objects` that takes a window takes `&gnoblin_core::objects::Client`, the core's own class. Text where a window
+A member of `gnoblin_std` that takes a window takes `&gnoblin_core::Client`, the core's own class. Text where a window
 is expected is a build error. `examples/36-native-clients` makes these calls:
 
 ```rust
@@ -802,7 +804,7 @@ How the library passes a window back to your shell:
 
 - A window that has closed is still a `Client`, and a member called with it fails with `the client is gone`.
 - The workspace classes give the core's `Client`: `members`, `on_added` and a layout's `children`. It is equal to the one
-  `ModelRoot::clients()` and `get_by_id` give.
+  `Gnoblin::clients()` and `get_by_id` give.
 - The frame, menu, policy and shell classes still give a window's id as text.
 
 The library lays out, measures text, encodes the paint list and delivers pointer events and keys. You set properties and hear
@@ -856,14 +858,14 @@ answer does not run, and no later listener hears it.
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{ClientRequestKind, RequestListenerHandlers, WindowState};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{ClientRequestKind, RequestListenerHandlers, WindowState};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    let objects = g.std()?.objects()?;
+    let model = Gnoblin::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
     let state = Rc::new(WindowState::get(&objects)?);
 
     let policy = Rc::clone(&state);

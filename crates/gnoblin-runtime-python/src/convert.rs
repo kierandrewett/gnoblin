@@ -6,7 +6,7 @@
 //! A script writes with the Python type it has: an `int` into a property the schema keeps as a double is a double, and a whole
 //! `float` into an integer property is an integer. Anything else of the wrong kind is the core's `TypeError`.
 
-use gnoblin_core::{NodeId, Value};
+use gnoblin_core::host::{NodeId, Value};
 use gnoblin_core_abi::{VALUE_DOUBLE, VALUE_INT, VALUE_UINT};
 use pyo3::IntoPyObjectExt;
 use pyo3::exceptions::PyTypeError;

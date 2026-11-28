@@ -42,7 +42,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, DragArea, TitleText, WindowButtons
+from gnoblin.std import Decorations, DragArea, TitleText, WindowButtons
 
 decorations = Decorations.get()
 
@@ -66,12 +66,12 @@ decorations.start()
 ```
 
 ```rust
-use gnoblin_std::objects::{Decorations, Direction, DragArea, TitleText, WindowButtonName, WindowButtons};
+use gnoblin_std::{Decorations, Direction, DragArea, TitleText, WindowButtonName, WindowButtons};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let decorations = Decorations::get(&objects)?;
     decorations.set_frame(move |_client, frame| {
         if !frame.server()? {
@@ -134,7 +134,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, FrameBorder, FrameGlow
+from gnoblin.std import Decorations, FrameBorder, FrameGlow
 
 decorations = Decorations.get()
 
@@ -160,12 +160,12 @@ decorations.start()
 ```
 
 ```rust
-use gnoblin_std::objects::{Decorations, FrameBorder, FrameClient, FrameGlow};
+use gnoblin_std::{Decorations, FrameBorder, FrameClient, FrameGlow};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let decorations = Decorations::get(&objects)?;
     decorations.set_frame(move |_client, frame| {
         // The underlay is behind the window and reaches 24 pixels past it. It takes no room and no pointer.
@@ -236,8 +236,8 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Decorations, ResizeHandle, ResizeSide, Text, Titlebar
+from gnoblin import Gnoblin
+from gnoblin.std import Decorations, ResizeHandle, ResizeSide, Text, Titlebar
 
 gnoblin = Gnoblin.get()
 
@@ -276,14 +276,14 @@ decorations.start()
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Decorations, FrameClient, ResizeHandle, ResizeSide, Text, Titlebar};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Decorations, FrameClient, ResizeHandle, ResizeSide, Text, Titlebar};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
-    let model = ModelRoot::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let clients = Rc::new(model.clients()?);
     let decorations = Decorations::get(&objects)?;
     decorations.set_frame(move |_client, frame| {

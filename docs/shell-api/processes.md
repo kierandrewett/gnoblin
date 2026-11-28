@@ -7,7 +7,7 @@ Its `spawn` takes the program and its arguments:
 
 - TypeScript: `gnoblin.process.spawn(argv, options?)`
 - Python: `gnoblin.process.spawn(argv, options)`
-- Rust: `processes.spawn(&argv, options)`, where `processes` is the `Processes` service from `ModelRoot::process()`.
+- Rust: `processes.spawn(&argv, options)`, where `processes` is the `Processes` service from `Gnoblin::process()`.
 
 The root object's `spawn` (`gnoblin.spawn` in TypeScript and Python, `model.spawn` in Rust) is the same call. `shell` runs one
 command line through `/bin/sh`, with the same options.
@@ -35,7 +35,7 @@ gnoblin.input.primary.bind("Super+d", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin, Process, ProcessListener, SpawnOptions, StreamMode
+from gnoblin import BindingEvent, Gnoblin, Process, ProcessListener, SpawnOptions, StreamMode
 
 gnoblin = Gnoblin.get()
 
@@ -64,13 +64,12 @@ gnoblin.input.primary.bind("Super+d", show_time)
 use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{BindingEvent, ModelRoot, Process, ProcessListenerHandlers, SpawnOptions, StreamMode};
+use gnoblin_core::{BindingEvent, Gnoblin, Process, ProcessListenerHandlers, SpawnOptions, StreamMode};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = Rc::new(ModelRoot::get(&objects)?);
+    let model = Rc::new(Gnoblin::get(&objects)?);
     let processes = model.process()?;
     let notifier = Rc::clone(&model);
     let listener = ProcessListenerHandlers {
@@ -141,7 +140,7 @@ gnoblin.input.primary.bind("Super+c", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin, SpawnOptions, StreamMode
+from gnoblin import BindingEvent, Gnoblin, SpawnOptions, StreamMode
 
 gnoblin = Gnoblin.get()
 
@@ -163,13 +162,12 @@ gnoblin.input.primary.bind("Super+c", count_downloads)
 use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{BindingEvent, ModelRoot, SpawnOptions, StreamMode};
+use gnoblin_core::{BindingEvent, Gnoblin, SpawnOptions, StreamMode};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = Rc::new(ModelRoot::get(&objects)?);
+    let model = Rc::new(Gnoblin::get(&objects)?);
     let input = model.input()?;
     let primary = input.primary()?;
     let spawner = Rc::clone(&model);

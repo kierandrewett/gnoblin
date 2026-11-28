@@ -4,8 +4,8 @@ A shell draws its own interface with a small toolkit. It is a class library of `
 a Rust shell use the same classes with the same members, each spelled its own way.
 
 - TypeScript imports them with `import { Box, Text } from "gnoblin-std"`.
-- Python imports them with `from gnoblin.objects.std import Box, Text`.
-- Rust takes them from `gnoblin_std::objects`, where the box is `UiBox` because `Box` is a Rust type.
+- Python imports them with `from gnoblin.std import Box, Text`.
+- Rust takes them from `gnoblin_std`, where the box is `UiBox` because `Box` is a Rust type.
 
 Properties are `camelCase` in TypeScript, `snake_case` attributes in Python, and a getter with a `set_` method in Rust.
 
@@ -52,7 +52,7 @@ canvas.invalidate();
 ```
 
 ```python
-from gnoblin.objects.std import Canvas, PaintKind, PaintOp, Widget
+from gnoblin.std import Canvas, PaintKind, PaintOp, Widget
 
 
 class Meter(Widget):
@@ -81,12 +81,12 @@ canvas.invalidate()
 use std::cell::Cell;
 use std::rc::Rc;
 
-use gnoblin_std::objects::{Canvas, PaintKind, PaintOp, WidgetHandlers};
+use gnoblin_std::{Canvas, PaintKind, PaintOp, WidgetHandlers};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     let canvas = Rc::new(Canvas::new(&objects)?);
     canvas.set_width(120.0)?;
@@ -181,7 +181,7 @@ bar.mountTop();
 ```
 
 ```python
-from gnoblin.objects.std import Box, Icon, Text
+from gnoblin.std import Box, Icon, Text
 
 bar = Box(width=300.0, height=32.0, direction="row", gap=8.0, padding=6.0, fill="#1e1e2e")
 bar.add(Text(text="Files", grow=1.0))
@@ -190,12 +190,12 @@ bar.mount_top()
 ```
 
 ```rust
-use gnoblin_std::objects::{Direction, Icon, Text, UiBox};
+use gnoblin_std::{Direction, Icon, Text, UiBox};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     let bar = UiBox::new(&objects)?;
     bar.set_width(300.0)?;
@@ -286,7 +286,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, TitlebarStyle, WindowButtonName
+from gnoblin.std import Decorations, TitlebarStyle, WindowButtonName
 
 decorations = Decorations.get()
 decorations.style = TitlebarStyle(height=36.0, buttons=[WindowButtonName.CLOSE], focused_fill="#223344")
@@ -294,12 +294,12 @@ decorations.start()
 ```
 
 ```rust
-use gnoblin_std::objects::{Decorations, TitlebarStyle, WindowButtonName};
+use gnoblin_std::{Decorations, TitlebarStyle, WindowButtonName};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let decorations = Decorations::get(&objects)?;
     decorations.set_style(&TitlebarStyle {
         height: 36.0,
@@ -404,7 +404,7 @@ entry.focus();
 ```
 
 ```python
-from gnoblin.objects.std import Entry
+from gnoblin.std import Entry
 
 entry = Entry(x=20.0, y=48.0, width=320.0, height=36.0, fill="#313244")
 entry.mount_top()
@@ -413,12 +413,12 @@ entry.focus()
 ```
 
 ```rust
-use gnoblin_std::objects::Entry;
+use gnoblin_std::Entry;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     let entry = Entry::new(&objects)?;
     entry.set_x(20.0)?;
@@ -472,8 +472,8 @@ Toast.show("The shell is running");
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin
-from gnoblin.objects.std import Launcher, NotRespondingAlerts, Toast, WindowMenus
+from gnoblin import BindingEvent, Gnoblin
+from gnoblin.std import Launcher, NotRespondingAlerts, Toast, WindowMenus
 
 gnoblin = Gnoblin.get()
 
@@ -493,14 +493,14 @@ Toast.show("The shell is running")
 use std::rc::Rc;
 use std::time::Instant;
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Launcher, NotRespondingAlerts, Toast, WindowMenus};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Launcher, NotRespondingAlerts, Toast, WindowMenus};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let objects = g.std()?.objects()?;
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
+    let objects = g.objects()?.std()?;
 
     WindowMenus::get(&objects)?.start()?;
     NotRespondingAlerts::get(&objects)?.start()?;

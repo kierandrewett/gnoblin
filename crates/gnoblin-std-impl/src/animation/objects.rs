@@ -10,7 +10,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gnoblin_core::LogLevel;
+use gnoblin_core::host::LogLevel;
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{Callable, ErrorCode, Fail, Obj, Res, Val};

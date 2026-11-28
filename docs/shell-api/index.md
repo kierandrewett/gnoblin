@@ -4,7 +4,7 @@ The runtime API is what a shell sees. Use it to read compositor state, place and
 and ask the session for things. Each language imports it its own way:
 
 - TypeScript: the `gnoblin` global and classes from `"gnoblin-core"` and `"gnoblin-std"`.
-- Python: `gnoblin.objects.model` and `gnoblin.objects.std`.
+- Python: `gnoblin` and `gnoblin.std`.
 - Rust: the `gnoblin_core` and `gnoblin_std` crates.
 
 ::: tabs
@@ -18,7 +18,7 @@ for (const client of gnoblin.clients.toList()) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -27,12 +27,11 @@ for client in gnoblin.clients.to_list():
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let clients = model.clients()?;
     for client in clients.to_list()? {
         model.spawn(&["notify-send".to_owned(), format!("{} is open", client.app_id()?)], None)?;

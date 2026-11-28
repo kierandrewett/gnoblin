@@ -8,8 +8,8 @@ example spells it.
 """
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import MenuEntry, MenuProvider, WindowMenus
+from gnoblin import Gnoblin
+from gnoblin.std import MenuEntry, MenuProvider, WindowMenus
 
 
 def say(text):

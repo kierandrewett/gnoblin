@@ -26,7 +26,7 @@ if (input) {
 
 ```python
 from gnoblin import gnoblin
-from gnoblin.objects.model import Keyboard, Mouse
+from gnoblin import Keyboard, Mouse
 
 for device in gnoblin.input.devices:
     if isinstance(device, Keyboard):
@@ -38,10 +38,10 @@ for device in gnoblin.input.devices:
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{Keyboard, KeyboardOptions, Mouse, MouseOptions};
+use gnoblin_core::{Keyboard, KeyboardOptions, Mouse, MouseOptions};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
     // Each handle sets the setting of every device of its kind.
     let _keyboard = Keyboard::new_with(

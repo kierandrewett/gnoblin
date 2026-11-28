@@ -44,12 +44,11 @@ seat.bind("Super+Down", toggle_window)
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    g.bind("Super+Down", move || -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
+    g.bind("Super+Down", move || -> gnoblin::Res<()> {
         let input = model.input()?;
         let primary = input.primary()?;
         let Some(client) = primary.focused_client()? else { return Ok(()) };

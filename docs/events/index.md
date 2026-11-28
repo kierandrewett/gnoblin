@@ -7,7 +7,7 @@ happens. Each method receives the object first and the event's own values after 
 Each language writes a listener in its own way:
 
 - **TypeScript:** a class that extends a listener class from `gnoblin-core`, attached with `addListener`.
-- **Python:** a class that subclasses a listener class from `gnoblin.objects.model`, attached with `add_listener`.
+- **Python:** a class that subclasses a listener class from `gnoblin`, attached with `add_listener`.
 - **Rust:** a struct of closures, built with `implement` and attached with `add_listener`, or a closure registered
   directly with an `on_*` method.
 
@@ -30,8 +30,8 @@ Gnoblin.get().session.addListener(new Bell());
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, SessionListener
-from gnoblin.objects.std import Toast
+from gnoblin import Gnoblin, SessionListener
+from gnoblin.std import Toast
 
 
 class Bell(SessionListener):
@@ -43,14 +43,14 @@ Gnoblin.get().session.add_listener(Bell())
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::Toast;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::Toast;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let session = ModelRoot::get(&g.objects()?)?.session()?;
-    let toasts = g.std()?.objects()?;
+    let session = Gnoblin::get(&g.objects()?)?.session()?;
+    let toasts = g.objects()?.std()?;
     session
         .on_bell(move |_session, count| {
             let started = std::time::Instant::now();
@@ -118,7 +118,7 @@ Gnoblin.get().clients.addListener(new Titles());
 ```
 
 ```python
-from gnoblin.objects.model import ClientCollectionListener, Gnoblin
+from gnoblin import ClientCollectionListener, Gnoblin
 
 
 class Titles(ClientCollectionListener):
@@ -134,10 +134,9 @@ Gnoblin.get().clients.add_listener(Titles())
 
 ```rust
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
-fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
+fn watch(g: &Gnoblin) -> gnoblin_core::Res<()> {
+    let clients = Gnoblin::get(&g.objects()?)?.clients()?;
     clients
         .on_added(|client, _collection| {
             println!("window {} opened", client.app_id().unwrap_or_default());
@@ -172,7 +171,7 @@ gnoblin.session.on("bell", (_session, count) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -186,11 +185,10 @@ gnoblin.session.on("bell", on_bell)
 
 ```rust
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
-fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
+fn watch(g: &Gnoblin) -> gnoblin_core::Res<()> {
     let objects = g.objects()?;
-    let session = ModelRoot::get(&objects)?.session()?;
+    let session = Gnoblin::get(&objects)?.session()?;
     session.on_bell(|_session, count| println!("Bell number {count}"))?.keep();
     Ok(())
 }

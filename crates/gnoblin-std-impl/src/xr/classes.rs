@@ -4,7 +4,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use gnoblin_core::NodeId;
+use gnoblin_core::host::NodeId;
 use gnoblin_object::server::{Builder, Cx, Inits};
 use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 

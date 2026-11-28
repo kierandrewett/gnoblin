@@ -10,7 +10,7 @@
 //! - [`interp`] brings the interpreter up, once, and puts the finder and the log routing in place.
 //! - [`finder`] serves the package: the modules generated from the catalog and embedded, and the ones this crate builds.
 //! - [`descriptors`] (`gnoblin._base`), [`singleton`] (`gnoblin.api`), [`subscription`] and [`values`] (`gnoblin.events`), [`errors`]
-//!   (`gnoblin.errors`), [`std_base`] and [`std_sugar`] are the hand-written half of the package, in Rust; [`methods`] binds a native
+//!   (`gnoblin.errors`) are the hand-written half of the package, in Rust; [`methods`] binds a native
 //!   function as a method.
 //! - [`logging`] routes Python's own reporting (an uncaught exception, a warning, a `logging` record) into the core's log.
 //! - [`generation`] is the shell this thread runs: the generations the loader has made, which one the module's functions act on, and
@@ -48,9 +48,7 @@ mod module;
 mod object_native;
 mod process;
 mod singleton;
-mod std_base;
 mod std_native;
-mod std_sugar;
 mod subscription;
 mod table;
 mod tree;

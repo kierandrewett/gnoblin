@@ -6,12 +6,12 @@
 //! `secret` secure (their card is secure too), and logs what the menu does: when a card opens, where the keyboard is, and when it closes.
 //! Every line it logs starts with `menus:`.
 
-use gnoblin_std::objects::{MenuEntry, MenuProviderHandlers, WindowMenus};
+use gnoblin_std::{MenuEntry, MenuProviderHandlers, WindowMenus};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let menus = WindowMenus::get(&objects)?;
 
     // The entries: each logs the window it ran on, once the menu has closed. The provider makes them each time a menu opens.
@@ -38,12 +38,12 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     std::mem::forget(provider);
 
     // A window of the app `secret` is secure: its card is.
-    let watching = g.on_client_created(|window| {
+    g.on_client_created(|window, _| {
         if window.app_id().is_ok_and(|id| id == "secret") {
             let _ = window.set_secure(true);
         }
-    })?;
-    std::mem::forget(watching);
+    })?
+    .keep();
 
     menus
         .on_current_changed(move |menu| {

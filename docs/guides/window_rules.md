@@ -24,7 +24,7 @@ gnoblin.clients.on("added", (client) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 
 @Gnoblin.get().clients.on("added")
@@ -34,13 +34,12 @@ def rule(client):
 ```
 
 ```rust
-use gnoblin_core::objects::{Client, ClientCollection, ModelRoot};
-use gnoblin_core::Gnoblin;
+use gnoblin_core::{Client, ClientCollection, Gnoblin};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
+    let clients = Gnoblin::get(&g.objects()?)?.clients()?;
     clients
         .on_added(|client: Client, _clients: ClientCollection| {
             if client.app_id().unwrap_or_default() == "org.example.Editor" {
@@ -95,8 +94,8 @@ gnoblin.clients.on("added", (client) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Workspace, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import Workspace, Workspaces
 
 code = Workspace("code")
 Workspaces.get().add(code)
@@ -109,17 +108,16 @@ def rule(client):
 ```
 
 ```rust
-use gnoblin_core::objects::{Client, ClientCollection, ModelRoot};
-use gnoblin_core::Gnoblin;
-use gnoblin_std::objects::{Workspace, Workspaces};
+use gnoblin_core::{Client, ClientCollection, Gnoblin};
+use gnoblin_std::{Workspace, Workspaces};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let code = Workspace::new(&objects, "code")?;
     Workspaces::get(&objects)?.add(&code)?;
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
+    let clients = Gnoblin::get(&g.objects()?)?.clients()?;
     clients
         .on_added(move |client: Client, _clients: ClientCollection| {
             if client.app_id().unwrap_or_default() == "org.example.Editor" {
@@ -160,7 +158,7 @@ gnoblin.clients.on("added", (client) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 
 @Gnoblin.get().clients.on("added")
@@ -171,13 +169,12 @@ def rule(client):
 ```
 
 ```rust
-use gnoblin_core::objects::{Client, ClientCollection, ModelRoot};
-use gnoblin_core::Gnoblin;
+use gnoblin_core::{Client, ClientCollection, Gnoblin};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
+    let clients = Gnoblin::get(&g.objects()?)?.clients()?;
     clients
         .on_added(|client: Client, _clients: ClientCollection| {
             if client.app_id().unwrap_or_default() == "org.example.Player" {

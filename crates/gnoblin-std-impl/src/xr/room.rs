@@ -12,7 +12,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
-use gnoblin_core::NodeId;
+use gnoblin_core::host::NodeId;
 use gnoblin_object::server::Cx;
 use gnoblin_object::{Closure, Fail, Obj, Res, Val};
 

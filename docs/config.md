@@ -20,7 +20,7 @@ gnoblin.input.primary.bind("Super+Return", () => {
 
 ```python
 from gnoblin import gnoblin
-from gnoblin.objects.std import Workspace, Workspaces
+from gnoblin.std import Workspace, Workspaces
 
 Workspaces.get().add(Workspace("main"))  # floating is the default layout
 
@@ -34,12 +34,16 @@ def terminal():
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    Workspace::builder_in(&g.std()?, "main").add()?; // floating is the default layout
+fn main(gnoblin: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = gnoblin.objects()?.std()?;
+    let main = Workspace::new(&objects, "main")?; // floating is the default layout
+    Workspaces::get(&objects)?.add(&main)?;
 
-    g.bind("<Super>Return", move || {
-        if let Err(error) = g.spawn("foot") {
-            g.log(&format!("cannot start a terminal: {error}"));
+    let shell = gnoblin.clone();
+    gnoblin.bind("Super+Return", move || {
+        let argv = ["foot".to_owned()];
+        if let Err(error) = shell.spawn(&argv, None) {
+            shell.log(&format!("cannot start a terminal: {error}"));
         }
     })?;
     Ok(())

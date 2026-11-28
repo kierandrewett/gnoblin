@@ -1,5 +1,5 @@
 // The shell is this library: build it, and `gnoblin` loads the `.so` and reloads it when you rebuild.
-// It runs once against live objects such as `Workspaces`, `ModelRoot::input()` and `ModelRoot::clients()`.
+// It runs once against live objects such as `Workspaces`, `Gnoblin::input()` and `Gnoblin::clients()`.
 // Nothing is layered under it, so these statements define the desktop; uncomment examples to enable them.
 // This file does what a shell with no shell file does, so a copy you leave unchanged behaves like the default.
 // Build it with `cargo build`; see the shell API pages for each object's details.
@@ -8,20 +8,20 @@ use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{
     Decorations, FloatingLayout, Launcher, MoveBinding, MoveBindingOptions, NotRespondingAlerts, ResizeBinding,
     ResizeBindingOptions, ShowOptions, StripLayout, WindowMenus, WindowState, Workspace, WorkspaceOptions,
     WorkspaceSlideBinding, WorkspaceSlideBindingOptions, Workspaces,
 };
 use gnoblin_std::prelude::*;
 // To use the examples below, add what they name to the import above.
-// use gnoblin_std::objects::MasterStackLayout;
+// use gnoblin_std::MasterStackLayout;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let objects = g.objects()?.std()?;
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
 
     // Four floating workspaces. The first is shown until another is selected.
     // Choose a layout: FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout, DwindleLayout or StripLayout.

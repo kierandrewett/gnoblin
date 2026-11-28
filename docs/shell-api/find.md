@@ -13,7 +13,7 @@ gnoblin.input.primary.bind("Super+f", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -29,13 +29,12 @@ gnoblin.input.primary.bind("Super+f", focus_notes)
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{ClientQuery, ModelRoot, OutputQuery};
+use gnoblin_core::{ClientQuery, Gnoblin, OutputQuery};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let model = Gnoblin::get(&objects)?;
     let input = model.input()?.primary()?;
     input.bind(
         "Super+f",
@@ -91,7 +90,7 @@ const primary = gnoblin.find("Output", { primary: true })[0];
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 focused_notes = gnoblin.find("Window", {"app_id": "org.gnome.Notes", "focused": True})
@@ -100,13 +99,12 @@ primary = gnoblin.find("Output", {"primary": True})[0]
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{ClientQuery, ModelRoot, OutputQuery};
+use gnoblin_core::{ClientQuery, Gnoblin, OutputQuery};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let model = Gnoblin::get(&objects)?;
     let focused_notes = model.find_clients(Some(&ClientQuery {
         app_id: Some("org.gnome.Notes".to_owned()),
         focused: Some(true),
@@ -148,7 +146,7 @@ const drafts = gnoblin.find("Window", (window) => window.title.includes("draft")
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 drafts = gnoblin.find("Window", lambda window: "draft" in window.title)
@@ -156,12 +154,11 @@ drafts = gnoblin.find("Window", lambda window: "draft" in window.title)
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{Client, ModelRoot};
+use gnoblin_core::{Client, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let drafts = model.find_matching::<Client>(|window| Ok(window.title()?.contains("draft")))?;
     Ok(())
 }
@@ -192,8 +189,8 @@ terminals.style.opacity = 0.9;
 ```
 
 ```python
-from gnoblin.objects.model import ClientQuery, Gnoblin
-from gnoblin.objects.std import ClientCollectionAugment
+from gnoblin import ClientQuery, Gnoblin
+from gnoblin.std import ClientCollectionAugment
 
 gnoblin = Gnoblin.get()
 terminals = gnoblin.clients.where(ClientQuery(app_id="foot"))
@@ -202,14 +199,13 @@ ClientCollectionAugment.get().style(terminals).opacity = 0.9
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{ClientQuery, ModelRoot};
+use gnoblin_core::{ClientQuery, Gnoblin};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let model = Gnoblin::get(&objects)?;
     let clients = model.clients()?;
     let terminals = clients.where_(
         &ClientQuery {

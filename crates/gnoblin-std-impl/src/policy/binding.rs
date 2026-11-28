@@ -9,8 +9,8 @@
 use std::mem::ManuallyDrop;
 use std::rc::Rc;
 
-use gnoblin_core::objects::{
-    Binding, BindingEvent, BindingOptions, GestureBindingHandlers, InputContext, ModelRoot, Objects,
+use gnoblin_core::{
+    Binding, BindingEvent, BindingOptions, GestureBindingHandlers, InputContext, Gnoblin, Objects,
     PointerDragBindingHandlers,
 };
 use gnoblin_object::server::{ClassBuilder, Cx};
@@ -120,7 +120,7 @@ impl PolicyBinding {
 
 /// The input context named `name`, or the first seat's.
 fn context_in(objects: &Objects, name: Option<&str>) -> Res<InputContext> {
-    let model = ModelRoot::get(objects)?;
+    let model = Gnoblin::get(objects)?;
     let input = model.input()?;
     match name {
         Some(name) => input

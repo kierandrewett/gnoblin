@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use gnoblin_core::{Gnoblin, LogLevel, Poster, Process, Subscription};
+use gnoblin_core::host::{Host, LogLevel, Poster, Process, Subscription};
 use gnoblin_core_abi::{GnoblinApi, GnoblinCtx};
 use pyo3::prelude::*;
 
@@ -25,7 +25,7 @@ use crate::watch::FileWatch;
 pub(crate) struct ShellState {
     pub(crate) api: &'static GnoblinApi,
     /// The handle of each generation that has not ended.
-    pub(crate) handles: HashMap<GnoblinCtx, Gnoblin>,
+    pub(crate) handles: HashMap<GnoblinCtx, Host>,
     /// The generation `_gnoblin_core` acts on: the one whose script is evaluating, then the one that serves.
     pub(crate) current: GnoblinCtx,
     /// The generation that serves, once one does.
@@ -83,7 +83,7 @@ pub(crate) fn init(api: &'static GnoblinApi) {
 /// # Errors
 ///
 /// This is not the shell thread, or no generation is running.
-pub(crate) fn handle() -> PyResult<Gnoblin> {
+pub(crate) fn handle() -> PyResult<Host> {
     with_state(|state| state.handles.get(&state.current).cloned())
         .ok_or_else(|| to_py(None, WRONG_THREAD))?
         .ok_or_else(|| to_py(None, "no Gnoblin shell generation is running"))
@@ -141,7 +141,7 @@ pub(crate) fn release(ctx: GnoblinCtx) {
 
 /// Points the poster at `ctx`'s generation.
 pub(crate) fn aim_poster(ctx: GnoblinCtx) {
-    let poster = with_state(|state| state.handles.get(&ctx).map(Gnoblin::poster)).flatten();
+    let poster = with_state(|state| state.handles.get(&ctx).map(Host::poster)).flatten();
     *POSTER.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = poster;
 }
 

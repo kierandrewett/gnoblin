@@ -21,8 +21,8 @@ test reads all three.
 """
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import ClientCollection, ClientQuery, Gnoblin
-from gnoblin.objects.std import Display, DisplaySelector, OutputMatch, OutputProfile, TransitionOptions, Workspace
+from gnoblin import ClientCollection, ClientQuery, Gnoblin
+from gnoblin.std import Display, DisplaySelector, OutputMatch, OutputProfile, TransitionOptions, Workspace
 
 
 def say(text):

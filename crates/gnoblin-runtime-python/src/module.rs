@@ -8,7 +8,7 @@
 //! The module is registered with the interpreter before it starts ([`crate::interp`]), so `import _gnoblin_core` finds it in any
 //! script and in the package, and nowhere else: outside a shell there is nothing for it to talk to.
 
-use gnoblin_core::LogLevel;
+use gnoblin_core::host::LogLevel;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};

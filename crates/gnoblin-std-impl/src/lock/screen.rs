@@ -10,8 +10,8 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::Subscription;
-use gnoblin_core::objects::{LockAnswer, SessionLock};
+use gnoblin_core::host::Subscription;
+use gnoblin_core::{LockAnswer, SessionLock};
 use gnoblin_object::server::Cx;
 use gnoblin_object::typed::Listener;
 use gnoblin_object::{Closure, ErrorCode, Fail, Obj, Res, Val};

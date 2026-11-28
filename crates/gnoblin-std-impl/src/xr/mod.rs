@@ -35,8 +35,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 
-use gnoblin_core::objects::Timers;
-use gnoblin_core::{Gnoblin, LogLevel, NodeId, Subscription};
+use gnoblin_core::Timers;
+use gnoblin_core::host::{Host, LogLevel, NodeId, Subscription};
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinNodes};
 use gnoblin_object::server::{Cx, ShellImpl};
 use gnoblin_object::{Closure, Fail, Obj, Res, Val};
@@ -94,7 +94,7 @@ thread_local! {
     /// The XR of each generation of this thread.
     static WORLDS: RefCell<HashMap<GnoblinCtx, Rc<XrWorld>>> = RefCell::new(HashMap::new());
     /// The generations whose seats the library watches for the program's, by their handle on the core.
-    static WATCHED: RefCell<HashMap<GnoblinCtx, Gnoblin>> = RefCell::new(HashMap::new());
+    static WATCHED: RefCell<HashMap<GnoblinCtx, Host>> = RefCell::new(HashMap::new());
 }
 
 /// A listener of the sessions.
@@ -153,7 +153,7 @@ pub(crate) struct Runtime {
 /// The XR of one generation.
 pub(crate) struct XrWorld {
     pub(crate) ctx: GnoblinCtx,
-    pub(crate) g: Gnoblin,
+    pub(crate) g: Host,
     pub(crate) scene: Rc<SceneWorld>,
     pub(crate) rt: RefCell<Runtime>,
     /// The rooms the library set up, by node.
@@ -174,7 +174,7 @@ pub(crate) fn find(ctx: GnoblinCtx) -> Option<Rc<XrWorld>> {
     WORLDS.with(|worlds| worlds.borrow().get(&ctx).cloned())
 }
 
-fn core_fail(error: gnoblin_core::CoreError) -> Fail {
+fn core_fail(error: gnoblin_core::host::CoreError) -> Fail {
     Fail::new(error.kind().code(), error.to_string())
 }
 
@@ -193,7 +193,7 @@ pub(crate) fn watch(ctx: GnoblinCtx) -> Res<()> {
 }
 
 /// Subscribes to the seats of the generation `ctx`, once: a seat that comes, goes or is renamed may start or end a session.
-fn watch_seats(ctx: GnoblinCtx) -> Res<Gnoblin> {
+fn watch_seats(ctx: GnoblinCtx) -> Res<Host> {
     if let Some(g) = WATCHED.with(|watched| watched.borrow().get(&ctx).cloned()) {
         return Ok(g);
     }
@@ -276,7 +276,7 @@ pub(crate) fn world_of(cx: &Cx<'_>) -> Res<Rc<XrWorld>> {
 
 /// The nodes of the tree class `class`, published or the shell's, in the order they came: unparented ones (the program's seat and
 /// controllers) too.
-pub(crate) fn nodes_of(g: &Gnoblin, class: &str) -> Vec<u64> {
+pub(crate) fn nodes_of(g: &Host, class: &str) -> Vec<u64> {
     let Ok(class) = g.class(class) else {
         return Vec::new();
     };
@@ -302,7 +302,7 @@ pub(crate) fn head_camera(world: &XrWorld) -> Option<u64> {
 }
 
 /// The seat of the program's session: the seat named `xr`.
-fn xr_seat(g: &Gnoblin) -> Option<u64> {
+fn xr_seat(g: &Host) -> Option<u64> {
     nodes_of(g, "seat").into_iter().find(|seat| {
         let node = g.node(NodeId(*seat));
         node.is_alive() && node.get_text("name").is_ok_and(|name| name == "xr")

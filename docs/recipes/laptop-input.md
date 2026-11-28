@@ -23,7 +23,7 @@ for (const device of gnoblin.input.devices) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, Keyboard, Touchpad
+from gnoblin import Gnoblin, Keyboard, Touchpad
 
 for device in Gnoblin.get().input.devices:
     if isinstance(device, Keyboard):
@@ -38,7 +38,7 @@ for device in Gnoblin.get().input.devices:
 ```rust skip="a listed InputDevice cannot yet be turned into a Keyboard or Touchpad handle"
 use gnoblin_core::InputManager;
 
-let objects = g.std()?.objects()?;
+let objects = g.objects()?.std()?;
 let input = InputManager::get(&objects)?;
 for device in input.devices()? {
     println!("{}: {:?}", device.name()?, device.capabilities()?);

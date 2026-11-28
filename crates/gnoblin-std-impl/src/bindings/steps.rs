@@ -15,7 +15,7 @@
 //! the seat's `edge_tiling` is on; a resize stops at the window's own minimum and maximum size; a move or resize remembers the
 //! rectangle the window floats at; and the split resize drags the divider of a tiling layout that has one.
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_std_abi::{
     GnoblinStdSplit, STD_AXIS_Y, STD_BINDING_MOVE, STD_BINDING_RESIZE, STD_BINDING_SPLIT_RESIZE, STD_BINDING_SWAP,
     STD_CONSTRAINT_MINIMUM_STRIP, STD_DRAG_CANCEL, STD_DRAG_CLIENT_DIALOG, STD_DRAG_CLIENT_FLOATING,

@@ -27,8 +27,8 @@ client?.properties?.bindDouble("opacity", () => (client.focused ? 1 : 0.7));
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ArcLayout, GnoblinAugment, SceneNode, SceneSize, View, Workspace
+from gnoblin import Gnoblin
+from gnoblin.std import ArcLayout, GnoblinAugment, SceneNode, SceneSize, View, Workspace
 
 gnoblin = Gnoblin.get()
 std = GnoblinAugment.get()
@@ -49,8 +49,8 @@ if client is not None and client.properties is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{
     ArcLayout, ArcLayoutOptions, Scene, SceneNode, SceneNodeOptions, SceneSize, View, ViewOptions, Workspace,
     WorkspaceOptions, Workspaces,
 };
@@ -59,8 +59,8 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let core = g.objects()?;
-    let objects = g.std()?.objects()?;
-    let model = ModelRoot::get(&core)?;
+    let objects = g.objects()?.std()?;
+    let model = Gnoblin::get(&core)?;
     let arc = ArcLayout::new_with(
         &objects,
         ArcLayoutOptions {
@@ -167,19 +167,19 @@ room.place({ rotation: { x: 0, y: Math.PI / 4, z: 0 }, uniformScale: 1 });
 ```
 
 ```python
-from gnoblin.objects.std import SceneNode, TransformParts, Vec3
+from gnoblin.std import SceneNode, TransformParts, Vec3
 
 room = SceneNode(id="xr-room", position=Vec3(x=0.0, y=1.2, z=-2.0))
 room.place(TransformParts(rotation=Vec3(x=0.0, y=3.14159 / 4, z=0.0), uniform_scale=1.0))
 ```
 
 ```rust
-use gnoblin_std::objects::{SceneNode, SceneNodeOptions, TransformParts, Vec3};
+use gnoblin_std::{SceneNode, SceneNodeOptions, TransformParts, Vec3};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let room = SceneNode::new_with(
         &objects,
         SceneNodeOptions {
@@ -247,8 +247,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import GnoblinAugment, InputMode, PointerEdge, SceneSize, View
+from gnoblin import Gnoblin
+from gnoblin.std import GnoblinAugment, InputMode, PointerEdge, SceneSize, View
 
 gnoblin = Gnoblin.get()
 client = gnoblin.input.primary.focused_client
@@ -272,15 +272,15 @@ if client is not None:
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{InputMode, PointerEdge, Scene, SceneSize, View, ViewOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{InputMode, PointerEdge, Scene, SceneSize, View, ViewOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let core = g.objects()?;
-    let objects = g.std()?.objects()?;
-    let model = ModelRoot::get(&core)?;
+    let objects = g.objects()?.std()?;
+    let model = Gnoblin::get(&core)?;
     let input = model.input()?;
     let primary = input.primary()?;
     let Some(client) = primary.focused_client()? else {
@@ -343,8 +343,8 @@ gnoblin.scene.add(panel);
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ContentFit, GnoblinAugment, InputMode, SceneSize, View
+from gnoblin import Gnoblin
+from gnoblin.std import ContentFit, GnoblinAugment, InputMode, SceneSize, View
 
 gnoblin = Gnoblin.get()
 panel = View(size=SceneSize(width=0.9, height=0.55), fit=ContentFit.CONTAIN, input=InputMode.FORWARD)
@@ -355,15 +355,15 @@ GnoblinAugment.get().scene.add(panel)
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{ContentFit, InputMode, Scene, SceneSize, View, ViewOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{ContentFit, InputMode, Scene, SceneSize, View, ViewOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let core = g.objects()?;
-    let objects = g.std()?.objects()?;
-    let model = ModelRoot::get(&core)?;
+    let objects = g.objects()?.std()?;
+    let model = Gnoblin::get(&core)?;
     let panel = View::new_with(
         &objects,
         ViewOptions {
@@ -428,8 +428,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Easing, GnoblinAugment, TransitionOptions
+from gnoblin import Gnoblin
+from gnoblin.std import Easing, GnoblinAugment, TransitionOptions
 
 gnoblin = Gnoblin.get()
 client = gnoblin.input.primary.focused_client
@@ -444,13 +444,13 @@ if client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Easing, TransitionOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Easing, TransitionOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let input = model.input()?;
     let primary = input.primary()?;
     let Some(client) = primary.focused_client()? else {
@@ -493,18 +493,18 @@ const arc = new ArcLayout({ radius: 1200, spacing: 0.35 });
 ```
 
 ```python
-from gnoblin.objects.std import ArcLayout
+from gnoblin.std import ArcLayout
 
 arc = ArcLayout(radius=1200, spacing=0.35)
 ```
 
 ```rust
-use gnoblin_std::objects::{ArcLayout, ArcLayoutOptions};
+use gnoblin_std::{ArcLayout, ArcLayoutOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let _arc = ArcLayout::new_with(
         &objects,
         ArcLayoutOptions {
@@ -555,7 +555,7 @@ client?.properties?.bindDouble("opacity", () => Math.max(0.25, 1 - client.x / 25
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 client = gnoblin.input.primary.focused_client
@@ -565,12 +565,12 @@ if client is not None and client.properties is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let input = model.input()?;
     let primary = input.primary()?;
     let Some(client) = primary.focused_client()? else {

@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_object::{Res, Val};
 
 use crate::nodes;

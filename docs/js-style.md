@@ -29,8 +29,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientAugment, ClientStyle, Shadow, StyleQuery
+from gnoblin import Gnoblin
+from gnoblin.std import ClientAugment, ClientStyle, Shadow, StyleQuery
 
 gnoblin = Gnoblin.get()
 
@@ -44,13 +44,13 @@ if client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::{ClientQuery, ModelRoot};
-use gnoblin_std::objects::Shadow;
+use gnoblin_core::{ClientQuery, Gnoblin};
+use gnoblin_std::Shadow;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let clients = model.clients()?;
     clients.style()?.set_opacity(0.95)?;
     clients.style()?.set_shadows(&[Shadow {
@@ -117,8 +117,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientAugment, StyleProperty
+from gnoblin import Gnoblin
+from gnoblin.std import ClientAugment, StyleProperty
 
 gnoblin = Gnoblin.get()
 
@@ -132,13 +132,13 @@ if client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::StyleProperty;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::StyleProperty;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let Some(client) = model.clients()?.focused()? else {
         return Ok(());
     };
@@ -175,8 +175,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientAugment, StyleProperty
+from gnoblin import Gnoblin
+from gnoblin.std import ClientAugment, StyleProperty
 
 gnoblin = Gnoblin.get()
 
@@ -191,13 +191,13 @@ if client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::StyleProperty;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::StyleProperty;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let Some(client) = model.clients()?.focused()? else {
         return Ok(());
     };
@@ -281,7 +281,7 @@ console.log(style.backdropFilter[0] instanceof BlurFilter); // true
 ```
 
 ```python
-from gnoblin.objects.std import BlurFilter, ClientStyle, SaturateFilter
+from gnoblin.std import BlurFilter, ClientStyle, SaturateFilter
 
 style = ClientStyle.of_clients()
 style.backdrop_filter = [{"blur": 18}, {"saturate": 1.25}]  # the shorthand
@@ -290,13 +290,13 @@ print(isinstance(style.backdrop_filter[0], BlurFilter))  # True
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{BlurFilter, Filter, SaturateFilter};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{BlurFilter, Filter, SaturateFilter};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let clients = model.clients()?;
     let style = clients.style()?;
     style.set_backdrop_filter(&[BlurFilter { radius: 18.0 }.into(), SaturateFilter { amount: 1.25 }.into()])?;
@@ -325,7 +325,7 @@ style.shadows = shadows; // every client that inherits the list follows
 ```
 
 ```python
-from gnoblin.objects.std import ClientStyle, Shadow
+from gnoblin.std import ClientStyle, Shadow
 
 style = ClientStyle.of_clients()
 style.shadows = [Shadow(blur=10)]
@@ -335,13 +335,13 @@ style.shadows = shadows  # every client that inherits the list follows
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::Shadow;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::Shadow;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let clients = model.clients()?;
     let style = clients.style()?;
     style.set_shadows(&[Shadow {
@@ -380,7 +380,7 @@ style.backdropFilterList().add(new BlurFilter({ radius: 18 }));
 ```
 
 ```python
-from gnoblin.objects.std import BlurFilter, Border, ClientStyle, Shadow
+from gnoblin.std import BlurFilter, Border, ClientStyle, Shadow
 
 style = ClientStyle.of_clients()
 style.corner_radius = 12
@@ -390,13 +390,13 @@ style.backdrop_filter_list().add(BlurFilter(radius=18))
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{BlurFilter, Border, CornerRadius, Shadow};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{BlurFilter, Border, CornerRadius, Shadow};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let clients = model.clients()?;
     let style = clients.style()?;
     style.set_corner_radius(&CornerRadius {
@@ -518,7 +518,7 @@ style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];
 ```
 
 ```python
-from gnoblin.objects.std import Border, ClientStyle, CornerRadius, Shadow
+from gnoblin.std import Border, ClientStyle, CornerRadius, Shadow
 
 style = ClientStyle.of_clients()
 style.corner_radius = CornerRadius(all=12)
@@ -527,13 +527,13 @@ style.shadows = [Shadow(y=8, blur=24, color="#00000066")]
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Border, CornerRadius, Shadow};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Border, CornerRadius, Shadow};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let clients = model.clients()?;
     let style = clients.style()?;
     style.set_corner_radius(&CornerRadius {

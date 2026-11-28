@@ -63,8 +63,8 @@ gnoblin.clients.addListener(
 ```
 
 ```python
-from gnoblin.objects.model import Client, Gnoblin
-from gnoblin.objects.std import Easing, GnoblinAugment, TransitionOptions
+from gnoblin import Client, Gnoblin
+from gnoblin.std import Easing, GnoblinAugment, TransitionOptions
 
 gnoblin = Gnoblin.get()
 
@@ -85,19 +85,18 @@ def fade_in(client: Client) -> None:
 
 ```rust
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Easing, TransitionOptions};
+use gnoblin_std::{Easing, TransitionOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.objects()?;
-    let clients = ModelRoot::get(&objects)?.clients()?;
+    let clients = Gnoblin::get(&objects)?.clients()?;
     clients
         .on_added(move |client, _collection| {
             if client.app_id().unwrap_or_default() == "org.gnome.TextEditor" {
                 let _ = client.set_opacity(0.0);
-                let Ok(model) = ModelRoot::get(&objects) else {
+                let Ok(model) = Gnoblin::get(&objects) else {
                     return;
                 };
                 let _ = model.request_transition(

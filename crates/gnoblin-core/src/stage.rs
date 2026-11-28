@@ -2,10 +2,10 @@
 //!
 //! The object model's setters (`client.opacity = 0.5`) write a node property of the core's own. A library that stages the writes of a
 //! callback (the transition engine of `libgnoblin-std` does, to send them as timed writes of one `tween`) installs a write stage with
-//! [`Gnoblin::stage_writes`]: the core offers every such write to it first, and a write it keeps is not sent. The writes the node API
-//! makes ([`Node::set`](crate::Node::set)) are never offered, so what the library staged goes out through them.
+//! [`Host::stage_writes`]: the core offers every such write to it first, and a write it keeps is not sent. The writes the node API
+//! makes ([`Node::set`](crate::host::Node::set)) are never offered, so what the library staged goes out through them.
 //!
-//! A core built before the function has no write stage: [`Gnoblin::stage_writes`] fails with [`ErrorKind::Unsupported`](crate::ErrorKind)
+//! A core built before the function has no write stage: [`Host::stage_writes`] fails with [`ErrorKind::Unsupported`](crate::host::ErrorKind)
 //! and the writes of an object's setters go out as they always did.
 #![allow(unsafe_code)]
 
@@ -16,7 +16,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use gnoblin_core_abi::{self as abi, GnoblinApi, GnoblinNode, GnoblinStr, GnoblinValue};
 
 use crate::error::{CoreError, ErrorKind, Result, check};
-use crate::gnoblin::Gnoblin;
+use crate::gnoblin::Host;
 use crate::owned::{Lent, Value};
 use crate::value::NodeId;
 
@@ -36,7 +36,7 @@ struct StageCallbacks {
 /// An installed write stage. Dropping it clears the hook, so every path that ends the staging (a commit, an abort, a failed callback, a
 /// generation that goes away) leaves the core's setters writing as they did.
 pub struct WriteStage {
-    g: Gnoblin,
+    g: Host,
     hooks: Box<StageCallbacks>,
 }
 
@@ -109,7 +109,7 @@ unsafe extern "C" fn peek_write(user: *mut c_void, node: GnoblinNode, key: Gnobl
     1
 }
 
-impl Gnoblin {
+impl Host {
     /// Installs a write stage on this thread: until the returned guard is dropped, every write an object's setter of the core makes to a
     /// node property (a window's `opacity`, `x`, `rotation`) is first offered to `stage(node, key, value)`, and the core does not send it
     /// when it returns true. Reads of those properties ask `peek(node, key)` first and answer with the value it returns. A timed write
@@ -117,7 +117,7 @@ impl Gnoblin {
     ///
     /// # Errors
     ///
-    /// [`ErrorKind::Unsupported`](crate::ErrorKind) on a core built before the write stage: its setters send every write.
+    /// [`ErrorKind::Unsupported`](crate::host::ErrorKind) on a core built before the write stage: its setters send every write.
     pub fn stage_writes(
         &self,
         stage: impl Fn(NodeId, &str, &Value) -> bool + 'static,

@@ -16,7 +16,7 @@ input.bind("Super+Shift+r", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -39,11 +39,10 @@ use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let input = model.input()?;
     let context = input.primary()?;
     let locker = Rc::clone(&model);
@@ -133,7 +132,7 @@ gnoblin.session.suspend().catch((error, code) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -150,11 +149,10 @@ use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let session = model.session()?;
     let notifier = Rc::clone(&model);
     session.suspend()?.catch(move |error, code| {

@@ -34,7 +34,8 @@ unsafe extern "C" {
 
 #[cfg_attr(not(feature = "wrong-abi"), gnoblin::main)]
 #[cfg_attr(feature = "wrong-abi", allow(dead_code))]
-fn main(g: &Gnoblin) -> Result<(), String> {
+fn main(root: &Gnoblin) -> Result<(), String> {
+    let g = root.host();
     g.log(&format!("shell-hot {LABEL} init"));
     g.on_signal_named("lock", "requested", |_event| {
         say(&format!("[shell-hot {LABEL}] lock.requested"))

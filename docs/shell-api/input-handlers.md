@@ -45,7 +45,7 @@ gnoblin.input.primary?.bindDrag("Alt+MouseMiddle+Drag", new Nudge(), { id: "nudg
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, BindingOptions, Client, Gnoblin, PointerDragBinding
+from gnoblin import BindingEvent, BindingOptions, Client, Gnoblin, PointerDragBinding
 
 gnoblin = Gnoblin.get()
 
@@ -85,10 +85,10 @@ use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{BindingEvent, BindingOptions, Client, InputManager, PointerDragBindingHandlers};
+use gnoblin_core::{BindingEvent, BindingOptions, Client, InputManager, PointerDragBindingHandlers};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
     let primary = InputManager::get(&objects)?.primary()?;
     let grab: Rc<RefCell<Option<(Client, f64, f64)>>> = Rc::new(RefCell::new(None));
@@ -208,7 +208,7 @@ new SplitResizeBinding({ trigger: "Alt+MouseRight+Drag" }).install();
 ```
 
 ```python
-from gnoblin.objects.std import MasterStackLayout, SplitResizeBinding, SwapBinding, Workspace, Workspaces
+from gnoblin.std import MasterStackLayout, SplitResizeBinding, SwapBinding, Workspace, Workspaces
 
 Workspaces.get().add(Workspace("dev", layout=MasterStackLayout(ratio=0.6)))
 SwapBinding(trigger="Alt+MouseLeft+Drag").install()
@@ -216,24 +216,24 @@ SplitResizeBinding(trigger="Alt+MouseRight+Drag").install()
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 use gnoblin_std::GnoblinStdExt;
-use gnoblin_std::objects::{
-    MasterStackLayout, MasterStackLayoutOptions, ModelRootStdExt, SplitResizeBinding, SplitResizeBindingOptions,
+use gnoblin_std::ObjectsStdExt;
+use gnoblin_std::{
+    MasterStackLayout, MasterStackLayoutOptions, GnoblinStdExt, SplitResizeBinding, SplitResizeBindingOptions,
     SwapBinding, SwapBindingOptions, Workspace, WorkspaceOptions,
 };
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
+    let std = g.objects()?.std()?;
     let layout = MasterStackLayout::new_with(
         &std,
         MasterStackLayoutOptions { ratio: Some(0.6), master_count: None, gap: None, orientation: None },
     )?
     .as_layout()?;
     let dev = Workspace::new_with(&std, "dev", WorkspaceOptions { layout: Some(layout), ..WorkspaceOptions::default() })?;
-    ModelRoot::get(&g.objects()?)?.workspaces()?.add(&dev)?;
+    Gnoblin::get(&g.objects()?)?.workspaces()?.add(&dev)?;
     SwapBinding::new_with(
         &std,
         SwapBindingOptions { priority: None, trigger: Some("Alt+MouseLeft+Drag".to_owned()) },
@@ -323,8 +323,8 @@ new SplitResizeBinding().install();
 ```
 
 ```python
-from gnoblin.objects.model import Client
-from gnoblin.objects.std import (
+from gnoblin import Client
+from gnoblin.std import (
     Layout,
     LayoutContext,
     LayoutPlacement,
@@ -385,11 +385,12 @@ SplitResizeBinding().install()
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gnoblin_core::objects::{Client, ModelRoot};
-use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_core::{Client, Gnoblin};
+use gnoblin_core::{self as gnoblin};
 use gnoblin_std::GnoblinStdExt;
-use gnoblin_std::objects::{
-    LayoutContext, LayoutHandlers, LayoutPlacement, LayoutRect, LayoutSplit, ModelRootStdExt, SplitAxis,
+use gnoblin_std::ObjectsStdExt;
+use gnoblin_std::{
+    LayoutContext, LayoutHandlers, LayoutPlacement, LayoutRect, LayoutSplit, GnoblinStdExt, SplitAxis,
     SplitResizeBinding, SplitResizeBindingOptions, Workspace,
 };
 
@@ -402,7 +403,7 @@ struct Halves {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
+    let std = g.objects()?.std()?;
     let halves = Rc::new(RefCell::new(Halves { ratio: 0.5, width: 0.0, start: 0.5, changes: 0 }));
     let compute = {
         let halves = Rc::clone(&halves);
@@ -486,7 +487,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     .implement(&std)?;
     let workspace = Workspace::new(&std, "halves")?;
     workspace.set_layout(&layout)?;
-    ModelRoot::get(&g.objects()?)?.workspaces()?.add(&workspace)?;
+    Gnoblin::get(&g.objects()?)?.workspaces()?.add(&workspace)?;
     SplitResizeBinding::new_with(&std, SplitResizeBindingOptions { priority: None, trigger: None })?.install(None)?;
     Ok(())
 }
@@ -524,7 +525,7 @@ if (dev?.clients && first && second) {
 ```
 
 ```python
-from gnoblin.objects.std import Workspaces
+from gnoblin.std import Workspaces
 
 dev = Workspaces.get().by_id("dev")
 if dev is not None and dev.clients is not None:
@@ -534,13 +535,12 @@ if dev is not None and dev.clients is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
-use gnoblin_std::objects::ModelRootStdExt;
+use gnoblin_std::GnoblinStdExt;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    if let Some(dev) = ModelRoot::get(&g.objects()?)?.workspaces()?.by_id("dev")? {
+    if let Some(dev) = Gnoblin::get(&g.objects()?)?.workspaces()?.by_id("dev")? {
         if let Some(clients) = dev.clients()? {
             let members = clients.members()?;
             if let [first, second, ..] = members.as_slice() {
@@ -602,7 +602,7 @@ nudge?.unbind();
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, BindingOptions, InputManager, PointerDragBinding
+from gnoblin import BindingEvent, BindingOptions, InputManager, PointerDragBinding
 
 
 class Decline(PointerDragBinding):
@@ -617,10 +617,10 @@ nudge.unbind()
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{BindingEvent, InputManager, PointerDragBindingHandlers};
+use gnoblin_core::{BindingEvent, InputManager, PointerDragBindingHandlers};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
     let primary = InputManager::get(&objects)?.primary()?;
     let handler = PointerDragBindingHandlers::new(|_event: BindingEvent| Ok(false)).implement(&objects)?;

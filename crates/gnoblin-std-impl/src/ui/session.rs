@@ -22,7 +22,7 @@ const SEAT_ACTIONS: [(&str, &str); 3] = [
 
 impl Ui {
     /// The nodes of the class `class` under the root.
-    fn root_children_of(&self, class: &str) -> Vec<gnoblin_core::Node> {
+    fn root_children_of(&self, class: &str) -> Vec<gnoblin_core::host::Node> {
         let Ok(root) = self.g.root() else {
             return Vec::new();
         };

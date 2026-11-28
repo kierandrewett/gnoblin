@@ -22,7 +22,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::{Gnoblin, Rect};
+use gnoblin_core::Gnoblin;
+use gnoblin_core::host::Rect;
 
 /// The time as the test reads it: milliseconds since the epoch.
 fn now_ms() -> u128 {
@@ -40,7 +41,8 @@ fn note(dir: &Path, name: &str, text: &str) {
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(root: &Gnoblin) -> gnoblin::host::Result<()> {
+    let g = root.host();
     let dir = PathBuf::from(
         std::env::var_os("GNOBLIN_FIXTURE_DIR")
             .expect("GNOBLIN_FIXTURE_DIR names the directory the test commands the shell through"),
@@ -51,7 +53,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let placed = Rc::new(Cell::new(0u32));
     let place = {
         let placed = Rc::clone(&placed);
-        move |window: &gnoblin::Window| {
+        move |window: &gnoblin::host::Window| {
             let n = placed.get();
             placed.set(n + 1);
             let _ = window.set_geometry(Rect::new(300.0 + 20.0 * f64::from(n), 200.0, 400.0, 300.0));
@@ -158,7 +160,11 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 }
 
 /// Puts up the lock screen: a canvas under the lock node, the keyboard on it, and the lock engaged.
-fn raise_screen(g: &Gnoblin, lock: &gnoblin::Node, seat: &gnoblin::Node) -> gnoblin::Result<()> {
+fn raise_screen(
+    g: &gnoblin::host::Host,
+    lock: &gnoblin::host::Node,
+    seat: &gnoblin::host::Node,
+) -> gnoblin::host::Result<()> {
     let screen = g.create_node("canvas")?;
     screen.set("width", 300.0)?;
     screen.set("height", 100.0)?;

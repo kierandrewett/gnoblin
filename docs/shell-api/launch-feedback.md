@@ -19,7 +19,7 @@ gnoblin.input.primary.bind("Super+e", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin, Launch, LaunchListener, LaunchOptions
+from gnoblin import BindingEvent, Gnoblin, Launch, LaunchListener, LaunchOptions
 
 gnoblin = Gnoblin.get()
 
@@ -43,17 +43,17 @@ gnoblin.input.primary.bind("Super+e", open_terminal)
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::{LaunchListenerHandlers, LaunchOptions, ModelRoot};
-use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_core::{LaunchListenerHandlers, LaunchOptions, Gnoblin};
+use gnoblin_core::{self as gnoblin};
 
 fn notify_argv(text: &str) -> [String; 2] {
     ["notify-send".to_owned(), text.to_owned()]
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = Rc::new(ModelRoot::get(&objects)?);
+    let model = Rc::new(Gnoblin::get(&objects)?);
     let launches = model.launches()?;
     let input = model.input()?;
     let context = input.primary()?;

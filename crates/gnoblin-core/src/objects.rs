@@ -1,7 +1,7 @@
 //! The typed object model of the core, `gnoblin.model`.
 //!
 //! The classes are written by `gnoblin-sdkgen` from the catalog (`crates/gnoblin-core-abi/schema`) into `OUT_DIR` at build time, over the
-//! client of the object protocol (`gnoblin-object`). [`Gnoblin::objects`] is the one way in: it asks the installed core for the table
+//! client of the object protocol (`gnoblin-object`). [`Host::objects`] is the one way in: it asks the installed core for the table
 //! that serves the namespace and gives the handle every class is made from. Nothing of the model is a function of the core's own
 //! table, so a class added to the catalog is a class here with no change to this file.
 #![allow(unsafe_code)]
@@ -12,7 +12,7 @@ use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinObjectApi};
 use gnoblin_object::client::Api;
 
 use crate::error::{CoreError, ErrorKind, Result};
-use crate::gnoblin::Gnoblin;
+use crate::gnoblin::Host;
 
 /// The failure a closure of a typed class answers with (`Result<_, Fail>`). `?` on a call of the core converts into it.
 pub use gnoblin_object::Fail;
@@ -25,7 +25,7 @@ mod generated_api {
 pub use generated_api::*;
 
 thread_local! {
-    /// The handle `Gnoblin::objects` made last on this thread, with the generation it is for: a shell opens the model once.
+    /// The handle `Host::objects` made last on this thread, with the generation it is for: a shell opens the model once.
     static OPENED: RefCell<Option<(GnoblinCtx, Objects)>> = const { RefCell::new(None) };
 }
 
@@ -43,7 +43,7 @@ impl From<CoreError> for Fail {
     }
 }
 
-impl Gnoblin {
+impl Host {
     /// The typed object model of `gnoblin.model` for this generation. Asked again, it gives the handle it made before, so the ids of
     /// the classes are looked up once.
     ///
@@ -75,7 +75,7 @@ impl Gnoblin {
 }
 
 /// The typed model of the generation `ctx`: what another library's typed API reads a `Client` (or any class of the model) it hands out
-/// with, since that value names the core's table and not its own. It is [`Gnoblin::objects`] of that generation.
+/// with, since that value names the core's table and not its own. It is [`Host::objects`] of that generation.
 ///
 /// # Errors
 ///
@@ -85,4 +85,53 @@ pub fn for_generation(ctx: GnoblinCtx) -> gnoblin_object::Res<Objects> {
     crate::private::gnoblin_for(ctx)
         .and_then(|g| g.objects())
         .map_err(Fail::from)
+}
+
+/// What a shell does with the root of the object model besides reading its classes: log, claim key chords and reach the handle the
+/// classes are made from. They are the calls of the entry function's generation, which is the one running on this thread.
+impl Gnoblin {
+    /// The handle of the generation that is running: the host layer under the root.
+    fn running() -> &'static Host {
+        crate::private::current_gnoblin().expect("the root `Gnoblin` is used inside a shell's generation")
+    }
+
+    /// Writes an informational line to the core's log, tagged with this generation.
+    pub fn log(&self, message: &str) {
+        Self::running().log(message);
+    }
+
+    /// Writes a line at `level` to the core's log.
+    pub fn log_at(&self, level: crate::host::LogLevel, message: &str) {
+        Self::running().log_at(level, message);
+    }
+
+    /// The handle every class is made from: `Workspace::new(&gnoblin.objects()?, "main")`. Asked again, it gives the handle it made
+    /// before.
+    ///
+    /// # Errors
+    ///
+    /// The installed core does not serve the namespace.
+    pub fn objects(&self) -> Result<Objects> {
+        Self::running().objects()
+    }
+
+    /// Claims the key chord `chord` (`Super+Return` or `<Super>Return`) and calls `f` each time it is pressed. The compositor withholds
+    /// the chord from every client. `f` returns `()` or a `Result` (an `Err` is logged).
+    ///
+    /// # Errors
+    ///
+    /// The compositor refuses the chord.
+    pub fn bind<F, R>(&self, chord: &str, f: F) -> Result<crate::host::Subscription>
+    where
+        F: FnMut() -> R + 'static,
+        R: crate::host::CallbackResult,
+    {
+        Self::running().bind(chord, f)
+    }
+
+    /// The host layer of the running generation, for the language runtimes and the libraries built on this crate.
+    #[doc(hidden)]
+    pub fn host(&self) -> &'static Host {
+        Self::running()
+    }
 }

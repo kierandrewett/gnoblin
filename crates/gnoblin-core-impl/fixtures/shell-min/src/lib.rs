@@ -11,7 +11,8 @@ fn say(line: &str) {
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin_core::Result<()> {
+fn main(root: &Gnoblin) -> gnoblin_core::host::Result<()> {
+    let g = root.host();
     g.log("shell-min init (core only)");
     g.on_signal_named("lock", "requested", |_event| say("[shell-min] lock.requested"))?;
     g.on_signal_named("tree", "attached", |_event| panic!("boom from the shell callback"))?;

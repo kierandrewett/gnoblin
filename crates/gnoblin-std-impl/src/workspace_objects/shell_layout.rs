@@ -8,7 +8,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::{LogLevel, Rect};
+use gnoblin_core::host::{LogLevel, Rect};
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::{Cx, ShellImpl};
 use gnoblin_object::{Fail, MemberId, Res, Val};

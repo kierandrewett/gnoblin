@@ -17,7 +17,7 @@ gnoblin.input?.primary?.bind("Super+t", () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -36,13 +36,12 @@ use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let shell = Rc::clone(&model);
-    g.bind("Super+t", move || -> gnoblin::Result<()> {
+    g.bind("Super+t", move || -> gnoblin::Res<()> {
         let clients = shell.clients()?;
         for client in clients.to_list()? {
             if client.app_id()? == "foot" {
@@ -96,7 +95,7 @@ const titles = all.map((client) => client.title);
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -107,11 +106,10 @@ titles = [client.title for client in gnoblin.clients.to_list()]
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let mut terminals = Vec::new();
     let mut titles = Vec::new();
     let clients = model.clients()?;

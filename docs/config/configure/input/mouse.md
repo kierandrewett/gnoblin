@@ -21,7 +21,7 @@ for (const device of gnoblin.input.devices) {
 ```
 
 ```python
-from gnoblin.objects.model import AccelerationProfile, Gnoblin, Mouse
+from gnoblin import AccelerationProfile, Gnoblin, Mouse
 
 for device in Gnoblin.get().input.devices:
     if isinstance(device, Mouse):
@@ -33,10 +33,10 @@ for device in Gnoblin.get().input.devices:
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{AccelerationProfile, Mouse, MouseOptions};
+use gnoblin_core::{AccelerationProfile, Mouse, MouseOptions};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
     let _mouse = Mouse::new_with(
         &objects,

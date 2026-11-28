@@ -106,7 +106,7 @@ pub(crate) fn open(ui: &Rc<Ui>, cx: &mut Cx<'_>, spawn: Option<Closure>) -> Res<
 /// Starts `text` as the core's `shell` does.
 fn core_spawn(ui: &Ui, text: &str) -> Result<(), String> {
     let objects = ui.g.objects().map_err(|error| error.to_string())?;
-    let model = gnoblin_core::objects::ModelRoot::get(&objects).map_err(|fail| fail.to_string())?;
+    let model = gnoblin_core::Gnoblin::get(&objects).map_err(|fail| fail.to_string())?;
     model.shell(text, None).map(drop).map_err(|fail| fail.to_string())
 }
 

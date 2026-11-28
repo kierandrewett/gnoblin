@@ -121,8 +121,8 @@ input.bind("Super+space", () => {
 # Check changes with `gnoblinctl check shell.py`; see the shell API pages for each object's details.
 
 from gnoblin import gnoblin
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import (
+from gnoblin import Gnoblin
+from gnoblin.std import (
     Decorations,
     FloatingLayout,
     InputContextAugment,
@@ -140,7 +140,7 @@ from gnoblin.objects.std import (
 )
 
 # To use the examples below, add what they name to the import above.
-# from gnoblin.objects.std import MasterStackLayout
+# from gnoblin.std import MasterStackLayout
 
 # Four floating workspaces. The first is shown until another is selected.
 # Choose a layout: FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout, DwindleLayout or StripLayout.
@@ -238,7 +238,7 @@ input.bind("Super+space", open_launcher)
 
 ```rust
 // The shell is this library: build it, and `gnoblin` loads the `.so` and reloads it when you rebuild.
-// It runs once against live objects such as `Workspaces`, `ModelRoot::input()` and `ModelRoot::clients()`.
+// It runs once against live objects such as `Workspaces`, `Gnoblin::input()` and `Gnoblin::clients()`.
 // Nothing is layered under it, so these statements define the desktop; uncomment examples to enable them.
 // This file does what a shell with no shell file does, so a copy you leave unchanged behaves like the default.
 // Build it with `cargo build`; see the shell API pages for each object's details.
@@ -247,20 +247,19 @@ use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{
+use gnoblin_std::{
     Decorations, FloatingLayout, Launcher, MoveBinding, MoveBindingOptions, NotRespondingAlerts, ResizeBinding,
     ResizeBindingOptions, ShowOptions, WindowMenus, WindowState, Workspace, WorkspaceOptions, WorkspaceSlideBinding,
     WorkspaceSlideBindingOptions, Workspaces,
 };
 use gnoblin_std::prelude::*;
 // To use the examples below, add what they name to the import above.
-// use gnoblin_std::objects::MasterStackLayout;
+// use gnoblin_std::MasterStackLayout;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let objects = g.objects()?.std()?;
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
 
     // Four floating workspaces. The first is shown until another is selected.
     // Choose a layout: FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout, DwindleLayout or StripLayout.
@@ -401,7 +400,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     )?;
 
     // Add custom key bindings here. A key already bound above is refused; remove that binding first.
-    // seat.bind("Super+Return", Some(|_event| { let _ = g.spawn("foot"); Ok(true) }), None)?;
+    // seat.bind("Super+Return", Some(|_event| { let _ = g.spawn(&["foot".to_owned()], None); Ok(true) }), None)?;
 
     Ok(())
 }
@@ -421,7 +420,7 @@ gnoblin.input.primary.bind("Super+Return", () => {
 
 ```python
 from gnoblin import gnoblin
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 def open_terminal(_event):
     gnoblin.spawn(["foot"])
@@ -433,17 +432,16 @@ Gnoblin.get().input.primary.bind("Super+Return", open_terminal)
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let input = model.input()?;
     let seat = input.primary()?;
     let shell = g.clone();
     seat.bind("Super+Return", Some(move |_event| {
-        let _ = shell.spawn("foot");
+        let _ = shell.spawn(&["foot".to_owned()], None);
         Ok(true)
     }), None)?;
     Ok(())

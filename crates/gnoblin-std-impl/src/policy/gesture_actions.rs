@@ -7,8 +7,8 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::GestureKind;
-use gnoblin_core::objects::{BindingEvent, GestureBindingHandlers};
+use gnoblin_core::host::GestureKind;
+use gnoblin_core::{BindingEvent, GestureBindingHandlers};
 use gnoblin_object::server::Builder;
 use gnoblin_object::{Closure, Fail, Res, Val};
 use gnoblin_std_abi::{STD_WAY_DOWN, STD_WAY_IN, STD_WAY_LEFT, STD_WAY_NONE, STD_WAY_OUT, STD_WAY_RIGHT, STD_WAY_UP};

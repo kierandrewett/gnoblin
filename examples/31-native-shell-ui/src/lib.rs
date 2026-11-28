@@ -13,12 +13,12 @@
 //! Every line it logs starts with `shell-ui:`. Build it with `cargo build -p gnoblin-example-native-shell-ui` and run it with
 //! `gnoblin ./target/debug/libnative_shell_ui.so`.
 
-use gnoblin_std::objects::{Launcher, LockScreen, NotRespondingAlerts, Overview, PaintKind, PaintOp, Toast, Ui};
+use gnoblin_std::{Launcher, LockScreen, NotRespondingAlerts, Overview, PaintKind, PaintOp, Toast, Ui};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     // A long delay, so that a Return pressed at once finds Force quit still off.
     let alerts = NotRespondingAlerts::get(&objects)?;

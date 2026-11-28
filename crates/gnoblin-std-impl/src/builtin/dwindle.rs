@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 
 use super::{ActionEnv, ActionResult, DividerSpec, Imp, OptionSet, Pt, SplitSpec, Val, clamp, geometry, tile};
 use crate::error::{Fail, Res};

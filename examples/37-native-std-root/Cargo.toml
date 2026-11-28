@@ -11,8 +11,8 @@ publish.workspace = true
 name = "native_std_root"
 crate-type = ["cdylib"]
 
-# The shell depends on the std SDK and the core SDK and nothing else. The core's typed root is `gnoblin_core::objects::ModelRoot`; the members
-# the std library adds to it come in with the std prelude (`ModelRootStdExt`), over the classes written from the library's catalog.
+# The shell depends on the std SDK and the core SDK and nothing else. The core's typed root is `gnoblin_core::objects::Gnoblin`; the members
+# the std library adds to it come in with the std prelude (`GnoblinStdExt`), over the classes written from the library's catalog.
 [dependencies]
 gnoblin-core = { path = "../../crates/gnoblin-core" }
 gnoblin-std = { path = "../../crates/gnoblin-std" }

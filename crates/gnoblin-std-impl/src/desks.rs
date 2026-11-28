@@ -5,7 +5,7 @@
 //! no outputs at all one unparked desk keeps a workspace shown. This is `host/desks.ts`, `show.ts` and `lifecycle.ts` of the
 //! TypeScript library, with the display manager's mirror and span modes as an [`Policy`] of the library.
 
-use gnoblin_core::{Rect, Value};
+use gnoblin_core::host::{Rect, Value};
 use gnoblin_std_abi as abi;
 
 use crate::error::{Fail, Res};
@@ -73,7 +73,7 @@ impl Default for Policy {
 }
 
 /// An output's rectangle in the compositor's coordinates, `None` for one with no size yet.
-pub(crate) fn output_rect(g: &gnoblin_core::Gnoblin, output: NodeId) -> Option<Rect> {
+pub(crate) fn output_rect(g: &gnoblin_core::host::Host, output: NodeId) -> Option<Rect> {
     let pick = |own: &str, screen: &str| {
         let value = nodes::number(g, output, own);
         if value != 0.0 {
@@ -406,7 +406,7 @@ impl State {
                 .is_some_and(|holder| shown.is_some() && self.rec.get(&holder).and_then(|rec| rec.workspace) == shown);
             if held_here && let Some(seat) = nodes::seat(&self.g) {
                 // No output can hold the focus any more.
-                let _ = seat.set("focus", gnoblin_core::NodeId::NIL);
+                let _ = seat.set("focus", gnoblin_core::host::NodeId::NIL);
             }
         }
         for desk in &mut self.desks {
@@ -447,7 +447,7 @@ impl State {
                     .find(|client| nodes::alive(&self.g, *client) && !nodes::flag(&self.g, *client, "minimised"))
             });
         if let Some(first) = first {
-            let _ = seat.set("focus", gnoblin_core::NodeId(first));
+            let _ = seat.set("focus", gnoblin_core::host::NodeId(first));
         }
     }
 
@@ -556,7 +556,7 @@ impl State {
         if nodes::alive(&self.g, *next)
             && let Some(seat) = nodes::seat(&self.g)
         {
-            let _ = seat.set("focus", gnoblin_core::NodeId(*next));
+            let _ = seat.set("focus", gnoblin_core::host::NodeId(*next));
         }
         Ok(())
     }
@@ -605,7 +605,7 @@ impl State {
 
     /// Asks the compositor to make `output` a copy of the output called `connector` (an empty name ends the copy).
     fn request_mirror(&self, output: NodeId, connector: &str) {
-        let target = self.g.node(gnoblin_core::NodeId(output));
+        let target = self.g.node(gnoblin_core::host::NodeId(output));
         let _ = target.call("apply", &[Value::Text(format!("mirror_of={connector}"))]);
     }
 

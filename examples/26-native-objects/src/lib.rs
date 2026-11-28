@@ -8,7 +8,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use gnoblin_std::objects::{
+use gnoblin_std::{
     Desks, Gaps, Layout, LayoutHandlers, LayoutPlacement, LayoutRect, MasterStackLayout, Workspace, Workspaces,
 };
 use gnoblin_std::prelude::*;
@@ -41,7 +41,7 @@ fn columns() -> LayoutHandlers {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let main = Workspace::new(&objects, "main")?;
     main.set_gaps(&Gaps {
         inner: 6.0,

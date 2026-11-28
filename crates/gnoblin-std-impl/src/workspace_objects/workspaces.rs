@@ -6,7 +6,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{Fail, Obj, Res, Val};

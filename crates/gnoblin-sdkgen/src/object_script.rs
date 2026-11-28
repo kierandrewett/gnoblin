@@ -738,11 +738,11 @@ new Probe(3, { count: 4 });
 
         let rust = crate::object_api::render(&catalog, &namespaces[0]).expect("the typed API renders");
         assert!(
-            rust.contains("pub fn find(&self, id: &str) -> go::Res<Option<Thing>>"),
+            rust.contains("pub fn find(&self, id: &str) -> crate::Res<Option<Thing>>"),
             "{rust}"
         );
         assert!(
-            rust.contains("pub fn first(&self) -> go::Res<Thing>"),
+            rust.contains("pub fn first(&self) -> crate::Res<Thing>"),
             "a present result is unchanged: {rust}"
         );
 
@@ -811,8 +811,8 @@ new Probe(3, { count: 4 });
         );
         let rust = crate::object_api::render(&catalog, &namespaces[0]).expect("the typed API renders");
         assert!(
-            rust.contains("pub fn plain(&self) -> go::Res<Option<Thing>>")
-                && rust.contains("pub fn held(&self) -> go::Res<Thing>"),
+            rust.contains("pub fn plain(&self) -> crate::Res<Option<Thing>>")
+                && rust.contains("pub fn held(&self) -> crate::Res<Thing>"),
             "{rust}"
         );
     }
@@ -1065,7 +1065,7 @@ new Probe(3, { count: 4 });
             "{rust}"
         );
         assert!(
-            rust.contains("pub fn new(objects: &Objects, id: &str) -> go::Res<Thing>"),
+            rust.contains("pub fn new(objects: &Objects, id: &str) -> crate::Res<Thing>"),
             "the constructor without options is unchanged: {rust}"
         );
 
@@ -1450,7 +1450,7 @@ print("ok")
 
         let rust = crate::object_api::render(&catalog, &std).expect("the typed API renders");
         assert!(
-            rust.contains("pub fn inset_of(&self, client: &::gnoblin_core::objects::Client) -> go::Res<f64>"),
+            rust.contains("pub fn inset_of(&self, client: &::gnoblin_core::objects::Client) -> crate::Res<f64>"),
             "{rust}"
         );
         assert!(
@@ -1499,7 +1499,7 @@ print("ok")
 
         let rust = crate::object_api::render(&catalog, &std).expect("the typed API renders");
         assert!(
-            rust.contains("-> go::Res<::gnoblin_core::objects::Client>"),
+            rust.contains("-> crate::Res<::gnoblin_core::objects::Client>"),
             "a result is the core SDK's class: {rust}"
         );
         assert!(rust.contains("Vec<::gnoblin_core::objects::Client>"), "{rust}");

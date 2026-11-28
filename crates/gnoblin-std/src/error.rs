@@ -6,8 +6,8 @@
 
 use std::fmt;
 
-use gnoblin_core::CoreError;
-pub use gnoblin_core::ErrorKind;
+use gnoblin_core::host::CoreError;
+pub use gnoblin_core::host::ErrorKind;
 use gnoblin_object::Fail;
 
 /// A failed call: what kind of failure, and the library's text for it.
@@ -63,7 +63,7 @@ impl From<Fail> for Error {
     }
 }
 
-/// What a handler of a typed class answers the library's errors as: `?` on a std call (`g.std()?`) inside a closure that returns
+/// What a handler of a typed class answers the library's errors as: `?` on a std call (`gnoblin.objects()?.std()?`) inside a closure that returns
 /// `Result<_, Fail>` ends the handler with the library's failure, its kind as the code and its text as the message.
 impl From<Error> for Fail {
     fn from(error: Error) -> Fail {

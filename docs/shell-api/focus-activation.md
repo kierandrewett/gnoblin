@@ -14,7 +14,7 @@ A file that decides focus itself calls `FocusPolicy.get().stop()` before it does
 
 `FocusPolicy.get().start()` starts the stock policy again, and does nothing while it runs.
 
-In Rust the call is `FocusPolicy::get(&objects)?.stop()?`, with the `objects` of `g.std()?.objects()?`.
+In Rust the call is `FocusPolicy::get(&objects)?.stop()?`, with the `objects` of `g.objects()?.std()?`.
 
 A shell that is not a desktop of the library, one written on the core alone, has no focus policy: nothing moves its keyboard
 until it calls `client.focus()`.
@@ -35,7 +35,7 @@ client?.raise();
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 client = next((c for c in gnoblin.clients.to_list() if c.app_id == "foot"), None)
@@ -47,11 +47,10 @@ if client is not None:
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let clients = model.clients()?;
     for client in clients.to_list()? {
         if client.app_id()? == "foot" {
@@ -82,7 +81,7 @@ previous?.focus();
 ```
 
 ```python
-from gnoblin.objects.model import FocusFilter, Gnoblin
+from gnoblin import FocusFilter, Gnoblin
 
 history = Gnoblin.get().focus.history(FocusFilter(limit=2))
 if len(history) > 1:
@@ -91,12 +90,11 @@ if len(history) > 1:
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{FocusFilter, ModelRoot};
+use gnoblin_core::{FocusFilter, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let focus = model.focus()?;
     let filter = FocusFilter {
         limit: Some(2),

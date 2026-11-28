@@ -13,7 +13,7 @@ class for each of them. This shell does what the Rust shell of the same example 
 """
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import ClientQuery, Gnoblin
+from gnoblin import ClientQuery, Gnoblin
 
 
 def say(text):

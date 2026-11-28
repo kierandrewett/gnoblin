@@ -8,7 +8,7 @@ own, and aborts it: the library puts back the opacity, and the shell's rollback 
 """
 
 from gnoblin import gnoblin
-from gnoblin.objects.std import (
+from gnoblin.std import (
     BlurFilter,
     Border,
     BrightnessFilter,

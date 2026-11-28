@@ -9,7 +9,7 @@ call (``Client#7.close``). A bad argument is not one: it raises a ``TypeError`` 
 
 from gnoblin import gnoblin as session
 from gnoblin.errors import GnoblinError
-from gnoblin.objects.model import Gnoblin, InputContext
+from gnoblin import Gnoblin, InputContext
 
 
 def say(text):

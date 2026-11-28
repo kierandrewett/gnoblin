@@ -10,7 +10,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gnoblin_core::Subscription;
+use gnoblin_core::host::Subscription;
 use gnoblin_object::server::Cx;
 use gnoblin_object::{Closure, Fail, Obj, Res, Val};
 
@@ -222,7 +222,7 @@ pub(crate) fn start(ui: &Rc<Ui>) -> Res<()> {
     }
     let ctx = ui.ctx;
     let g = &ui.g;
-    let refuse = |error: gnoblin_core::CoreError| Fail::new(error.kind().code(), error.to_string());
+    let refuse = |error: gnoblin_core::host::CoreError| Fail::new(error.kind().code(), error.to_string());
     let wake = move || {
         if let Some(ui) = crate::ui::tree::find(ctx) {
             ui.schedule();

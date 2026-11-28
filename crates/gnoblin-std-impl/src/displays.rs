@@ -14,7 +14,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use gnoblin_core::Value;
+use gnoblin_core::host::Value;
 use gnoblin_std_abi as abi;
 
 use crate::error::{Fail, Res};
@@ -528,7 +528,7 @@ impl State {
         let path = path.to_owned();
         let answered_path = path.clone();
         let g = self.g.clone();
-        let node = self.g.node(gnoblin_core::NodeId(output));
+        let node = self.g.node(gnoblin_core::host::NodeId(output));
         let sent = node.call_with("apply", &[Value::Text(request)], move |answer| {
             let refusal = answer.error.filter(|error| !error.is_empty());
             // The answer to a call that is refused at once comes while the state is borrowed: it is taken a turn later.

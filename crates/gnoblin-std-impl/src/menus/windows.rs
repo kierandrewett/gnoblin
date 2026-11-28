@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_core_abi as abi;
 use gnoblin_object::server::{Cx, ShellImpl};
 use gnoblin_object::{Closure, Obj, Res, Val};

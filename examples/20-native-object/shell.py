@@ -20,7 +20,7 @@ reads all three.
 import json
 
 from gnoblin import gnoblin
-from gnoblin.objects.std import EntryModel, FocusEvent, FocusEventKind, FocusMode, FocusPolicy, FocusSettings
+from gnoblin.std import EntryModel, FocusEvent, FocusEventKind, FocusMode, FocusPolicy, FocusSettings
 
 
 def say(text):

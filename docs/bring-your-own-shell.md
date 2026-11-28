@@ -48,11 +48,11 @@ use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    g.spawn("waybar")?;
-    g.spawn("mako")?;
+    g.spawn(&["waybar".to_owned()], None)?;
+    g.spawn(&["mako".to_owned()], None)?;
 
     g.bind("<Super>d", move || {
-        if let Err(error) = g.spawn("fuzzel") {
+        if let Err(error) = g.spawn(&["fuzzel".to_owned()], None) {
             g.log(&format!("cannot start fuzzel: {error}"));
         }
     })?;

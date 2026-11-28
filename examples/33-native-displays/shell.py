@@ -15,7 +15,7 @@ three.
 """
 
 from gnoblin import gnoblin
-from gnoblin.objects.std import (
+from gnoblin.std import (
     Display,
     DisplayManager,
     DisplaySelector,

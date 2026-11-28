@@ -16,7 +16,7 @@
 //! Every line it logs starts with `policy:`. Build it with `cargo build -p gnoblin-example-native-policy` and run it with
 //! `gnoblin ./target/debug/libnative_policy.so`.
 
-use gnoblin_std::objects::{
+use gnoblin_std::{
     ClientRequestKind, FocusPolicy, Gestures, MoveBinding, PinchActionBinding, PinchWay, Repositioning,
     RequestListenerHandlers, ResizeBinding, SwipeActionBinding, SwipeWay, WindowState, WorkspaceSlideBinding,
 };
@@ -24,7 +24,7 @@ use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     FocusPolicy::get(&objects)?.start()?;
 

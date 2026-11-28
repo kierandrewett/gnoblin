@@ -13,7 +13,7 @@ gnoblin.idle.watch(300_000, {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, IdleListener
+from gnoblin import Gnoblin, IdleListener
 
 gnoblin = Gnoblin.get()
 
@@ -33,13 +33,12 @@ gnoblin.idle.watch(300_000, LockWhenIdle())
 use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{IdleListenerHandlers, ModelRoot};
+use gnoblin_core::{IdleListenerHandlers, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = Rc::new(ModelRoot::get(&objects)?);
+    let model = Rc::new(Gnoblin::get(&objects)?);
     let idle = model.idle()?;
     let (locker, notifier) = (Rc::clone(&model), Rc::clone(&model));
     let listener = IdleListenerHandlers {
@@ -126,7 +125,7 @@ hold.release();
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 hold = Gnoblin.get().idle.inhibit("presentation")
 # Later:
@@ -134,12 +133,11 @@ hold.release()
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     {
         let idle = model.idle()?;
         let hold = idle.inhibit("presentation")?;

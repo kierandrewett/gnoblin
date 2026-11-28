@@ -12,8 +12,8 @@ library adds to a window, an output and the root once it is loaded: the window's
 """
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import ClientQuery, Gnoblin
-from gnoblin.objects.std import Decorations, LayoutRect, WindowMenus, Workspace, Workspaces
+from gnoblin import ClientQuery, Gnoblin
+from gnoblin.std import Decorations, LayoutRect, WindowMenus, Workspace, Workspaces
 
 
 def say(text):

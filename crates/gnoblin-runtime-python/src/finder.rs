@@ -1,8 +1,8 @@
 //! The `gnoblin` package, served from the library itself.
 //!
-//! Nothing of the package is read from disk. `gnoblin-sdkgen` renders the typed node classes, the ABI constants, the verbs and the std
-//! bindings (`gnoblin._generated.*`, `gnoblin.std`, `gnoblin.objects.*`) in `build.rs`, and the rest of the package (`gnoblin`,
-//! `gnoblin._base`, `gnoblin.api`, `gnoblin.errors`, `gnoblin.events`, `gnoblin._std_base`, `gnoblin._std_sugar`) is Rust in this crate.
+//! Nothing of the package is read from disk. `gnoblin-sdkgen` renders the typed node classes, the ABI constants, the verbs and the object
+//! classes (`gnoblin._generated.*`, `gnoblin.std`, `gnoblin.objects.*`) in `build.rs`, and the rest of the package (`gnoblin`,
+//! `gnoblin._base`, `gnoblin.api`, `gnoblin.errors`, `gnoblin.events`) is Rust in this crate.
 //! A module can never describe a different catalog from the libraries the runtime was built with, and a prefix needs no Python source.
 //!
 //! The finder sits first on `sys.meta_path`, so an older file of the same name left in a prefix is never imported instead. It answers
@@ -14,7 +14,7 @@ use pyo3::exceptions::PyImportError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
-use crate::{descriptors, errors, singleton, std_base, std_sugar, subscription};
+use crate::{descriptors, errors, singleton, subscription};
 
 // `MODULES`: `(dotted name, is a package, source)` for every generated module. `build.rs` writes the table.
 include!(concat!(env!("OUT_DIR"), "/python_embedded.rs"));
@@ -26,7 +26,7 @@ struct RustModule {
     build: fn(&Bound<'_, PyModule>) -> PyResult<()>,
 }
 
-const NATIVE: [RustModule; 7] = [
+const NATIVE: [RustModule; 5] = [
     RustModule {
         name: "gnoblin",
         package: true,
@@ -52,16 +52,6 @@ const NATIVE: [RustModule; 7] = [
         package: false,
         build: subscription::build,
     },
-    RustModule {
-        name: "gnoblin._std_base",
-        package: false,
-        build: std_base::build,
-    },
-    RustModule {
-        name: "gnoblin._std_sugar",
-        package: false,
-        build: std_sugar::build,
-    },
 ];
 
 /// What the package says of itself, as `gnoblin.__doc__`.
@@ -83,28 +73,22 @@ See ``docs/python-shell.md``. The typed classes of the tree (``Window``, ``Seat`
 the package is a thin spelling of the core's C ABI and holds no compositor logic.
 ";
 
-/// The names `gnoblin` exports besides the generated classes.
-const EXPORTS: [&str; 27] = [
+/// The names `gnoblin` exports besides the classes of the object model.
+const EXPORTS: [&str; 21] = [
     "BusyError",
-    "CLASSES",
     "ChordEvent",
     "Event",
     "GestureEvent",
-    "Gnoblin",
     "GnoblinError",
     "MemberError",
-    "Method",
-    "Node",
     "NodeEvent",
     "NodeGoneError",
     "PointerButton",
     "PointerDrag",
     "Process",
     "ProcessExit",
-    "Property",
     "RefusedError",
     "RetiredError",
-    "Signal",
     "StaleError",
     "Subscription",
     "ThreadError",
@@ -114,7 +98,7 @@ const EXPORTS: [&str; 27] = [
     "verbs",
 ];
 
-/// Fills the package `gnoblin`: the base, the generated classes and verbs, the object a script uses, the errors and the event values.
+/// Fills the package `gnoblin`: the verbs, the object a script uses, the errors, the event values and the classes of the object model.
 fn build_package(module: &Bound<'_, PyModule>) -> PyResult<()> {
     let py = module.py();
     module.add("__doc__", DOC)?;
@@ -125,17 +109,8 @@ fn build_package(module: &Bound<'_, PyModule>) -> PyResult<()> {
         }
         Ok(())
     };
-    copy(
-        &py.import("gnoblin._base")?,
-        &["CLASSES", "Method", "Node", "Property", "Signal"],
-    )?;
-    let classes = py.import("gnoblin._generated.classes")?;
-    let generated: Vec<String> = classes.getattr("__all__")?.extract()?;
-    for name in &generated {
-        module.add(name.as_str(), classes.getattr(name.as_str())?)?;
-    }
     module.add("verbs", py.import("gnoblin._generated.verbs")?)?;
-    copy(&py.import("gnoblin.api")?, &["Event", "Gnoblin", "gnoblin"])?;
+    copy(&py.import("gnoblin.api")?, &["Event", "gnoblin"])?;
     copy(
         &py.import("gnoblin.errors")?,
         &[
@@ -164,12 +139,34 @@ fn build_package(module: &Bound<'_, PyModule>) -> PyResult<()> {
             "WindowRequest",
         ],
     )?;
+    // The classes of the object model are the package's own: `from gnoblin import Client`. They are added last, so a class of the model
+    // wins over a value of the same name that the tree layer hands out.
     let all = PyList::new(py, EXPORTS)?;
-    for name in &generated {
+    let model = py.import("gnoblin.objects.model")?;
+    for name in defined_in(&model)? {
+        module.add(name.as_str(), model.getattr(name.as_str())?)?;
         all.append(name)?;
     }
     module.add("__all__", all)?;
     Ok(())
+}
+
+/// The public names a generated module defines itself, as opposed to the ones it imported.
+fn defined_in(module: &Bound<'_, PyModule>) -> PyResult<Vec<String>> {
+    let own: String = module.getattr("__name__")?.extract()?;
+    let mut names = Vec::new();
+    for name in module.dir()?.iter() {
+        let name: String = name.extract()?;
+        if name.starts_with('_') {
+            continue;
+        }
+        let item = module.getattr(name.as_str())?;
+        let home = item.getattr("__module__").and_then(|home| home.extract::<String>()).ok();
+        if home.as_deref() == Some(own.as_str()) {
+            names.push(name);
+        }
+    }
+    Ok(names)
 }
 
 /// The generated module `name`, if there is one.

@@ -12,7 +12,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 
-use gnoblin_core::{Effect, EffectKind, NodeId};
+use gnoblin_core::host::{Effect, EffectKind, NodeId};
 
 use super::values::{Entry, ListProp, MAX_GRADE, MAX_SHADERS, MAX_STYLE_LIST, Prop, Radii, ScalarProp};
 use crate::animation::staging;
@@ -54,14 +54,14 @@ pub(crate) struct Left {
 impl Left {
     /// Whether the node holds `wrote` still: a value somebody else wrote since is not this style's to take off. The tolerance is the
     /// compositor's single-precision storage of a double.
-    fn holds(read: Result<f64, gnoblin_core::CoreError>, wrote: f64) -> bool {
+    fn holds(read: Result<f64, gnoblin_core::host::CoreError>, wrote: f64) -> bool {
         read.is_ok_and(|read| (read - wrote).abs() <= 1e-6 * wrote.abs().max(1.0))
     }
 
     /// Whether the node still holds the effects this left: the core numbers every write of a node's effects, and a list that was
     /// written since (by a generation that started after this one, or by the shell's own node writes) has another serial. The effects
     /// cannot be read, so a serial that cannot be read is no proof, and the list is left.
-    fn effects_held(&self, node: &gnoblin_core::Node) -> bool {
+    fn effects_held(&self, node: &gnoblin_core::host::Node) -> bool {
         match self.effects {
             EffectsLeft::None => false,
             EffectsLeft::Unknown => true,
@@ -631,7 +631,7 @@ impl State {
             })
             .unwrap_or_default();
         if let Ok(skipped) = self.g.node(NodeId(client)).get("skipped")
-            && let gnoblin_core::Value::Texts(skipped) = skipped
+            && let gnoblin_core::host::Value::Texts(skipped) = skipped
         {
             warnings.extend(
                 skipped
@@ -645,7 +645,7 @@ impl State {
 
 /// A plain write of a number, held when a transition is staging and otherwise made at once (letting go of a property a transition
 /// still plays).
-fn write_number(g: &gnoblin_core::Gnoblin, node: u64, key: &str, value: f64) {
+fn write_number(g: &gnoblin_core::host::Host, node: u64, key: &str, value: f64) {
     if staging::capture(node, key, &staging::Prop::Number(value)) {
         return;
     }

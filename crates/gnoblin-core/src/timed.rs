@@ -220,7 +220,7 @@ impl Node {
     ///
     /// # Errors
     ///
-    /// [`ErrorKind::Unsupported`](crate::ErrorKind) on a core built before the call, and [`ErrorKind::NoSuchNode`](crate::ErrorKind)
+    /// [`ErrorKind::Unsupported`](crate::host::ErrorKind) on a core built before the call, and [`ErrorKind::NoSuchNode`](crate::host::ErrorKind)
     /// for a node the tree does not hold.
     pub fn effects_serial(&self) -> Result<u64> {
         let g = self.gnoblin();

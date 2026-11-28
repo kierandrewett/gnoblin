@@ -8,19 +8,19 @@
 //!
 //! Build it with `cargo build -p gnoblin-example-std-prelude --example spec_text`.
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::Workspace;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::Workspace;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) {
-    let objects = g.std().and_then(|std| std.objects()).expect("the std library opens");
+    let objects = g.objects().expect("the core objects open").std().expect("the std library opens");
     let workspace = Workspace::new(&objects, "main").expect("the workspace `main` can be made");
     let clients = workspace
         .clients()
         .expect("the workspace has windows")
         .expect("the workspace has a window list");
-    ModelRoot::get(&g.objects().expect("the core objects open"))
+    Gnoblin::get(&g.objects().expect("the core objects open"))
         .and_then(|model| model.clients())
         .and_then(|all| {
             all.on_added(move |client, _| {
@@ -29,6 +29,6 @@ fn main(g: &Gnoblin) {
         })
         .expect("the shell can listen for windows")
         .keep();
-    g.bind("Super+Return", || g.spawn("foot"))
+    g.bind("Super+Return", || g.spawn(&["foot".to_owned()], None))
         .expect("the chord can be claimed");
 }

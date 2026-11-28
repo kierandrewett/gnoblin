@@ -71,11 +71,11 @@ def bind_keys():
 // keys.rs
 use gnoblin_core::Gnoblin;
 
-pub fn bind_keys(g: &Gnoblin) -> gnoblin_core::Result<()> {
+pub fn bind_keys(g: &Gnoblin) -> gnoblin_core::Res<()> {
     let term = g.clone();
-    g.bind("Super+Return", move || term.spawn("foot"))?;
+    g.bind("Super+Return", move || term.spawn(&["foot".to_owned()], None))?;
     let launcher = g.clone();
-    g.bind("Super+d", move || launcher.spawn("fuzzel"))?;
+    g.bind("Super+d", move || launcher.spawn(&["fuzzel".to_owned()], None))?;
     Ok(())
 }
 ```
@@ -99,7 +99,7 @@ export function styleWindows(): void {
 ```python
 # appearance.py
 from gnoblin import gnoblin
-from gnoblin.objects.std import ClientStyle, CornerRadius
+from gnoblin.std import ClientStyle, CornerRadius
 
 
 def style_windows():
@@ -109,11 +109,11 @@ def style_windows():
 
 ```rust
 // appearance.rs
-use gnoblin_std::objects::{ClientStyle, CornerRadius};
+use gnoblin_std::{ClientStyle, CornerRadius};
 use gnoblin_std::prelude::*;
 
 pub fn style_windows(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let style = ClientStyle::of_clients(&objects)?;
     style.set_corner_radius(&CornerRadius {
         all: Some(12.0),
@@ -157,7 +157,7 @@ mod appearance;
 mod keys;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     appearance::style_windows(g)?;
     keys::bind_keys(g)?;
     Ok(())
@@ -214,10 +214,10 @@ use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     for trigger in ["Super+Return", "Super+d", "XF86MonBrightnessUp"] {
         let g2 = g.clone();
-        g.bind(trigger, move || g2.spawn_with("notify-send", [trigger]))?;
+        g.bind(trigger, move || g2.spawn(&["notify-send".to_owned()], None))?;
     }
     Ok(())
 }

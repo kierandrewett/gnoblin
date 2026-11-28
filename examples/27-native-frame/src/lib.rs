@@ -8,12 +8,12 @@
 //!
 //! Build it with `cargo build -p gnoblin-example-native-frame` and run it with `gnoblin ./target/debug/libnative_frame.so`.
 
-use gnoblin_std::objects::{Decorations, Titlebar};
+use gnoblin_std::{Decorations, Titlebar};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let decorations = Decorations::get(&objects)?;
     let (shell, library) = (g.clone(), objects.clone());
     decorations.set_frame(move |client, frame| {

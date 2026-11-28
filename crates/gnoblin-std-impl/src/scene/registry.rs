@@ -13,7 +13,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gnoblin_core::{Gnoblin, LogLevel, NodeId};
+use gnoblin_core::host::{Host, LogLevel, NodeId};
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::Cx;
 use gnoblin_object::{Fail, Obj, Res, Val};
@@ -76,7 +76,7 @@ pub(crate) struct Entry {
 /// The scene of one generation.
 pub(crate) struct SceneWorld {
     pub(crate) ctx: GnoblinCtx,
-    pub(crate) g: Gnoblin,
+    pub(crate) g: Host,
     /// What the checked writes of nodes keep (the kinds the library made).
     pub(crate) state: RefCell<SceneState>,
     pub(crate) entries: RefCell<HashMap<u64, Entry>>,
@@ -134,7 +134,7 @@ pub(crate) fn world_of(cx: &Cx<'_>) -> Res<Rc<SceneWorld>> {
     world_for(cx.ctx())
 }
 
-fn core_fail(error: gnoblin_core::CoreError) -> Fail {
+fn core_fail(error: gnoblin_core::host::CoreError) -> Fail {
     Fail::new(error.kind().code(), error.to_string())
 }
 

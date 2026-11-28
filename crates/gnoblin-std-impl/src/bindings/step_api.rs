@@ -11,7 +11,7 @@
 //! keeps its own workspaces does not get a second window manager beside its own by calling them.
 #![allow(unsafe_code)]
 
-use gnoblin_core::{GestureKind, Rect};
+use gnoblin_core::host::{GestureKind, Rect};
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_std_abi::layouts::binding_kind;
 use gnoblin_std_abi::{

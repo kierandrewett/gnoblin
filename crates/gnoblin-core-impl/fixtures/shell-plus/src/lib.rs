@@ -8,7 +8,8 @@ use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(root: &Gnoblin) -> gnoblin::host::Result<()> {
+    let g = root.host();
     g.bind("Super+Return", move || {
         if let Err(error) = g.spawn("foot") {
             g.log(&format!("cannot start a terminal: {error}"));

@@ -23,8 +23,8 @@ client?.resizeWithKeys();
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientAugment
+from gnoblin import Gnoblin
+from gnoblin.std import ClientAugment
 
 gnoblin = Gnoblin.get()
 
@@ -35,12 +35,12 @@ if client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let Some(client) = model.clients()?.at(0)? else {
         return Ok(());
     };
@@ -83,7 +83,7 @@ pinch.install();
 ```
 
 ```python
-from gnoblin.objects.std import GestureEvent, PinchActionBinding, PinchWay, SwipeActionBinding, SwipeWay
+from gnoblin.std import GestureEvent, PinchActionBinding, PinchWay, SwipeActionBinding, SwipeWay
 
 swipe = SwipeActionBinding(trigger="Swipe4")
 swipe.set_action(SwipeWay.UP, "window.toggle-maximise")
@@ -103,14 +103,14 @@ pinch.install()
 ```
 
 ```rust
-use gnoblin_std::objects::{
+use gnoblin_std::{
     PinchActionBinding, PinchActionBindingOptions, PinchWay, SwipeActionBinding, SwipeActionBindingOptions, SwipeWay,
 };
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     let swipe = SwipeActionBinding::new_with(
         &objects,
@@ -173,8 +173,8 @@ gnoblin.requestTransition(() => {}, { duration });
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import GnoblinAugment, TransitionOptions
+from gnoblin import Gnoblin
+from gnoblin.std import GnoblinAugment, TransitionOptions
 
 gnoblin = Gnoblin.get()
 
@@ -183,13 +183,13 @@ GnoblinAugment.get().request_transition(lambda: None, TransitionOptions(duration
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::TransitionOptions;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::TransitionOptions;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let duration = model.motion(250.0)?; // 0 while the seat asks for reduced motion
     model.request_transition(
         || Ok(()),
@@ -234,7 +234,7 @@ for (const device of gnoblin.input.devices) {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, BindingOptions, Gnoblin, Keyboard
+from gnoblin import BindingEvent, BindingOptions, Gnoblin, Keyboard
 
 gnoblin = Gnoblin.get()
 
@@ -251,12 +251,11 @@ for device in gnoblin.input.devices:
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{BindingOptions, ModelRoot};
+use gnoblin_core::{BindingOptions, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let input = model.input()?;
     for device in input.devices()? {
         if !device.name()?.contains("Macro") {
@@ -305,7 +304,7 @@ if (dev && !workspaces.remove(dev)) {
 ```
 
 ```python
-from gnoblin.objects.std import Workspaces
+from gnoblin.std import Workspaces
 
 workspaces = Workspaces.get()
 dev = workspaces.by_id("dev")
@@ -314,12 +313,12 @@ if dev is not None and not workspaces.remove(dev):
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let workspaces = model.workspaces()?;
     if let Some(dev) = workspaces.by_id("dev")? {
         if !workspaces.remove(&dev)? {

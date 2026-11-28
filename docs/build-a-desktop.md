@@ -45,7 +45,7 @@ Each language reaches the two layers the same way:
 | Language   | Core                                    | Std                                   | Where the file goes                              |
 | ---------- | --------------------------------------- | ------------------------------------- | ------------------------------------------------ |
 | TypeScript | `import ... from "gnoblin-core"`        | `import ... from "gnoblin-std"`       | `~/.config/gnoblin/shell.ts`                     |
-| Python     | `from gnoblin.objects.model import ...` | `from gnoblin.objects.std import ...` | `~/.config/gnoblin/shell.py`                     |
+| Python     | `from gnoblin import ...` | `from gnoblin.std import ...` | `~/.config/gnoblin/shell.py`                     |
 | Rust       | the `gnoblin-core` crate                | the `gnoblin-std` crate               | a library crate: `gnoblin ./target/debug/lib.so` |
 
 ## A tiling window manager on the core alone
@@ -89,7 +89,7 @@ gnoblin.input.primary.bind("Super+Return", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin, Rect
+from gnoblin import BindingEvent, Gnoblin, Rect
 
 gnoblin = Gnoblin.get()
 GAP = 10.0
@@ -123,13 +123,12 @@ gnoblin.input.primary.bind("Super+Return", terminal)
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{ModelRoot, Rect};
+use gnoblin_core::{Gnoblin, Rect};
 
 const GAP: f64 = 10.0;
 
 /// Gives every window an equal column of the first output, in the order the windows opened.
-fn retile(model: &ModelRoot) -> gnoblin::Result<()> {
+fn retile(model: &Gnoblin) -> gnoblin::Res<()> {
     let Some(output) = model.outputs()?.at(0)? else {
         return Ok(());
     };
@@ -154,8 +153,8 @@ fn retile(model: &ModelRoot) -> gnoblin::Result<()> {
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     retile(&model)?;
 
     let created = model.clone();
@@ -176,7 +175,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         .keep();
 
     g.bind("<Super>Return", move || {
-        if let Err(error) = g.spawn("foot") {
+        if let Err(error) = g.spawn(&["foot".to_owned()], None) {
             g.log(&format!("cannot start a terminal: {error}"));
         }
     })?;
@@ -203,7 +202,7 @@ master window, in Rust and in Python.
 
 ## A shell that uses std
 
-Add the std library to the shell. A TypeScript shell imports `gnoblin-std`, a Python shell imports `gnoblin.objects.std`, and
+Add the std library to the shell. A TypeScript shell imports `gnoblin-std`, a Python shell imports `gnoblin.std`, and
 a Rust shell adds `gnoblin-std` to `Cargo.toml` next to `gnoblin-core`:
 
 ```toml
@@ -235,8 +234,8 @@ gnoblin.input.primary.bind("Super+Return", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin
-from gnoblin.objects.std import Gaps, MasterStackLayout, Workspace, Workspaces
+from gnoblin import BindingEvent, Gnoblin
+from gnoblin.std import Gaps, MasterStackLayout, Workspace, Workspaces
 
 gnoblin = Gnoblin.get()
 
@@ -262,21 +261,40 @@ gnoblin.input.primary.bind("Super+Return", terminal)
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+fn main(gnoblin: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = gnoblin.objects()?.std()?;
     // One workspace; every window that opens joins it and the library tiles it.
-    Workspace::builder("main")?
-        .name("Main")
-        .layout(MasterStackLayout::new().ratio(0.6))
-        .gaps(12.0, 20.0)
-        .add()?;
+    let layout = MasterStackLayout::new_with(
+        &objects,
+        MasterStackLayoutOptions {
+            ratio: Some(0.6),
+            ..MasterStackLayoutOptions::default()
+        },
+    )?;
+    let main = Workspace::new_with(
+        &objects,
+        "main",
+        WorkspaceOptions {
+            name: Some("Main".to_owned()),
+            layout: Some(layout.as_layout()?),
+            gaps: Some(Gaps {
+                inner: 12.0,
+                outer: 20.0,
+            }),
+            ..WorkspaceOptions::default()
+        },
+    )?;
+    Workspaces::get(&objects)?.add(&main)?;
 
-    g.bind("<Super>Return", move || {
-        if let Err(error) = g.spawn("foot") {
-            g.log(&format!("cannot start a terminal: {error}"));
+    let shell = gnoblin.clone();
+    gnoblin.bind("Super+Return", move || {
+        let argv = ["foot".to_owned()];
+        if let Err(error) = shell.spawn(&argv, None) {
+            shell.log(&format!("cannot start a terminal: {error}"));
         }
     })?;
 
-    g.log("std shell is running");
+    gnoblin.log("std shell is running");
     Ok(())
 }
 ```
@@ -291,9 +309,9 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 | `gaps`                         | Two numbers of at least 0, in pixels: `inner`, then `outer`                                                                                                           | Space between windows, then between windows and the edge.    |
 | `ratio` of `MasterStackLayout` | 0.1 to 0.9                                                                                                                                                            | The share of the width the master window takes. Default 0.5. |
 
-In Rust the workspace is made with `Workspace::builder(id)`, and `.gaps(inner, outer)` takes the two numbers; the
-object-model spelling `Workspace::new_with(&objects, id, WorkspaceOptions { .. })` is the same call the TypeScript and Python
-constructors make, as [Rust shell](rust-shell.md#make-an-object-with-options) shows.
+In Rust the workspace is made with `Workspace::new_with(&objects, id, WorkspaceOptions { .. })`, the same call the TypeScript and
+Python constructors make, as [Rust shell](rust-shell.md#make-an-object-with-options) shows. `gnoblin.objects()?.std()?` is the
+handle the classes of the std library are made from.
 
 Windows that open join the workspace and the library tiles them. A Rust shell links `libgnoblin-std.so.1`, which links the
 core, and a session loads one copy of each. If Gnoblin is installed outside the system library path, give the shell a
@@ -390,7 +408,7 @@ input.bind("Super+Return", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin
+from gnoblin import BindingEvent, Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -414,11 +432,10 @@ seat.bind("Super+Return", terminal)
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     model.spawn(&["waybar".to_owned()], None)?;
     model.spawn(&["mako".to_owned()], None)?;
 

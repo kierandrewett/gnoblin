@@ -31,8 +31,8 @@
 use std::collections::BTreeSet;
 use std::fs;
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Desks, WorkspacePolicy, WorkspacePolicyMode};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Desks, WorkspacePolicy, WorkspacePolicyMode};
 use gnoblin_std::prelude::*;
 
 /// The `libgnoblin*` files and the shell's own file this process maps, by path, read from `/proc/self/maps`.
@@ -63,13 +63,13 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         g.log(&format!("linked: maps {path}"));
     }
 
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     Desks::get(&objects)?.set_workspaces(&WorkspacePolicy {
         mode: WorkspacePolicyMode::PerOutput,
         ..WorkspacePolicy::default()
     })?;
     let shell = g.clone();
-    ModelRoot::get(&g.objects()?)?
+    Gnoblin::get(&g.objects()?)?
         .clients()?
         .on_added(move |client, _| {
             let workspace = client

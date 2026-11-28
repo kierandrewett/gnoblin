@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 
 use super::client::Win;
 use super::{FrameId, FrameKind, FramePart, FrameSlot, OutletPart, PartRole, Shape, en, part_of};

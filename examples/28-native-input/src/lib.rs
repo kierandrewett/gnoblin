@@ -12,16 +12,15 @@
 //! `gnoblin ./target/debug/libnative_input.so`.
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{BindingOptions, ModelRoot};
+use gnoblin_core::{BindingOptions, Gnoblin};
 
 /// Which generation of the shell this is. A reload test builds the example again with another number.
 const GENERATION: u32 = 1;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let model = Gnoblin::get(&objects)?;
     let input = model.input()?;
     let context = input.primary()?;
 

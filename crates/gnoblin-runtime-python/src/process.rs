@@ -4,7 +4,7 @@
 //! waits until the generation takes over, so a reload that fails starts nothing, and one a reload's generation starts again with
 //! the same arguments is adopted instead of doubled. Those rules are the core's; this layer only passes the options.
 
-use gnoblin_core::{ProcessExit, Signal, Stream};
+use gnoblin_core::host::{ProcessExit, Signal, Stream};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 

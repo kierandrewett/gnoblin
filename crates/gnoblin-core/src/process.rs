@@ -15,7 +15,7 @@ use gnoblin_core_abi::{self as abi, GnoblinProc, GnoblinProcessExit, GnoblinSpaw
 use crate::callback::CallbackResult;
 use crate::error::{CoreError, Result, check};
 use crate::events::Slot;
-use crate::gnoblin::{CALLS, CallbackSlot, Gnoblin, Subscription, copy_str, drop_slot};
+use crate::gnoblin::{CALLS, CallbackSlot, Host, Subscription, copy_str, drop_slot};
 
 /// What a standard stream does with the program's output.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -104,7 +104,7 @@ impl ProcessExit {
 /// A program the shell started.
 #[derive(Clone)]
 pub struct Process {
-    g: Gnoblin,
+    g: Host,
     handle: GnoblinProc,
 }
 
@@ -142,7 +142,7 @@ type ExitHook = Box<dyn FnMut(&ProcessExit)>;
 /// g.command("sh").arg("-c").arg("notify-send hi").on_exit(|exit| { /* ... */ }).spawn()?;
 /// ```
 pub struct Command {
-    g: Gnoblin,
+    g: Host,
     argv: Vec<String>,
     cwd: String,
     env: Vec<String>,
@@ -343,7 +343,7 @@ unsafe extern "C" fn timer_tramp<F: FnMut()>(user: *mut c_void) -> i32 {
     }
 }
 
-impl Gnoblin {
+impl Host {
     /// A program to start, with `program` as its name; add arguments and options and call [`Command::spawn`].
     pub fn command(&self, program: impl Into<String>) -> Command {
         Command {

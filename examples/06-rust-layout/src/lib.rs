@@ -13,7 +13,7 @@
 //!
 //! Build it with `cargo build -p gnoblin-example-rust-layout` and run it with `gnoblin ./target/debug/librust_layout.so`.
 
-use gnoblin_std::objects::{Gaps, LayoutHandlers, LayoutPlacement, LayoutRect, Workspace, Workspaces};
+use gnoblin_std::{Gaps, LayoutHandlers, LayoutPlacement, LayoutRect, Workspace, Workspaces};
 use gnoblin_std::prelude::*;
 
 /// Equal-width columns across the workspace, separated by the workspace's inner gap.
@@ -53,7 +53,7 @@ fn columns() -> LayoutHandlers {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let main = Workspace::new(&objects, "main")?;
     main.set_name("Main")?;
     main.set_gaps(&Gaps {

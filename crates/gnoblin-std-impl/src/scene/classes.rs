@@ -76,7 +76,7 @@ pub(super) fn register(builder: &mut Builder) {
             let mounted = service
                 .world
                 .g
-                .node(gnoblin_core::NodeId(node))
+                .node(gnoblin_core::host::NodeId(node))
                 .parent()
                 .ok()
                 .flatten()

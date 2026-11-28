@@ -1,7 +1,7 @@
 //! The values the classes of the workspace module move across the protocol: rectangles, gaps, and what a notice of the library says to
 //! the objects (`announce`).
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::{Fail, Res, Val};
 use gnoblin_std_abi as abi;

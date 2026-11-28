@@ -18,7 +18,7 @@ pad?.bind(
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, BindingOptions, Gnoblin
+from gnoblin import BindingEvent, BindingOptions, Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -36,13 +36,12 @@ for device in gnoblin.input.devices:
 use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{BindingOptions, ModelRoot};
+use gnoblin_core::{BindingOptions, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = Rc::new(ModelRoot::get(&objects)?);
+    let model = Rc::new(Gnoblin::get(&objects)?);
     let input = model.input()?;
     let options = BindingOptions {
         id: None,
@@ -216,7 +215,7 @@ for (const device of gnoblin.input.devices) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin, Keyboard, Mouse, Touchpad
+from gnoblin import Gnoblin, Keyboard, Mouse, Touchpad
 
 gnoblin = Gnoblin.get()
 
@@ -234,13 +233,12 @@ for device in gnoblin.input.devices:
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{AccelerationProfile, Keyboard, ModelRoot, Mouse, Touchpad};
+use gnoblin_core::{AccelerationProfile, Keyboard, Gnoblin, Mouse, Touchpad};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    for device in ModelRoot::get(&objects)?.input()?.devices()? {
+    for device in Gnoblin::get(&objects)?.input()?.devices()? {
         if let Some(mouse) = Mouse::downcast(&objects, &device)? {
             mouse.set_sensitivity(0.5)?;
             mouse.set_acceleration(AccelerationProfile::Flat)?;
@@ -308,7 +306,7 @@ if (keyboard) {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin, InputContext
+from gnoblin import BindingEvent, Gnoblin, InputContext
 
 gnoblin = Gnoblin.get()
 other = InputContext("secondary")
@@ -330,13 +328,12 @@ for device in gnoblin.input.devices:
 use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{InputContext, ModelRoot};
+use gnoblin_core::{InputContext, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = Rc::new(ModelRoot::get(&objects)?);
+    let model = Rc::new(Gnoblin::get(&objects)?);
     let input = model.input()?;
     let other = InputContext::new(&objects, "secondary")?;
     input.add_context(&other)?;

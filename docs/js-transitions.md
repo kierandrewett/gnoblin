@@ -7,7 +7,7 @@ The call is the same in the three languages a shell can be written in:
 
 - TypeScript has `gnoblin.requestTransition`.
 - Python has `GnoblinAugment.get().request_transition`.
-- Rust has `model.request_transition(..)` on the `ModelRoot`.
+- Rust has `model.request_transition(..)` on the `Gnoblin`.
 
 Each is also the static `Transition.request` of the std library.
 
@@ -33,8 +33,8 @@ if (workspace && client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Easing, GnoblinAugment, MasterStackLayout, TransitionOptions, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import Easing, GnoblinAugment, MasterStackLayout, TransitionOptions, Workspaces
 
 gnoblin = Gnoblin.get()
 
@@ -54,14 +54,14 @@ if workspace is not None and client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Easing, MasterStackLayout, MasterStackLayoutOptions, TransitionOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Easing, MasterStackLayout, MasterStackLayoutOptions, TransitionOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    let objects = g.std()?.objects()?;
+    let model = Gnoblin::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
     let workspace = model.workspaces()?.by_id("dev")?;
     let client = model.input()?.primary()?.focused_client()?;
 
@@ -171,8 +171,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import GnoblinAugment, TransitionOptions
+from gnoblin import Gnoblin
+from gnoblin.std import GnoblinAugment, TransitionOptions
 
 gnoblin = Gnoblin.get()
 
@@ -191,13 +191,13 @@ if client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::TransitionOptions;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::TransitionOptions;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let client = model.input()?.primary()?.focused_client()?;
 
     if let Some(client) = client {
@@ -262,8 +262,8 @@ gnoblin.requestTransition(
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Easing, GnoblinAugment, MasterStackLayout, TransitionOptions, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import Easing, GnoblinAugment, MasterStackLayout, TransitionOptions, Workspaces
 
 gnoblin = Gnoblin.get()
 
@@ -283,14 +283,14 @@ GnoblinAugment.get().request_transition(stage, TransitionOptions(duration=250.0,
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Easing, MasterStackLayout, MasterStackLayoutOptions, TransitionOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Easing, MasterStackLayout, MasterStackLayoutOptions, TransitionOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    let objects = g.std()?.objects()?;
+    let model = Gnoblin::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
     let client = model.input()?.primary()?.focused_client()?;
     let workspace = model.workspaces()?.by_id("dev")?;
     let layout = MasterStackLayout::new_with(

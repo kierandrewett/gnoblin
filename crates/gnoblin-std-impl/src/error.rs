@@ -7,7 +7,7 @@
 
 use std::cell::RefCell;
 
-use gnoblin_core::{CoreError, ErrorKind};
+use gnoblin_core::host::{CoreError, ErrorKind};
 use gnoblin_core_abi as abi;
 use gnoblin_object::ErrorCode;
 

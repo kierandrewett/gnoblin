@@ -31,7 +31,7 @@ gnoblin.clients.addListener(new Titles());
 ```
 
 ```python
-from gnoblin.objects.model import Client, ClientCollectionListener, Gnoblin
+from gnoblin import Client, ClientCollectionListener, Gnoblin
 
 
 class Titles(ClientCollectionListener):
@@ -47,10 +47,9 @@ Gnoblin.get().clients.add_listener(Titles())
 
 ```rust
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
-fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
+fn watch(g: &Gnoblin) -> gnoblin_core::Res<()> {
+    let clients = Gnoblin::get(&g.objects()?)?.clients()?;
     clients
         .on_title_changed(|client, title| {
             println!("{}: {title}", client.app_id().unwrap_or_default());
@@ -111,7 +110,7 @@ focus.stop(); // focus is not logged any more
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -127,10 +126,9 @@ focus.stop()  # focus is not logged any more
 
 ```rust
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
-fn watch_focus(g: &Gnoblin) -> gnoblin_core::Result<()> {
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
+fn watch_focus(g: &Gnoblin) -> gnoblin_core::Res<()> {
+    let clients = Gnoblin::get(&g.objects()?)?.clients()?;
     let focus = clients.on_focus_changed(|client, focused| {
         if focused {
             println!("{}", client.app_id().unwrap_or_default());
@@ -183,8 +181,8 @@ gnoblin.clients.on("added", (client) => {
 ```
 
 ```python
-from gnoblin.objects.model import Client, ClientCollectionListener, Gnoblin
-from gnoblin.objects.std import Toast
+from gnoblin import Client, ClientCollectionListener, Gnoblin
+from gnoblin.std import Toast
 
 
 class Count(ClientCollectionListener):
@@ -197,10 +195,9 @@ Gnoblin.get().clients.add_listener(Count())
 
 ```rust
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
-fn count(g: &Gnoblin) -> gnoblin_core::Result<()> {
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
+fn count(g: &Gnoblin) -> gnoblin_core::Res<()> {
+    let clients = Gnoblin::get(&g.objects()?)?.clients()?;
     clients
         .on_added(|client, _collection| {
             println!("{} opened", client.app_id().unwrap_or_default());
@@ -248,7 +245,7 @@ gnoblin.outputs.on("connected", (output) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -260,10 +257,9 @@ gnoblin.outputs.on(
 
 ```rust
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
-fn watch_outputs(g: &Gnoblin) -> gnoblin_core::Result<()> {
-    let outputs = ModelRoot::get(&g.objects()?)?.outputs()?;
+fn watch_outputs(g: &Gnoblin) -> gnoblin_core::Res<()> {
+    let outputs = Gnoblin::get(&g.objects()?)?.outputs()?;
     outputs
         .on_connected(|output| {
             println!("{} connected", output.connector().unwrap_or_default());

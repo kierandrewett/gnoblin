@@ -25,7 +25,7 @@ gnoblin.authentication.addListener(new NoRoot());
 ```
 
 ```python
-from gnoblin.objects.model import AuthenticationListener, AuthenticationRequest, Gnoblin
+from gnoblin import AuthenticationListener, AuthenticationRequest, Gnoblin
 
 
 class NoRoot(AuthenticationListener):
@@ -39,13 +39,12 @@ Gnoblin.get().authentication.add_listener(NoRoot())
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{AuthenticationListenerHandlers, AuthenticationRequest, ModelRoot};
+use gnoblin_core::{AuthenticationListenerHandlers, AuthenticationRequest, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let model = Gnoblin::get(&objects)?;
     let authentication = model.authentication()?;
     let listener = AuthenticationListenerHandlers {
         on_authentication_request: Some(Box::new(|request: AuthenticationRequest| {

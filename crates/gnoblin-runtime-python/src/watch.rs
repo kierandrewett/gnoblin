@@ -103,13 +103,13 @@ pub(crate) fn poll(ctx: GnoblinCtx) {
     if let Some((handle, changed)) = asked {
         if let Err(error) = handle.request_reload() {
             generation::log(
-                gnoblin_core::LogLevel::Warn,
+                gnoblin_core::host::LogLevel::Warn,
                 &format!("python: the reload for {} was refused: {error}", changed.display()),
             );
             with_state(|state| state.watch.requested = false);
         } else {
             generation::log(
-                gnoblin_core::LogLevel::Info,
+                gnoblin_core::host::LogLevel::Info,
                 &format!("python: {} changed, asking the host to reload", changed.display()),
             );
         }

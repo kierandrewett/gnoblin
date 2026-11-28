@@ -880,7 +880,7 @@ type = "object:rect"
 name = "gnoblin"
 since = "0.2.0"
 kind = "service"
-export = { rust = "ModelRoot" }
+export = { rust = "Gnoblin" }
 
 # The windows the compositor manages, in the order it made them.
 [[object.property]]

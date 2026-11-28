@@ -22,8 +22,8 @@ gnoblin.clients.on("added", (client) => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import ClientCollectionAugment
+from gnoblin import Gnoblin
+from gnoblin.std import ClientCollectionAugment
 
 
 ClientCollectionAugment.get().style(Gnoblin.get().clients).opacity = 1.0
@@ -38,13 +38,12 @@ def rule(client):
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{Client, ClientCollection, ModelRoot};
+use gnoblin_core::{Client, ClientCollection, Gnoblin};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
+    let clients = Gnoblin::get(&g.objects()?)?.clients()?;
     clients.style()?.set_opacity(1.0)?;
     clients
         .on_added(|client: Client, _clients: ClientCollection| {

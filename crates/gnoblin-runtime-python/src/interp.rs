@@ -2,7 +2,7 @@
 //!
 //! Three things happen before any script runs. libpython's symbols are made visible to the C extension modules the script imports
 //! (the loader opens this library with `RTLD_LOCAL`, so its `NEEDED` libpython would otherwise stay private and `import math`
-//! would fail with an unresolved `PyFloat_Type`). The built-in modules `_gnoblin_core`, `_gnoblin_std` and `_gnoblin_objects` are
+//! would fail with an unresolved `PyFloat_Type`). The built-in modules `_gnoblin_core` and `_gnoblin_objects` are
 //! registered, so they are importable and nothing else can import them. And the package `gnoblin` is served from this library by a
 //! finder on `sys.meta_path` of this interpreter ([`crate::finder`]): no directory is searched for it, and nothing of it is read from disk.
 //! Python's own reporting (an uncaught exception, a warning, a `logging` record) is routed into the core's log ([`crate::logging`]).
@@ -17,7 +17,6 @@ use pyo3::prelude::*;
 use crate::callback::traceback_text;
 use crate::module::_gnoblin_core;
 use crate::object_native::_gnoblin_objects;
-use crate::std_native::_gnoblin_std;
 
 #[repr(C)]
 struct AddressInfo {
@@ -78,7 +77,6 @@ pub(crate) fn boot() -> Result<(), String> {
 fn boot_once() -> Result<(), String> {
     promote_libpython();
     pyo3::append_to_inittab!(_gnoblin_core);
-    pyo3::append_to_inittab!(_gnoblin_std);
     pyo3::append_to_inittab!(_gnoblin_objects);
     Python::initialize();
     Python::attach(|py| -> PyResult<()> {

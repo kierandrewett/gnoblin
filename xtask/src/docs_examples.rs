@@ -43,6 +43,71 @@ const SCRATCH: &str = "target/docs-examples";
 const REFERENCE_OUT: &str = "infra/site/.generated/sdk";
 const SITE_BIN: &str = "infra/site/node_modules/.bin";
 
+/// The paths of the Rust SDK a shell author must not be taught: the host layer the language runtimes stand on and the macro's
+/// support module. The closer a name is to the crate root, the more public it is; these are plumbing.
+const INTERNAL_RUST_PATHS: [&str; 2] = ["gnoblin_core::host", "gnoblin_core::__private"];
+
+/// The lines of `text` that name an internal path of the Rust SDK, as `where:line: text`.
+fn internal_lines(place: &str, text: &str) -> Vec<String> {
+    text.lines()
+        .enumerate()
+        .filter(|(_, line)| INTERNAL_RUST_PATHS.iter().any(|path| line.contains(path)))
+        .map(|(at, line)| format!("{place}:{}: names an internal path: {}", at + 1, line.trim()))
+        .collect()
+}
+
+/// Every place a shell author reads Rust: the Rust examples of the pages (checked or skipped), the shells of `examples/` and the Rust
+/// starters. None of them may name an internal path of the SDK.
+fn internal_imports(repo: &Path, examples: &[Example]) -> Result<Vec<String>, String> {
+    let mut found = Vec::new();
+    for example in examples.iter().filter(|example| example.language == Language::Rust) {
+        let place = format!("docs/{}", example.page);
+        found.extend(
+            internal_lines(&place, &example.code)
+                .into_iter()
+                .map(|line| line.replacen(&format!("{place}:"), &format!("{place}:{}+", example.fence_line), 1)),
+        );
+    }
+    for dir in ["examples", "shells/starters"] {
+        let mut sources = Vec::new();
+        rust_sources(&repo.join(dir), &mut sources)?;
+        for source in sources {
+            let text =
+                fs::read_to_string(&source).map_err(|error| format!("cannot read {}: {error}", source.display()))?;
+            let place = source.strip_prefix(repo).unwrap_or(&source).display().to_string();
+            if HOST_LAYER_EXAMPLES.iter().any(|example| place.starts_with(example)) {
+                continue;
+            }
+            found.extend(internal_lines(&place, &text));
+        }
+    }
+    Ok(found)
+}
+
+/// The shipped examples that teach the host layer on purpose, because the object model has no counterpart of what they show (kept state,
+/// adopted nodes and posters across a reload).
+const HOST_LAYER_EXAMPLES: [&str; 1] = ["examples/10-hot-reload"];
+
+/// The `.rs` files under `dir`, without descending into a `target` directory.
+fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Ok(());
+    };
+    for entry in entries {
+        let path = entry
+            .map_err(|error| format!("cannot list {}: {error}", dir.display()))?
+            .path();
+        if path.is_dir() {
+            if path.file_name().is_some_and(|name| name != "target") {
+                rust_sources(&path, out)?;
+            }
+        } else if path.extension().is_some_and(|extension| extension == "rs") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
 /// One thing a checker said about an example.
 #[derive(Debug, PartialEq, Eq)]
 struct Finding {
@@ -183,6 +248,18 @@ fn examples_command(args: &[String]) -> Result<ExitCode, String> {
     if examples.is_empty() {
         println!("[docs-examples] no `::: tabs` groups in {} page(s)", files.len());
         return Ok(ExitCode::SUCCESS);
+    }
+
+    let internal = internal_imports(&repo, &examples)?;
+    if !internal.is_empty() {
+        for line in &internal {
+            eprintln!("{line}");
+        }
+        eprintln!(
+            "[docs-examples] {} import(s) of an internal path: pages, examples and starters teach the root paths",
+            internal.len()
+        );
+        return Ok(ExitCode::FAILURE);
     }
 
     let scratch = out.unwrap_or_else(|| repo.join(SCRATCH));
@@ -639,6 +716,32 @@ fn reference_command(args: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_page_or_example_that_names_the_host_layer_is_refused() {
+        let taught = "use gnoblin_core::host::Host;\nfn main() {}\n";
+        let found = internal_lines("docs/x.md", taught);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].starts_with("docs/x.md:1:"), "{found:?}");
+        assert_eq!(internal_lines("a.rs", "use gnoblin_core::__private::entry;").len(), 1);
+        // The root paths, and `host` in prose that is not the SDK path, are fine.
+        assert!(
+            internal_lines(
+                "a.rs",
+                "use gnoblin_core::{Client, Gnoblin};\n// the host of the session"
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn the_shipped_examples_and_starters_name_no_internal_path() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        assert_eq!(
+            internal_imports(&repo, &[]).expect("the sources read"),
+            Vec::<String>::new()
+        );
+    }
 
     #[test]
     fn a_tsc_error_is_found_in_its_example_and_a_continuation_joins_it() {

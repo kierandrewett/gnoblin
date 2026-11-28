@@ -57,7 +57,7 @@ impl Imp for Arc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gnoblin_core::Rect;
+    use gnoblin_core::host::Rect;
 
     #[test]
     fn the_focused_window_is_at_the_front_and_the_others_turn_towards_the_centre() {

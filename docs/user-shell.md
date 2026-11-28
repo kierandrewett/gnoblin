@@ -23,10 +23,10 @@ The library is two parts, in every language:
 - `gnoblin-core` is the host bridge and the core objects: `gnoblin`, `Client`, `Output`, collections, listeners, input
   contexts and bindings, `process`, `session`, and the dialog, idle and authentication services. It is the package
   `gnoblin-core` in TypeScript.
-  In Python it is the module `gnoblin.objects.model`, and in Rust the crate `gnoblin-core`.
+  In Python it is the module `gnoblin`, and in Rust the crate `gnoblin-core`.
 - `gnoblin-std` is the desktop policy built on it: workspaces, layouts, the move and resize bindings, focus, snapping,
   the window frame and menus, styles, transitions, scenes, the toolkit and XR. It is the package `gnoblin-std` in TypeScript.
-  In Python it is the module `gnoblin.objects.std`, and in Rust the crate `gnoblin-std`.
+  In Python it is the module `gnoblin.std`, and in Rust the crate `gnoblin-std`.
 
 `gnoblin-std` builds on `gnoblin-core`, never the reverse. Import from the part a name lives in.
 
@@ -60,7 +60,7 @@ gnoblin.clients.on("focusChanged", (client, focused) => {
 ```
 
 ```python
-from gnoblin.objects.model import Client, Gnoblin
+from gnoblin import Client, Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -78,11 +78,10 @@ use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let clients = model.clients()?;
     let shell = Rc::clone(&model);
     clients
@@ -146,7 +145,7 @@ gnoblin.clients.on("focusChanged", logFocus);
 
 ```python
 # ~/.config/gnoblin/focus_log.py
-from gnoblin.objects.model import Client, Gnoblin
+from gnoblin import Client, Gnoblin
 
 
 def log_focus(client: Client, has_focus: bool) -> None:
@@ -157,7 +156,7 @@ def log_focus(client: Client, has_focus: bool) -> None:
 ```python
 # ~/.config/gnoblin/shell.py
 from focus_log import log_focus
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 Gnoblin.get().clients.on("focus_changed", log_focus)
 ```
@@ -166,9 +165,9 @@ Gnoblin.get().clients.on("focus_changed", log_focus)
 // src/focus_log.rs
 use std::rc::Rc;
 
-use gnoblin_core::objects::{Client, ModelRoot};
+use gnoblin_core::{Client, Gnoblin};
 
-pub fn log_focus(shell: &Rc<ModelRoot>, client: Client, has_focus: bool) {
+pub fn log_focus(shell: &Rc<Gnoblin>, client: Client, has_focus: bool) {
     if has_focus {
         if let Ok(app_id) = client.app_id() {
             let argv = ["logger".to_owned(), "-t".to_owned(), "focus".to_owned(), app_id];
@@ -184,13 +183,12 @@ use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 mod focus_log;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let clients = model.clients()?;
     let shell = Rc::clone(&model);
     clients

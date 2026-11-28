@@ -995,7 +995,7 @@ import importlib
 
 importlib.import_module("gnoblin.objects.std")
 from gnoblin.objects import model
-from gnoblin.std import Collection, Workspace, clients
+from gnoblin.std import Workspace
 
 for name in sorted(sys.modules):
     if name == "gnoblin" or name.startswith("gnoblin."):
@@ -1052,8 +1052,6 @@ fn the_package_is_served_by_the_runtime_and_no_file_of_it_is_read() {
         "gnoblin.api",
         "gnoblin.errors",
         "gnoblin.events",
-        "gnoblin._std_base",
-        "gnoblin._std_sugar",
         "gnoblin.std",
         "gnoblin._generated.classes",
         "gnoblin._generated.verbs",
@@ -1249,18 +1247,7 @@ fn every_python_example_type_checks_clean_against_the_installed_stubs() {
     type_check(&project("examples-pyright"), &pyright, &examples);
 }
 
-// ---- example 3: a Python shell on the generated std objects -----------------------------------------------------------------
-//
-// Example 3 is written on the generated object API (`gnoblin.objects.std`). `gnoblin.std`, the typed-table binding over `gnoblin._std_base`,
-// still ships in this runtime, so each proof runs a second time on the shells of `tests/fixtures/typed_table`: example 3 as it was before
-// it moved. They stay for as long as that binding does; each test of them says `typed_table` in its name.
-
-/// A shell of `tests/fixtures/typed_table`: the typed-table binding's own proof.
-fn typed_table(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/typed_table")
-        .join(name)
-}
+// ---- example 3: a Python shell on the std classes ---------------------------------------------------------------------------
 
 /// The scenario of example 6 over the Python shell `script`: the same windows, the same chord, the same rectangles the native Rust
 /// shell of example 6 produces (`gnoblin-std-impl/tests/examples.rs`).
@@ -1272,11 +1259,6 @@ fn std_scenario(script: &Path) -> Run {
 #[test]
 fn example_3_a_python_shell_arranges_the_clients_of_a_workspace_in_columns_as_they_open_and_close() {
     assert_columns(&std_scenario(&example("03-python-std/shell.py")));
-}
-
-#[test]
-fn typed_table_a_python_shell_on_gnoblin_std_arranges_the_clients_of_a_workspace_in_columns_as_they_open_and_close() {
-    assert_columns(&std_scenario(&typed_table("shell.py")));
 }
 
 fn assert_columns(run: &Run) {
@@ -1392,11 +1374,6 @@ fn assert_layouts_match_the_native_shell(layouts: &Path) {
 #[test]
 fn the_built_in_layouts_from_python_give_the_rectangles_of_the_native_shell() {
     assert_layouts_match_the_native_shell(&example("03-python-std/layouts.py"));
-}
-
-#[test]
-fn typed_table_the_built_in_layouts_from_gnoblin_std_give_the_rectangles_of_the_native_shell() {
-    assert_layouts_match_the_native_shell(&typed_table("layouts.py"));
 }
 
 /// Starts the shell `script` in the prefix that has the std library beside the core, and ends it when it has evaluated: the scenario of a

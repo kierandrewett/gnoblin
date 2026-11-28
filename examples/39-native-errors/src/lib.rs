@@ -12,13 +12,12 @@
 //! `cargo build -p gnoblin-example-native-errors` and run it with `gnoblin ./target/debug/libnative_errors.so`.
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{InputContext, ModelRoot};
+use gnoblin_core::{InputContext, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let model = Gnoblin::get(&objects)?;
 
     {
         let input = model.input()?;

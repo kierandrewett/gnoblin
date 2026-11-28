@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::{Builder, ClassBuilder, Cx, Inits};
 use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
@@ -178,7 +178,7 @@ pub(super) fn layout_members<'a>(class: ClassBuilder<'a, OwnedLayout>) -> ClassB
             if let Some(next) = held.layout.client_removed(&context, client)
                 && let Ok(g) = gnoblin_core::private::gnoblin_for(cx.ctx())
             {
-                let _ = g.window_handle(gnoblin_core::NodeId(next)).focus();
+                let _ = g.window_handle(gnoblin_core::host::NodeId(next)).focus();
             }
             Ok(Val::None)
         })

@@ -15,23 +15,23 @@ pub use gnoblin_core_abi as abi;
 use gnoblin_core_abi::{GnoblinApi, GnoblinCtx, GnoblinShellStats};
 pub use gnoblin_core_abi::{GnoblinShellEntry, GnoblinStr};
 
-use crate::gnoblin::{CALLS, DROPS, Gnoblin, LogLevel, REGISTERED};
+use crate::gnoblin::{CALLS, DROPS, Host, LogLevel, REGISTERED};
 use crate::sys;
 
 /// The shell's entry function, recorded by `gnoshell_entry_v1` before the core calls `init`.
-type UserFn = fn(&'static Gnoblin) -> Result<(), String>;
+type UserFn = fn(&'static Host) -> Result<(), String>;
 
 static USER: OnceLock<UserFn> = OnceLock::new();
 
 thread_local! {
     /// The handle of the generation whose entry function ran last on this thread.
-    static CURRENT: std::cell::Cell<Option<&'static Gnoblin>> = const { std::cell::Cell::new(None) };
+    static CURRENT: std::cell::Cell<Option<&'static Host>> = const { std::cell::Cell::new(None) };
 }
 
-/// The handle of the generation that last started on this thread, for libraries a shell uses that have no `&Gnoblin` to hand
+/// The handle of the generation that last started on this thread, for libraries a shell uses that have no `&Host` to hand
 /// (`gnoblin-std`'s `Workspace::new("main")`). A shell has one thread, and a reload starts the new generation on it, so this is
 /// the generation that is running; `None` outside a shell's entry.
-pub fn current_gnoblin() -> Option<&'static Gnoblin> {
+pub fn current_gnoblin() -> Option<&'static Host> {
     CURRENT.with(std::cell::Cell::get)
 }
 
@@ -42,13 +42,13 @@ pub fn set_user(user: UserFn) {
 
 /// The raw context handle of `g`'s generation: the first argument of every function in `libgnoblin-std`'s table, which
 /// the std SDK passes on behalf of the shell.
-pub fn ctx_of(g: &Gnoblin) -> GnoblinCtx {
+pub fn ctx_of(g: &Host) -> GnoblinCtx {
     g.ctx()
 }
 
 /// The installed core's function table, as `g` holds it: for `libgnoblin-std`, which registers providers and sets settings
 /// through functions the SDK has no wrapper for.
-pub fn api_of(g: &Gnoblin) -> &'static GnoblinApi {
+pub fn api_of(g: &Host) -> &'static GnoblinApi {
     g.api()
 }
 
@@ -63,15 +63,28 @@ pub fn last_error() -> String {
 /// # Errors
 ///
 /// The installed core refuses the ABI major this crate was built for.
-pub fn gnoblin_for(ctx: GnoblinCtx) -> crate::Result<Gnoblin> {
+pub fn gnoblin_for(ctx: GnoblinCtx) -> crate::host::Result<Host> {
     let mut table: *const GnoblinApi = core::ptr::null();
     // SAFETY: `gnoblin_get_api` writes one pointer through the pointer it is given, a live local.
     let rc = unsafe { sys::gnoblin_get_api(abi::ABI_MAJOR, abi::ABI_MINOR, &mut table) };
     crate::error::check(rc)?;
     // SAFETY: on success the core wrote a pointer to its static table, which is never unmapped (the core is linked with
     // `-z nodelete`), so the reference is valid for the rest of the process.
-    let api = unsafe { table.as_ref() }.ok_or_else(|| crate::CoreError::from_code(abi::E_ABI))?;
-    Ok(Gnoblin::new(api, ctx))
+    let api = unsafe { table.as_ref() }.ok_or_else(|| crate::host::CoreError::from_code(abi::E_ABI))?;
+    Ok(Host::new(api, ctx))
+}
+
+/// The root of the object model for the entry function: made once for the generation and leaked like the host handle, so the author's
+/// closures may capture it for as long as the shell runs.
+pub fn root(host: &'static Host) -> Result<&'static crate::Gnoblin, String> {
+    // The classes read the compositor's tree, so the generation attaches to it before the author's function runs: the windows that are
+    // open already are in `clients` from the first line.
+    host.attach().map_err(|error| error.to_string())?;
+    // One turn of the dispatch, so what the compositor already has (its windows) is in the collections before the author reads them.
+    host.dispatch(0).map_err(|error| error.to_string())?;
+    let objects = host.objects().map_err(|error| error.to_string())?;
+    let root = crate::Gnoblin::get(&objects).map_err(|error| error.to_string())?;
+    Ok(Box::leak(Box::new(root)))
 }
 
 /// What an entry function may return: nothing, or a `Result` whose error is shown to the user.
@@ -128,7 +141,7 @@ pub unsafe extern "C" fn init(_api: *const GnoblinApi, ctx: GnoblinCtx) -> i32 {
     // The handle is leaked: sixteen bytes per generation, so the author's closures may capture `g` for as long as the shell runs
     // (`g.bind("Super+Return", || g.spawn("foot"))`). The core never unmaps a generation's code, so what the box costs is
     // what the library already costs, and a handle kept past its generation fails with `Retired` instead of acting.
-    let g: &'static Gnoblin = Box::leak(Box::new(Gnoblin::new(api, ctx)));
+    let g: &'static Host = Box::leak(Box::new(Host::new(api, ctx)));
     CURRENT.with(|current| current.set(Some(g)));
     let Some(user) = USER.get() else {
         g.log_at(LogLevel::CoreError, "the shell's entry function was not recorded");

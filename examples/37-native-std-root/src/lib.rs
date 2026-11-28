@@ -1,6 +1,6 @@
 //! Example 37: the members the std library adds to the `gnoblin` root of the core.
 //!
-//! `use gnoblin_std::prelude::*;` brings the extension traits `ModelRootStdExt`, `OutputCollectionStdExt`, `InputContextStdExt` and
+//! `use gnoblin_std::prelude::*;` brings the extension traits `GnoblinStdExt`, `OutputCollectionStdExt`, `InputContextStdExt` and
 //! `ClientCollectionStdExt` into scope, which give the core's typed root `workspaces`, `displays`, `scene`, `gestures` and
 //! `request_transition`, its output collections `profiles`, its input contexts `active_display` and its collections of windows `style`. A
 //! shell that does not use the std prelude (example 35) has none of them, and links no std library. This shell:
@@ -20,8 +20,8 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use gnoblin_core::objects::{ClientCollection, ClientQuery, ModelRoot};
-use gnoblin_std::objects::{
+use gnoblin_core::{ClientCollection, ClientQuery, Gnoblin};
+use gnoblin_std::{
     Display, DisplaySelector, OutputMatch, OutputProfile, TransitionOptions, Workspace, WorkspaceQuery,
 };
 use gnoblin_std::prelude::*;
@@ -36,8 +36,8 @@ fn lasting(duration: f64) -> TransitionOptions {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    let objects = g.std()?.objects()?;
+    let model = Gnoblin::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
     let workspaces = Rc::new(model.workspaces()?);
     let displays = Rc::new(model.displays()?);
     let outputs = model.outputs()?;
@@ -139,7 +139,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             say("show main by id: true".to_owned());
             say(format!("main is active: {}", main.active().unwrap_or(false)));
             // `find::<Workspace>` is a kind of the root's `find` once std is loaded.
-            let model = g.objects().ok().and_then(|core| ModelRoot::get(&core).ok());
+            let model = g.objects().ok().and_then(|core| Gnoblin::get(&core).ok());
             let ids = |query: WorkspaceQuery| {
                 model
                     .as_ref()
@@ -166,7 +166,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             let shown = g
                 .objects()
                 .ok()
-                .and_then(|core| ModelRoot::get(&core).ok())
+                .and_then(|core| Gnoblin::get(&core).ok())
                 .and_then(|model| model.input().ok())
                 .and_then(|input| input.primary().ok())
                 .and_then(|context| context.active_display().ok().flatten())

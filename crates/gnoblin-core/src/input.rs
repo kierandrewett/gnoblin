@@ -5,7 +5,7 @@
 //! reload hands a chord from the old generation to the new one without the compositor ever seeing it claimed twice.
 //!
 //! These functions claim a chord and call back for each event: the compositor's claims, one for each call. A shell that wants the input
-//! matcher (a context for each seat, tiers, priority and decline, claims shared between bindings) uses `ModelRoot::input` of the object model.
+//! matcher (a context for each seat, tiers, priority and decline, claims shared between bindings) uses `Gnoblin::input` of the object model.
 //!
 //! ```ignore
 //! g.bind("<Super>Return", || { g.spawn("foot").ok(); })?;
@@ -22,7 +22,7 @@ use gnoblin_core_abi::{self as abi, GnoblinClaim, GnoblinClaimEvent, GnoblinStr}
 use crate::callback::CallbackResult;
 use crate::error::Result;
 use crate::events::Slot;
-use crate::gnoblin::{CALLS, Gnoblin, Subscription, drop_slot};
+use crate::gnoblin::{CALLS, Host, Subscription, drop_slot};
 use crate::tree::Node;
 
 /// The state a chord changed to.
@@ -207,7 +207,7 @@ unsafe extern "C" fn claim_tramp<F: FnMut(&RawClaim<'_>)>(user: *mut c_void, eve
     }
 }
 
-impl Gnoblin {
+impl Host {
     /// Claims `spec` on the seat and calls `f` for each event of the claim.
     fn claim_raw<F>(&self, spec: &GnoblinClaim, f: Option<F>) -> Result<Subscription>
     where
@@ -259,7 +259,7 @@ impl Gnoblin {
     ///
     /// `chord` is written either way: `Super+Return`, `Ctrl+Alt+Delete` (the spelling of the spec and of most shell authors) or the
     /// compositor's own `<Super>Return`, `<Control><Alt>Delete`. It is claimed as it is written: the compositor's parser reads both
-    /// spellings as one chord. `f` returns `()` or a `Result` (an `Err` is logged, see [`CallbackResult`](crate::CallbackResult)), so
+    /// spellings as one chord. `f` returns `()` or a `Result` (an `Err` is logged, see [`CallbackResult`](crate::host::CallbackResult)), so
     /// `|| g.spawn("foot")` is a whole callback.
     ///
     /// ```ignore
@@ -278,7 +278,7 @@ impl Gnoblin {
         })
     }
 
-    /// Claims a key chord (either spelling, see [`bind`](Gnoblin::bind)) and calls `f` for each press, release and repeat of it.
+    /// Claims a key chord (either spelling, see [`bind`](Host::bind)) and calls `f` for each press, release and repeat of it.
     pub fn bind_events<F, R>(&self, chord: &str, mut f: F) -> Result<Subscription>
     where
         F: FnMut(&ChordEvent) -> R + 'static,
@@ -403,7 +403,7 @@ impl Gnoblin {
     }
 
     /// Takes the seat's pointer, keyboard or both for `node`, a node of the shell's own: while the grab stands, no client, claim or
-    /// other node hears what it takes, and `node` hears it as events ([`Gnoblin::on_node_event`]). One grab at a time.
+    /// other node hears what it takes, and `node` hears it as events ([`Host::on_node_event`]). One grab at a time.
     pub fn grab_input(&self, node: &Node, scope: GrabScope) -> Result<Subscription> {
         let spec = Self::claim_spec(abi::CLAIM_GRAB, 0, 0, scope.text(), "", node.id().0);
         self.claim_raw::<fn(&RawClaim<'_>)>(&spec, None)

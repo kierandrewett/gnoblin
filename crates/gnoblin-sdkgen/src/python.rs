@@ -9,7 +9,7 @@
 //!   gives a type checker the real attribute types (`window.title` is a `str`, `window.maximised` assigns a `bool`).
 //! - `abi.py`: the ABI's constants as `IntEnum` and `IntFlag`, and one exception class per `E_*` code.
 //! - `verbs.py`: the compositor's `gnoblin` namespace, its verbs and signals (see `verbs`).
-//! - `std.py`: the std library's classes, records and constants, over the native `gnoblin._std` module.
+//! - `std.py` and `std.pyi`: `gnoblin.std`, which is the std library's classes (`gnoblin.objects.std`) under the path a shell imports.
 //!
 //! The generic descriptors (`Node`, `Property`, `Method`, `Signal`) are written in Rust in `gnoblin-runtime-python` (`descriptors.rs`): they are
 //! the part that talks to the runtime, and they are the same for every class.
@@ -45,9 +45,28 @@ impl Target for PythonTarget {
             python("abi.py", abi(spec)),
             python("verbs.py", super::verbs::python(spec)),
         ];
-        files.extend(super::python_std::files(spec)?);
+        files.extend(std_reexport());
         Ok(files)
     }
+}
+
+/// `gnoblin/std.py` and `std.pyi`: the classes of `gnoblin.objects.std` at `gnoblin.std`. The closer a name is to the package root, the
+/// more public it is, and `objects` is the module the classes are written in.
+fn std_reexport() -> Vec<File> {
+    let source = "\"\"\"The classes of the std library: `from gnoblin.std import Workspace`.\"\"\"\n\nfrom gnoblin.objects import std as _std\n\n__all__ = []\nfor _name in dir(_std):\n    _item = getattr(_std, _name)\n    if not _name.startswith(\"_\") and getattr(_item, \"__module__\", None) == _std.__name__:\n        globals()[_name] = _item\n        __all__.append(_name)\ndel _name, _item\n";
+    let stub = "from gnoblin.objects.std import *\n";
+    vec![
+        File {
+            path: "python/gnoblin/std.py".to_owned(),
+            comment: Some(Comment::Hash),
+            text: source.to_owned(),
+        },
+        File {
+            path: "python/gnoblin/std.pyi".to_owned(),
+            comment: Some(Comment::Hash),
+            text: stub.to_owned(),
+        },
+    ]
 }
 
 /// The Python name of a node class: `node` is `TreeNode`, so it does not hide the runtime's own `Node`, the handle every class

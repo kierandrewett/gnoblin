@@ -35,7 +35,7 @@ state.start();
 
 ```python
 from gnoblin import gnoblin as session
-from gnoblin.objects.std import ClientRequestKind, RequestListener, WindowState
+from gnoblin.std import ClientRequestKind, RequestListener, WindowState
 
 
 class OwnMenu(RequestListener):
@@ -51,14 +51,14 @@ state.start()
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{ClientRequestKind, RequestListenerHandlers, WindowState};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{ClientRequestKind, RequestListenerHandlers, WindowState};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
-    let model = ModelRoot::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let listener = RequestListenerHandlers {
         on_request: Box::new(move |request| {
             if request.kind()? == ClientRequestKind::Menu {

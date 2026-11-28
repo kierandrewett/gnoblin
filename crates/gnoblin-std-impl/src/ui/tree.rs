@@ -5,7 +5,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gnoblin_core::{LogLevel, Node, NodeId, Value};
+use gnoblin_core::host::{LogLevel, Node, NodeId, Value};
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Cx, Library};
 use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
@@ -83,7 +83,7 @@ pub(crate) fn ui_for(ctx: GnoblinCtx) -> Res<Rc<Ui>> {
     Ok(ui)
 }
 
-pub(crate) fn core_fail(error: gnoblin_core::CoreError) -> Fail {
+pub(crate) fn core_fail(error: gnoblin_core::host::CoreError) -> Fail {
     Fail::new(error.kind().code(), error.to_string())
 }
 
@@ -405,7 +405,7 @@ impl Ui {
 }
 
 /// A refusal of the compositor as a failure.
-pub(crate) fn refused(what: &str, error: &gnoblin_core::CoreError) -> Fail {
+pub(crate) fn refused(what: &str, error: &gnoblin_core::host::CoreError) -> Fail {
     Fail::new(abi::E_REFUSED, format!("Canvas.{what}: the host refused ({error})"))
 }
 

@@ -15,8 +15,8 @@ Every line starts with ``workspaces:``, as the Rust shell of the same example sp
 """
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import (
+from gnoblin import Gnoblin
+from gnoblin.std import (
     ArcLayout,
     Carousel3dLayout,
     DwindleLayout,

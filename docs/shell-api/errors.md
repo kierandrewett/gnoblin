@@ -21,7 +21,7 @@ gnoblin.input.primary.bind("Super+Shift+q", () => {
 ```
 
 ```python
-from gnoblin.objects.model import BindingEvent, Gnoblin
+from gnoblin import BindingEvent, Gnoblin
 
 gnoblin = Gnoblin.get()
 
@@ -41,12 +41,11 @@ gnoblin.input.primary.bind("Super+Shift+q", log_out)
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let input = model.input()?;
     let session = model.session()?;
     let context = input.primary()?;
@@ -107,7 +106,7 @@ gnoblin.timers.after(5000, () => {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 gnoblin = Gnoblin.get()
 sleep = gnoblin.process.spawn(["sleep", "30"])
@@ -130,17 +129,16 @@ gnoblin.timers.after(5000.0, too_slow)
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 
-fn notify(model: &ModelRoot, text: &str) -> gnoblin::Result<()> {
+fn notify(model: &Gnoblin, text: &str) -> gnoblin::Res<()> {
     model.spawn(&["notify-send".to_owned(), text.to_owned()], None)?;
     Ok(())
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let processes = model.process()?;
     let timers = model.timers()?;
     let sleep = Rc::new(processes.spawn(&["sleep".to_owned(), "30".to_owned()], None)?);
@@ -219,8 +217,8 @@ try {
 
 ```python
 from gnoblin import GnoblinError
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Workspace, Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import Workspace, Workspaces
 
 gnoblin = Gnoblin.get()
 
@@ -232,14 +230,14 @@ except GnoblinError as error:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Workspace, WorkspaceOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Workspace, WorkspaceOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    let objects = g.std()?.objects()?;
+    let model = Gnoblin::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
     let workspace = Workspace::new_with(&objects, "main", WorkspaceOptions::default())?;
     if let Err(fail) = model.workspaces()?.add(&workspace) {
         model.spawn(
@@ -348,8 +346,8 @@ timer.cancel();
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Workspaces
+from gnoblin import Gnoblin
+from gnoblin.std import Workspaces
 
 gnoblin = Gnoblin.get()
 
@@ -365,12 +363,12 @@ timer.cancel()
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let timers = model.timers()?;
     let workspaces = Rc::new(model.workspaces()?);
     let timer = timers.after(2000.0, move || {

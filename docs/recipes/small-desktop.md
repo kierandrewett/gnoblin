@@ -46,11 +46,11 @@ use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let shell = g.clone();
-    g.bind("Super+d", move || shell.spawn("fuzzel"))?;
+    g.bind("Super+d", move || shell.spawn(&["fuzzel".to_owned()], None))?;
     let shell = g.clone();
-    g.bind("Super+Return", move || shell.spawn("foot"))?;
+    g.bind("Super+Return", move || shell.spawn(&["foot".to_owned()], None))?;
     Ok(())
 }
 ```

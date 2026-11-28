@@ -29,7 +29,7 @@ pub(crate) use node::{CameraState, camera_state, new_flat_camera};
 
 use std::collections::HashMap;
 
-use gnoblin_core::{Gnoblin, NodeId};
+use gnoblin_core::host::{Host, NodeId};
 use gnoblin_object::server::Builder;
 
 use crate::animation::engine::read_prop;
@@ -80,12 +80,12 @@ pub(crate) struct SceneState {
 }
 
 /// The staged value of a property while a transition is staging, else the tree's.
-pub(crate) fn read_through(g: &Gnoblin, node: u64, key: &str) -> Option<Prop> {
+pub(crate) fn read_through(g: &Host, node: u64, key: &str) -> Option<Prop> {
     staging::peek(node, key).or_else(|| read_prop(g, node, key))
 }
 
 /// A write of one property: skipped when the node already holds the value, held when a transition is staging, else made at once.
-pub(crate) fn write(g: &Gnoblin, node: u64, label: &str, key: &str, value: Prop) -> Res<()> {
+pub(crate) fn write(g: &Host, node: u64, label: &str, key: &str, value: Prop) -> Res<()> {
     if read_through(g, node, key).as_ref() == Some(&value) {
         return Ok(());
     }
@@ -99,7 +99,7 @@ pub(crate) fn write(g: &Gnoblin, node: u64, label: &str, key: &str, value: Prop)
 }
 
 /// A failure of the core, with what the library was doing in front of its text.
-fn with_context(error: gnoblin_core::CoreError, context: &str) -> Fail {
+fn with_context(error: gnoblin_core::host::CoreError, context: &str) -> Fail {
     let fail = Fail::from(error);
     let message = format!("{context} ({})", fail.message);
     fail.with_message(message)
@@ -128,7 +128,7 @@ fn triple(prop: &Prop, label: &str, key: &str) -> Res<[f64; 3]> {
 
 impl SceneState {
     /// Makes a scene node of `kind` in the tree.
-    pub(crate) fn make(&mut self, g: &Gnoblin, kind: Kind) -> Res<u64> {
+    pub(crate) fn make(&mut self, g: &Host, kind: Kind) -> Res<u64> {
         let node = g
             .create_node(kind.class())
             .map_err(|error| with_context(error, &format!("the shell could not make a {}", kind.label())))?;
@@ -138,7 +138,7 @@ impl SceneState {
     }
 
     /// Takes a node and everything under it out of the tree, and out of what the library keeps. A node already gone is no failure.
-    pub(crate) fn destroy(&mut self, g: &Gnoblin, node: u64) -> Res<()> {
+    pub(crate) fn destroy(&mut self, g: &Host, node: u64) -> Res<()> {
         let mut all = vec![node];
         let mut at = 0;
         while at < all.len() {
@@ -173,7 +173,7 @@ impl SceneState {
     }
 
     /// Writes a property of a scene node, checked.
-    pub(crate) fn set(&mut self, g: &Gnoblin, node: u64, key: &str, prop: Prop) -> Res<()> {
+    pub(crate) fn set(&mut self, g: &Host, node: u64, key: &str, prop: Prop) -> Res<()> {
         let (kind, label) = self.kind_of(node)?;
         if !crate::nodes::alive(g, node) {
             return Err(Fail::new(
@@ -240,7 +240,7 @@ impl SceneState {
                 Prop::Node(id)
                     if match g.node(NodeId(id)).class_name() {
                         Ok(class) => class == "window",
-                        Err(error) => error.kind() == gnoblin_core::ErrorKind::NoSuchNode,
+                        Err(error) => error.kind() == gnoblin_core::host::ErrorKind::NoSuchNode,
                     } =>
                 {
                     write(g, node, &label, key, prop)
@@ -260,7 +260,7 @@ impl SceneState {
     }
 
     /// Reads a property of a scene node: the staged value while a transition is staging, the library's own for what the tree lacks.
-    pub(crate) fn get(&self, g: &Gnoblin, node: u64, key: &str) -> Res<Option<Prop>> {
+    pub(crate) fn get(&self, g: &Host, node: u64, key: &str) -> Res<Option<Prop>> {
         let (kind, _) = self.kind_of(node)?;
         if let Some(own) = camera::get(self, g, node, kind, key) {
             return Ok(Some(own));

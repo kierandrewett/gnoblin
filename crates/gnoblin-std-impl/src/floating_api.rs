@@ -5,7 +5,7 @@
 //! gets the library's placement, once, for every language. A call reads nothing of the library's state and never starts its desktop.
 #![allow(unsafe_code)]
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_std_abi::{GnoblinStdFloatingQuery, GnoblinStdRect, STD_FLOAT_APART};
 

@@ -9,7 +9,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::{Builder, ClassBuilder, Cx, Inits};
 use gnoblin_object::{ErrorCode, Fail, Res, Val};
@@ -133,7 +133,7 @@ fn act(
             st.workspace_mut(workspace)?.dirty = true;
         }
         if let Some(client) = outcome.focus {
-            let _ = st.g.window_handle(gnoblin_core::NodeId(client)).focus();
+            let _ = st.g.window_handle(gnoblin_core::host::NodeId(client)).focus();
         }
         Ok(())
     })?;

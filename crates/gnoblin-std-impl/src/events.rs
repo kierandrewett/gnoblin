@@ -7,7 +7,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 
-use gnoblin_core::{Gnoblin, LogLevel, ShellValue, Value};
+use gnoblin_core::host::{Host, LogLevel, ShellValue, Value};
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_std_abi as abi;
 
@@ -51,7 +51,7 @@ const SCREEN_PROPERTIES: [&str; 12] = [
 ];
 
 impl State {
-    pub(crate) fn new(g: Gnoblin, ctx: GnoblinCtx) -> State {
+    pub(crate) fn new(g: Host, ctx: GnoblinCtx) -> State {
         let mut state = State {
             g,
             ctx,
@@ -373,7 +373,7 @@ pub(crate) fn open(ctx: GnoblinCtx) -> Res<()> {
 /// window's focus, because the compositor's own window manager stands down for it, so a desktop the library runs has to move the keyboard:
 /// click focus, a new window taking focus and raise on click, as the seat's focus settings say. A shell with a policy of its own calls
 /// `focus_policy.stop`. A failure is the log's business: the desktop still runs, without focus.
-fn start_stock_focus(g: &Gnoblin, ctx: GnoblinCtx) {
+fn start_stock_focus(g: &Host, ctx: GnoblinCtx) {
     let started = crate::ui::tree::ui_for(ctx).and_then(|ui| crate::policy::start_focus(&ui));
     if let Err(fail) = started {
         g.log_at(
@@ -424,7 +424,7 @@ pub(crate) fn open_model(ctx: GnoblinCtx) -> Res<Rc<Std>> {
 /// Registers std's desktop policy with the core on the generation that opened std (`providers.rs`). A kind someone already holds
 /// (the compositor process registered std's own for the stock session, or another shell did) stays with its holder; a failure
 /// is the log's business, because a shell with no window manager provider still runs.
-fn register_providers(g: &Gnoblin, ctx: GnoblinCtx) {
+fn register_providers(g: &Host, ctx: GnoblinCtx) {
     match crate::providers::register_defaults(gnoblin_core::private::api_of(g), ctx) {
         Ok(done) if done.kept_by_others.is_empty() => {}
         Ok(done) => g.log_at(
@@ -440,7 +440,7 @@ fn register_providers(g: &Gnoblin, ctx: GnoblinCtx) {
 
 /// The core subscriptions that keep the object model current. Each closure holds the library state, which the generation's
 /// retirement frees with the subscription.
-fn subscribe(std: &Rc<Std>, g: &Gnoblin) -> Res<()> {
+fn subscribe(std: &Rc<Std>, g: &Host) -> Res<()> {
     let ctx = std.st.borrow().ctx;
     g.on_shutdown(move || state::retire(ctx))?;
 

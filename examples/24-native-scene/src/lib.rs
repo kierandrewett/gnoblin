@@ -4,12 +4,12 @@
 //! view that draws the first window through it, places both, mounts them under the scene's root, and logs the placement it reads
 //! back. Every line it logs starts with `scene:`.
 
-use gnoblin_std::objects::{Camera3D, Projection, Scene, SceneSize, Vec3, View};
+use gnoblin_std::{Camera3D, Projection, Scene, SceneSize, Vec3, View};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let scene = Scene::get(&objects)?;
 
     let camera = Camera3D::new(&objects)?;

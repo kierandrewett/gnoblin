@@ -37,7 +37,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, FrameClient, Titlebar, WindowFrame
+from gnoblin.std import Decorations, FrameClient, Titlebar, WindowFrame
 
 decorations = Decorations.get()
 decorations.resize_handles = 6.0
@@ -55,12 +55,12 @@ decorations.start()
 ```
 
 ```rust
-use gnoblin_std::objects::{Decorations, Titlebar};
+use gnoblin_std::{Decorations, Titlebar};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let decorations = Decorations::get(&objects)?;
     decorations.set_resize_handles(6.0)?;
     let library = objects.clone();
@@ -110,7 +110,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, FrameClient, WindowFrame
+from gnoblin.std import Decorations, FrameClient, WindowFrame
 
 decorations = Decorations.get()
 
@@ -133,12 +133,12 @@ decorations.start()
 ```
 
 ```rust
-use gnoblin_std::objects::{Decorations, FrameClient, WindowFrame};
+use gnoblin_std::{Decorations, FrameClient, WindowFrame};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let decorations = Decorations::get(&objects)?;
     decorations.rule(
         Some("org.example.Clock"),
@@ -213,7 +213,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, FrameClient, Titlebar, WindowFrame
+from gnoblin.std import Decorations, FrameClient, Titlebar, WindowFrame
 
 decorations = Decorations.get()
 
@@ -236,12 +236,12 @@ decorations.start()
 ```
 
 ```rust
-use gnoblin_std::objects::{Decorations, Titlebar};
+use gnoblin_std::{Decorations, Titlebar};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let decorations = Decorations::get(&objects)?;
     let library = objects.clone();
     decorations.set_frame(move |_client, frame| {
@@ -309,8 +309,8 @@ if (client) {
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
-from gnoblin.objects.std import Decorations
+from gnoblin import Gnoblin
+from gnoblin.std import Decorations
 
 gnoblin = Gnoblin.get()
 
@@ -321,14 +321,14 @@ if client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::Decorations;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::Decorations;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    let objects = g.std()?.objects()?;
+    let model = Gnoblin::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
     let focused = model.clients()?.focused()?;
     if let Some(client) = focused {
         let inset = Decorations::get(&objects)?.inset_of(&client)?; // the same as client.frame_inset()?
@@ -404,7 +404,7 @@ decorations.start();
 ```
 
 ```python
-from gnoblin.objects.std import Decorations, FrameClient, Titlebar, WindowFrame
+from gnoblin.std import Decorations, FrameClient, Titlebar, WindowFrame
 
 decorations = Decorations.get()
 
@@ -422,12 +422,12 @@ decorations.start()
 ```
 
 ```rust
-use gnoblin_std::objects::{Decorations, Titlebar};
+use gnoblin_std::{Decorations, Titlebar};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let decorations = Decorations::get(&objects)?;
     let library = objects.clone();
     decorations.set_frame(move |_client, frame| {

@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gnoblin_core::objects::{BindingEvent, GestureBindingHandlers};
+use gnoblin_core::{BindingEvent, GestureBindingHandlers};
 use gnoblin_object::server::Builder;
 use gnoblin_object::{Fail, Val};
 use gnoblin_std_abi::{GnoblinStdTransitionOptions, STD_EASING_EASE_OUT};

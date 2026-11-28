@@ -478,8 +478,9 @@ fn example_10_reloads_three_times_without_touching_a_client_and_keeps_its_state_
         .expect("the core reports");
     assert_eq!(
         number(core, "registrations"),
-        number(current, "registered") - number(current, "drops"),
-        "the core holds exactly the running generation's registrations: {core} / {current}"
+        // The entry function's root object is a reference the core holds for the generation, besides what the SDK registered.
+        number(current, "registered") - number(current, "drops") + 1.0,
+        "the core holds exactly the running generation's registrations and its root object: {core} / {current}"
     );
     // The example's own poster thread (habit 5) posts every 50 ms and ends at its first refusal, and the core counts a refused post
     // as a stale call. Whether that refusal came before the stats were read depends on how fast the three reloads ran, so each
@@ -699,8 +700,8 @@ fn example_18_a_replacement_that_cannot_take_over_leaves_the_old_generation_serv
         let core = run.lines(Some(mark), "core ");
         assert_eq!(
             number(core[0], "registrations"),
-            1.0,
-            "only the running generation's registration is left: {}",
+            2.0,
+            "only the running generation's registration and its root object are left: {}",
             core[0]
         );
     }

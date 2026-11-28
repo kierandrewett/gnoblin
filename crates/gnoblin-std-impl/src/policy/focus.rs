@@ -14,7 +14,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::Subscription;
+use gnoblin_core::host::Subscription;
 use gnoblin_object::server::Builder;
 use gnoblin_object::{Closure, Fail, Res, Val};
 

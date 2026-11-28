@@ -22,7 +22,7 @@ gnoblin.dialogs.addListener(new NoScreenCasts());
 ```
 
 ```python
-from gnoblin.objects.model import DialogListener, DialogRequest, Gnoblin
+from gnoblin import DialogListener, DialogRequest, Gnoblin
 
 
 class NoScreenCasts(DialogListener):
@@ -36,13 +36,12 @@ Gnoblin.get().dialogs.add_listener(NoScreenCasts())
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{DialogListenerHandlers, DialogRequest, ModelRoot};
+use gnoblin_core::{DialogListenerHandlers, DialogRequest, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let model = Gnoblin::get(&objects)?;
     let dialogs = model.dialogs()?;
     let listener = DialogListenerHandlers {
         on_consent_request: Some(Box::new(|request: DialogRequest| {

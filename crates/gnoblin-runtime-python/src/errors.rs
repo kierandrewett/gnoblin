@@ -4,7 +4,7 @@
 //! (`NodeGoneError` for a window that closed between a read and a write) and let the rest reach the log. A value of the wrong kind
 //! is Python's `TypeError` and a deadline is `TimeoutError`, because that is what those mean in Python.
 
-use gnoblin_core::{CoreError, ErrorKind};
+use gnoblin_core::host::{CoreError, ErrorKind};
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyTimeoutError, PyTypeError};
 use pyo3::prelude::*;

@@ -34,7 +34,7 @@ use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
-use gnoblin_core::{DragPhase, GestureEvent, GestureKind, PointerDrag, Rect, Subscription};
+use gnoblin_core::host::{DragPhase, GestureEvent, GestureKind, PointerDrag, Rect, Subscription};
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinDropFn};
 use gnoblin_std_abi::layouts::binding_kind;
 use gnoblin_std_abi::{

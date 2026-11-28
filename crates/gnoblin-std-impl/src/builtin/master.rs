@@ -262,7 +262,7 @@ impl Imp for Monocle {
 mod tests {
     use super::*;
     use crate::layout::LayoutContext;
-    use gnoblin_core::Rect;
+    use gnoblin_core::host::Rect;
     use gnoblin_std_abi::layouts::{LayoutKindDesc, layout_kind};
     use gnoblin_std_abi::{STD_BUILTIN_GRID, STD_BUILTIN_MASTER_STACK, STD_BUILTIN_MONOCLE};
 

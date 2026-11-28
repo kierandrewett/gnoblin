@@ -6,7 +6,7 @@
 //! desks behind its workspaces, a shell reaches them here.
 #![allow(unsafe_code)]
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinNode};
 use gnoblin_std_abi::{
     GnoblinStdAreas, GnoblinStdOutputInfo, GnoblinStdRect, GnoblinStdSpan, GnoblinStdWorkspace, STD_AREAS_HAS_AREA,

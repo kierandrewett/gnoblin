@@ -28,7 +28,7 @@ gnoblin.compositor.userShaders = false;
 ```
 
 ```python
-from gnoblin.objects.model import Gnoblin
+from gnoblin import Gnoblin
 
 Gnoblin.get().compositor.user_shaders = False
 ```
@@ -36,11 +36,10 @@ Gnoblin.get().compositor.user_shaders = False
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     model.compositor()?.set_user_shaders(false)?;
     Ok(())
 }
@@ -84,7 +83,7 @@ gnoblin.clients.style.filter = [new ShaderFilter({ source: tint, params: [1.0, 0
 ```
 
 ```python
-from gnoblin.objects.std import ClientStyle, ShaderFilter
+from gnoblin.std import ClientStyle, ShaderFilter
 
 TINT = """
 fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {
@@ -97,7 +96,7 @@ ClientStyle.of_clients().filter = [ShaderFilter(source=TINT, params=[1.0, 0.55, 
 ```
 
 ```rust
-use gnoblin_std::objects::{ClientStyle, Filter, ShaderFilter};
+use gnoblin_std::{ClientStyle, Filter, ShaderFilter};
 use gnoblin_std::prelude::*;
 
 const TINT: &str = r#"
@@ -109,7 +108,7 @@ fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let mut tint = ShaderFilter::new(TINT.to_string());
     tint.params = vec![1.0, 0.55, 0.2, 0.25];
     ClientStyle::of_clients(&objects)?.set_filter(&[Filter::Shader(tint)])?;

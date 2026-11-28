@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::Value;
+use gnoblin_core::host::Value;
 use gnoblin_object::Val;
 
 use super::client::{Hook, Win};

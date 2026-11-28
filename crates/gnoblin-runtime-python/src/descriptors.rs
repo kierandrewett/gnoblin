@@ -11,7 +11,7 @@
 //! A subclass of `Node` that names `__class_name__` in its own body is registered under that name in `CLASSES`, which is how a node
 //! the core reports by class becomes the typed object for it.
 
-use gnoblin_core::NodeId;
+use gnoblin_core::host::NodeId;
 use pyo3::IntoPyObjectExt;
 use pyo3::basic::CompareOp;
 use pyo3::exceptions::{PyAttributeError, PyTypeError};

@@ -12,7 +12,7 @@ same example (``28-native-input``) does, and logs the same lines:
 """
 
 from gnoblin import gnoblin as session
-from gnoblin.objects.model import BindingOptions, Gnoblin
+from gnoblin import BindingOptions, Gnoblin
 
 # Which generation of the shell this is. A reload test saves the file again with another number.
 GENERATION = 1
