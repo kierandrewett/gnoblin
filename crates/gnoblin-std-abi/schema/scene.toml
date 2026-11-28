@@ -19,26 +19,58 @@ title = "Scene"
 [[enum]]
 name = "input_mode"
 since = "0.2.0"
-values = ["forward", "capture", "none"]
+values = [
+    # The node is hit and, for a view of a client, the pointer goes on into the client.
+    "forward",
+    # The node is hit and the pointer stops there. The shell hears the node's `pointer` signal.
+    "capture",
+    # The node is missed, and its children are still tested.
+    "none",
+]
 
 # How a camera maps its scene into an image.
 [[enum]]
 name = "projection"
 since = "0.2.0"
-values = ["orthographic", "perspective", "stereo"]
+values = [
+    # The flat default: no perspective.
+    "orthographic",
+    # One picture, projected with the camera's `fov`.
+    "perspective",
+    # Two pictures side by side, one for each eye, spaced by `ipd`.
+    "stereo",
+]
 
 # How a workspace's picture fits the rectangle of a view: `contain` keeps its shape and shows all of it, `cover` keeps its shape and
 # fills the view, `stretch` fills the view whatever the shape.
 [[enum]]
 name = "content_fit"
 since = "0.2.0"
-values = ["contain", "cover", "stretch"]
+values = [
+    # The shape is kept and all of the picture is shown.
+    "contain",
+    # The shape is kept and the picture fills the view, so some of it may fall outside.
+    "cover",
+    # The picture fills the view whatever its shape.
+    "stretch",
+]
 
 # What the pointer did on a node.
 [[enum]]
 name = "pointer_edge"
 since = "0.2.0"
-values = ["enter", "motion", "leave", "press", "release"]
+values = [
+    # The pointer came onto the node.
+    "enter",
+    # The pointer moved on the node.
+    "motion",
+    # The pointer left the node.
+    "leave",
+    # A button went down on the node.
+    "press",
+    # A button came up on the node.
+    "release",
+]
 
 # Gives a number for a bound property.
 [[callback]]
@@ -147,58 +179,82 @@ name = "node_bindings"
 since = "0.2.0"
 kind = "handle"
 
-# Binds the number property `name` to what `compute` gives.
+# Binds the number property `name` to what `compute` gives. A binding that already follows `name` is ended and replaced. Raises when the
+# node was destroyed.
 [[object.method]]
 name = "bind_number"
 since = "0.2.0"
 returns = "object:node_binding"
+raises = ["not_found"]
 
+# The number property to bind, such as `opacity` for a number. A name that is not a writable property of that kind is not refused here: it
+# is reported once when the binding runs.
 [[object.method.param]]
 name = "name"
 type = "string"
 
+# Gives the value, which is a number. It runs from the turn after the call and again when a property it read has changed, so it must not
+# write properties, start programs or wait. A throw is reported once with the binding's name and does not raise.
 [[object.method.param]]
 name = "compute"
 type = "callback:compute_number"
 
-# Binds the flag property `name` to what `compute` gives.
+# Binds the flag property `name` to what `compute` gives. A binding that already follows `name` is ended and replaced. Raises when the
+# node was destroyed.
 [[object.method]]
 name = "bind_flag"
 since = "0.2.0"
 returns = "object:node_binding"
+raises = ["not_found"]
 
+# The flag property to bind, such as `opacity` for a number. A name that is not a writable property of that kind is not refused here: it
+# is reported once when the binding runs.
 [[object.method.param]]
 name = "name"
 type = "string"
 
+# Gives the value, which is true or false. It runs from the turn after the call and again when a property it read has changed, so it must
+# not write properties, start programs or wait. A throw is reported once with the binding's name and does not raise.
 [[object.method.param]]
 name = "compute"
 type = "callback:compute_flag"
 
-# Binds the text property `name` to what `compute` gives.
+# Binds the text property `name` to what `compute` gives. A binding that already follows `name` is ended and replaced. Raises when the
+# node was destroyed.
 [[object.method]]
 name = "bind_text"
 since = "0.2.0"
 returns = "object:node_binding"
+raises = ["not_found"]
 
+# The text property to bind, such as `opacity` for a number. A name that is not a writable property of that kind is not refused here: it
+# is reported once when the binding runs.
 [[object.method.param]]
 name = "name"
 type = "string"
 
+# Gives the value, which is text. It runs from the turn after the call and again when a property it read has changed, so it must not write
+# properties, start programs or wait. A throw is reported once with the binding's name and does not raise.
 [[object.method.param]]
 name = "compute"
 type = "callback:compute_text"
 
-# Binds the property `name` that is a list of numbers (`rotation`, `scale`) to what `compute` gives.
+# Binds the property `name` that is a list of numbers (`rotation`, `scale`) to what `compute` gives, which must be a list of three
+# numbers. A binding that already follows `name` is ended and replaced. Raises when the node was destroyed.
 [[object.method]]
 name = "bind_numbers"
 since = "0.2.0"
 returns = "object:node_binding"
+raises = ["not_found"]
 
+# The property to bind that is a list of numbers (`rotation` or `scale`). A name that is not one is not refused here: it is reported once
+# when the binding runs.
 [[object.method.param]]
 name = "name"
 type = "string"
 
+# Gives the value, which is three numbers. It runs from the turn after the call and again when a property it read has changed, so it must
+# not write properties, start programs or wait. A throw is reported once with the binding's name and does not raise.
 [[object.method.param]]
 name = "compute"
 type = "callback:compute_numbers"
@@ -209,6 +265,7 @@ name = "unbind"
 since = "0.2.0"
 returns = "bool"
 
+# The property whose binding ends.
 [[object.method.param]]
 name = "name"
 type = "string"
@@ -225,17 +282,20 @@ name = "scene_node"
 since = "0.2.0"
 retained = true
 
-# A stable name for the node, `name` as well. It reads as the node's number in the tree until one is given.
+# A stable name for the node, `name` as well. It reads as the node's number in the tree until one is given. An empty string is refused as
+# a bad argument.
 [[object.property]]
 name = "id"
 type = "string"
 since = "0.2.0"
+raises = ["not_found"]
 
 # The display name.
 [[object.property]]
 name = "name"
 type = "string"
 since = "0.2.0"
+raises = ["not_found"]
 
 # The position along X in the parent's units.
 [[object.property]]
@@ -243,6 +303,7 @@ name = "x"
 type = "double"
 since = "0.2.0"
 default = 0.0
+raises = ["not_found"]
 
 # The position along Y in the parent's units.
 [[object.property]]
@@ -250,6 +311,7 @@ name = "y"
 type = "double"
 since = "0.2.0"
 default = 0.0
+raises = ["not_found"]
 
 # The position along Z in the parent's units.
 [[object.property]]
@@ -257,31 +319,38 @@ name = "z"
 type = "double"
 since = "0.2.0"
 default = 0.0
+raises = ["not_found"]
 
-# The position as a vector: writing it sets `x`, `y` and `z`.
+# The position as a vector: writing it sets `x`, `y` and `z`. A coordinate that is not finite is refused as a bad argument; on a
+# `camera2d` only `x` and `y` are written.
 [[object.property]]
 name = "position"
 type = "object:vec3"
 since = "0.2.0"
+raises = ["not_found"]
 
-# The angles about X, Y and Z in radians, turned about X, then Y, then Z. To set it from a quaternion, use `place`.
+# The angles about X, Y and Z in radians, turned about X, then Y, then Z. A value that is not finite is refused as a bad argument. To set
+# it from a quaternion, use `place`.
 [[object.property]]
 name = "rotation"
 type = "object:vec3"
 since = "0.2.0"
+raises = ["not_found"]
 
-# The scale along each axis. To give one number for every axis, use `place`.
+# The scale along each axis. A value that is not finite is refused as a bad argument. To give one number for every axis, use `place`.
 [[object.property]]
 name = "scale"
 type = "object:vec3"
 since = "0.2.0"
+raises = ["not_found"]
 
-# The node's own placement: its position, its rotation and one uniform scale (the first component of `scale`). Writing it writes all
-# three parts; `place` writes the parts it is given.
+# The node's own placement: its position, its rotation and one uniform scale (the first component of `scale`). Writing it writes all three
+# parts; `place` writes only the parts it is given. A value that is not finite is refused as a bad argument.
 [[object.property]]
 name = "transform"
 type = "object:pose"
 since = "0.2.0"
+raises = ["not_found"]
 
 # Whether the node is drawn.
 [[object.property]]
@@ -289,13 +358,16 @@ name = "visible"
 type = "bool"
 since = "0.2.0"
 default = true
+raises = ["not_found"]
 
-# From 0 (transparent) to 1 (opaque).
+# How opaque the node is, from 0 (transparent) to 1 (opaque). The compositor clamps a value outside that range.
 [[object.property]]
 name = "opacity"
 type = "double"
 since = "0.2.0"
 default = 1.0
+range = [0, 1]
+raises = ["not_found"]
 
 # What a pointer that reaches the node does.
 [[object.property]]
@@ -303,8 +375,10 @@ name = "input"
 type = "enum:input_mode"
 since = "0.2.0"
 default = "forward"
+raises = ["not_found"]
 
-# Metres in one unit of this node's space. The library keeps it: the tree has no property for it. It must be above 0.
+# Metres in one unit of this node's space. The library keeps it: the tree has no property for it. A value that is not finite and above 0
+# is refused as a bad argument.
 [[object.property]]
 name = "metres_per_unit"
 type = "double"
@@ -353,20 +427,25 @@ type = "object:node_bindings"
 since = "0.2.0"
 readonly = true
 
-# Puts `child` last under this node, or at `index` (negative is last). A child already in the tree moves. Answers the child.
+# Puts `child` last under this node, or at `index`. A child already in the tree moves. Answers the child. Raises when this node or `child`
+# was destroyed; the tree can also refuse the move.
 [[object.method]]
 name = "add"
 since = "0.2.0"
 returns = "object:scene_node"
+raises = ["not_found"]
 
+# The node to put under this one.
 [[object.method.param]]
 name = "child"
 type = "object:scene_node"
 
+# Where among the children to put it, counted from 0; a negative number or none puts it last.
 [[object.method.param]]
 name = "index"
 type = "int"
 optional = true
+default = -1
 
 # The first descendant the library made whose name is `name`, depth first, or none.
 [[object.method]]
@@ -375,15 +454,20 @@ since = "0.2.0"
 returns = "object:scene_node"
 optional = true
 
+# The `name` to look for.
 [[object.method.param]]
 name = "name"
 type = "string"
 
-# Places the node: the parts given are checked together before any is written, and a part left out stays as it is.
+# Places the node: the parts given are checked together before any is written, and a part left out stays as it is. A part that is not
+# finite is refused as a bad argument, and so is giving both `rotation` and `orientation`, or both `scale` and `uniform_scale`. Raises
+# when the node was destroyed.
 [[object.method]]
 name = "place"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The parts to write. A part left out stays as it is.
 [[object.method.param]]
 name = "parts"
 type = "object:transform_parts"
@@ -393,6 +477,7 @@ type = "object:transform_parts"
 name = "pointer"
 since = "0.2.0"
 
+# What the pointer did and where, in the node's own plane.
 [[object.signal.field]]
 name = "event"
 type = "object:scene_pointer"
@@ -405,31 +490,39 @@ since = "0.2.0"
 base = "scene_node"
 retained = true
 
-# The camera the picture is drawn through, or none for the flat default.
+# The camera the picture is drawn through, or none for the flat default. Only a `camera3d` is accepted; anything else is refused as a bad
+# argument.
 [[object.property]]
 name = "camera"
 type = "object:camera3d"
 since = "0.2.0"
+raises = ["not_found"]
 
-# The picture's rectangle in client pixels: writing it sets `width` and `height`.
+# The picture's rectangle in client pixels: writing it sets `width` and `height`. A value that is not finite is refused as a bad argument,
+# and neither is written then.
 [[object.property]]
 name = "size"
 type = "object:scene_size"
 since = "0.2.0"
+raises = ["not_found"]
 
-# The picture's width in client pixels.
+# The picture's width in client pixels. A value that is not finite is refused as a bad argument.
 [[object.property]]
 name = "width"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
+raises = ["not_found"]
 
-# The picture's height in client pixels.
+# The picture's height in client pixels. A value that is not finite is refused as a bad argument.
 [[object.property]]
 name = "height"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
+raises = ["not_found"]
 
 # How a workspace's picture fits the rectangle. A client is stretched whatever this says.
 [[object.property]]
@@ -438,26 +531,32 @@ type = "enum:content_fit"
 since = "0.2.0"
 default = "stretch"
 
-# The client the view draws, by its node number (the `id` of the client), or 0 for none. Setting it ends a workspace mirror.
+# The client the view draws, by its node number (the `id` of the client), or 0 for none. Setting it ends a workspace mirror. A node that
+# is not a client is refused as a bad argument.
 [[object.property]]
 name = "source"
 type = "uint"
 since = "0.2.0"
 default = 0
+raises = ["not_found"]
 
-# The workspace the view mirrors, by its id, or empty for none. Setting it clears `source` and starts the mirror.
+# The workspace the view mirrors, by its id, or empty for none. Setting it clears `source` and starts the mirror. An id that is not a
+# workspace raises `not_found`.
 [[object.property]]
 name = "workspace"
 type = "string"
 since = "0.2.0"
 default = ""
+raises = ["not_found"]
 
-# How often the picture is redrawn, in frames a second; 0 is on demand.
+# How often the picture is redrawn, in frames a second; 0 is on demand. A value that is not finite is refused as a bad argument.
 [[object.property]]
 name = "fps"
 type = "uint"
 since = "0.2.0"
 default = 0
+unit = "fps"
+raises = ["not_found"]
 
 # Whether the view shows nothing: it has no client (it never had one, or the client is gone) and no workspace.
 [[object.property]]
@@ -470,22 +569,28 @@ readonly = true
 [[object.method]]
 name = "clear_camera"
 since = "0.2.0"
+raises = ["not_found"]
 
-# Draws a workspace's windows as a mirror, as setting `workspace` does, given the workspace object.
+# Draws a workspace's windows as a mirror, as setting `workspace` does, given the workspace object. Raises `not_found` for a workspace the
+# library does not know.
 [[object.method]]
 name = "show_workspace"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The workspace to draw.
 [[object.method.param]]
 name = "workspace"
 type = "object:workspace"
 
 # Draws a client, as setting `source` does, given the core's `Client`. A client's node number has the top bit set, which JavaScript's
-# numbers cannot hold, so a script uses this and not `source`.
+# numbers cannot hold, so a script uses this and not `source`. Raises `not_found` for a client that is gone.
 [[object.method]]
 name = "show_client"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The client to draw.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -498,54 +603,66 @@ since = "0.2.0"
 base = "scene_node"
 retained = true
 
-# How the camera maps its scene into an image.
+# How the camera maps its scene into an image: `orthographic` is the flat default, `perspective` projects with `fov`, and `stereo` draws
+# two eyes side by side, spaced by `ipd`.
 [[object.property]]
 name = "projection"
 type = "enum:projection"
 since = "0.2.0"
 default = "orthographic"
+raises = ["not_found"]
 
-# Metres in one unit of the camera's space.
+# Metres in one unit of the camera's space. A value that is not finite is refused as a bad argument.
 [[object.property]]
 name = "metres"
 type = "double"
 since = "0.2.0"
 default = 0.001
+unit = "m"
+raises = ["not_found"]
 
-# The near clipping distance in camera-space units.
+# The near clipping distance in camera-space units. A value that is not finite is refused as a bad argument.
 [[object.property]]
 name = "near"
 type = "double"
 since = "0.2.0"
 default = 0.1
+raises = ["not_found"]
 
-# The far clipping distance in camera-space units.
+# The far clipping distance in camera-space units. A value that is not finite is refused as a bad argument.
 [[object.property]]
 name = "far"
 type = "double"
 since = "0.2.0"
 default = 1000.0
+raises = ["not_found"]
 
-# The vertical field of view in degrees.
+# The vertical field of view in degrees, for `perspective` and `stereo`. A value that is not finite is refused as a bad argument.
 [[object.property]]
 name = "fov"
 type = "double"
 since = "0.2.0"
 default = 60.0
+unit = "degrees"
+raises = ["not_found"]
 
-# The distance between a stereo camera's eyes, in metres.
+# The distance between a stereo camera's eyes, in metres. A value that is not finite is refused as a bad argument.
 [[object.property]]
 name = "ipd"
 type = "double"
 since = "0.2.0"
 default = 0.063
+unit = "m"
+raises = ["not_found"]
 
-# The visible height in scene units of an orthographic camera; above 0. The library keeps it: the tree has no property for it.
+# The visible height in scene units of an orthographic camera. A value that is not finite and above 0 is refused as a bad argument. The
+# library keeps it: the tree has no property for it.
 [[object.property]]
 name = "size"
 type = "double"
 since = "0.2.0"
 default = 1000.0
+raises = ["not_found"]
 
 # The number of layers the headset can carry in one frame, or 0 before the XR program reports one.
 [[object.property]]
@@ -563,19 +680,22 @@ since = "0.2.0"
 base = "scene_node"
 retained = true
 
-# The magnification, above 0: 1 shows the content at its size.
+# The magnification: 1 shows the content at its size. A value that is not finite and above 0 is refused as a bad argument.
 [[object.property]]
 name = "zoom"
 type = "double"
 since = "0.2.0"
 default = 1.0
+raises = ["not_found"]
 
-# The roll about the view axis, in radians.
+# The roll about the view axis, in radians. A value that is not finite is refused as a bad argument.
 [[object.property]]
 name = "roll"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "rad"
+raises = ["not_found"]
 
 # Whether the camera is the identity view: no pan, zoom 1 and no roll.
 [[object.property]]
@@ -597,7 +717,8 @@ type = "object:scene_node"
 since = "0.2.0"
 readonly = true
 
-# Metres in one scene unit. A camera that renders the scene carries its own unit in `camera3d.metres`. It must be above 0.
+# Metres in one scene unit. A camera that renders the scene carries its own unit in `camera3d.metres`. A value that is not finite and
+# above 0 is refused as a bad argument.
 [[object.property]]
 name = "metres_per_unit"
 type = "double"
@@ -611,12 +732,13 @@ type = "list<object:camera3d>"
 since = "0.2.0"
 readonly = true
 
-# Mounts `node` under the root if it has no parent, and answers it.
+# Mounts `node` under the root if it has no parent, and answers it. A node that already has a parent is answered unchanged.
 [[object.method]]
 name = "add"
 since = "0.2.0"
 returns = "object:scene_node"
 
+# The node to mount. One that already has a parent stays where it is.
 [[object.method.param]]
 name = "node"
 type = "object:scene_node"
@@ -628,6 +750,7 @@ since = "0.2.0"
 returns = "object:scene_node"
 optional = true
 
+# The `name` to look for.
 [[object.method.param]]
 name = "name"
 type = "string"
