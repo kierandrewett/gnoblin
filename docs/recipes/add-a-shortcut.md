@@ -25,9 +25,9 @@ use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let shell = g.clone();
-    g.bind("Super+Return", move || shell.spawn("foot"))?;
+    g.bind("Super+Return", move || shell.spawn(&["foot".to_owned()], None))?;
     Ok(())
 }
 ```
@@ -63,10 +63,10 @@ use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let shell = g.clone();
     g.bind("XF86AudioRaiseVolume", move || {
-        shell.spawn_with("wpctl", ["set-volume", "@DEFAULT_AUDIO_SINK@", "2%+"])
+        shell.spawn(&["wpctl".to_owned(), "set-volume".to_owned(), "@DEFAULT_AUDIO_SINK@".to_owned(), "2%+".to_owned()], None)
     })?;
     Ok(())
 }

@@ -95,16 +95,15 @@ gnoblin.input.primary.bind("Super+Shift+w", send_to_write)
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::{Client, ModelRoot};
-use gnoblin_core::Gnoblin;
-use gnoblin_std::objects::{FloatingLayout, MasterStackLayout, MonocleLayout, Workspace, WorkspaceOptions, Workspaces};
+use gnoblin_core::{Client, Gnoblin};
+use gnoblin_std::{FloatingLayout, MasterStackLayout, MonocleLayout, Workspace, WorkspaceOptions, Workspaces};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let workspaces = Workspaces::get(&objects)?;
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let input = model.input()?;
     let seat = input.primary()?;
 

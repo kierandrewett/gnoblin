@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use gnoblin_core::ErrorKind;
+use gnoblin_core::host::ErrorKind;
 use gnoblin_core_abi::{self as abi, GnoblinObjectApi, GnoblinStr, MEMBER_METHOD, MEMBER_PROPERTY, MEMBER_SIGNAL};
 use gnoblin_object::client::Api;
 use gnoblin_object::{Callable, ClassId, Closure, Fail, MemberId, Obj, Res, Timing, Val};

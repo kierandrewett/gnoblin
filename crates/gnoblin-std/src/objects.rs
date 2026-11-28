@@ -6,17 +6,17 @@
 //! change to this file.
 //!
 //! The members the library adds to the core's typed classes (the `[[augment]]` blocks of its catalog) are the extension traits
-//! `ModelRootStdExt`, for the root's `workspaces`, `displays`, `scene`, `gestures` and `request_transition`, `OutputCollectionStdExt`,
+//! `GnoblinStdExt`, for the root's `workspaces`, `displays`, `scene`, `gestures` and `request_transition`, `OutputCollectionStdExt`,
 //! for `profiles`, `InputContextStdExt`, for `active_display`, `ClientCollectionStdExt`, for `style`, `ClientStdExt`, for a window's
 //! `workspace`, `move_to_workspace`, `style`, `computed_style`, `style_warnings`, `move_with_keys` and `resize_with_keys`, and
 //! `OutputStdExt`, for an output's `workspace` and `show`. `gnoblin_std::prelude` brings them in; a shell that does not use it has none
 //! of them, and a call of one does not compile:
 //!
 //! ```compile_fail,E0599
-//! use gnoblin_core::objects::ModelRoot;
+//! use gnoblin_core::Gnoblin;
 //!
-//! fn read(model: &ModelRoot) {
-//!     // `ModelRootStdExt` is not in scope: the core's root has no `workspaces`.
+//! fn read(model: &Gnoblin) {
+//!     // `GnoblinStdExt` is not in scope: the core's root has no `workspaces`.
 //!     let _ = model.workspaces();
 //! }
 //! ```
@@ -24,7 +24,7 @@
 
 use std::cell::RefCell;
 
-use gnoblin_core::ErrorKind;
+use gnoblin_core::host::ErrorKind;
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinObjectApi};
 use gnoblin_object::client::Api;
 
@@ -75,7 +75,7 @@ impl Std {
 }
 
 /// The typed classes of `gnoblin.std` for the generation the core object table `core` belongs to: what the members this library adds to a
-/// core class (`ModelRootStdExt`) use, since a core object holds the core's table and not this library's. A shell of a generation that
+/// core class (`GnoblinStdExt`) use, since a core object holds the core's table and not this library's. A shell of a generation that
 /// has retired gets the error the retired generation gives, and never the library of a newer one.
 ///
 /// # Errors

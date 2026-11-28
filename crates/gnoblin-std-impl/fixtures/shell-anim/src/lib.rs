@@ -10,13 +10,13 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gnoblin_core::objects::{Client, ClientQuery, ModelRoot};
-use gnoblin_std::objects::{
+use gnoblin_core::{Client, ClientQuery, Gnoblin};
+use gnoblin_std::prelude::*;
+use gnoblin_std::{
     BlurFilter, Border, BrightnessFilter, Camera2D, Camera3D, ClientStyle, CornerRadius, Easing, Filter, GridLayout,
     MasterStackLayout, MasterStackLayoutOptions, Objects, Projection, SaturateFilter, Scene, ShaderFilter, Shadow,
     StyleProperty, Transition, TransitionOptions, TransitionValue, View, Workspaces,
 };
-use gnoblin_std::prelude::*;
 
 /// Prints what a step saw.
 fn log(text: &str) {
@@ -26,7 +26,7 @@ fn log(text: &str) {
 /// What a step works with: both libraries' typed classes.
 #[derive(Clone)]
 struct World {
-    core: gnoblin_core::objects::Objects,
+    core: gnoblin_core::Objects,
     objects: Objects,
 }
 
@@ -34,7 +34,7 @@ impl World {
     /// The window `id` as a client. The scenario opens every window before it presses a chord that names it, so a missing one is the
     /// scenario's fault and the chord's panic is caught and reported.
     fn client(&self, id: u64) -> gnoblin_std::Result<Client> {
-        Ok(ModelRoot::get(&self.core)?
+        Ok(Gnoblin::get(&self.core)?
             .clients()?
             .get_by_id(&id.to_string())?
             .unwrap_or_else(|| panic!("the scenario has no client {id}")))
@@ -75,7 +75,7 @@ fn node_of(client: &Client) -> gnoblin_std::Result<u64> {
 fn steps() -> Vec<(&'static str, Step)> {
     let basic: Step = Box::new(|world, kept| {
         let (c40, c41) = (world.client(40)?, world.client(41)?);
-        let model = ModelRoot::get(&world.core)?;
+        let model = Gnoblin::get(&world.core)?;
         let objects = world.objects.clone();
         let t = model.request_transition(
             move || {
@@ -98,7 +98,7 @@ fn steps() -> Vec<(&'static str, Step)> {
     let staged = || -> Step {
         Box::new(|world, kept| {
             let c41 = world.client(41)?;
-            let model = ModelRoot::get(&world.core)?;
+            let model = Gnoblin::get(&world.core)?;
             let objects = world.objects.clone();
             let t = model.request_transition(
                 move || {
@@ -137,7 +137,7 @@ fn steps() -> Vec<(&'static str, Step)> {
     let instant: Step = Box::new(|world, kept| {
         let c42 = world.client(42)?;
         let objects = world.objects.clone();
-        let t = ModelRoot::get(&world.core)?.request_transition(
+        let t = Gnoblin::get(&world.core)?.request_transition(
             move || {
                 Transition::set(&objects, node_of(&c42)?, "opacity", &number(0.75))?;
                 Transition::set(&objects, node_of(&c42)?, "x", &number(20.0))?;
@@ -158,7 +158,7 @@ fn steps() -> Vec<(&'static str, Step)> {
             .next()
             .expect("a default workspace");
         let objects = world.objects.clone();
-        ModelRoot::get(&world.core)?.request_transition(
+        Gnoblin::get(&world.core)?.request_transition(
             move || {
                 let layout = MasterStackLayout::new_with(
                     &objects,
@@ -214,7 +214,7 @@ fn steps() -> Vec<(&'static str, Step)> {
         Ok(())
     });
     let style_selection: Step = Box::new(|world, _| {
-        let clients = ModelRoot::get(&world.core)?.clients()?;
+        let clients = Gnoblin::get(&world.core)?.clients()?;
         let selected = clients.where_(
             &ClientQuery {
                 app_id: Some("nautilus".to_owned()),
@@ -264,7 +264,7 @@ fn steps() -> Vec<(&'static str, Step)> {
     let scene: Step = Box::new(|world, kept| {
         let scene = Scene::get(&world.objects)?;
         let camera = Camera3D::new(&world.objects)?;
-        camera.set_position(&gnoblin_std::objects::Vec3 { x: 1.0, y: 2.0, z: 3.0 })?;
+        camera.set_position(&gnoblin_std::Vec3 { x: 1.0, y: 2.0, z: 3.0 })?;
         camera.set_projection(Projection::Perspective)?;
         camera.set_fov(70.0)?;
         camera.set_near(0.2)?;
@@ -272,7 +272,7 @@ fn steps() -> Vec<(&'static str, Step)> {
         let c40 = world.client(40)?;
         let view = View::new(&world.objects)?;
         view.set_camera(&camera)?;
-        view.set_size(&gnoblin_std::objects::SceneSize {
+        view.set_size(&gnoblin_std::SceneSize {
             width: 400.0,
             height: 300.0,
         })?;
@@ -297,7 +297,7 @@ fn steps() -> Vec<(&'static str, Step)> {
             return Ok(());
         };
         let (camera, flat) = (camera.clone(), flat.clone());
-        ModelRoot::get(&world.core)?.request_transition(
+        Gnoblin::get(&world.core)?.request_transition(
             {
                 let (camera, flat) = (camera.clone(), flat.clone());
                 move || {
@@ -353,7 +353,7 @@ fn steps() -> Vec<(&'static str, Step)> {
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let world = World {
         core: g.objects()?,
-        objects: g.std()?.objects()?,
+        objects: g.objects()?.std()?,
     };
     let kept = Rc::new(RefCell::new(Kept::default()));
     for (chord, step) in steps() {

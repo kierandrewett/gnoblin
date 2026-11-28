@@ -35,12 +35,12 @@ if client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let Some(client) = model.clients()?.at(0)? else {
         return Ok(());
     };
@@ -103,14 +103,14 @@ pinch.install()
 ```
 
 ```rust
-use gnoblin_std::objects::{
+use gnoblin_std::{
     PinchActionBinding, PinchActionBindingOptions, PinchWay, SwipeActionBinding, SwipeActionBindingOptions, SwipeWay,
 };
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     let swipe = SwipeActionBinding::new_with(
         &objects,
@@ -183,13 +183,13 @@ GnoblinAugment.get().request_transition(lambda: None, TransitionOptions(duration
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::TransitionOptions;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::TransitionOptions;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let duration = model.motion(250.0)?; // 0 while the seat asks for reduced motion
     model.request_transition(
         || Ok(()),
@@ -251,12 +251,11 @@ for device in gnoblin.input.devices:
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{BindingOptions, ModelRoot};
+use gnoblin_core::{BindingOptions, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let input = model.input()?;
     for device in input.devices()? {
         if !device.name()?.contains("Macro") {
@@ -314,12 +313,12 @@ if dev is not None and not workspaces.remove(dev):
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let workspaces = model.workspaces()?;
     if let Some(dev) = workspaces.by_id("dev")? {
         if !workspaces.remove(&dev)? {

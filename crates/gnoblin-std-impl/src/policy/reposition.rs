@@ -8,7 +8,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 use gnoblin_std_abi::{STD_CONSTRAINT_MINIMUM_STRIP, STD_CONSTRAINT_WORK_AREA};

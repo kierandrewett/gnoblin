@@ -73,14 +73,14 @@ Gnoblin.get().session.add_listener(LockToast())
 ```
 
 ```rust
-use gnoblin_core::objects::{LockState, ModelRoot};
-use gnoblin_std::objects::Toast;
+use gnoblin_core::{LockState, Gnoblin};
+use gnoblin_std::Toast;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let session = ModelRoot::get(&g.objects()?)?.session()?;
-    let toasts = g.std()?.objects()?;
+    let session = Gnoblin::get(&g.objects()?)?.session()?;
+    let toasts = g.objects()?.std()?;
     session
         .on_lock_state_changed(move |_session, state, _revision| {
             if matches!(state, LockState::Locked) {

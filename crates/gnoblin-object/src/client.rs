@@ -258,6 +258,14 @@ impl Api {
         self.check(unsafe { (self.raw.release)(self.ctx, obj) })
     }
 
+    /// [`Api::release`] for a `Drop`: the answer is not read. `release` builds the failure of a refused call, which reads the
+    /// library's last-error text, a `thread_local!` that may be gone when the drop runs as the thread ends, and a drop has nothing to do
+    /// with the answer.
+    pub(crate) fn release_on_drop(&self, obj: Obj) {
+        // SAFETY: the call takes plain values.
+        let _ = unsafe { (self.raw.release)(self.ctx, obj) };
+    }
+
     /// Adds one reference to an object, given back with [`Api::release`].
     ///
     /// # Errors
@@ -408,6 +416,12 @@ impl Api {
     pub fn unlisten(&self, reg: Reg) -> Res<()> {
         // SAFETY: the call takes plain values.
         self.check(unsafe { (self.raw.unlisten)(self.ctx, reg) })
+    }
+
+    /// [`Api::unlisten`] for a `Drop`: the answer is not read, as for [`Api::release_on_drop`].
+    pub(crate) fn unlisten_on_drop(&self, reg: Reg) {
+        // SAFETY: the call takes plain values.
+        let _ = unsafe { (self.raw.unlisten)(self.ctx, reg) };
     }
 
     /// Makes an object of the interface `class` whose members `implemented` run `run`. The library calls `run` from its turn.
@@ -599,7 +613,7 @@ impl Clone for Object {
 impl Drop for Object {
     fn drop(&mut self) {
         if self.held {
-            let _ = self.api.release(self.obj);
+            self.api.release_on_drop(self.obj);
         }
     }
 }

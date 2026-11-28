@@ -6,11 +6,11 @@
 
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(root: &Gnoblin) -> gnoblin::host::Result<()> {
+    let g = root.host();
+    let model = root.clone();
     let compositor = model.compositor()?;
     g.log(&format!("settings: before = {}", compositor.user_shaders()?));
     compositor.set_user_shaders(false)?;

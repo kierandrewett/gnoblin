@@ -5,7 +5,7 @@
 //! The typed spelling (`verbs.session.logout()`, `verbs.session.on_bell(fn)`) is generated from the schema into
 //! the generated `gnoblin/_generated/verbs.py`, so a method added to the schema adds no line here.
 
-use gnoblin_core::Value;
+use gnoblin_core::host::Value;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyTuple};
 

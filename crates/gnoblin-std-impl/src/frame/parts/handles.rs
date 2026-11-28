@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::Value;
+use gnoblin_core::host::Value;
 use gnoblin_object::server::Cx;
 use gnoblin_object::{Obj, Res};
 use gnoblin_std_abi as abi;

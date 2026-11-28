@@ -62,14 +62,14 @@ struct ProbeLib;
 struct DerivedLib;
 
 impl Provider for ProbeLib {
-    fn with<R>(work: impl FnOnce(&Library) -> R) -> R {
-        PROBE.with(work)
+    fn with<R>(work: impl FnOnce(&Library) -> R) -> Option<R> {
+        PROBE.try_with(work).ok()
     }
 }
 
 impl Provider for DerivedLib {
-    fn with<R>(work: impl FnOnce(&Library) -> R) -> R {
-        DERIVED.with(work)
+    fn with<R>(work: impl FnOnce(&Library) -> R) -> Option<R> {
+        DERIVED.try_with(work).ok()
     }
 }
 
@@ -1255,6 +1255,113 @@ fn a_refused_write_and_a_gone_object_carry_their_codes() {
     assert_eq!(refused.code(), ErrorCode::ReadOnly);
     assert_eq!(stale_read(&PROBE_API).code(), ErrorCode::NotFound);
     assert_eq!(api.class("nothing").unwrap_err().code(), ErrorCode::NotFound);
+}
+
+// ---- a library that is destroyed with the thread, while a closure it holds drops an object it holds ----------------------------
+//
+// Written before the fix, from the shell log of every example that opens the object model: `cannot access a Thread Local Storage value
+// during or after destruction`, twice, as the process exits.
+//
+// 1. A library lives in a `thread_local!`. When its thread ends the slot is destroyed first and the library dropped after, and dropping
+//    it runs the shell's `drop_user` of every closure and listener it still holds.
+// 2. What a shell captured in such a closure may be an object (`Object`'s drop is `release`) or a listener (`unlisten`), so the shell
+//    calls the table of the library that is being dropped, from inside its destructor, and the slot no longer answers.
+// 3. That call is answered `E_RETIRED`, as a call about an object of a retired generation is: every object went with the library. It is
+//    not a panic (`E_PANIC`, the answer `run` gave when the slot read panicked, and a line in the log of the process each time):
+//    `a_call_into_a_library_that_is_being_destroyed_is_answered_retired_and_not_a_panic`.
+// 4. The drop does not read the answer's text either: that is the library's last-error text, a `thread_local!` of its own that the thread
+//    may have destroyed already, and a panic there would be a panic in a destructor of the thread, which aborts the process:
+//    `an_object_a_closure_holds_is_let_go_as_its_threads_library_is_destroyed_without_reading_the_last_error_text`.
+
+/// Runs `shell` on a thread of its own with the probe library's object and the closure property of it, makes the last-error text after
+/// the library (so the thread destroys it first), and gives the thread's end to the library with the closure it holds.
+fn end_a_thread_holding(shell: impl FnOnce(Api, gnoblin_object::Obj) -> Rc<dyn Callable> + Send + 'static) {
+    std::thread::spawn(move || {
+        let api = probe();
+        let class = api.class("probe").unwrap();
+        let on_tick = api.member(class, abi::MEMBER_PROPERTY, "on_tick").unwrap();
+        let obj = api.create(class, &[]).unwrap();
+        // Made after the library, so the thread destroys it first: a drop that read it would read a slot that is gone.
+        let _ = last_error();
+        // The library keeps the closure, and the closure keeps what `shell` made it of. Nothing lets go before the thread ends.
+        api.set(obj, on_tick, &Val::Closure(shell(api, obj))).unwrap();
+    })
+    .join()
+    .unwrap();
+}
+
+#[test]
+fn a_call_into_a_library_that_is_being_destroyed_is_answered_retired_and_not_a_panic() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicI32, Ordering};
+
+    /// The answer the table gave the drop of the closure's capture; the sentinel is a drop that never ran.
+    const NOT_RUN: i32 = i32::MIN;
+    struct Releases {
+        obj: gnoblin_object::Obj,
+        answer: Arc<AtomicI32>,
+    }
+    impl Drop for Releases {
+        fn drop(&mut self) {
+            // SAFETY: the call takes plain values.
+            let code = unsafe { (PROBE_API.release)(CTX, self.obj) };
+            self.answer.store(code, Ordering::SeqCst);
+        }
+    }
+
+    let answer = Arc::new(AtomicI32::new(NOT_RUN));
+    let for_thread = Arc::clone(&answer);
+    end_a_thread_holding(move |_, obj| {
+        let held = Releases {
+            obj,
+            answer: for_thread,
+        };
+        closure(move |_, _| {
+            let _ = &held;
+            Ok(Val::None)
+        })
+    });
+    assert_eq!(
+        answer.load(Ordering::SeqCst),
+        abi::E_RETIRED,
+        "the capture of a closure the library held was dropped as the library was destroyed"
+    );
+}
+
+#[test]
+fn an_object_a_closure_holds_is_let_go_as_its_threads_library_is_destroyed_without_reading_the_last_error_text() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// Dropped after the object it follows in `Held`: set once that drop came back.
+    struct Done(Arc<AtomicBool>);
+    impl Drop for Done {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+    struct Held {
+        _object: Object,
+        _done: Done,
+    }
+
+    let done = Arc::new(AtomicBool::new(false));
+    let for_thread = Arc::clone(&done);
+    end_a_thread_holding(move |api, obj| {
+        let class = api.class("probe").unwrap();
+        let held = Held {
+            _object: Object::adopt(api, class, obj),
+            _done: Done(for_thread),
+        };
+        closure(move |_, _| {
+            let _ = &held;
+            Ok(Val::None)
+        })
+    });
+    assert!(
+        done.load(Ordering::SeqCst),
+        "the object's drop came back, where a read of the last-error text that is gone aborts the process"
+    );
 }
 
 // ---- a call that runs a closure which calls back into the object the call is about -----------------------------------------------

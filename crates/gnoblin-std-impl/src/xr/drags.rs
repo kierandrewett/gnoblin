@@ -12,7 +12,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::NodeId;
+use gnoblin_core::host::NodeId;
 use gnoblin_core_abi as abi;
 use gnoblin_object::server::Cx;
 use gnoblin_object::{MemberId, Res, Val};
@@ -404,12 +404,13 @@ fn native_end(world: &XrWorld, run: &DragRun, unit: f64) -> Res<()> {
         return Ok(());
     }
     // One request: both sides go in the turn's one transaction, so the client gets one configure.
-    let refused = |error: gnoblin_core::CoreError| gnoblin_object::Fail::new(error.kind().code(), error.to_string());
+    let refused =
+        |error: gnoblin_core::host::CoreError| gnoblin_object::Fail::new(error.kind().code(), error.to_string());
     window
-        .set("width", gnoblin_core::Value::Double(desired.0))
+        .set("width", gnoblin_core::host::Value::Double(desired.0))
         .map_err(refused)?;
     window
-        .set("height", gnoblin_core::Value::Double(desired.1))
+        .set("height", gnoblin_core::host::Value::Double(desired.1))
         .map_err(refused)?;
     // The picture will have `desired` pixels, and the panel keeps the metres the hand drew.
     let pose = world.world_pose(run.panel.view);

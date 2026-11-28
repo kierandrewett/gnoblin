@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
-use gnoblin_core::{Gnoblin, Rect};
+use gnoblin_core::host::{Host, Rect};
 use gnoblin_core_abi::{self as abi, GnoblinDropFn};
 use gnoblin_std_abi::{
     GnoblinStdLayoutContext, GnoblinStdLayoutVtable, GnoblinStdPlacement, GnoblinStdRect, GnoblinStdSplit,
@@ -358,7 +358,7 @@ impl LayoutObj {
     }
 
     /// A client joined the workspace.
-    pub(crate) fn client_added(&self, g: &Gnoblin, cx: &LayoutContext, client: NodeId, known: &Known<'_>) {
+    pub(crate) fn client_added(&self, g: &Host, cx: &LayoutContext, client: NodeId, known: &Known<'_>) {
         match &self.kind {
             Kind::Floating { mode, step, placed } => place_floating(g, cx, client, (*mode, *step), placed, known),
             Kind::Foreign(foreign) => foreign.hook_client(foreign.vtable.client_added, cx, client),
@@ -492,7 +492,7 @@ pub(crate) struct Known<'a> {
 
 /// The floating layout's `onClientAdded`: places a newly added client once, unless this layout placed it already.
 fn place_floating(
-    g: &Gnoblin,
+    g: &Host,
     cx: &LayoutContext,
     client: NodeId,
     (mode, step): (PlaceMode, f64),

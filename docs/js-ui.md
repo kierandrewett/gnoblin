@@ -81,12 +81,12 @@ canvas.invalidate()
 use std::cell::Cell;
 use std::rc::Rc;
 
-use gnoblin_std::objects::{Canvas, PaintKind, PaintOp, WidgetHandlers};
+use gnoblin_std::{Canvas, PaintKind, PaintOp, WidgetHandlers};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     let canvas = Rc::new(Canvas::new(&objects)?);
     canvas.set_width(120.0)?;
@@ -190,12 +190,12 @@ bar.mount_top()
 ```
 
 ```rust
-use gnoblin_std::objects::{Direction, Icon, Text, UiBox};
+use gnoblin_std::{Direction, Icon, Text, UiBox};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     let bar = UiBox::new(&objects)?;
     bar.set_width(300.0)?;
@@ -294,12 +294,12 @@ decorations.start()
 ```
 
 ```rust
-use gnoblin_std::objects::{Decorations, TitlebarStyle, WindowButtonName};
+use gnoblin_std::{Decorations, TitlebarStyle, WindowButtonName};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let decorations = Decorations::get(&objects)?;
     decorations.set_style(&TitlebarStyle {
         height: 36.0,
@@ -413,12 +413,12 @@ entry.focus()
 ```
 
 ```rust
-use gnoblin_std::objects::Entry;
+use gnoblin_std::Entry;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     let entry = Entry::new(&objects)?;
     entry.set_x(20.0)?;
@@ -542,14 +542,14 @@ Toast.show("The shell is running")
 use std::rc::Rc;
 use std::time::Instant;
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Launcher, NotRespondingAlerts, Toast, WindowMenus};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Launcher, NotRespondingAlerts, Toast, WindowMenus};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let objects = g.std()?.objects()?;
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
+    let objects = g.objects()?.std()?;
 
     WindowMenus::get(&objects)?.start()?;
     NotRespondingAlerts::get(&objects)?.start()?;

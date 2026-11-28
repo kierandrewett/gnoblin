@@ -53,15 +53,15 @@ WorkspaceSlideBinding(trigger="Swipe3").install()
 ```
 
 ```rust
-use gnoblin_core::objects::{GestureBindingHandlers, ModelRoot};
-use gnoblin_std::objects::{WorkspaceSlideBinding, WorkspaceSlideBindingOptions};
+use gnoblin_core::{GestureBindingHandlers, Gnoblin};
+use gnoblin_std::{WorkspaceSlideBinding, WorkspaceSlideBindingOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.objects()?;
-    let std_objects = g.std()?.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let std_objects = g.objects()?.std()?;
+    let model = Gnoblin::get(&objects)?;
     let input = model.input()?;
     let context = input.primary()?;
 

@@ -1,4 +1,4 @@
-//! The shell's handle on the compositor: [`Gnoblin`], and the registration wrappers behind it.
+//! The shell's handle on the compositor: [`Host`], and the registration wrappers behind it.
 //!
 //! Each registration the core accepts holds a `user` pointer and a `drop_user` function. The wrappers here box the
 //! closure, hand the core the box as `user`, and give it a monomorphised trampoline and drop function, so a closure is
@@ -29,7 +29,7 @@ pub(crate) static REGISTERED: AtomicU64 = AtomicU64::new(0);
 pub(crate) static CALLS: AtomicU64 = AtomicU64::new(0);
 pub(crate) static DROPS: AtomicU64 = AtomicU64::new(0);
 
-/// A log level for [`Gnoblin::log_at`].
+/// A log level for [`Host::log_at`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LogLevel {
     /// Something failed.
@@ -100,7 +100,7 @@ pub struct CoreStats {
 /// that does unsubscribe on drop.
 #[derive(Clone)]
 pub struct Subscription {
-    g: Gnoblin,
+    g: Host,
     reg: GnoblinReg,
 }
 
@@ -146,7 +146,7 @@ impl Drop for ScopedSubscription {
     }
 }
 
-/// What every clone of a [`Gnoblin`] shares: the table, the context, and what the SDK has looked up so far.
+/// What every clone of a [`Host`] shares: the table, the context, and what the SDK has looked up so far.
 struct Shared {
     api: &'static GnoblinApi,
     ctx: GnoblinCtx,
@@ -162,17 +162,17 @@ struct Shared {
 /// it is `Clone` (cheap, and every clone shares what the SDK has looked up) but neither `Send` nor `Sync`. To act from
 /// another thread, take a [`Poster`] and post work back.
 ///
-/// Once the generation retires, every call through it (or through a [`Node`](crate::Node) or [`Window`](crate::Window) made
-/// from it) fails with [`ErrorKind::Retired`](crate::ErrorKind::Retired): a handle kept past a reload is safe to hold and
+/// Once the generation retires, every call through it (or through a [`Node`](crate::host::Node) or [`Window`](crate::host::Window) made
+/// from it) fails with [`ErrorKind::Retired`](crate::host::ErrorKind::Retired): a handle kept past a reload is safe to hold and
 /// useless to use.
 #[derive(Clone)]
-pub struct Gnoblin {
+pub struct Host {
     shared: Rc<Shared>,
 }
 
-impl Gnoblin {
-    pub(crate) fn new(api: &'static GnoblinApi, ctx: GnoblinCtx) -> Gnoblin {
-        Gnoblin {
+impl Host {
+    pub(crate) fn new(api: &'static GnoblinApi, ctx: GnoblinCtx) -> Host {
+        Host {
             shared: Rc::new(Shared {
                 api,
                 ctx,
@@ -316,7 +316,7 @@ impl Gnoblin {
         let id = unsafe { (self.api().catalog_class)(self.ctx(), name.as_ptr(), name.len()) };
         if id == 0 {
             Err(CoreError::new(
-                crate::ErrorKind::NoSuchMember,
+                crate::host::ErrorKind::NoSuchMember,
                 last_text_or(&format!("no class `{name}` in the catalog")),
             ))
         } else {
@@ -368,7 +368,7 @@ impl Gnoblin {
     }
 
     /// Calls `f` for every `signal` of `class`: of one node when `node` is given, of every node of the class when it is
-    /// `None`. `signal` is a member id from [`Gnoblin::member`].
+    /// `None`. `signal` is a member id from [`Host::member`].
     pub fn on_signal<F>(&self, node: Option<NodeId>, class: Class, signal: u32, f: F) -> Result<Subscription>
     where
         F: FnMut(&SignalEvent<'_>) + 'static,
@@ -390,7 +390,7 @@ impl Gnoblin {
         self.adopt(reg, slot)
     }
 
-    /// [`Gnoblin::on_signal`] with the class and signal looked up by name.
+    /// [`Host::on_signal`] with the class and signal looked up by name.
     pub fn on_signal_named<F>(&self, class: &str, signal: &str, f: F) -> Result<Subscription>
     where
         F: FnMut(&SignalEvent<'_>) + 'static,
@@ -494,7 +494,7 @@ impl Gnoblin {
             }
         }
         Err(CoreError::new(
-            crate::ErrorKind::NoSuchNode,
+            crate::host::ErrorKind::NoSuchNode,
             "the tree has no seat to take input from",
         ))
     }
@@ -503,7 +503,7 @@ impl Gnoblin {
     pub(crate) fn adopt_bare(&self, reg: GnoblinReg) -> Result<Subscription> {
         if reg == 0 {
             Err(CoreError::new(
-                crate::ErrorKind::Failed,
+                crate::host::ErrorKind::Failed,
                 last_text_or("the core refused the registration"),
             ))
         } else {
@@ -517,7 +517,7 @@ impl Gnoblin {
             // SAFETY: the core returned zero, so it has not adopted `slot` and nothing else owns the box.
             drop(unsafe { Box::from_raw(slot) });
             Err(CoreError::new(
-                crate::ErrorKind::Failed,
+                crate::host::ErrorKind::Failed,
                 last_text_or("the core refused the registration"),
             ))
         } else {
@@ -552,7 +552,7 @@ impl Poster {
     /// Runs `f` on the shell thread at its next dispatch. If the generation retires first, `f` is dropped unrun.
     pub fn post<F>(&self, f: F) -> Result<()>
     where
-        F: FnOnce(&Gnoblin) + Send + 'static,
+        F: FnOnce(&Host) + Send + 'static,
     {
         let slot = Box::into_raw(Box::new(PostSlot {
             f: Some(f),
@@ -577,7 +577,7 @@ pub(crate) struct CallbackSlot<F> {
     pub(crate) f: F,
 }
 
-/// Work posted to the shell thread, with what is needed to rebuild a `Gnoblin` there.
+/// Work posted to the shell thread, with what is needed to rebuild a `Host` there.
 struct PostSlot<F> {
     f: Option<F>,
     api: &'static GnoblinApi,
@@ -621,13 +621,13 @@ pub(crate) unsafe extern "C" fn drop_slot<T>(user: *mut c_void) {
     drop(unsafe { Box::from_raw(user.cast::<T>()) });
 }
 
-unsafe extern "C" fn post_tramp<F: FnOnce(&Gnoblin)>(user: *mut c_void) {
+unsafe extern "C" fn post_tramp<F: FnOnce(&Host)>(user: *mut c_void) {
     CALLS.fetch_add(1, Ordering::Relaxed);
     // SAFETY: `user` is the `Box<PostSlot<F>>` leaked by `post`; the core calls either this or `drop_post`, never both,
     // so the box is taken back exactly once.
     let mut slot = unsafe { Box::from_raw(user.cast::<PostSlot<F>>()) };
     if let Some(f) = slot.f.take() {
-        let g = Gnoblin::new(slot.api, slot.ctx);
+        let g = Host::new(slot.api, slot.ctx);
         let _ = catch_unwind(AssertUnwindSafe(|| f(&g)));
     }
 }

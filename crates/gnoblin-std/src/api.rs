@@ -1,31 +1,29 @@
-//! [`Std`]: a shell generation's handle on the installed std library.
+//! [`Std`]: a shell generation's handle on the installed std library, internal to this crate.
 //!
 //! `Std::open` finds the library's function table (`gnoblin_std_get_api`, which refuses another ABI major) and attaches the library to
-//! the generation. Every object the SDK makes (a [`Client`](crate::Client), a [`Workspace`](crate::Workspace), a
-//! [`Collection`](crate::Collection)) holds one, so it can call the library and so a handle that outlives its generation fails with
-//! `Retired` instead of acting.
+//! the generation. It is the one place the SDK meets the library's exports; a shell never holds one, because the classes of
+//! [`objects`](crate::objects) are made from `gnoblin.objects()?.std()?` and carry their own handle.
 #![allow(unsafe_code)]
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gnoblin_core::{ErrorKind, Gnoblin};
+use gnoblin_core::host::{ErrorKind, Host};
 use gnoblin_core_abi::GnoblinCtx;
-use gnoblin_std_abi::{ABI_MAJOR, ABI_MINOR, GnoblinStdApi, GnoblinStdStats};
+use gnoblin_std_abi::{ABI_MAJOR, ABI_MINOR, GnoblinStdApi};
 
 use crate::error::{Error, Result};
 use crate::sys;
 
 struct Inner {
-    g: Gnoblin,
     api: &'static GnoblinStdApi,
     ctx: GnoblinCtx,
 }
 
-/// A shell generation's handle on `libgnoblin-std`. Cheap to clone and compare; like [`Gnoblin`] it belongs to the shell thread
+/// A shell generation's handle on `libgnoblin-std`. Cheap to clone and compare; like the host handle it belongs to the shell thread
 /// and is neither `Send` nor `Sync`.
 #[derive(Clone)]
-pub struct Std {
+pub(crate) struct Std {
     inner: Rc<Inner>,
 }
 
@@ -39,23 +37,6 @@ impl PartialEq for Std {
     fn eq(&self, other: &Std) -> bool {
         self.inner.ctx == other.inner.ctx
     }
-}
-
-/// Counters the library keeps for a generation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Stats {
-    /// Workspaces that exist.
-    pub workspaces: u64,
-    /// Clients the library knows.
-    pub clients: u64,
-    /// Collections that exist.
-    pub collections: u64,
-    /// Listeners the library holds.
-    pub registrations: u64,
-    /// Layout passes that ran.
-    pub layout_passes: u64,
-    /// Layout `compute` calls that ran.
-    pub computes: u64,
 }
 
 thread_local! {
@@ -84,7 +65,7 @@ impl Std {
     /// # Errors
     ///
     /// The installed library is of another ABI major (the text names both), is older than this SDK, or cannot attach to the tree.
-    pub fn open(g: &Gnoblin) -> Result<Std> {
+    pub(crate) fn open(g: &Host) -> Result<Std> {
         let ctx = gnoblin_core::__private::ctx_of(g);
         if let Some(std) = OPENED.with(|opened| opened.borrow().clone())
             && std.inner.ctx == ctx
@@ -112,48 +93,12 @@ impl Std {
             ));
         }
         let std = Std {
-            inner: Rc::new(Inner { g: g.clone(), api, ctx }),
+            inner: Rc::new(Inner { api, ctx }),
         };
         // SAFETY: `open` takes only the context handle.
         std.check(unsafe { (api.open)(ctx) })?;
         OPENED.with(|opened| *opened.borrow_mut() = Some(std.clone()));
         Ok(std)
-    }
-
-    /// The std handle of the generation that is running on this thread: for objects made without a `&Gnoblin` to hand, such as
-    /// [`Workspace::new`](crate::Workspace::new). Opens the library on first use.
-    ///
-    /// # Errors
-    ///
-    /// Called outside a shell's entry (no generation has started on this thread), or as for [`Std::open`].
-    pub fn current() -> Result<Std> {
-        match gnoblin_core::__private::current_gnoblin() {
-            Some(g) => Std::open(g),
-            None => Err(Error::new(
-                ErrorKind::Failed,
-                "no shell generation is running on this thread: make std objects inside the shell's entry function, or use `Std::open(g)`",
-            )),
-        }
-    }
-
-    /// The core's `Client` of the window `node`, which the classes of the library take where they take a window: the core looks it up by
-    /// its id.
-    ///
-    /// # Errors
-    ///
-    /// The core has no such window.
-    pub(crate) fn core_client(&self, node: gnoblin_core::NodeId) -> Result<gnoblin_core::objects::Client> {
-        let model = gnoblin_core::objects::ModelRoot::get(&self.inner.g.objects()?)?;
-        let id = node.0.to_string();
-        model
-            .clients()?
-            .get_by_id(&id)?
-            .ok_or_else(|| Error::new(ErrorKind::NoSuchNode, format!("the core has no window {id}")))
-    }
-
-    /// The core handle of this generation.
-    pub fn gnoblin(&self) -> &Gnoblin {
-        &self.inner.g
     }
 
     /// The function table of the installed library.
@@ -175,44 +120,8 @@ impl Std {
         }
     }
 
-    /// The failure of a function that returns a handle (zero is the failure) and so carries no code: the library's text starts with
-    /// the symbolic name of the code (`E_REFUSED: ...`).
-    pub(crate) fn failure(&self) -> Error {
-        let text = last_error_text();
-        let kind = ErrorKind::from_symbol(text.split_once(':').map_or("", |(name, _)| name));
-        Error::new(kind, text)
-    }
-
-    /// Fills the library's counters for this generation.
-    ///
-    /// # Errors
-    ///
-    /// The generation has retired.
-    pub fn stats(&self) -> Result<Stats> {
-        let mut raw = GnoblinStdStats {
-            size: size_of::<GnoblinStdStats>() as u32,
-            reserved: 0,
-            workspaces: 0,
-            clients: 0,
-            collections: 0,
-            registrations: 0,
-            layout_passes: 0,
-            computes: 0,
-        };
-        // SAFETY: `stats` fills the struct it is given up to the `size` the caller set; `raw` is a live local.
-        self.check(unsafe { (self.api().stats)(self.ctx(), &mut raw) })?;
-        Ok(Stats {
-            workspaces: raw.workspaces,
-            clients: raw.clients,
-            collections: raw.collections,
-            registrations: raw.registrations,
-            layout_passes: raw.layout_passes,
-            computes: raw.computes,
-        })
-    }
-
     /// The ABI version of the installed std library: `(major, minor, patch)`.
-    pub fn installed_abi() -> (u32, u32, u32) {
+    pub(crate) fn installed_abi() -> (u32, u32, u32) {
         let (mut major, mut minor, mut patch) = (0, 0, 0);
         // SAFETY: `gnoblin_std_abi_version` writes three `u32`s through the pointers it is given; they are live locals.
         unsafe { sys::gnoblin_std_abi_version(&mut major, &mut minor, &mut patch) };

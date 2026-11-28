@@ -2,7 +2,7 @@
 //!
 //! The compositor keeps a tree of nodes. A window is a node of class `window`; a shell that places windows writes their `x`,
 //! `y`, `width` and `height`. [`Node`] is a handle on one node of any class, [`Window`] a handle on a window with the
-//! accessors a window manager needs. Both carry the [`Gnoblin`] of the generation that made them, so after a reload a handle
+//! accessors a window manager needs. Both carry the [`Host`] of the generation that made them, so after a reload a handle
 //! the old generation kept fails with `Retired` instead of acting, and both name a node by its id, which the compositor never
 //! reuses, so a handle to a window that closed fails with `NoSuchNode` instead of touching another window.
 //!
@@ -19,14 +19,14 @@ use gnoblin_core_abi::{self as abi, GnoblinAnswer, GnoblinNodes, GnoblinPending,
 
 use crate::error::{CoreError, ErrorKind, Result, check};
 use crate::generated::{Screen, Window};
-use crate::gnoblin::{CALLS, CallbackSlot, Gnoblin, copy_str, drop_slot};
+use crate::gnoblin::{CALLS, CallbackSlot, Host, copy_str, drop_slot};
 use crate::owned::Value;
 use crate::value::{Class, MemberKind, NodeId};
 
 /// A node of the compositor's tree, by id. Cheap to clone and compare.
 #[derive(Clone)]
 pub struct Node {
-    g: Gnoblin,
+    g: Host,
     id: NodeId,
 }
 
@@ -97,12 +97,12 @@ impl Answer {
 /// A call that has been made and whose answer has not arrived.
 #[derive(Clone)]
 pub struct PendingCall {
-    g: Gnoblin,
+    g: Host,
     pending: GnoblinPending,
 }
 
 impl PendingCall {
-    pub(crate) fn new(g: Gnoblin, pending: GnoblinPending) -> PendingCall {
+    pub(crate) fn new(g: Host, pending: GnoblinPending) -> PendingCall {
         PendingCall { g, pending }
     }
 
@@ -113,7 +113,7 @@ impl PendingCall {
     }
 }
 
-/// What [`Gnoblin::adopt_node`] found or made.
+/// What [`Host::adopt_node`] found or made.
 #[derive(Clone, Debug)]
 pub struct Adoption {
     /// The node.
@@ -124,7 +124,7 @@ pub struct Adoption {
 }
 
 impl Node {
-    pub(crate) fn new(g: Gnoblin, id: NodeId) -> Node {
+    pub(crate) fn new(g: Host, id: NodeId) -> Node {
         Node { g, id }
     }
 
@@ -134,7 +134,7 @@ impl Node {
     }
 
     /// The generation's handle this node was made from.
-    pub fn gnoblin(&self) -> &Gnoblin {
+    pub fn gnoblin(&self) -> &Host {
         &self.g
     }
 
@@ -457,7 +457,7 @@ impl Window {
     }
 }
 
-impl Gnoblin {
+impl Host {
     /// A handle on the node with this id. It does not check that the node exists: use [`Node::is_alive`].
     pub fn node(&self, id: NodeId) -> Node {
         Node::new(self.clone(), id)
@@ -521,7 +521,7 @@ impl Gnoblin {
         Window::from_node(self.node(id))
     }
 
-    /// A handle on the window with this id, without checking that it is one: like [`Gnoblin::node`], for an id the caller knows
+    /// A handle on the window with this id, without checking that it is one: like [`Host::node`], for an id the caller knows
     /// (a window that has just closed, whose id an event carries). Reads and writes through it fail with `NoSuchNode` once the
     /// window is gone.
     pub fn window_handle(&self, id: NodeId) -> Window {

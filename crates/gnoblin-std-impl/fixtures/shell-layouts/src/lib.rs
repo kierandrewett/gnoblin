@@ -4,19 +4,19 @@
 //! automatic grid, `Super+4` a grid of three columns filled by column, `Super+5` a monocle and `Super+6` a master and stack with the
 //! master on top.
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{
+use gnoblin_core::Gnoblin;
+use gnoblin_std::prelude::*;
+use gnoblin_std::{
     Gaps, GridFill, GridLayout, GridLayoutOptions, Layout, MasterStackLayout, MasterStackLayoutOptions,
     MasterStackOrientation, MonocleLayout, Objects, SwapBinding, Workspace, WorkspaceOptions, Workspaces,
 };
-use gnoblin_std::prelude::*;
 
 /// What a chord does to the workspace: the layout it gives it.
 type Make = Box<dyn Fn(&Objects) -> gnoblin_std::Result<Layout>>;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let main = Workspace::new_with(
         &objects,
         "main",
@@ -42,7 +42,6 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
                         master_count: Some(2),
                         gap: Some(4.0),
                         orientation: Some(MasterStackOrientation::Right),
-                        ..MasterStackLayoutOptions::default()
                     },
                 )?
                 .as_layout()?)
@@ -78,7 +77,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             }),
         ),
     ];
-    let context = ModelRoot::get(&g.objects()?)?.input()?.primary()?;
+    let context = Gnoblin::get(&g.objects()?)?.input()?.primary()?;
     for (chord, make) in chords {
         let (main, objects, shell) = (main.clone(), objects.clone(), g.clone());
         context.bind(

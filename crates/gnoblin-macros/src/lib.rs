@@ -133,9 +133,10 @@ fn entry_source(name: &str) -> String {
 #[doc(hidden)]
 const _: () = {{
     fn __gnoblin_user(
-        g: &'static ::gnoblin_core::Gnoblin,
+        host: &'static ::gnoblin_core::host::Host,
     ) -> ::core::result::Result<(), ::std::string::String> {{
-        ::gnoblin_core::__private::IntoInit::into_init({name}(g))
+        let gnoblin = ::gnoblin_core::__private::root(host)?;
+        ::gnoblin_core::__private::IntoInit::into_init({name}(gnoblin))
     }}
 
     static __GNOBLIN_ENTRY: ::gnoblin_core::__private::GnoblinShellEntry =

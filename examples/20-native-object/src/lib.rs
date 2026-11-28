@@ -17,12 +17,12 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use gnoblin_std::objects::{EntryModel, FocusEvent, FocusEventKind, FocusMode, FocusPolicy, FocusSettings};
 use gnoblin_std::prelude::*;
+use gnoblin_std::{EntryModel, FocusEvent, FocusEventKind, FocusMode, FocusPolicy, FocusSettings};
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     // Made with its text; the caret starts at the end, and positions count characters, not bytes.
     let entry = EntryModel::new(&objects, "héllo")?;

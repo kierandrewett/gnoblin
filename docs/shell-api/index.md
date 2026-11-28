@@ -27,12 +27,11 @@ for client in gnoblin.clients.to_list():
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let clients = model.clients()?;
     for client in clients.to_list()? {
         model.spawn(&["notify-send".to_owned(), format!("{} is open", client.app_id()?)], None)?;

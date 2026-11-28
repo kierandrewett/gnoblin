@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::{ShellValue, SignalEvent};
+use gnoblin_core::host::{ShellValue, SignalEvent};
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::{ErrorCode, Fail, Obj, Res, Val};
 

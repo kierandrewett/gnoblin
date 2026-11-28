@@ -16,19 +16,19 @@
 //!
 //! Build it with `cargo build -p gnoblin-example-std-prelude` and run it with `gnoblin ./target/debug/libstd_prelude.so`.
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Desks, WorkspacePolicy, WorkspacePolicyMode};
+use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
+use gnoblin_std::{Desks, WorkspacePolicy, WorkspacePolicyMode};
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     Desks::get(&objects)?.set_workspaces(&WorkspacePolicy {
         mode: WorkspacePolicyMode::PerOutput,
         ..WorkspacePolicy::default()
     })?;
 
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let shell = g.clone();
     model
         .clients()?
@@ -47,7 +47,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         .keep();
 
     g.bind("<Super>Return", move || {
-        if let Err(error) = g.spawn("foot") {
+        if let Err(error) = g.spawn(&["foot".to_owned()], None) {
             g.log(&format!("cannot start a terminal: {error}"));
         }
     })?;
@@ -55,7 +55,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     for (chord, step) in [("<Super>Right", 1), ("<Super>Left", -1)] {
         g.bind(chord, move || {
             let walked = (|| -> gnoblin_std::Result<()> {
-                let focused = ModelRoot::get(&g.objects()?)?.clients()?.focused()?;
+                let focused = Gnoblin::get(&g.objects()?)?.clients()?.focused()?;
                 if let Some(workspace) = focused.and_then(|client| client.workspace().ok().flatten()) {
                     workspace.walk(step)?;
                 }

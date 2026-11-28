@@ -78,11 +78,10 @@ use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let clients = model.clients()?;
     let shell = Rc::clone(&model);
     clients
@@ -166,9 +165,9 @@ Gnoblin.get().clients.on("focus_changed", log_focus)
 // src/focus_log.rs
 use std::rc::Rc;
 
-use gnoblin_core::objects::{Client, ModelRoot};
+use gnoblin_core::{Client, Gnoblin};
 
-pub fn log_focus(shell: &Rc<ModelRoot>, client: Client, has_focus: bool) {
+pub fn log_focus(shell: &Rc<Gnoblin>, client: Client, has_focus: bool) {
     if has_focus {
         if let Ok(app_id) = client.app_id() {
             let argv = ["logger".to_owned(), "-t".to_owned(), "focus".to_owned(), app_id];
@@ -184,13 +183,12 @@ use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 mod focus_log;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let clients = model.clients()?;
     let shell = Rc::clone(&model);
     clients

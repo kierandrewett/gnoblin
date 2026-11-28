@@ -1,6 +1,6 @@
 //! Example 19: a custom shader in Rust.
 //!
-//! A [`Filter::shader`] on the style of every window tints each of them: `effect` gets the window's colour and moves it a quarter of
+//! A [`ShaderFilter`] on the style of every window tints each of them: `effect` gets the window's colour and moves it a quarter of
 //! the way towards a warm orange (`p[0]` to `p[2]` are the colour and `p[3]` how far to go). The library writes it to each window's node
 //! as one `shader` effect.
 //!
@@ -23,15 +23,17 @@ const TINT: &str = "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: 
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?;
-    std.clients()?
-        .style()?
-        .set_filter(&[Filter::shader(TINT, &[1.0, 0.55, 0.2, 0.25])])?;
+    let objects = g.objects()?.std()?;
+    let tint = ShaderFilter {
+        params: vec![1.0, 0.55, 0.2, 0.25],
+        ..ShaderFilter::new(TINT.to_owned())
+    };
+    ClientStyle::of_clients(&objects)?.set_filter(&[tint.into()])?;
 
     g.bind("<Super>w", move || {
         let said = (|| -> gnoblin_std::Result<Vec<String>> {
             let mut warnings = Vec::new();
-            for client in g.clients()?.to_vec()? {
+            for client in g.clients()?.to_list()? {
                 warnings.extend(client.style_warnings()?);
             }
             Ok(warnings)

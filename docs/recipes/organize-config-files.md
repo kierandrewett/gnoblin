@@ -34,13 +34,12 @@ def place_windows():
 
 ```rust
 // windows.rs
-use gnoblin_core::objects::{Client, ModelRoot};
-use gnoblin_core::Gnoblin;
+use gnoblin_core::{Client, Gnoblin};
 use gnoblin_std::prelude::*;
 
 pub fn place_windows(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.objects()?;
-    let clients = ModelRoot::get(&objects)?.clients()?;
+    let clients = Gnoblin::get(&objects)?.clients()?;
     clients
         .on_added(|client: Client, _collection| {
             if client.app_id().unwrap_or_default() == "org.gnome.TextEditor" {
@@ -84,9 +83,9 @@ def bind_keys():
 // bindings.rs
 use gnoblin_core::Gnoblin;
 
-pub fn bind_keys(g: &Gnoblin) -> gnoblin_core::Result<()> {
+pub fn bind_keys(g: &Gnoblin) -> gnoblin_core::Res<()> {
     let launcher = g.clone();
-    g.bind("Super+d", move || launcher.spawn("fuzzel"))?;
+    g.bind("Super+d", move || launcher.spawn(&["fuzzel".to_owned()], None))?;
     Ok(())
 }
 ```
@@ -125,7 +124,7 @@ mod bindings;
 mod windows;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     windows::place_windows(g)?;
     bindings::bind_keys(g)?;
     Ok(())

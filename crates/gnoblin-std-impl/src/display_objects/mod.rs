@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gnoblin_core::LogLevel;
+use gnoblin_core::host::LogLevel;
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::Builder;
 use gnoblin_object::{Fail, Obj, Res, Val};

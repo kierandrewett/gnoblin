@@ -8,15 +8,15 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use gnoblin_std::objects::{
+use gnoblin_std::prelude::*;
+use gnoblin_std::{
     BlurFilter, Border, BrightnessFilter, ClientStyle, ContrastFilter, CornerRadius, Filter, SaturateFilter, SceneNode,
     ShaderFilter, Shadow, StyleProperty, Transition, TransitionOptions, TransitionValue,
 };
-use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let style = ClientStyle::of_clients(&objects)?;
     style.set_corner_radius(&CornerRadius {
         all: Some(12.0),

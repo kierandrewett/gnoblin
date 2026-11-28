@@ -14,11 +14,11 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use gnoblin_std::objects::{
+use gnoblin_std::prelude::*;
+use gnoblin_std::{
     Display, DisplayManager, DisplaySelector, OutputMatch, OutputProfile, ProfileSettings, Viewport, Workspace,
     Workspaces,
 };
-use gnoblin_std::prelude::*;
 
 /// The displays as `id:mode:outputs:workspace` words, sorted.
 fn listed(manager: &DisplayManager) -> String {
@@ -48,7 +48,7 @@ fn listed(manager: &DisplayManager) -> String {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let workspaces = Workspaces::get(&objects)?;
     let one = Rc::new(Workspace::new(&objects, "one")?);
     let two = Rc::new(Workspace::new(&objects, "two")?);

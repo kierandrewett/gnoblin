@@ -182,16 +182,16 @@ fn python_installs_the_members_from_the_std_module_and_the_core_module_names_non
 fn rust_gives_the_core_root_an_extension_trait_in_the_std_api_only() {
     let std = generated("object-api", "rust-objects/std_api.rs");
     assert!(
-        std.contains("pub trait ModelRootStdExt {"),
+        std.contains("pub trait GnoblinStdExt {"),
         "the extension trait of the root"
     );
-    assert!(std.contains("impl ModelRootStdExt for ::gnoblin_core::objects::ModelRoot {"));
+    assert!(std.contains("impl GnoblinStdExt for ::gnoblin_core::objects::Gnoblin {"));
     assert!(std.contains("pub trait OutputCollectionStdExt {"));
     assert!(std.contains("impl OutputCollectionStdExt for ::gnoblin_core::objects::OutputCollection {"));
-    assert!(std.contains("fn workspaces(&self) -> go::Res<Workspaces>;"));
+    assert!(std.contains("fn workspaces(&self) -> crate::Res<Workspaces>;"));
     assert!(std.contains("fn request_transition(&self,"));
     assert!(std.contains("impl ClientCollectionStdExt for ::gnoblin_core::objects::ClientCollection {"));
-    assert!(std.contains("fn style(&self) -> go::Res<ClientStyle>;"));
+    assert!(std.contains("fn style(&self) -> crate::Res<ClientStyle>;"));
     assert!(std.contains("ClientCollectionAugment::get(&super::std_objects(self.handle().api())?)?.style(self)"));
     let core = generated("object-api", "rust-objects/model_api.rs");
     assert!(!core.contains("StdExt"), "the core's API names a std trait");

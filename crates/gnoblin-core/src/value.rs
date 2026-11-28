@@ -203,7 +203,7 @@ unsafe fn bytes_of<'a>(raw: &GnoblinValue) -> &'a [u8] {
     }
 }
 
-/// One signal delivery, passed to the callback registered with `Gnoblin::on_signal`.
+/// One signal delivery, passed to the callback registered with `Host::on_signal`.
 #[derive(Clone, Copy)]
 pub struct SignalEvent<'a> {
     raw: &'a GnoblinEvent,

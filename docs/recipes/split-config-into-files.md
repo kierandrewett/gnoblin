@@ -32,11 +32,11 @@ def style_windows():
 
 ```rust
 // appearance.rs
-use gnoblin_std::objects::{ClientStyle, CornerRadius};
+use gnoblin_std::{ClientStyle, CornerRadius};
 use gnoblin_std::prelude::*;
 
 pub fn style_windows(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let style = ClientStyle::of_clients(&objects)?;
     style.set_corner_radius(&CornerRadius {
         all: Some(12.0),
@@ -79,9 +79,9 @@ def bind_keys():
 // bindings.rs
 use gnoblin_core::Gnoblin;
 
-pub fn bind_keys(g: &Gnoblin) -> gnoblin_core::Result<()> {
+pub fn bind_keys(g: &Gnoblin) -> gnoblin_core::Res<()> {
     let launcher = g.clone();
-    g.bind("Super+d", move || launcher.spawn("fuzzel"))?;
+    g.bind("Super+d", move || launcher.spawn(&["fuzzel".to_owned()], None))?;
     Ok(())
 }
 ```
@@ -119,7 +119,7 @@ mod appearance;
 mod bindings;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     appearance::style_windows(g)?;
     bindings::bind_keys(g)?;
     Ok(())

@@ -6,7 +6,7 @@
 //! the one record, and the library's refit of a window to a new work area (`fit.rs`) can honour them.
 #![allow(unsafe_code)]
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinNode};
 use gnoblin_std_abi::{
     GnoblinStdClientState, GnoblinStdRect, STD_CLIENT_HAS_FITTED, STD_CLIENT_HAS_FLOATING, STD_CLIENT_HAS_MAX,

@@ -8,8 +8,9 @@
 use std::io::Write as _;
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::schema::gnoblin::{idle, session};
-use gnoblin_core::{Answer, Gnoblin, ShellValue, Value};
+use gnoblin_core::Gnoblin;
+use gnoblin_core::host::schema::gnoblin::{idle, session};
+use gnoblin_core::host::{Answer, ShellValue, Value};
 
 fn say(line: &str) {
     let _ = writeln!(std::io::stdout().lock(), "[shell-verbs] {line}");
@@ -24,7 +25,8 @@ fn outcome(answer: &Answer) -> String {
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(root: &Gnoblin) -> gnoblin::host::Result<()> {
+    let g = root.host();
     g.subscribe(session::CLASS, session::signal::BELL, |event| {
         match event.value(session::fields::bell::COUNT) {
             Some(ShellValue::Uint(count)) => say(&format!("bell count={count} from object {}", event.node().0)),

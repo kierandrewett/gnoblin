@@ -16,7 +16,7 @@ mod master;
 mod strip;
 mod wire;
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_std_abi::GnoblinStdSplit;
 use gnoblin_std_abi::layouts::{Initial, LayoutKindDesc, LowerBound, OptionDesc, ValueDesc, ValueShape};
 use gnoblin_std_abi::{STD_AXIS_X, STD_AXIS_Y, STD_SPLIT_CROSS};

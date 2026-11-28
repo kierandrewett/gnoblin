@@ -13,11 +13,10 @@
 //! Build it with `cargo build -p gnoblin-example-native-root` and run it with `gnoblin ./target/debug/libnative_root.so`.
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{Client, ClientQuery, Finds, ModelRoot, Output};
+use gnoblin_core::{Client, ClientQuery, Finds, Gnoblin, Output};
 
 /// What the shell logs about a window that appeared: what each member of the root answers now.
-fn report(g: &Gnoblin, root: &ModelRoot, client: &Client) -> gnoblin::Result<()> {
+fn report(g: &Gnoblin, root: &Gnoblin, client: &Client) -> gnoblin::Res<()> {
     let windows = root.find::<Client>(None)?.len();
     let foot = root
         .find::<Client>(Some(&ClientQuery {
@@ -42,9 +41,9 @@ fn report(g: &Gnoblin, root: &ModelRoot, client: &Client) -> gnoblin::Result<()>
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let model = Gnoblin::get(&objects)?;
 
     let version = model.version()?;
     g.log(&format!("root: gnoblin {} speaks api {}", version.gnoblin, version.api));
@@ -65,11 +64,11 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
 
     g.log(&format!(
         "root: find lists the kinds {}, {}",
-        <Client as Finds<ModelRoot>>::KIND,
-        <Output as Finds<ModelRoot>>::KIND
+        <Client as Finds<Gnoblin>>::KIND,
+        <Output as Finds<Gnoblin>>::KIND
     ));
 
-    let root = ModelRoot::get(&objects)?;
+    let root = Gnoblin::get(&objects)?;
     model
         .on_client_created(move |client, _| {
             if let Err(error) = report(g, &root, &client) {

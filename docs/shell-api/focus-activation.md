@@ -47,11 +47,10 @@ if client is not None:
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let clients = model.clients()?;
     for client in clients.to_list()? {
         if client.app_id()? == "foot" {
@@ -91,12 +90,11 @@ if len(history) > 1:
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{FocusFilter, ModelRoot};
+use gnoblin_core::{FocusFilter, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let focus = model.focus()?;
     let filter = FocusFilter {
         limit: Some(2),

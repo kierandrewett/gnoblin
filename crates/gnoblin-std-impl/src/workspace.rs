@@ -6,7 +6,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_std_abi as abi;
 
 use crate::error::{Fail, Res};
@@ -538,10 +538,10 @@ impl State {
         });
         match next {
             Some(next) => {
-                let _ = seat.set("focus", gnoblin_core::NodeId(next));
+                let _ = seat.set("focus", gnoblin_core::host::NodeId(next));
             }
             None => {
-                let _ = seat.set("focus", gnoblin_core::NodeId::NIL);
+                let _ = seat.set("focus", gnoblin_core::host::NodeId::NIL);
             }
         }
     }
@@ -570,7 +570,7 @@ impl State {
         .into_iter()
         .find_map(usable);
         if let Some(next) = next {
-            let _ = seat.set("focus", gnoblin_core::NodeId(next));
+            let _ = seat.set("focus", gnoblin_core::host::NodeId(next));
         }
     }
 }

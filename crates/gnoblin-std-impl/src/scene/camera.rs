@@ -5,7 +5,7 @@
 //! is a plain node used flat: its position is `x` and `y`, its zoom is the node's scale (`[zoom, zoom, 1]`) and its roll is the
 //! rotation about the view axis (`[0, 0, roll]`), so a transition can animate all three.
 
-use gnoblin_core::Gnoblin;
+use gnoblin_core::host::Host;
 
 use super::{Kind, SceneState, read_through, write};
 use crate::animation::staging::Prop;
@@ -44,7 +44,7 @@ fn positive(prop: &Prop, label: &str, key: &str) -> Res<f64> {
 /// A write the camera kinds take of their own, or `None` for a key every node takes.
 pub(crate) fn set(
     scene: &mut SceneState,
-    g: &Gnoblin,
+    g: &Host,
     node: u64,
     kind: Kind,
     label: &str,
@@ -77,7 +77,7 @@ pub(crate) fn set(
 }
 
 /// What a camera reports of itself that the tree does not hold.
-pub(crate) fn get(scene: &SceneState, g: &Gnoblin, node: u64, kind: Kind, key: &str) -> Option<Prop> {
+pub(crate) fn get(scene: &SceneState, g: &Host, node: u64, kind: Kind, key: &str) -> Option<Prop> {
     match (kind, key) {
         (Kind::Camera3D, "size") => Some(Prop::Number(scene.sizes.get(&node).copied().unwrap_or(1000.0))),
         (Kind::Camera2D, "zoom") => match read_through(g, node, "scale") {

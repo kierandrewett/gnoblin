@@ -90,12 +90,12 @@ def lock():
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let session = model.session()?;
     g.bind("<Super>l", move || {
         if let Err(error) = session.lock() {

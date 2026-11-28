@@ -67,12 +67,12 @@ ClientStyle.of_clients().where(StyleQuery(app_id="foot")).opacity = 0.92
 ```
 
 ```rust
-use gnoblin_std::objects::{ClientStyle, Shadow};
+use gnoblin_std::{ClientStyle, Shadow};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let style = ClientStyle::of_clients(&objects)?;
     style.set_shadows(&[Shadow {
         x: 0.0,
@@ -105,12 +105,12 @@ style.backdrop_filter = [BlurFilter(radius=24.0), SaturateFilter(amount=1.35)]
 ```
 
 ```rust
-use gnoblin_std::objects::{BlurFilter, ClientStyle, SaturateFilter};
+use gnoblin_std::{BlurFilter, ClientStyle, SaturateFilter};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let style = ClientStyle::of_clients(&objects)?;
     style.set_backdrop_filter(&[BlurFilter::default().into(), SaturateFilter::default().into()])?;
     Ok(())

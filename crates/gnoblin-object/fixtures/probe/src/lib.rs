@@ -11,6 +11,9 @@ use gnoblin_core_abi::{self as abi, GnoblinObjectApi};
 use gnoblin_object::client::Api;
 use gnoblin_object::server::{Builder, Hooks, Library, Provider, api_table};
 use gnoblin_object::{Callable, Fail, Val};
+// The root names the generated API's signatures spell (`crate::Res`, `crate::Listener`, `crate::Timing`), as an SDK crate has them.
+pub use gnoblin_object::typed::Listener;
+pub use gnoblin_object::{Res, Timing};
 
 #[allow(dead_code, clippy::all)]
 mod catalog {
@@ -45,8 +48,8 @@ thread_local! {
 struct ProbeLibrary;
 
 impl Provider for ProbeLibrary {
-    fn with<R>(work: impl FnOnce(&Library) -> R) -> R {
-        LIB.with(work)
+    fn with<R>(work: impl FnOnce(&Library) -> R) -> Option<R> {
+        LIB.try_with(work).ok()
     }
 }
 

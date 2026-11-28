@@ -7,8 +7,8 @@
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use gnoblin_core::Value;
-use gnoblin_core::objects::Timers;
+use gnoblin_core::Timers;
+use gnoblin_core::host::Value;
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::{Closure, Val};
 use gnoblin_paint::PaintOp;

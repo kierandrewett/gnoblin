@@ -135,12 +135,12 @@ Extensions.get().configure("xr", XROptions(room=True), lambda client: not client
 ```
 
 ```rust
-use gnoblin_std::objects::{Extensions, XrClient, XrOptions};
+use gnoblin_std::{Extensions, XrClient, XrOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let options = XrOptions { room: true, layout: None };
     Extensions::get(&objects)?.configure(
         "xr",
@@ -361,14 +361,14 @@ if xr is not None and xr.session is not None:
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Extensions, XrListenerHandlers};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Extensions, XrListenerHandlers};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let objects = g.std()?.objects()?;
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
+    let objects = g.objects()?.std()?;
     let extensions = Extensions::get(&objects)?;
     let (started, ended) = (Rc::clone(&model), Rc::clone(&model));
     let listener = XrListenerHandlers {
@@ -432,12 +432,12 @@ Extensions.get().configure("xr", XROptions(room=True, layout=layout))
 ```
 
 ```rust
-use gnoblin_std::objects::{Extensions, SpatialLayout, SpatialLayoutOptions, SpatialTriggers, XrClient, XrOptions};
+use gnoblin_std::{Extensions, SpatialLayout, SpatialLayoutOptions, SpatialTriggers, XrClient, XrOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let layout = SpatialLayout::new_with(
         &objects,
         SpatialLayoutOptions {
@@ -486,14 +486,14 @@ if session is not None:
 ```
 
 ```rust
-use gnoblin_std::objects::{
+use gnoblin_std::{
     Extensions, XrCamera3D, XrCamera3DOptions, XrComposition, XrRoom, XrViewport, XrViewportOptions,
 };
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let Some(xr) = Extensions::get(&objects)?.xr()? else {
         return Ok(());
     };
@@ -554,17 +554,17 @@ if room is not None and client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Extensions, HeadPanelOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Extensions, HeadPanelOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let Some(room) = Extensions::get(&objects)?.xr()?.map(|xr| xr.room()).transpose()?.flatten() else {
         return Ok(());
     };
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let Some(client) = model.clients()?.focused()? else {
         return Ok(());
     };
@@ -649,7 +649,7 @@ if room is not None:
 ```
 
 ```rust
-use gnoblin_std::objects::{
+use gnoblin_std::{
     Extensions, SpatialLayout, SpatialLayoutOptions, SpatialTriggers, ViewMoveBinding, ViewMoveBindingOptions,
     ViewRotation, ViewScaleBinding, ViewScaleBindingOptions, ViewTracking,
 };
@@ -657,7 +657,7 @@ use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let Some(room) = Extensions::get(&objects)?.xr()?.map(|xr| xr.room()).transpose()?.flatten() else {
         return Ok(());
     };
@@ -783,12 +783,12 @@ if bindings is not None:
 use std::cell::Cell;
 use std::rc::Rc;
 
-use gnoblin_std::objects::{Extensions, XrDragBinding, XrDragBindingOptions, XrDragHandlerHandlers};
+use gnoblin_std::{Extensions, XrDragBinding, XrDragBindingOptions, XrDragHandlerHandlers};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let Some(room) = Extensions::get(&objects)?.xr()?.map(|xr| xr.room()).transpose()?.flatten() else {
         return Ok(());
     };
@@ -939,12 +939,12 @@ if hand is not None:
 ```
 
 ```rust
-use gnoblin_std::objects::Extensions;
+use gnoblin_std::Extensions;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let Some(session) = Extensions::get(&objects)?.xr()?.map(|xr| xr.session()).transpose()?.flatten() else {
         return Ok(());
     };

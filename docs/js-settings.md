@@ -66,12 +66,12 @@ for device in gnoblin.input.devices:
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{
+use gnoblin_core::{
     AccelerationProfile, Keyboard, KeyboardOptions, Mouse, MouseOptions, Touchpad, TouchpadOptions,
 };
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
     // The compositor keeps one setting for each kind of device, so one handle of a kind sets every device of it.
     let _keyboard = Keyboard::new_with(
@@ -155,16 +155,16 @@ profiles.add(
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{
     OutputMatch, OutputPosition, OutputProfile, OutputProfileOptions, PositionKind, ProfileSettings,
 };
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    let objects = g.std()?.objects()?;
+    let model = Gnoblin::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
     let outputs = model.outputs()?;
     let profiles = outputs.profiles()?;
 
@@ -236,13 +236,13 @@ ClientStyle.of_clients().where(StyleQuery(app_id="foot")).opacity = 0.9
 ```
 
 ```rust
-use gnoblin_core::objects::{ClientQuery, ModelRoot};
-use gnoblin_std::objects::CornerRadius;
+use gnoblin_core::{ClientQuery, Gnoblin};
+use gnoblin_std::CornerRadius;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let clients = model.clients()?;
     clients.style()?.set_corner_radius(&CornerRadius {
         all: Some(12.0),
@@ -293,14 +293,14 @@ Workspaces.get().add(
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Gaps, MasterStackLayout, MasterStackLayoutOptions, Workspace, WorkspaceOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Gaps, MasterStackLayout, MasterStackLayoutOptions, Workspace, WorkspaceOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    let objects = g.std()?.objects()?;
+    let model = Gnoblin::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
     let layout = MasterStackLayout::new_with(
         &objects,
         MasterStackLayoutOptions {
@@ -368,11 +368,10 @@ seat.bind("Swipe4Up", close_focused)
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let context = model.input()?.primary()?;
     let launcher = model.clone();
     context.bind(
@@ -438,13 +437,12 @@ gnoblin.dialogs.add_listener(NoScreenshots())
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{DialogListenerHandlers, ModelRoot};
+use gnoblin_core::{DialogListenerHandlers, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let model = Gnoblin::get(&objects)?;
     let dialogs = model.dialogs()?;
     let listener = DialogListenerHandlers {
         on_consent_request: Some(Box::new(|request| {
@@ -490,11 +488,10 @@ gnoblin.compositor.user_shaders = False
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     model.compositor()?.set_user_shaders(false)?;
     Ok(())
 }

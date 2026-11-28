@@ -4,7 +4,7 @@
 //! the handle of the generation `_gnoblin_core` acts on. Reading and writing are the SDK's: a write is queued and leaves with the
 //! turn's other writes, and a read sees the tree as the last batch left it.
 
-use gnoblin_core::{Gnoblin, MemberKind, Node, NodeId};
+use gnoblin_core::host::{Host, MemberKind, Node, NodeId};
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 
@@ -111,7 +111,7 @@ pub(crate) fn node_call(
 }
 
 /// Runs `callback(result_bytes, error_or_None)` for an answer.
-fn answer_to(callback: &Py<PyAny>, what: &str, answer: gnoblin_core::Answer) {
+fn answer_to(callback: &Py<PyAny>, what: &str, answer: gnoblin_core::host::Answer) {
     fire(what, callback, |py, function| {
         function.call1((pyo3::types::PyBytes::new(py, &answer.result), answer.error.clone()))
     });
@@ -143,7 +143,7 @@ pub(crate) fn create_node(class: &str) -> PyResult<u64> {
 #[pyfunction]
 #[pyo3(signature = (class, name, ephemeral = false))]
 pub(crate) fn adopt_node(class: &str, name: &str, ephemeral: bool) -> PyResult<(u64, bool)> {
-    let g: Gnoblin = handle()?;
+    let g: Host = handle()?;
     let adoption = if ephemeral {
         g.adopt_ephemeral_node(class, name)
     } else {

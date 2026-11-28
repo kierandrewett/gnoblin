@@ -712,13 +712,43 @@ mod tests {
         let catalog = Catalog::load_dirs(&[root.path()], &[]).expect("a catalog");
         let ns = Namespace::parse("lib.n").expect("a namespace");
         let typed = object_api::render(&catalog, &ns).expect("the typed API renders");
-        assert!(typed.contains("pub fn as_node(&self) -> go::Res<Node>"), "{typed}");
-        assert!(typed.contains("pub fn as_view(&self) -> go::Res<View>"), "{typed}");
+        assert!(typed.contains("pub fn as_node(&self) -> crate::Res<Node>"), "{typed}");
+        assert!(typed.contains("pub fn as_view(&self) -> crate::Res<View>"), "{typed}");
         assert_eq!(
             typed.matches("pub fn as_node(").count(),
             2,
             "the view and the sub view: {typed}"
         );
+    }
+
+    /// A signature of the generated API is read in the documentation of the crate that re-exports it, so it spells the names that crate
+    /// exports at its root (`crate::Res`, `crate::Listener`, `crate::Timing`) and not the path of the crate they are written in.
+    #[test]
+    fn the_generated_signatures_spell_the_public_paths() {
+        let root = tempfile::tempdir().expect("a directory");
+        write(
+            root.path(),
+            "n.toml",
+            "namespace = \"lib.n\"\nversion = \"0.1.0\"\nlocal = true\n\n\
+             [[object]]\nname = \"node\"\nsince = \"0.1.0\"\nkind = \"handle\"\n\n\
+             [[object.property]]\nname = \"opacity\"\ntype = \"double\"\nsince = \"0.1.0\"\nanimated = true\n\n\
+             [[object.signal]]\nname = \"moved\"\nsince = \"0.1.0\"\n",
+        );
+        let catalog = Catalog::load_dirs(&[root.path()], &[]).expect("a catalog");
+        let ns = Namespace::parse("lib.n").expect("a namespace");
+        let typed = object_api::render(&catalog, &ns).expect("the typed API renders");
+        for public in [
+            "-> crate::Res<",
+            "-> crate::Res<crate::Listener>",
+            "timing: &crate::Timing",
+        ] {
+            assert!(typed.contains(public), "{public}: {typed}");
+        }
+        for line in typed.lines().filter(|line| line.contains("pub fn ")) {
+            for private in ["go::Res", "go::Timing", "go::typed::Listener"] {
+                assert!(!line.contains(private), "{line}");
+            }
+        }
     }
 
     #[test]

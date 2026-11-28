@@ -44,12 +44,11 @@ Gnoblin.get().clients.add_listener(WindowLog())
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let root = ModelRoot::get(&objects)?;
+    let root = Gnoblin::get(&objects)?;
     let clients = root.clients()?;
     let process = root.process()?;
     let listener = clients.on_added(move |client, _collection| {

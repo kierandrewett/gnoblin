@@ -13,13 +13,12 @@
 //! and run it with `gnoblin ./target/debug/libnative_model.so`.
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{ClientQuery, ModelRoot};
+use gnoblin_core::{ClientQuery, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let model = Gnoblin::get(&objects)?;
     let clients = model.clients()?;
     g.log(&format!("model: {} windows at the start", clients.length()?));
     // A lookup that finds nothing answers none, not an error.

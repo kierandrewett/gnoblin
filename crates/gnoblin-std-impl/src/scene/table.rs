@@ -1,7 +1,7 @@
 //! The scene functions of the std table.
 #![allow(unsafe_code)]
 
-use gnoblin_core::NodeId;
+use gnoblin_core::host::NodeId;
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinNode};
 use gnoblin_std_abi::{GnoblinStdMembers, GnoblinStdProp};
 

@@ -42,17 +42,17 @@ gnoblin.input.primary.bind("Super+Tab", cycle)
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 use gnoblin_std::GnoblinStdExt;
-use gnoblin_std::objects::{
-    GridLayout, InputContextStdExt, MasterStackLayout, ModelRootStdExt, Workspace, WorkspaceOptions,
+use gnoblin_std::ObjectsStdExt;
+use gnoblin_std::{
+    GridLayout, InputContextStdExt, MasterStackLayout, Workspace, WorkspaceOptions,
 };
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
-    let model = ModelRoot::get(&g.objects()?)?;
+    let std = g.objects()?.std()?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let workspaces = model.workspaces()?;
     workspaces.add(&Workspace::new_with(
         &std,
@@ -168,16 +168,16 @@ web.show(ShowOptions(duration=250.0))
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 use gnoblin_std::GnoblinStdExt;
-use gnoblin_std::objects::{ModelRootStdExt, ShowOptions, Workspace};
+use gnoblin_std::ObjectsStdExt;
+use gnoblin_std::{ShowOptions, Workspace};
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
+    let std = g.objects()?.std()?;
     let web = Workspace::new(&std, "web")?;
-    ModelRoot::get(&g.objects()?)?.workspaces()?.add(&web)?;
+    Gnoblin::get(&g.objects()?)?.workspaces()?.add(&web)?;
     web.show(Some(&ShowOptions { duration: 250.0, progress: 0.0, output: None }))?;
     Ok(())
 }
@@ -269,16 +269,16 @@ Workspaces.get().add(Workspace("columns", layout=Columns()))
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 use gnoblin_std::GnoblinStdExt;
-use gnoblin_std::objects::{
-    LayoutHandlers, LayoutPlacement, LayoutRect, ModelRootStdExt, Workspace, WorkspaceOptions,
+use gnoblin_std::ObjectsStdExt;
+use gnoblin_std::{
+    LayoutHandlers, LayoutPlacement, LayoutRect, Workspace, WorkspaceOptions,
 };
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
+    let std = g.objects()?.std()?;
     let columns = LayoutHandlers::new(|context| {
         let LayoutRect { x, y, width, height } = context.area;
         let count = context.children.len().max(1) as f64;
@@ -301,7 +301,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     })
     .implement(&std)?;
 
-    ModelRoot::get(&g.objects()?)?.workspaces()?.add(&Workspace::new_with(
+    Gnoblin::get(&g.objects()?)?.workspaces()?.add(&Workspace::new_with(
         &std,
         "columns",
         WorkspaceOptions { layout: Some(columns), ..WorkspaceOptions::default() },
@@ -408,15 +408,14 @@ input.bind("Super+Right", move_column("focus_right"))
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
-use gnoblin_std::objects::StripLayout;
+use gnoblin_std::StripLayout;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let std = g.objects()?.std()?;
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let seat = model.input()?.primary()?;
     for (key, right) in [("Super+Left", false), ("Super+Right", true)] {
         let model = Rc::clone(&model);

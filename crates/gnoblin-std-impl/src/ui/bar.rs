@@ -7,7 +7,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 
 use super::widget::{BarPart, Cid, Special, Ui, WidgetKind, en};
 use crate::state::State;

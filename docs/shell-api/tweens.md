@@ -50,13 +50,13 @@ gnoblin.input.primary.bind("Super+o", toggle_opacity)
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::TransitionOptions;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::TransitionOptions;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let input = model.input()?;
     let context = input.primary()?;
     let fader = Rc::clone(&model);
@@ -157,13 +157,13 @@ if client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Easing, TransitionOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Easing, TransitionOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let Some(client) = model.input()?.focused_client()? else {
         return Ok(());
     };
@@ -232,13 +232,13 @@ if client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Easing, TransitionOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Easing, TransitionOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let Some(client) = model.input()?.focused_client()? else {
         return Ok(());
     };
@@ -295,11 +295,10 @@ duration = Gnoblin.get().motion(300.0)
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let duration = model.motion(300.0)?;
     Ok(())
 }
@@ -357,13 +356,13 @@ if client is not None:
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::TransitionOptions;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::TransitionOptions;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let Some(client) = model.input()?.focused_client()? else {
         return Ok(());
     };

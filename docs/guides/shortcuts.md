@@ -44,11 +44,11 @@ use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let shell = g.clone();
-    g.bind("Super+Return", move || shell.spawn("foot"))?;
+    g.bind("Super+Return", move || shell.spawn(&["foot".to_owned()], None))?;
     let shell = g.clone();
-    g.bind("Super+d", move || shell.spawn("fuzzel"))?;
+    g.bind("Super+d", move || shell.spawn(&["fuzzel".to_owned()], None))?;
     Ok(())
 }
 ```
@@ -102,7 +102,7 @@ use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let shell = g.clone();
     g.bind("Super+q", move || -> gnoblin_std::Result<()> {
         if let Some(client) = shell.clients()?.focused()? {
@@ -111,7 +111,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         Ok(())
     })?;
     let shell = g.clone();
-    g.bind("Super+m", move || shell.spawn_with("notify-send", ["Gnoblin", "hello"]))?;
+    g.bind("Super+m", move || shell.spawn(&["notify-send".to_owned(), "Gnoblin".to_owned(), "hello".to_owned()], None))?;
     Ok(())
 }
 ```
@@ -209,11 +209,11 @@ use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let shell = g.clone();
-    g.bind("XF86MonBrightnessUp", move || shell.spawn_with("brightnessctl", ["set", "5%+"]))?;
+    g.bind("XF86MonBrightnessUp", move || shell.spawn(&["brightnessctl".to_owned(), "set".to_owned(), "5%+".to_owned()], None))?;
     let shell = g.clone();
-    g.bind("XF86MonBrightnessDown", move || shell.spawn_with("brightnessctl", ["set", "5%-"]))?;
+    g.bind("XF86MonBrightnessDown", move || shell.spawn(&["brightnessctl".to_owned(), "set".to_owned(), "5%-".to_owned()], None))?;
     Ok(())
 }
 ```
@@ -259,9 +259,9 @@ use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let shell = g.clone();
-    g.bind("Super+Shift+t", move || shell.spawn_with("sh", ["-c", "date >> \"$HOME/shortcut.log\""]))?;
+    g.bind("Super+Shift+t", move || shell.spawn(&["sh".to_owned(), "-c".to_owned(), "date >> \"$HOME/shortcut.log\"".to_owned()], None))?;
     Ok(())
 }
 ```

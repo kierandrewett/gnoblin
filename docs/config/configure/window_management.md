@@ -43,7 +43,7 @@ ResizeBinding(trigger="Alt+MouseRight+Drag").install()
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_std::objects::{
+use gnoblin_std::{
     FloatingLayout, MoveBinding, MoveBindingOptions, ResizeBinding, ResizeBindingOptions, Workspace, WorkspaceOptions,
     Workspaces,
 };
@@ -51,7 +51,7 @@ use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let layout = FloatingLayout::new(&objects)?.as_layout()?;
     let workspace = Workspace::new_with(&objects, "main", WorkspaceOptions { name: None, gaps: None, layout: Some(layout) })?;
     Workspaces::get(&objects)?.add(&workspace)?;

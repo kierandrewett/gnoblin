@@ -22,12 +22,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gnoblin_std::objects::{
+use gnoblin_std::prelude::*;
+use gnoblin_std::{
     ArcLayout, CarouselLayout, ClientState, DwindleDirection, DwindleForceSplit, DwindleLayout, DwindlePointer,
     DwindleSplit, DwindleSplitBias, FloatingLayout, GridLayout, Layout, MasterStackLayout, MasterStackOrientation,
     Objects, SizeLimit, StripLayout, Workspace, Workspaces,
 };
-use gnoblin_std::prelude::*;
 
 const CHORDS: &[&str] = &[
     "Super+1",
@@ -83,7 +83,7 @@ struct Current {
 
 struct ObjectsShell {
     objects: Objects,
-    core: gnoblin_core::objects::Objects,
+    core: gnoblin_core::Objects,
     main: Workspace,
     current: RefCell<Current>,
 }
@@ -222,7 +222,7 @@ impl ObjectsShell {
             "Super+m" => {
                 // The first window may not be resized below 150 by 120 or above 500 by 400.
                 // The window is the core's `Client`, which the core looks up by its id.
-                let first = gnoblin_core::objects::ModelRoot::get(&self.core)?
+                let first = gnoblin_core::Gnoblin::get(&self.core)?
                     .clients()?
                     .get_by_id(FIRST)
                     .ok()
@@ -266,9 +266,9 @@ impl ObjectsShell {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let main = Workspace::new(&objects, "main")?;
-    main.set_gaps(&gnoblin_std::objects::Gaps {
+    main.set_gaps(&gnoblin_std::Gaps {
         inner: 6.0,
         outer: 12.0,
     })?;

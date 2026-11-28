@@ -11,12 +11,12 @@
 //! Every line it logs starts with `ui:`. Build it with `cargo build -p gnoblin-example-native-ui` and run it with
 //! `gnoblin ./target/debug/libnative_ui.so`, then type and press Return.
 
-use gnoblin_std::objects::{Entry, Text};
 use gnoblin_std::prelude::*;
+use gnoblin_std::{Entry, Text};
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
 
     let label = Text::new(&objects)?;
     label.set_text("Type, then press Return")?;

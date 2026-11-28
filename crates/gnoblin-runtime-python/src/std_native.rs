@@ -163,7 +163,10 @@ fn from_dyn<'py>(py: Python<'py>, value: &Dyn) -> PyResult<Bound<'py, PyAny>> {
 
 /// The exception for a failed call: the kinds of the core's, with the library's own text.
 fn failure(error: &StdError) -> PyErr {
-    to_py(Some(gnoblin_core::ErrorKind::from_code(error.code)), &error.message)
+    to_py(
+        Some(gnoblin_core::host::ErrorKind::from_code(error.code)),
+        &error.message,
+    )
 }
 
 /// Opens `libgnoblin-std.so.1`, or raises `ImportError` naming the file and where it was looked for. The package's `gnoblin.std`

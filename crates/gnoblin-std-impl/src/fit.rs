@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 
 use crate::client_state::fit_content;
 use crate::desks::output_rect;

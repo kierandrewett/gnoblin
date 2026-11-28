@@ -4,7 +4,7 @@
 //! ring's projected rectangle together with the ring's depth (`z`) and its angle as a rotation about the vertical axis, so a renderer
 //! that draws depth can use them. The depth fade of the ring is not applied: a window's opacity belongs to the rules.
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 
 use super::{ActionEnv, ActionResult, Imp, OptionSet, Val, plain};
 use crate::error::{Fail, Res};

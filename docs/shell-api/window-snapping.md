@@ -54,15 +54,15 @@ seat.bind("Super+Shift+Down", unsnap)
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 use gnoblin_std::GnoblinStdExt;
-use gnoblin_std::objects::{ClientState, ModelRootStdExt, SnapZone};
+use gnoblin_std::ObjectsStdExt;
+use gnoblin_std::{ClientState, SnapZone};
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
-    let model = ModelRoot::get(&g.objects()?)?;
+    let std = g.objects()?.std()?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let input = model.input()?;
     let seat = input.primary()?;
     let seat = Rc::new(seat);

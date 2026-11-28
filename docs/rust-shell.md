@@ -43,14 +43,16 @@ use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    g.bind("<Super>Return", move || {
-        if let Err(error) = g.spawn("foot") {
-            g.log(&format!("cannot start a terminal: {error}"));
+fn main(gnoblin: &Gnoblin) -> gnoblin_core::Res<()> {
+    let shell = gnoblin.clone();
+    gnoblin.bind("<Super>Return", move || {
+        let argv = ["foot".to_owned()];
+        if let Err(error) = shell.spawn(&argv, None) {
+            shell.log(&format!("cannot start a terminal: {error}"));
         }
     })?;
 
-    g.log("myshell is running");
+    gnoblin.log("myshell is running");
     Ok(())
 }
 ```
@@ -80,14 +82,14 @@ Python shells do: decorations, a workspace with a master-and-stack layout, round
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::{ClientQuery, ModelRoot};
-use gnoblin_std::objects::{CornerRadius, Decorations, MasterStackLayout, MasterStackLayoutOptions, Workspace, WorkspaceOptions};
+use gnoblin_core::{ClientQuery, Gnoblin};
+use gnoblin_std::{CornerRadius, Decorations, MasterStackLayout, MasterStackLayoutOptions, Workspace, WorkspaceOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
-    let objects = g.std()?.objects()?;
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
+    let objects = g.objects()?.std()?;
 
     Decorations::get(&objects)?.start()?;
 
@@ -301,7 +303,7 @@ const STARTS: &str = "starts";
 const LAYOUT: u32 = 1;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     // The bytes the previous generation kept; the first start finds none.
     let before = g
         .kept_state(STARTS)?
@@ -450,9 +452,9 @@ The typed object model of the core starts at `ModelRoot`. Its members are the on
 `now`), `version()`, `motion(duration)`, `compositor()` (`user_shaders`, `set_user_shaders` and `reset`), and `find`.
 
 ```rust
-use gnoblin_core::objects::{Client, ClientQuery, Finds, ModelRoot, Output};
+use gnoblin_core::{Client, ClientQuery, Finds, Gnoblin, Output};
 
-let model = ModelRoot::get(&g.objects()?)?;
+let model = Gnoblin::get(&g.objects()?)?;
 let started = model.timers()?.now()?;
 println!("gnoblin {}", model.version()?.gnoblin);
 let milliseconds = model.motion(200.0)?; // 0 while the seat asks for reduced motion
@@ -495,12 +497,12 @@ the std library adds: `workspaces()`, `displays()`, `scene()`, `gestures()` and 
 `outputs()` of the root.
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::Workspace;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::Workspace;
 use gnoblin_std::prelude::*;
 
-let model = ModelRoot::get(&g.objects()?)?;
-let objects = g.std()?.objects()?;
+let model = Gnoblin::get(&g.objects()?)?;
+let objects = g.objects()?.std()?;
 let workspaces = model.workspaces()?;
 let main = Workspace::new(&objects, "main")?;
 workspaces.add(&main)?;
@@ -523,7 +525,7 @@ The struct has an `Option` field for every other writable property, and it imple
 A `Some` field is sent in the call that makes the object. A `None` field is not sent, so that property keeps the library's default.
 
 ```rust
-use gnoblin_std::objects::{Gaps, MasterStackLayout, Workspace, WorkspaceOptions};
+use gnoblin_std::{Gaps, MasterStackLayout, Workspace, WorkspaceOptions};
 
 let main = Workspace::new_with(
     &objects,
@@ -587,7 +589,7 @@ Every handle and service is `Clone`. A clone is the same object, held through a 
 clone is dropped, and a closure that outlives the entry function owns a clone and needs no `Rc`:
 
 ```rust
-let model = ModelRoot::get(&g.objects()?)?;
+let model = Gnoblin::get(&g.objects()?)?;
 let closer = model.clone();
 model
     .on_client_closed(move |_client| {
@@ -610,7 +612,7 @@ A handler returns `Result<_, Fail>`. `?` works on a call of the core or of the s
 
 ```rust
 on_added: Some(Box::new(move |client, _clients| {
-    let workspaces = g.std()?.workspaces()?; // gnoblin_std::Error
+    let workspaces = g.objects()?.std()?.workspaces()?; // gnoblin_std::Error
     g.class("window")?; // CoreError
     client.set_opacity(0.95)?; // Fail
     Ok(())
@@ -626,7 +628,7 @@ made from the library that serves it. A shell that makes classes of both takes t
 
 ```rust
 let core = g.objects()?;
-let std = core.std()?; // the same as g.std_objects()?
+let std = core.std()?; // the same as g.objects()?.std()?
 ```
 
 `core.std()` is `ObjectsStdExt`, and `g.std_objects()` is `GnoblinStdExt`; both are in `gnoblin_std::prelude`.
@@ -652,9 +654,9 @@ both directions:
 | Rust       | `StripLayout::downcast(&objects, &layout)?` |
 
 ```rust
-use gnoblin_std::objects::{StripLayout, Workspace};
+use gnoblin_std::{StripLayout, Workspace};
 
-fn focus_next_column(objects: &gnoblin_std::objects::Objects, workspace: &Workspace) -> gnoblin_std::Result<()> {
+fn focus_next_column(objects: &gnoblin_std::Objects, workspace: &Workspace) -> gnoblin_std::Result<()> {
     if let Some(layout) = workspace.layout()?
         && let Some(strip) = StripLayout::downcast(objects, &layout)?
     {
@@ -679,7 +681,7 @@ A shell that uses `gnoblin-std` to make workspaces, displays or a window frame g
 - A shell with a focus policy of its own stops the stock one first, so that the two never answer one click:
 
 ```rust
-use gnoblin_std::objects::FocusPolicy;
+use gnoblin_std::FocusPolicy;
 
 FocusPolicy::get(&objects)?.stop()?;
 ```
@@ -700,7 +702,7 @@ use gnoblin_core::schema::gnoblin::{idle, session};
 use gnoblin_core::{Gnoblin, ShellValue, Value};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     // Keep the session awake while this shell runs. The answer arrives later, on the shell thread.
     g.call_verb_with(idle::CLASS, idle::method::INHIBIT, &[Value::Text("my-shell".into())], |answer| {
         match &answer.error {
@@ -856,14 +858,14 @@ answer does not run, and no later listener hears it.
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{ClientRequestKind, RequestListenerHandlers, WindowState};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{ClientRequestKind, RequestListenerHandlers, WindowState};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    let objects = g.std()?.objects()?;
+    let model = Gnoblin::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
     let state = Rc::new(WindowState::get(&objects)?);
 
     let policy = Rc::clone(&state);

@@ -11,12 +11,12 @@
 //! Every line it logs starts with `ctoropts:`, and the TypeScript and Python shells of the same example log the same lines. Build it with
 //! `cargo build -p gnoblin-example-native-options` and run it with `gnoblin ./target/debug/libnative_options.so`.
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{
+use gnoblin_core::Gnoblin;
+use gnoblin_std::prelude::*;
+use gnoblin_std::{
     Gaps, MasterStackLayout, OutputMatch, OutputProfile, OutputProfileOptions, ProfileSettings, Workspace,
     WorkspaceOptions,
 };
-use gnoblin_std::prelude::*;
 
 /// The gaps a workspace holds, as `inner/outer`.
 fn gaps_of(workspace: &Workspace) -> String {
@@ -36,8 +36,8 @@ fn scale_of(profile: &OutputProfile) -> String {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    let objects = g.std()?.objects()?;
+    let model = Gnoblin::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
     let workspaces = model.workspaces()?;
     let outputs = model.outputs()?;
     let profiles = outputs.profiles()?;

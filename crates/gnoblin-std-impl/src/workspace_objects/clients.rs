@@ -6,7 +6,7 @@
 //! `gnoblin-std/snap`, `moveToWorkspace`) is the library's record here (`client_state.rs`), so a shell of any language reads and writes the
 //! one, and the library's refit of a window to a new work area honours it.
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{ErrorCode, Fail, Res, Val};

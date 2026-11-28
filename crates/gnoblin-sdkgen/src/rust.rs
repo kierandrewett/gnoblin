@@ -12,7 +12,7 @@
 //!   the std library puts at the front of its error text.
 //!
 //! What stays hand-written is the ergonomic layer: the composite accessors (`Window::geometry`), the trampolines and
-//! closures of `Gnoblin`, the typed events and the macros. A generated type has none of those; it is only names and shapes.
+//! closures of `Host`, the typed events and the macros. A generated type has none of those; it is only names and shapes.
 
 use gnoblin_schema::{ObjectType, Property, Type};
 
@@ -81,7 +81,7 @@ fn schema(spec: &SdkSpec) -> String {
     let mut code = CodeWriter::new("    ");
     code.line("//! The schema catalog's names, as constants.");
     code.line("//!");
-    code.line("//! `CLASS` is the name `Gnoblin::class` takes (a bare name for the `tree` namespace, `namespace.object` for the rest).");
+    code.line("//! `CLASS` is the name `Host::class` takes (a bare name for the `tree` namespace, `namespace.object` for the rest).");
     code.line("//! The members are the names `Node::get`, `Node::set`, `Node::call` and the subscriptions take.");
     code.blank();
     // `tree::tree` is the schema's own spelling: the `tree` class of the `tree` namespace.
@@ -106,7 +106,7 @@ fn schema(spec: &SdkSpec) -> String {
                     code.block(
                         format!("pub mod {} {{", rust_ident(&object.name)),
                         |code| {
-                            code.line("/// The name `Gnoblin::class` takes for this class.");
+                            code.line("/// The name `Host::class` takes for this class.");
                             code.line(format!("pub const CLASS: &str = {class_name:?};"));
                             names(
                                 code,
@@ -313,7 +313,7 @@ fn classes(spec: &SdkSpec) -> String {
     code.line("use std::ops::Deref;");
     code.blank();
     code.line("use crate::error::{CoreError, ErrorKind, Result};");
-    code.line("use crate::gnoblin::Gnoblin;");
+    code.line("use crate::gnoblin::Host;");
     code.line("use crate::owned::Value;");
     code.line("use crate::tree::Node;");
     code.line("use crate::value::NodeId;");
@@ -405,10 +405,10 @@ fn class(code: &mut CodeWriter, object: &ObjectType, node_properties: &[&str], n
     code.block(
         format!("impl {type_name} {{"),
         |code| {
-            code.line("/// The schema name of the class, as `Gnoblin::class` takes it.");
+            code.line("/// The schema name of the class, as `Host::class` takes it.");
             code.line(format!("pub const CLASS: &'static str = {:?};", object.name));
             code.blank();
-            code.line("pub(crate) fn new(g: Gnoblin, id: NodeId) -> Self {");
+            code.line("pub(crate) fn new(g: Host, id: NodeId) -> Self {");
             code.line(format!("    {type_name}(Node::new(g, id))"));
             code.line("}");
             code.blank();

@@ -4,7 +4,7 @@
 //! tells the shell instead; a reload hands a chord from the old generation to the new without the compositor ever seeing it
 //! claimed twice, which is the core's and not something to repeat here.
 
-use gnoblin_core::{ChordState, DragPhase, GestureKind, GrabScope, NodeId};
+use gnoblin_core::host::{ChordState, DragPhase, GestureKind, GrabScope, NodeId};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -22,7 +22,7 @@ const fn phase_name(phase: DragPhase) -> &'static str {
 }
 
 /// Keeps the claim `made` produced under a number.
-fn kept(made: gnoblin_core::Result<gnoblin_core::Subscription>) -> PyResult<u64> {
+fn kept(made: gnoblin_core::host::Result<gnoblin_core::host::Subscription>) -> PyResult<u64> {
     let subscription = made.map_err(|e| core_error(&e))?;
     Ok(keep_subscription(current_ctx(), subscription))
 }

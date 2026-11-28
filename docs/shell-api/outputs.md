@@ -37,15 +37,15 @@ for output in gnoblin.outputs.to_list():
 ```rust
 use std::time::Instant;
 
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 use gnoblin_std::GnoblinStdExt;
-use gnoblin_std::objects::{FloatingLayout, ModelRootStdExt, OutputStdExt, Toast, Workspace, WorkspaceOptions};
+use gnoblin_std::ObjectsStdExt;
+use gnoblin_std::{FloatingLayout, OutputStdExt, Toast, Workspace, WorkspaceOptions};
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
-    let model = ModelRoot::get(&g.objects()?)?;
+    let std = g.objects()?.std()?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let workspaces = model.workspaces()?;
     for id in ["1", "2", "3"] {
         let options = WorkspaceOptions {
@@ -207,12 +207,12 @@ if output:
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::{ModelRoot, OutputConfig, OutputQuery};
-use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_core::{Gnoblin, OutputConfig, OutputQuery};
+use gnoblin_core::{self as gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = Rc::new(ModelRoot::get(&g.objects()?)?);
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Rc::new(Gnoblin::get(&g.objects()?)?);
     let outputs = model.outputs()?;
     let query = OutputQuery {
         name: Some("output-1".to_owned()),
@@ -259,12 +259,12 @@ if output:
 ```
 
 ```rust
-use gnoblin_core::objects::{ModelRoot, OutputConfig};
-use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_core::{Gnoblin, OutputConfig};
+use gnoblin_core::{self as gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let outputs = model.outputs()?;
     if let Some(output) = outputs.at(1)? {
         let config = OutputConfig {
@@ -304,12 +304,11 @@ if first and second:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let outputs = model.outputs()?;
     if let (Some(first), Some(second)) = (outputs.at(0)?, outputs.at(1)?) {
         second.mirror(Some(&first))?;
@@ -342,12 +341,12 @@ if output:
 ```
 
 ```rust
-use gnoblin_core::objects::{ModelRoot, OutputConfig};
-use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_core::{Gnoblin, OutputConfig};
+use gnoblin_core::{self as gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let outputs = model.outputs()?;
     if let Some(output) = outputs.at(1)? {
         let config = OutputConfig {
@@ -417,12 +416,12 @@ if output:
 ```
 
 ```rust
-use gnoblin_core::objects::{ModelRoot, OutputConfig, OutputQuery};
-use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_core::{Gnoblin, OutputConfig, OutputQuery};
+use gnoblin_core::{self as gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let outputs = model.outputs()?;
     let query = OutputQuery {
         name: Some("output-1".to_owned()),
@@ -584,13 +583,14 @@ manager.add_profile(side)
 ```rust
 use gnoblin_core::{self as gnoblin, Gnoblin};
 use gnoblin_std::GnoblinStdExt;
-use gnoblin_std::objects::{
+use gnoblin_std::ObjectsStdExt;
+use gnoblin_std::{
     DisplayManager, OutputMatch, OutputPosition, OutputProfile, OutputProfileOptions, PositionKind, ProfileSettings,
 };
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
+    let std = g.objects()?.std()?;
     let manager = DisplayManager::get(&std)?;
 
     let mut origin = OutputPosition::new(PositionKind::Absolute);
@@ -716,15 +716,15 @@ seat.bind("Super+2", show_web)
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 use gnoblin_std::GnoblinStdExt;
-use gnoblin_std::objects::{InputContextStdExt, ModelRootStdExt, Workspace};
+use gnoblin_std::ObjectsStdExt;
+use gnoblin_std::{InputContextStdExt, Workspace};
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
-    let model = ModelRoot::get(&g.objects()?)?;
+    let std = g.objects()?.std()?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let workspaces = model.workspaces()?;
     let desktop = Workspace::new(&std, "desktop")?;
     let web = Workspace::new(&std, "web")?;
@@ -833,14 +833,15 @@ manager.add_display(spanned)
 ```rust
 use gnoblin_core::{self as gnoblin, Gnoblin};
 use gnoblin_std::GnoblinStdExt;
-use gnoblin_std::objects::{
+use gnoblin_std::ObjectsStdExt;
+use gnoblin_std::{
     Camera2D, Display, DisplayManager, DisplayOptions, DisplaySelector, OutputMatch, OutputProfile, PresentMode,
     Viewport, ViewportOptions, Workspace, Workspaces,
 };
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
+    let std = g.objects()?.std()?;
     let manager = DisplayManager::get(&std)?;
     let mut selectors = Vec::new();
     for connector in ["DP-1", "HDMI-A-1"] {
@@ -983,17 +984,17 @@ seat.bind("Super+Tab", toggle)
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 use gnoblin_std::GnoblinStdExt;
-use gnoblin_std::objects::{
-    Camera2D, Camera3D, Camera3DOptions, InputContextStdExt, ModelRootStdExt, Projection, TransitionOptions, Vec3,
+use gnoblin_std::ObjectsStdExt;
+use gnoblin_std::{
+    Camera2D, Camera3D, Camera3DOptions, InputContextStdExt, Projection, TransitionOptions, Vec3,
 };
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
-    let model = ModelRoot::get(&g.objects()?)?;
+    let std = g.objects()?.std()?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let flat = Rc::new(Camera2D::new(&std)?.as_scene_node()?);
     let deep = Camera3D::new_with(
         &std,
@@ -1099,13 +1100,13 @@ gnoblin.outputs.add_listener(Hotplug())
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::{ModelRoot, Output, OutputCollectionListenerHandlers};
-use gnoblin_core::{self as gnoblin, Gnoblin};
+use gnoblin_core::{Gnoblin, Output, OutputCollectionListenerHandlers};
+use gnoblin_core::{self as gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = Rc::new(ModelRoot::get(&objects)?);
+    let model = Rc::new(Gnoblin::get(&objects)?);
     let outputs = model.outputs()?;
     let (plugged, unplugged) = (Rc::clone(&model), Rc::clone(&model));
     let listener = OutputCollectionListenerHandlers {
@@ -1191,15 +1192,15 @@ if second:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
 use gnoblin_core::{self as gnoblin, Gnoblin};
 use gnoblin_std::GnoblinStdExt;
-use gnoblin_std::objects::{Bar, BarEdge, BarOptions};
+use gnoblin_std::ObjectsStdExt;
+use gnoblin_std::{Bar, BarEdge, BarOptions};
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let std = g.std()?.objects()?;
-    let model = ModelRoot::get(&g.objects()?)?;
+    let std = g.objects()?.std()?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let outputs = model.outputs()?;
     if let Some(second) = outputs.at(1)? {
         let options = BarOptions {
@@ -1268,13 +1269,13 @@ if clients and target:
 ```
 
 ```rust
-use gnoblin_core::objects::{ClientQuery, ModelRoot};
-use gnoblin_core::{self as gnoblin, Gnoblin};
-use gnoblin_std::objects::{ClientStdExt, OutputStdExt};
+use gnoblin_core::{ClientQuery, Gnoblin};
+use gnoblin_core::{self as gnoblin};
+use gnoblin_std::{ClientStdExt, OutputStdExt};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     let focused = ClientQuery {
         focused: Some(true),
         ..ClientQuery::default()

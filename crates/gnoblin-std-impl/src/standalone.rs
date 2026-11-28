@@ -18,7 +18,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinNode};
 use gnoblin_std_abi::layouts::{LAYOUT_KINDS, layout_kind};
 use gnoblin_std_abi::{

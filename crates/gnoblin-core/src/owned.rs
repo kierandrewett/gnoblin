@@ -1,6 +1,6 @@
 //! Owned values: what a shell reads from a node and writes to one.
 //!
-//! [`ShellValue`](crate::ShellValue) borrows from a callback's arguments and cannot be kept. [`Value`] owns its data, converts from
+//! [`ShellValue`](crate::host::ShellValue) borrows from a callback's arguments and cannot be kept. [`Value`] owns its data, converts from
 //! the Rust types a shell has (`10.0`, `"title"`, `true`, a [`NodeId`]) and crosses the ABI as a `GnoblinValue` that borrows from
 //! it only for the call.
 #![allow(unsafe_code)]

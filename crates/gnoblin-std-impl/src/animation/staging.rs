@@ -16,7 +16,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gnoblin_core::{Gnoblin, NodeId, Value};
+use gnoblin_core::host::{Host, NodeId, Value};
 use gnoblin_object::{Callable, ErrorCode};
 
 use crate::displays::DisplaysSnapshot;
@@ -154,7 +154,7 @@ pub(crate) fn animated(key: &str) -> bool {
 
 /// What `set` would answer for this write, without queuing it: the node is there, the property exists and can be written, the value is
 /// of its kind and, for a timed write, the tree can animate it.
-pub(crate) fn check(g: &Gnoblin, node: u64, key: &str, value: &Prop, timed: bool) -> Res<()> {
+pub(crate) fn check(g: &Host, node: u64, key: &str, value: &Prop, timed: bool) -> Res<()> {
     let handle = g.node(NodeId(node));
     let class = handle.class().map_err(|_| {
         Fail::new(
@@ -163,7 +163,7 @@ pub(crate) fn check(g: &Gnoblin, node: u64, key: &str, value: &Prop, timed: bool
         )
     })?;
     let member = g
-        .member(class, gnoblin_core::MemberKind::Property, key)
+        .member(class, gnoblin_core::host::MemberKind::Property, key)
         .map_err(|_| Fail::no_such(format!("node {node} has no property `{key}`")))?;
     if member.readonly {
         return Err(Fail::refused(

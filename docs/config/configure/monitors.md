@@ -55,16 +55,16 @@ OutputCollectionAugment.get().profiles.add(side)
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{
     OutputMatch, OutputPosition, OutputProfile, OutputProfileOptions, OutputTransform, PositionKind, ProfileSettings,
 };
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
-    let objects = g.std()?.objects()?;
+    let model = Gnoblin::get(&g.objects()?)?;
+    let objects = g.objects()?.std()?;
     let outputs = model.outputs()?;
     let profiles = outputs.profiles()?;
 

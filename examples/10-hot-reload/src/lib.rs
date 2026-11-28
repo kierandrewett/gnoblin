@@ -7,16 +7,16 @@
 //!
 //! 1. **State goes through `keep_state`.** The count of windows placed so far lives in the kept state, under a name and a
 //!    version, and the next generation reads it back. The shell's own variables die with its generation.
-//! 2. **Nodes are found by name.** The badge is made with [`Gnoblin::adopt_node`], so the next generation gets the same node
+//! 2. **Nodes are found by name.** The badge is made with [`Host::adopt_node`](gnoblin_core::host::Host::adopt_node), so the next generation gets the same node
 //!    (same id, same children, same values) instead of making a second one. The toast is made with
-//!    [`Gnoblin::adopt_ephemeral_node`]: it belongs to this generation and the compositor removes it at the next reload unless
+//!    [`Host::adopt_ephemeral_node`](gnoblin_core::host::Host::adopt_ephemeral_node): it belongs to this generation and the compositor removes it at the next reload unless
 //!    the new code adopts it again.
 //! 3. **Registrations are made in the entry function, and only there.** Listeners, the chords and the timer are removed with the
 //!    generation that made them, so a reload never leaves two of anything running. A program started with the same arguments
 //!    by two generations is one program.
 //! 4. **Start-up work is done once.** The windows open when the shell first starts are placed by the first generation; a
 //!    generation that finds kept state leaves them alone.
-//! 5. **A thread reaches the shell through a [`Poster`](gnoblin_core::Poster), and stops when it is refused.** A poster belongs to
+//! 5. **A thread reaches the shell through a [`Poster`](gnoblin_core::host::Poster), and stops when it is refused.** A poster belongs to
 //!    the generation that made it. Once that generation has been replaced the core refuses its posts with `Retired` and drops the
 //!    closure without running it, so a thread of the old build can never reach the new one by accident.
 //!
@@ -33,7 +33,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::{Gnoblin, Rect, Window};
+use gnoblin_core::Gnoblin;
+use gnoblin_core::host::{Host, Rect, Window};
 
 /// What this build says it is. The badge's `x` shows it (ten times the number), so a reload is visible in the tree.
 const VERSION: u32 = 1;
@@ -47,7 +48,7 @@ const OPENED: &str = "opened";
 const OPENED_VERSION: u32 = 1;
 
 /// The windows placed so far, from the kept state.
-fn windows_placed(g: &Gnoblin) -> Option<u32> {
+fn windows_placed(g: &Host) -> Option<u32> {
     let (bytes, version) = g.kept_state(OPENED).ok().flatten()?;
     (version == OPENED_VERSION)
         .then(|| bytes.try_into().ok().map(u32::from_le_bytes))
@@ -55,7 +56,9 @@ fn windows_placed(g: &Gnoblin) -> Option<u32> {
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(root: &Gnoblin) -> gnoblin::Res<()> {
+    // Kept state, adopted nodes and posters are the host layer's: the object model has no counterpart, so this example reaches it.
+    let g = root.host();
     let kept = windows_placed(g);
     let placed = Rc::new(Cell::new(kept.unwrap_or(0)));
 

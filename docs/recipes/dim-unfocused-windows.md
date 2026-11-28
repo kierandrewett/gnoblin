@@ -29,13 +29,12 @@ Gnoblin.get().clients.add_listener(DimUnfocused())
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{ClientCollectionListenerHandlers, ModelRoot};
+use gnoblin_core::{ClientCollectionListenerHandlers, Gnoblin};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let model = Gnoblin::get(&objects)?;
     let clients = model.clients()?;
     let listener = ClientCollectionListenerHandlers {
         on_focus_changed: Some(Box::new(|client, focused| {
@@ -95,15 +94,14 @@ Gnoblin.get().clients.add_listener(FadeUnfocused())
 use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{ClientCollectionListenerHandlers, ModelRoot};
-use gnoblin_std::objects::{Easing, TransitionOptions};
+use gnoblin_core::{ClientCollectionListenerHandlers, Gnoblin};
+use gnoblin_std::{Easing, TransitionOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let objects = g.objects()?;
-    let model = Rc::new(ModelRoot::get(&objects)?);
+    let model = Rc::new(Gnoblin::get(&objects)?);
     let clients = model.clients()?;
     let transitioner = Rc::clone(&model);
     let listener = ClientCollectionListenerHandlers {

@@ -1,6 +1,6 @@
 //! A shell with an event loop of its own, in the smallest form: a `poll(2)` loop on the descriptor `Gnoblin::wake_fd` gives it.
 //!
-//! Two threads post work to the shell thread through a [`Poster`](gnoblin_core::Poster). The loop sleeps in `poll` on the wake
+//! Two threads post work to the shell thread through a [`Poster`](gnoblin_core::host::Poster). The loop sleeps in `poll` on the wake
 //! descriptor and calls `dispatch(0)` only when it is readable: it never waits inside the core, and it must still run every post,
 //! and then sleep again (a descriptor that stayed readable after a drain would be a loop that spins). A watcher thread outlives `init` and keeps asking the poster for a descriptor: once the generation retires the poster is
 //! refused, and the thread says so. The lines it prints say what happened; `crates/gnoblin-core-impl/tests/scenarios.rs` reads them.
@@ -35,7 +35,8 @@ fn readable(fd: &std::os::fd::OwnedFd, wait: Duration) -> Result<bool, rustix::i
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> Result<(), Box<dyn std::error::Error>> {
+fn main(root: &Gnoblin) -> Result<(), Box<dyn std::error::Error>> {
+    let g = root.host();
     let fd = g.wake_fd()?;
     let poster = g.poster();
     let threads: Vec<_> = (0..2)

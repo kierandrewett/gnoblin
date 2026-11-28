@@ -43,14 +43,14 @@ Gnoblin.get().session.add_listener(Bell())
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::Toast;
+use gnoblin_core::Gnoblin;
+use gnoblin_std::Toast;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let session = ModelRoot::get(&g.objects()?)?.session()?;
-    let toasts = g.std()?.objects()?;
+    let session = Gnoblin::get(&g.objects()?)?.session()?;
+    let toasts = g.objects()?.std()?;
     session
         .on_bell(move |_session, count| {
             let started = std::time::Instant::now();
@@ -134,10 +134,9 @@ Gnoblin.get().clients.add_listener(Titles())
 
 ```rust
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
-fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
-    let clients = ModelRoot::get(&g.objects()?)?.clients()?;
+fn watch(g: &Gnoblin) -> gnoblin_core::Res<()> {
+    let clients = Gnoblin::get(&g.objects()?)?.clients()?;
     clients
         .on_added(|client, _collection| {
             println!("window {} opened", client.app_id().unwrap_or_default());
@@ -186,11 +185,10 @@ gnoblin.session.on("bell", on_bell)
 
 ```rust
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
-fn watch(g: &Gnoblin) -> gnoblin_core::Result<()> {
+fn watch(g: &Gnoblin) -> gnoblin_core::Res<()> {
     let objects = g.objects()?;
-    let session = ModelRoot::get(&objects)?.session()?;
+    let session = Gnoblin::get(&objects)?.session()?;
     session.on_bell(|_session, count| println!("Bell number {count}"))?.keep();
     Ok(())
 }

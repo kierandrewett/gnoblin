@@ -4,7 +4,7 @@
 //! component `python`, so a shell is debugged where every other part of the session is. What a script prints to its standard streams is
 //! left alone: those are the process's own.
 
-use gnoblin_core::LogLevel;
+use gnoblin_core::host::LogLevel;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PySlice, PyTuple};
 use pyo3::wrap_pyfunction;

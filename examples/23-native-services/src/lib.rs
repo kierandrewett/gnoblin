@@ -13,13 +13,12 @@
 //! with `cargo build -p gnoblin-example-native-services` and run it with `gnoblin ./target/debug/libnative_services.so`.
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{LaunchOptions, ModelRoot, SpawnOptions, StreamMode};
+use gnoblin_core::{Gnoblin, LaunchOptions, SpawnOptions, StreamMode};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = ModelRoot::get(&objects)?;
+    let model = Gnoblin::get(&objects)?;
 
     let version = model.version()?;
     g.log(&format!(

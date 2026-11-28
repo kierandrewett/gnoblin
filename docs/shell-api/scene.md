@@ -49,8 +49,8 @@ if client is not None and client.properties is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{
     ArcLayout, ArcLayoutOptions, Scene, SceneNode, SceneNodeOptions, SceneSize, View, ViewOptions, Workspace,
     WorkspaceOptions, Workspaces,
 };
@@ -59,8 +59,8 @@ use gnoblin_std::prelude::*;
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let core = g.objects()?;
-    let objects = g.std()?.objects()?;
-    let model = ModelRoot::get(&core)?;
+    let objects = g.objects()?.std()?;
+    let model = Gnoblin::get(&core)?;
     let arc = ArcLayout::new_with(
         &objects,
         ArcLayoutOptions {
@@ -174,12 +174,12 @@ room.place(TransformParts(rotation=Vec3(x=0.0, y=3.14159 / 4, z=0.0), uniform_sc
 ```
 
 ```rust
-use gnoblin_std::objects::{SceneNode, SceneNodeOptions, TransformParts, Vec3};
+use gnoblin_std::{SceneNode, SceneNodeOptions, TransformParts, Vec3};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let room = SceneNode::new_with(
         &objects,
         SceneNodeOptions {
@@ -272,15 +272,15 @@ if client is not None:
 ```rust
 use std::rc::Rc;
 
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{InputMode, PointerEdge, Scene, SceneSize, View, ViewOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{InputMode, PointerEdge, Scene, SceneSize, View, ViewOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let core = g.objects()?;
-    let objects = g.std()?.objects()?;
-    let model = ModelRoot::get(&core)?;
+    let objects = g.objects()?.std()?;
+    let model = Gnoblin::get(&core)?;
     let input = model.input()?;
     let primary = input.primary()?;
     let Some(client) = primary.focused_client()? else {
@@ -355,15 +355,15 @@ GnoblinAugment.get().scene.add(panel)
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{ContentFit, InputMode, Scene, SceneSize, View, ViewOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{ContentFit, InputMode, Scene, SceneSize, View, ViewOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let core = g.objects()?;
-    let objects = g.std()?.objects()?;
-    let model = ModelRoot::get(&core)?;
+    let objects = g.objects()?.std()?;
+    let model = Gnoblin::get(&core)?;
     let panel = View::new_with(
         &objects,
         ViewOptions {
@@ -444,13 +444,13 @@ if client is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
-use gnoblin_std::objects::{Easing, TransitionOptions};
+use gnoblin_core::Gnoblin;
+use gnoblin_std::{Easing, TransitionOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let input = model.input()?;
     let primary = input.primary()?;
     let Some(client) = primary.focused_client()? else {
@@ -499,12 +499,12 @@ arc = ArcLayout(radius=1200, spacing=0.35)
 ```
 
 ```rust
-use gnoblin_std::objects::{ArcLayout, ArcLayoutOptions};
+use gnoblin_std::{ArcLayout, ArcLayoutOptions};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let _arc = ArcLayout::new_with(
         &objects,
         ArcLayoutOptions {
@@ -565,12 +565,12 @@ if client is not None and client.properties is not None:
 ```
 
 ```rust
-use gnoblin_core::objects::ModelRoot;
+use gnoblin_core::Gnoblin;
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+    let model = Gnoblin::get(&g.objects()?)?;
     let input = model.input()?;
     let primary = input.primary()?;
     let Some(client) = primary.focused_client()? else {

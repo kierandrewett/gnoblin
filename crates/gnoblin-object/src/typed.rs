@@ -307,6 +307,6 @@ impl Listener {
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        let _ = self.api.unlisten(self.reg);
+        self.api.unlisten_on_drop(self.reg);
     }
 }

@@ -9,8 +9,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gnoblin_core::Rect;
-use gnoblin_core::objects::{BindingEvent, PointerDragBindingHandlers};
+use gnoblin_core::host::Rect;
+use gnoblin_core::{BindingEvent, PointerDragBindingHandlers};
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::Builder;
 use gnoblin_object::{Fail, Val};
@@ -102,7 +102,7 @@ impl Stock {
 }
 
 /// The window a `client` of the core is: its node number.
-pub(super) fn node_of(client: &gnoblin_core::objects::Client) -> Option<u64> {
+pub(super) fn node_of(client: &gnoblin_core::Client) -> Option<u64> {
     client.id().ok()?.parse().ok()
 }
 

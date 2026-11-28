@@ -29,10 +29,10 @@ for device in Gnoblin.get().input.devices:
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{Touchpad, TouchpadOptions};
+use gnoblin_core::{Touchpad, TouchpadOptions};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
     // Touchpad settings belong to every touchpad, so one handle sets them all.
     let _touchpad = Touchpad::new_with(

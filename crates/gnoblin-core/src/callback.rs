@@ -13,20 +13,20 @@
 
 use std::fmt::Display;
 
-use crate::gnoblin::{Gnoblin, LogLevel};
+use crate::gnoblin::{Host, LogLevel};
 
 /// The value a callback returns: `()`, or a `Result` whose error is logged.
 pub trait CallbackResult {
     /// Handles the outcome on behalf of the callback named `what` of the generation `g` belongs to.
-    fn settle(self, g: &Gnoblin, what: &str);
+    fn settle(self, g: &Host, what: &str);
 }
 
 impl CallbackResult for () {
-    fn settle(self, _g: &Gnoblin, _what: &str) {}
+    fn settle(self, _g: &Host, _what: &str) {}
 }
 
 impl<T, E: Display> CallbackResult for Result<T, E> {
-    fn settle(self, g: &Gnoblin, what: &str) {
+    fn settle(self, g: &Host, what: &str) {
         if let Err(error) = self {
             g.log_at(LogLevel::Warn, &format!("the {what} callback failed: {error}"));
         }

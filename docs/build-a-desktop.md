@@ -123,13 +123,12 @@ gnoblin.input.primary.bind("Super+Return", terminal)
 
 ```rust
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{ModelRoot, Rect};
+use gnoblin_core::{Gnoblin, Rect};
 
 const GAP: f64 = 10.0;
 
 /// Gives every window an equal column of the first output, in the order the windows opened.
-fn retile(model: &ModelRoot) -> gnoblin::Result<()> {
+fn retile(model: &Gnoblin) -> gnoblin::Res<()> {
     let Some(output) = model.outputs()?.at(0)? else {
         return Ok(());
     };
@@ -154,8 +153,8 @@ fn retile(model: &ModelRoot) -> gnoblin::Result<()> {
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     retile(&model)?;
 
     let created = model.clone();
@@ -176,7 +175,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         .keep();
 
     g.bind("<Super>Return", move || {
-        if let Err(error) = g.spawn("foot") {
+        if let Err(error) = g.spawn(&["foot".to_owned()], None) {
             g.log(&format!("cannot start a terminal: {error}"));
         }
     })?;
@@ -262,21 +261,40 @@ gnoblin.input.primary.bind("Super+Return", terminal)
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
+fn main(gnoblin: &Gnoblin) -> gnoblin_std::Result<()> {
+    let objects = gnoblin.objects()?.std()?;
     // One workspace; every window that opens joins it and the library tiles it.
-    Workspace::builder("main")?
-        .name("Main")
-        .layout(MasterStackLayout::new().ratio(0.6))
-        .gaps(12.0, 20.0)
-        .add()?;
+    let layout = MasterStackLayout::new_with(
+        &objects,
+        MasterStackLayoutOptions {
+            ratio: Some(0.6),
+            ..MasterStackLayoutOptions::default()
+        },
+    )?;
+    let main = Workspace::new_with(
+        &objects,
+        "main",
+        WorkspaceOptions {
+            name: Some("Main".to_owned()),
+            layout: Some(layout.as_layout()?),
+            gaps: Some(Gaps {
+                inner: 12.0,
+                outer: 20.0,
+            }),
+            ..WorkspaceOptions::default()
+        },
+    )?;
+    Workspaces::get(&objects)?.add(&main)?;
 
-    g.bind("<Super>Return", move || {
-        if let Err(error) = g.spawn("foot") {
-            g.log(&format!("cannot start a terminal: {error}"));
+    let shell = gnoblin.clone();
+    gnoblin.bind("Super+Return", move || {
+        let argv = ["foot".to_owned()];
+        if let Err(error) = shell.spawn(&argv, None) {
+            shell.log(&format!("cannot start a terminal: {error}"));
         }
     })?;
 
-    g.log("std shell is running");
+    gnoblin.log("std shell is running");
     Ok(())
 }
 ```
@@ -414,11 +432,10 @@ seat.bind("Super+Return", terminal)
 ```rust
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::ModelRoot;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    let model = ModelRoot::get(&g.objects()?)?;
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    let model = Gnoblin::get(&g.objects()?)?;
     model.spawn(&["waybar".to_owned()], None)?;
     model.spawn(&["mako".to_owned()], None)?;
 

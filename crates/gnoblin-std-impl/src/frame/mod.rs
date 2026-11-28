@@ -31,7 +31,7 @@ mod window_frame;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
-use gnoblin_core::Subscription;
+use gnoblin_core::host::Subscription;
 use gnoblin_object::{Closure, Obj};
 use gnoblin_paint::PaintOp;
 

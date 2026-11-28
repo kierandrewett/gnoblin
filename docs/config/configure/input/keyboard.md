@@ -28,10 +28,10 @@ for device in Gnoblin.get().input.devices:
 ```rust skip="the reference does not document how a shell gets the Objects handle that Keyboard::new_with takes"
 use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{Keyboard, KeyboardOptions};
+use gnoblin_core::{Keyboard, KeyboardOptions};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
     // Keyboard repeat settings belong to every keyboard, so one handle sets them all.
     let _keyboard = Keyboard::new_with(

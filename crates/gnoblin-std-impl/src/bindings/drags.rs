@@ -14,7 +14,7 @@ use gnoblin_std_abi::{
     STD_DRAG_CLIENT_TILED, STD_DRAG_END, STD_DRAG_START, STD_DRAG_UPDATE,
 };
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 
 use super::steps::{ClientView, DragAnswer, DragInput, DragRule, Sides, SplitView, Tile};
 use super::{DragCtx, DragHandler, with_state};

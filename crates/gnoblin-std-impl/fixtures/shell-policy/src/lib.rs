@@ -22,17 +22,15 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gnoblin_core::NodeId;
-use gnoblin_core::objects::{
-    BindingEvent, BindingOptions, GestureBindingHandlers, ModelRoot, PointerDragBindingHandlers,
-};
-use gnoblin_std::objects::{
+use gnoblin_core::host::NodeId;
+use gnoblin_core::{BindingEvent, BindingOptions, GestureBindingHandlers, Gnoblin, PointerDragBindingHandlers};
+use gnoblin_std::prelude::*;
+use gnoblin_std::{
     ArcLayout, CarouselLayout, ClientState, DwindleDirection, DwindleForceSplit, DwindleLayout, DwindlePointer,
     DwindleSplit, DwindleSplitBias, FloatingLayout, GridLayout, Layout, MasterStackLayout, MasterStackOrientation,
     MoveBinding, Objects, ResizeBinding, SizeLimit, SplitResizeBinding, StripLayout, SwapBinding, Workspace,
     Workspaces,
 };
-use gnoblin_std::prelude::*;
 
 const CHORDS: &[&str] = &[
     "Super+1",
@@ -123,7 +121,7 @@ impl DragBindings {
 
 struct ObjectsShell {
     objects: Objects,
-    core: gnoblin_core::objects::Objects,
+    core: gnoblin_core::Objects,
     main: Workspace,
     current: RefCell<Current>,
     held: RefCell<DragBindings>,
@@ -303,7 +301,7 @@ impl ObjectsShell {
             "Super+m" => {
                 // The first window may not be resized below 150 by 120 or above 500 by 400.
                 // The window is the core's `Client`, which the core looks up by its id.
-                let first = gnoblin_core::objects::ModelRoot::get(&self.core)?
+                let first = gnoblin_core::Gnoblin::get(&self.core)?
                     .clients()?
                     .get_by_id(FIRST)
                     .ok()
@@ -347,9 +345,9 @@ impl ObjectsShell {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let main = Workspace::new(&objects, "main")?;
-    main.set_gaps(&gnoblin_std::objects::Gaps {
+    main.set_gaps(&gnoblin_std::Gaps {
         inner: 6.0,
         outer: 12.0,
     })?;
@@ -384,11 +382,11 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 const FIRST_NODE: u64 = 40;
 
 fn number(g: &Gnoblin, id: u64, key: &str) -> f64 {
-    g.node(NodeId(id)).get_f64(key).unwrap_or(0.0)
+    g.host().node(NodeId(id)).get_f64(key).unwrap_or(0.0)
 }
 
 fn put(g: &Gnoblin, id: u64, key: &str, value: f64) {
-    let _ = g.node(NodeId(id)).set(key, value);
+    let _ = g.host().node(NodeId(id)).set(key, value);
 }
 
 fn bump(g: &Gnoblin, id: u64, key: &str, by: f64) {
@@ -413,7 +411,7 @@ struct Counter {
 fn probes(g: &Gnoblin, objects: &Objects) -> gnoblin_std::Result<()> {
     let core = g.objects()?;
     let _ = objects;
-    let model = ModelRoot::get(&core)?;
+    let model = Gnoblin::get(&core)?;
     let context = model.input()?.primary().ok();
     let Some(context) = context else {
         return Ok(());

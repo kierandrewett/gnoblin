@@ -18,6 +18,7 @@ use std::thread;
 use gnoblin_core_abi::{self as abi, GnoblinStats};
 use gnoblin_log::ProcessRole;
 use gnoblin_log::init::{Console, LogOptions, LogSettings, init};
+use gnoblin_tree_client::tree_mirror::{LinkError, TreeLink};
 
 use crate::guard::{guard, last_error};
 use crate::host::{self, Copying, Module, OwnedValue, RetirePolicy};
@@ -63,6 +64,7 @@ pub unsafe extern "C" fn gnoblin_test_main(argc: c_int, argv: *const *const c_ch
             (Some("upgrade"), Some(shell), _, _) => upgrade(&shell),
             (Some("thread"), Some(shell), _, _) => threads(&shell),
             (Some("load"), Some(shell), _, _) => load_only(&shell),
+            (Some("refused_link"), Some(shell), _, _) => refused_link(&shell),
             (Some("wake"), Some(shell), _, _) => wake(&shell),
             (Some("retain"), Some(shell), limit, _) => retain(&shell, limit.as_deref()),
             (Some("unload"), Some(safe), Some(unsure), Some(plain)) => unload(&safe, &unsure, &plain),
@@ -77,7 +79,7 @@ pub unsafe extern "C" fn gnoblin_test_main(argc: c_int, argv: *const *const c_ch
             (Some("std_anim"), Some(shell), _, _) => crate::driver_anim::std_anim(&shell),
             _ => {
                 out!(
-                    "usage: gnoblin-fixture-launcher <run|panic|hot|abandon|dup|upgrade|thread|load|retain|unload|reload|example01|example02|example06|example08|std_layouts|std_bindings> MODULE..."
+                    "usage: gnoblin-fixture-launcher <run|panic|hot|abandon|dup|upgrade|thread|load|refused_link|retain|unload|reload|example01|example02|example06|example08|std_layouts|std_bindings> MODULE..."
                 );
                 2
             }
@@ -216,6 +218,30 @@ fn load_only(shell: &std::path::Path) -> i32 {
     }
 }
 
+/// What `tree_attach` opens on a core whose compositor does not answer: the link fails to open.
+struct RefusedLink;
+
+impl host::TreeLinkProvider for RefusedLink {
+    fn open(&self, _mode: host::AttachMode) -> Result<Box<dyn TreeLink>, LinkError> {
+        Err(LinkError("the compositor is not listening".to_owned()))
+    }
+}
+
+/// A shell loaded on a core that has a link to a compositor which fails to open. The entry function attaches before it runs, so the
+/// load fails with the link's own text, where a core with no link at all (`load`) starts the shell.
+fn refused_link(shell: &std::path::Path) -> i32 {
+    host::reset_session();
+    host::set_tree_link_provider(Box::new(RefusedLink));
+    match load_or_report(shell, Copying::Unique, 0) {
+        Ok(module) => {
+            out!("UNEXPECTED the shell started on a refused link");
+            module.retire();
+            1
+        }
+        Err(code) => code,
+    }
+}
+
 /// A shell with an event loop of its own (`wake_fd`): load it (its `init` runs the loop), activate it, retire it, and give the
 /// threads it left behind time to find out that their generation is gone.
 fn wake(shell: &std::path::Path) -> i32 {
@@ -271,6 +297,7 @@ fn hot(v1: &std::path::Path, v2: &std::path::Path, bad: Option<&std::path::Path>
     publish("lock", "requested", vec![]);
     pump(&old, 2);
     shell_stats_line("old_before_swap", &old);
+    core_stats_line("core_one_generation", old.ctx());
 
     let new = match load_or_report(v2, Copying::Unique, 1) {
         Ok(module) => module,
@@ -280,6 +307,7 @@ fn hot(v1: &std::path::Path, v2: &std::path::Path, bad: Option<&std::path::Path>
         }
     };
     out!("new_state={:?}", new.state());
+    core_stats_line("core_two_generations", new.ctx());
     // A staged generation receives nothing, while the old one still serves.
     publish("lock", "requested", vec![]);
     pump(&old, 2);
@@ -360,9 +388,11 @@ fn abandon(v1: &std::path::Path, v2: &std::path::Path) -> i32 {
     publish("lock", "requested", vec![]);
     pump(&old, 2);
     shell_stats_line("new_before_abandon", &new);
+    core_stats_line("core_two_generations", old.ctx());
     let removed = new.abandon();
     out!("abandoned removed={removed} state={:?}", new.state());
     shell_stats_line("new_after_abandon", &new);
+    core_stats_line("core_after_abandon", old.ctx());
     publish("lock", "requested", vec![]);
     pump(&old, 2);
     shell_stats_line("old_still_serving", &old);

@@ -311,7 +311,20 @@ fn a_reload_by_unique_copy_swaps_generations_with_no_stale_call_and_no_dlclose()
 
     assert_eq!(num(&stdout, "old_before_swap", "registered"), 1);
     assert_eq!(num(&stdout, "old_before_swap", "calls"), 1);
+    // The core holds two registrations for a generation of this shell: the callback it registered and the root object's, which the
+    // entry function receives. The root's is made for the generation and owned by it, which the counts below prove: they move with the
+    // generations (two while one runs, four while a second is staged, two again once one is retired) and never past that.
+    assert_eq!(
+        num(&stdout, "core_one_generation", "registrations"),
+        2,
+        "a generation holds its callback and its root object: {stdout}"
+    );
     assert!(stdout.contains("new_state=Staged"), "{stdout}");
+    assert_eq!(
+        num(&stdout, "core_two_generations", "registrations"),
+        4,
+        "the staged generation holds its own pair: {stdout}"
+    );
     // The staged generation received nothing while the old one kept serving.
     assert_eq!(num(&stdout, "new_while_staged", "registered"), 1);
     assert_eq!(num(&stdout, "new_while_staged", "calls"), 0, "{stdout}");
@@ -342,6 +355,12 @@ fn a_reload_by_unique_copy_swaps_generations_with_no_stale_call_and_no_dlclose()
     );
     assert_eq!(num(&stdout, "core_stats", "stale"), 1);
     assert_eq!(num(&stdout, "core_stats", "retired"), 1);
+    assert_eq!(
+        num(&stdout, "core_stats", "registrations"),
+        2,
+        "retiring the first generation took its root object with it: only the second generation's pair is left (a root that \
+         outlived its generation would make this three): {stdout}"
+    );
 
     // Two shell copies and one core mapped; the retired library is kept, never unloaded.
     assert_eq!(num(&stdout, "maps", "core_copies"), 1, "{stdout}");
@@ -355,10 +374,11 @@ fn a_reload_by_unique_copy_swaps_generations_with_no_stale_call_and_no_dlclose()
         "{stdout}"
     );
     assert_eq!(num(&stdout, "after_failed_reload", "calls"), 6, "{stdout}");
+    // The failed generation registered its callback and had its root object before it failed; both are gone.
     assert_eq!(
         num(&stdout, "core_after_failed_reload", "registrations"),
-        1,
-        "only the running generation's registration is left: {stdout}"
+        2,
+        "only the running generation's callback and root object are left: {stdout}"
     );
     assert!(stdout.lines().any(|line| line == "retired_libraries=2"), "{stdout}");
 }
@@ -370,7 +390,14 @@ fn an_abandoned_reload_drops_its_registrations_without_calling_them() {
     assert_eq!(code, 0, "{stdout}\n{stderr}");
     assert_eq!(num(&stdout, "new_before_abandon", "calls"), 0);
     assert_eq!(num(&stdout, "new_before_abandon", "drops"), 0);
-    assert!(stdout.contains("abandoned removed=1 state=Retired"), "{stdout}");
+    assert_eq!(num(&stdout, "core_two_generations", "registrations"), 4, "{stdout}");
+    // The abandoned generation held two registrations, its callback and its root object, and both are removed.
+    assert!(stdout.contains("abandoned removed=2 state=Retired"), "{stdout}");
+    assert_eq!(
+        num(&stdout, "core_after_abandon", "registrations"),
+        2,
+        "the abandoned generation's root object went with it: {stdout}"
+    );
     assert_eq!(num(&stdout, "new_after_abandon", "calls"), 0);
     assert_eq!(
         num(&stdout, "new_after_abandon", "drops"),
@@ -467,6 +494,8 @@ fn unloading_a_retired_generation_is_opt_in_and_only_when_the_module_proves_it_i
     // The core and the running generation are untouched by it.
     assert_eq!(num(&stdout, "running_after_unload", "calls"), 1, "{stdout}");
     assert!(stdout.contains("core_after_unload rc=0"), "{stdout}");
+    // Three generations retired and one is running: what is registered is the running one's callback and root object.
+    assert_eq!(num(&stdout, "core_after_unload", "registrations"), 2, "{stdout}");
 }
 
 #[test]
@@ -598,6 +627,37 @@ fn a_shell_with_a_poll_loop_of_its_own_serves_posts_from_threads_on_the_wake_des
         "{stdout}\n{stderr}"
     );
     assert!(stdout.contains("wake_done"), "{stdout}");
+}
+
+// ---- the entry function's root object ----------------------------------------------------------------------------------
+
+#[test]
+fn a_core_with_no_link_to_a_compositor_starts_the_shell_and_its_root_object() {
+    let stage = stage();
+    // The launcher gives the core no tree link: a bare core. The entry function cannot attach, and the shell starts all the same.
+    let (stdout, stderr, code) = run(&stage.dir, &["hot"], &[&stage.hot_v1, &stage.hot_v2]);
+    assert_eq!(code, 0, "{stdout}\n{stderr}");
+    assert!(
+        stdout.contains("loaded label=gnoblin-fixture-shell-hot generation=1"),
+        "{stdout}"
+    );
+    assert_eq!(
+        num(&stdout, "core_one_generation", "registrations"),
+        2,
+        "the root object is made on a bare core: {stdout}"
+    );
+}
+
+#[test]
+fn a_link_that_fails_to_open_is_the_shells_start_error_and_not_a_bare_core() {
+    let stage = stage();
+    let (stdout, stderr, code) = run(&stage.dir, &["refused_link"], &[&stage.shell_min]);
+    assert_eq!(code, 1, "{stdout}\n{stderr}");
+    assert!(!stdout.contains("UNEXPECTED"), "{stdout}");
+    assert!(
+        stdout.contains("init failed (E_LOAD)") && stdout.contains("tree_attach: the compositor is not listening"),
+        "the load fails with the link's own text: {stdout}"
+    );
 }
 
 // ---- loader errors ----------------------------------------------------------------------------------------------------

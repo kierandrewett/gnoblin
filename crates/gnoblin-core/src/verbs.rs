@@ -1,9 +1,9 @@
 //! Verbs and signals of the compositor's `gnoblin` namespace, and the descriptor of a shell that owns its event loop.
 //!
-//! The tree's nodes are read and written through [`Node`](crate::Node). The `gnoblin` namespace is what is not a node: the
+//! The tree's nodes are read and written through [`Node`](crate::host::Node). The `gnoblin` namespace is what is not a node: the
 //! session (`gnoblin.session`: log out, power off, the lock's state, the bell), the idle watch (`gnoblin.idle`), the outputs.
-//! A **verb** is one call on such an object: [`Gnoblin::call_verb`] sends it and [`Gnoblin::call_verb_with`] also takes the
-//! compositor's answer, on the shell thread, when the operation finishes. A **signal** is [`Gnoblin::subscribe`]: the callback runs
+//! A **verb** is one call on such an object: [`Host::call_verb`] sends it and [`Host::call_verb_with`] also takes the
+//! compositor's answer, on the shell thread, when the operation finishes. A **signal** is [`Host::subscribe`]: the callback runs
 //! on the shell thread for every time an object of the class raises it, with the payload in the schema's field order (the
 //! generated `fields` constants of each class name the positions: `gnoblin::session::fields::bell::COUNT`).
 //!
@@ -17,7 +17,7 @@ use std::os::fd::{FromRawFd as _, OwnedFd};
 use gnoblin_core_abi::{self as abi, GnoblinPending};
 
 use crate::error::{CoreError, Result, check};
-use crate::gnoblin::{CallbackSlot, Gnoblin, Poster, Subscription, drop_slot, event_tramp};
+use crate::gnoblin::{CallbackSlot, Host, Poster, Subscription, drop_slot, event_tramp};
 use crate::owned::Value;
 use crate::tree::{Answer, PendingCall, answer_tramp, with_raws};
 use crate::value::{MemberKind, SignalEvent};
@@ -25,7 +25,7 @@ use crate::value::{MemberKind, SignalEvent};
 /// What `call_verb_inner` is given to run when the answer arrives.
 type OnAnswer = Box<dyn FnOnce(Answer)>;
 
-impl Gnoblin {
+impl Host {
     /// Calls `method` of the one object of `class` (`gnoblin.session`, `gnoblin.idle`) on the compositor and does not wait for the
     /// answer. `args` are checked against the method's parameters, which are sent by their schema names.
     pub fn call_verb(&self, class: &str, method: &str, args: &[Value]) -> Result<()> {
@@ -40,10 +40,15 @@ impl Gnoblin {
         F: FnOnce(Answer) + 'static,
     {
         self.call_verb_inner(0, class, method, args, Some(Box::new(on_answer)))?
-            .ok_or_else(|| CoreError::new(crate::ErrorKind::Failed, "the core gave no handle for the pending call"))
+            .ok_or_else(|| {
+                CoreError::new(
+                    crate::host::ErrorKind::Failed,
+                    "the core gave no handle for the pending call",
+                )
+            })
     }
 
-    /// [`Gnoblin::call_verb_with`] on the object the compositor numbers `object`, for a class that has several (an output).
+    /// [`Host::call_verb_with`] on the object the compositor numbers `object`, for a class that has several (an output).
     pub fn call_verb_on<F>(
         &self,
         object: u64,
@@ -56,7 +61,12 @@ impl Gnoblin {
         F: FnOnce(Answer) + 'static,
     {
         self.call_verb_inner(object, class, method, args, Some(Box::new(on_answer)))?
-            .ok_or_else(|| CoreError::new(crate::ErrorKind::Failed, "the core gave no handle for the pending call"))
+            .ok_or_else(|| {
+                CoreError::new(
+                    crate::host::ErrorKind::Failed,
+                    "the core gave no handle for the pending call",
+                )
+            })
     }
 
     fn call_verb_inner(
@@ -137,7 +147,7 @@ impl Gnoblin {
         self.adopt(reg, slot)
     }
 
-    /// A descriptor that turns readable when [`Gnoblin::dispatch`] has something to do, for a shell that owns its event loop
+    /// A descriptor that turns readable when [`Host::dispatch`] has something to do, for a shell that owns its event loop
     /// (tokio, calloop, GLib): poll it beside the loop's own sources and call `dispatch(0)` when it is readable, which drains it.
     ///
     /// It is level triggered and carries no data; one wake can be spurious, and then `dispatch(0)` returns `0`. It turns readable
@@ -149,7 +159,7 @@ impl Gnoblin {
 }
 
 impl Poster {
-    /// The same descriptor as [`Gnoblin::wake_fd`], for a thread that is not the shell's: an event loop of its own may be started
+    /// The same descriptor as [`Host::wake_fd`], for a thread that is not the shell's: an event loop of its own may be started
     /// anywhere that holds a poster.
     pub fn wake_fd(&self) -> Result<OwnedFd> {
         wake_fd(self.api(), self.ctx())

@@ -18,53 +18,60 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::{Gnoblin, Rect, Window};
+use gnoblin_core::{Client, Gnoblin, Rect};
 
 /// Where the `n`th window goes: a cascade that wraps after eight, so no window is ever placed off the screen.
 fn cascade(n: usize) -> Rect {
     let step = 40.0 * (n % 8) as f64;
-    Rect::new(60.0 + step, 60.0 + step, 800.0, 600.0)
+    Rect {
+        x: 60.0 + step,
+        y: 60.0 + step,
+        width: 800.0,
+        height: 600.0,
+    }
 }
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    // The windows that are open already, then the ones that open later, take the next place of the cascade.
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
+    // Every window takes the next place of the cascade.
     let placed = Rc::new(Cell::new(0usize));
     let place = {
         let placed = Rc::clone(&placed);
-        move |window: &Window| {
+        move |window: &Client| {
             let n = placed.get();
             placed.set(n + 1);
-            if let Err(error) = window.set_geometry(cascade(n)) {
-                window
-                    .gnoblin()
-                    .log(&format!("cannot place window {}: {error}", window.id().0));
+            if let Err(error) = window.set_bounds(&cascade(n)) {
+                g.log(&format!(
+                    "cannot place window {}: {error}",
+                    window.id().unwrap_or_default()
+                ));
             }
         }
     };
-    for window in g.windows()? {
+    // The listener hears the windows that are open already as well as the ones that open later.
+    g.on_client_created(move |window, _| {
         place(&window);
-    }
-    g.on_client_created(move |window| {
-        place(window);
         if let Err(error) = window.focus() {
-            window
-                .gnoblin()
-                .log(&format!("cannot focus window {}: {error}", window.id().0));
+            g.log(&format!(
+                "cannot focus window {}: {error}",
+                window.id().unwrap_or_default()
+            ));
         }
-    })?;
+    })?
+    .keep();
 
     g.bind("<Super>Return", move || {
-        if let Err(error) = g.spawn("foot") {
+        if let Err(error) = g.spawn(&["foot".to_owned()], None) {
             g.log(&format!("cannot start a terminal: {error}"));
         }
     })?;
 
     g.bind("<Super>q", move || {
         let focused = g
-            .windows()
+            .clients()
+            .and_then(|all| all.to_list())
             .ok()
-            .and_then(|all| all.into_iter().find(|w| w.is_focused().unwrap_or(false)));
+            .and_then(|all| all.into_iter().find(|w| w.focused().unwrap_or(false)));
         if let Some(window) = focused {
             let _ = window.close();
         }

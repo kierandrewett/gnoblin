@@ -3,7 +3,7 @@
 
 use std::cell::{Cell, RefCell};
 
-use gnoblin_core::{Gnoblin, NodeId, Value};
+use gnoblin_core::host::{Host, NodeId, Value};
 use gnoblin_object::{ErrorCode, Fail, Obj, Res};
 
 use super::trigger::INPUTS;
@@ -35,16 +35,16 @@ pub(crate) struct ControllerData {
 }
 
 /// A number of the node, 0 when it cannot be read.
-fn number(g: &Gnoblin, node: u64, key: &str) -> f64 {
+fn number(g: &Host, node: u64, key: &str) -> f64 {
     crate::nodes::number(g, node, key)
 }
 
-fn flag(g: &Gnoblin, node: u64, key: &str) -> bool {
+fn flag(g: &Host, node: u64, key: &str) -> bool {
     crate::nodes::flag(g, node, key)
 }
 
 impl ControllerData {
-    pub(crate) fn new(g: &Gnoblin, node: u64) -> ControllerData {
+    pub(crate) fn new(g: &Host, node: u64) -> ControllerData {
         let hand = g.node(NodeId(node)).get_text("hand").unwrap_or_default();
         ControllerData {
             obj: Cell::new(0),
@@ -55,22 +55,22 @@ impl ControllerData {
         }
     }
 
-    pub(crate) fn alive(&self, g: &Gnoblin) -> bool {
+    pub(crate) fn alive(&self, g: &Host) -> bool {
         g.node(NodeId(self.node))
             .class_name()
             .is_ok_and(|class| class == "controller")
     }
 
-    pub(crate) fn tracked(&self, g: &Gnoblin) -> bool {
+    pub(crate) fn tracked(&self, g: &Host) -> bool {
         flag(g, self.node, "tracked")
     }
 
-    pub(crate) fn number(&self, g: &Gnoblin, key: &str) -> f64 {
+    pub(crate) fn number(&self, g: &Host, key: &str) -> f64 {
         number(g, self.node, key)
     }
 
     /// The pose of the aim ray, in the room's placement frame.
-    pub(crate) fn pose(&self, g: &Gnoblin) -> PoseMatrix {
+    pub(crate) fn pose(&self, g: &Host) -> PoseMatrix {
         let rotation = match g.node(NodeId(self.node)).get("rotation") {
             Ok(Value::List(angles)) => [
                 angles.first().copied().unwrap_or(0.0),
@@ -87,7 +87,7 @@ impl ControllerData {
     }
 
     /// The aim ray: from the pose's position along its negative z.
-    pub(crate) fn ray(&self, g: &Gnoblin) -> RayLine {
+    pub(crate) fn ray(&self, g: &Host) -> RayLine {
         let pose = self.pose(g);
         RayLine {
             origin: pose.position,
@@ -96,7 +96,7 @@ impl ControllerData {
     }
 
     /// What the node says is claimed.
-    pub(crate) fn claimed(&self, g: &Gnoblin) -> Vec<String> {
+    pub(crate) fn claimed(&self, g: &Host) -> Vec<String> {
         match g.node(NodeId(self.node)).get("claimed") {
             Ok(Value::Texts(names)) => names,
             _ => Vec::new(),
@@ -104,7 +104,7 @@ impl ControllerData {
     }
 
     /// Reads the values once and settles which buttons are down: a pull is down at 0.75 and up at 0.25, a click as the node says.
-    pub(crate) fn update(&self, g: &Gnoblin) {
+    pub(crate) fn update(&self, g: &Host) {
         let mut down = self.down.borrow_mut();
         for (button, key) in [(0, "trigger"), (1, "grip")] {
             let value = number(g, self.node, key);
@@ -138,7 +138,7 @@ impl ControllerData {
     /// # Errors
     ///
     /// The controller is gone (`not_found`), or the compositor refused the write.
-    pub(crate) fn claim(&self, g: &Gnoblin, owner: ClaimOwner, inputs: Vec<usize>) -> Res<()> {
+    pub(crate) fn claim(&self, g: &Host, owner: ClaimOwner, inputs: Vec<usize>) -> Res<()> {
         let target = self.target();
         if !self.alive(g) {
             return Err(Fail::refused(
@@ -166,7 +166,7 @@ impl ControllerData {
     /// # Errors
     ///
     /// The compositor refused the write.
-    pub(crate) fn release(&self, g: &Gnoblin, owner: &ClaimOwner) -> Res<()> {
+    pub(crate) fn release(&self, g: &Host, owner: &ClaimOwner) -> Res<()> {
         let had = {
             let mut claims = self.claims.borrow_mut();
             let before = claims.len();
@@ -184,7 +184,7 @@ impl ControllerData {
     /// # Errors
     ///
     /// The compositor refused the write.
-    pub(crate) fn release_all(&self, g: &Gnoblin) -> Res<()> {
+    pub(crate) fn release_all(&self, g: &Host) -> Res<()> {
         let had = !std::mem::take(&mut *self.claims.borrow_mut()).is_empty();
         if !had || !self.alive(g) {
             return Ok(());
@@ -193,7 +193,7 @@ impl ControllerData {
     }
 
     /// Writes the union of the claims, once, when it differs from what the node says.
-    fn flush(&self, g: &Gnoblin) -> Res<()> {
+    fn flush(&self, g: &Host) -> Res<()> {
         let union: Vec<String> = {
             let claims = self.claims.borrow();
             INPUTS

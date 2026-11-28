@@ -64,13 +64,12 @@ gnoblin.input.primary.bind("Super+d", show_time)
 use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{BindingEvent, ModelRoot, Process, ProcessListenerHandlers, SpawnOptions, StreamMode};
+use gnoblin_core::{BindingEvent, Gnoblin, Process, ProcessListenerHandlers, SpawnOptions, StreamMode};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = Rc::new(ModelRoot::get(&objects)?);
+    let model = Rc::new(Gnoblin::get(&objects)?);
     let processes = model.process()?;
     let notifier = Rc::clone(&model);
     let listener = ProcessListenerHandlers {
@@ -163,13 +162,12 @@ gnoblin.input.primary.bind("Super+c", count_downloads)
 use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::Gnoblin;
-use gnoblin_core::objects::{BindingEvent, ModelRoot, SpawnOptions, StreamMode};
+use gnoblin_core::{BindingEvent, Gnoblin, SpawnOptions, StreamMode};
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     let objects = g.objects()?;
-    let model = Rc::new(ModelRoot::get(&objects)?);
+    let model = Rc::new(Gnoblin::get(&objects)?);
     let input = model.input()?;
     let primary = input.primary()?;
     let spawner = Rc::clone(&model);

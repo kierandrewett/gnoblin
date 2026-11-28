@@ -5,7 +5,7 @@
 //! it is told of is complete (its title, its size) and a write it makes goes out with the rest of the turn's.
 //!
 //! Windows that were already in the tree when the shell attached are not "created": list them with
-//! [`Gnoblin::windows`](crate::Gnoblin::windows) first, then listen.
+//! [`Host::windows`](crate::host::Host::windows) first, then listen.
 #![allow(unsafe_code)]
 
 use core::ffi::c_void;
@@ -17,7 +17,7 @@ use gnoblin_core_abi::{self as abi, GnoblinNodeEvent};
 use crate::callback::CallbackResult;
 use crate::error::Result;
 use crate::generated::{Screen, Window};
-use crate::gnoblin::{CALLS, Gnoblin, Subscription, drop_slot};
+use crate::gnoblin::{CALLS, Host, Subscription, drop_slot};
 use crate::owned::Value;
 use crate::tree::Node;
 use crate::value::{Class, MemberKind, NodeId, ShellValue, SignalEvent};
@@ -25,7 +25,7 @@ use crate::value::{Class, MemberKind, NodeId, ShellValue, SignalEvent};
 /// A closure behind a `user` pointer, with the generation's handle to build nodes from.
 pub(crate) struct Slot<F> {
     pub(crate) f: F,
-    pub(crate) g: Gnoblin,
+    pub(crate) g: Host,
 }
 
 /// What the core says about a change of the tree, borrowed for the callback.
@@ -34,7 +34,7 @@ pub(crate) struct NodeNotice<'a> {
     pub value: Option<ShellValue<'a>>,
 }
 
-unsafe extern "C" fn node_tramp<F: FnMut(&Gnoblin, &NodeNotice<'_>)>(
+unsafe extern "C" fn node_tramp<F: FnMut(&Host, &NodeNotice<'_>)>(
     user: *mut c_void,
     event: *const GnoblinNodeEvent,
 ) -> i32 {
@@ -140,11 +140,11 @@ impl NodeEvent {
     }
 }
 
-impl Gnoblin {
+impl Host {
     /// Registers `f` for the nodes of `class` (every class when `None`) that come into the tree.
     fn on_node_created_raw<F>(&self, class: Option<Class>, f: F) -> Result<Subscription>
     where
-        F: FnMut(&Gnoblin, &NodeNotice<'_>) + 'static,
+        F: FnMut(&Host, &NodeNotice<'_>) + 'static,
     {
         self.attach()?;
         let slot = Box::into_raw(Box::new(Slot { f, g: self.clone() }));
@@ -164,7 +164,7 @@ impl Gnoblin {
 
     fn on_node_destroyed_raw<F>(&self, class: Option<Class>, f: F) -> Result<Subscription>
     where
-        F: FnMut(&Gnoblin, &NodeNotice<'_>) + 'static,
+        F: FnMut(&Host, &NodeNotice<'_>) + 'static,
     {
         self.attach()?;
         let slot = Box::into_raw(Box::new(Slot { f, g: self.clone() }));
@@ -183,7 +183,7 @@ impl Gnoblin {
 
     fn on_change_raw<F>(&self, node: Option<NodeId>, class: Class, property: u32, f: F) -> Result<Subscription>
     where
-        F: FnMut(&Gnoblin, &NodeNotice<'_>) + 'static,
+        F: FnMut(&Host, &NodeNotice<'_>) + 'static,
     {
         self.attach()?;
         let slot = Box::into_raw(Box::new(Slot { f, g: self.clone() }));
@@ -318,7 +318,7 @@ impl Gnoblin {
     }
 
     /// Calls `f` with each output (a `screen` node) that appears: a monitor was plugged in or enabled. Outputs that were in the
-    /// tree when the shell attached are not "created": list them with [`Gnoblin::outputs`] first, then listen.
+    /// tree when the shell attached are not "created": list them with [`Host::outputs`] first, then listen.
     pub fn on_output_created<F, R>(&self, mut f: F) -> Result<Subscription>
     where
         F: FnMut(&Screen) -> R + 'static,

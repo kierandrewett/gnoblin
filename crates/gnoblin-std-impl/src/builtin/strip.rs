@@ -7,7 +7,7 @@
 //! The layout keeps its own column order, because a new window opens right after the focused column rather than at the end, and so it
 //! hands the keyboard to a neighbour itself when a window closes. One layout serves one workspace.
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 
 use super::{ActionEnv, ActionResult, Imp, OptionSet, Val, plain};
 use crate::error::{Fail, Res};

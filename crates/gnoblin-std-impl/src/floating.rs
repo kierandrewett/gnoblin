@@ -4,7 +4,7 @@
 //! both libraries (`tests/parity.rs` holds them to it). The functions are pure: a rectangle, the area, the rectangles that are
 //! taken, the cascade step.
 
-use gnoblin_core::Rect;
+use gnoblin_core::host::Rect;
 use gnoblin_std_abi as abi;
 
 /// The grid the free-space scan steps over, in logical pixels.

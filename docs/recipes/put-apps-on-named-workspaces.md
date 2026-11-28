@@ -67,14 +67,13 @@ Gnoblin.get().clients.add_listener(Homes())
 ```rust
 use std::collections::HashMap;
 
-use gnoblin_core::objects::{Client, ClientCollection, ClientCollectionListenerHandlers, ModelRoot};
-use gnoblin_core::Gnoblin;
-use gnoblin_std::objects::{FloatingLayout, Workspace, WorkspaceOptions, Workspaces};
+use gnoblin_core::{Client, ClientCollection, ClientCollectionListenerHandlers, Gnoblin};
+use gnoblin_std::{FloatingLayout, Workspace, WorkspaceOptions, Workspaces};
 use gnoblin_std::prelude::*;
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let homes = [
         ("org.gnome.TextEditor", "code"),
         ("org.mozilla.firefox", "web"),
@@ -94,7 +93,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     }
 
     let core = g.objects()?;
-    let clients = ModelRoot::get(&core)?.clients()?;
+    let clients = Gnoblin::get(&core)?.clients()?;
     let listener = ClientCollectionListenerHandlers {
         on_added: Some(Box::new(move |client: Client, _collection: ClientCollection| {
             let app_id = client.app_id()?;

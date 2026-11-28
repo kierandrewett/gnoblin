@@ -495,8 +495,9 @@ fn build_hot() -> Result<Hot, String> {
         return Err("example 10 no longer has the two constants this test edits".to_owned());
     }
     let v2 = build("v2", &v2_source)?;
-    let entry = "fn main(g: &Gnoblin) -> gnoblin::Result<()> {\n";
-    if !source.contains(entry) {
+    // The line after which the entry function has the host layer's handle in `g`.
+    let entry = "    let g = root.host();\n";
+    if source.matches(entry).count() != 1 {
         return Err("example 10's entry function changed shape".to_owned());
     }
     // Registers a listener first, as a real replacement would, and then fails: nothing of it may be left behind.

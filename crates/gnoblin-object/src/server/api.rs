@@ -23,8 +23,12 @@ use crate::wire::{from_raw, lend, read_args};
 
 /// Where a library keeps its [`Library`]: one per thread, in a `thread_local!` the library owns.
 pub trait Provider: 'static {
-    /// Runs `work` with the library.
-    fn with<R>(work: impl FnOnce(&Library) -> R) -> R;
+    /// Runs `work` with the library, or answers `None` when the library is gone: the thread's slot is being destroyed and so is the
+    /// library in it. That is a legitimate state, not a bug in the caller. Dropping the library drops every closure and listener it
+    /// still holds, which runs the shell's `drop_user` of each, and what a shell drops there may be an object it holds (`release`) or a
+    /// listener (`unlisten`): calls into the table of the very library that is being dropped, from inside its own destructor. A
+    /// `thread_local!` answers none of them, so an implementation uses `LocalKey::try_with` and gives `None` for the error.
+    fn with<R>(work: impl FnOnce(&Library) -> R) -> Option<R>;
 }
 
 /// The table of a library: every function of `GnoblinObjectApi`, bound to `P`. `hash` is the catalog's.
@@ -61,7 +65,9 @@ thread_local! {
     static LAST_CODE: Cell<Option<ErrorCode>> = const { Cell::new(None) };
 }
 
-/// Runs one function: contains a panic, records a failure and its code, returns the integer code.
+/// Runs one function: contains a panic, records a failure and its code, returns the integer code. A library that is gone
+/// ([`Provider::with`] gives none) answers `E_RETIRED`, the answer of an object of a generation that retired: every object it served
+/// went with it, so there is nothing for the call to act on.
 fn run<P: Provider>(what: &'static str, body: impl FnOnce(&Library) -> Res<()>) -> i32 {
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         P::with(|lib| match body(lib) {
@@ -76,19 +82,26 @@ fn run<P: Provider>(what: &'static str, body: impl FnOnce(&Library) -> Res<()>) 
             }
         })
     }));
-    outcome.unwrap_or_else(|_| {
-        let _ = catch_unwind(AssertUnwindSafe(|| {
-            P::with(|lib| {
-                let fail = Fail::new(
-                    abi::E_PANIC,
-                    format!("a panic was caught in the object function `{what}`"),
-                );
-                (lib.hooks.set_last)(&fail);
-                LAST_CODE.with(|last| last.set(fail.reason()));
-            });
-        }));
-        abi::E_PANIC
-    })
+    match outcome {
+        Ok(Some(code)) => code,
+        Ok(None) => {
+            LAST_CODE.with(|last| last.set(ErrorCode::of_abi(abi::E_RETIRED)));
+            abi::E_RETIRED
+        }
+        Err(_) => {
+            let _ = catch_unwind(AssertUnwindSafe(|| {
+                P::with(|lib| {
+                    let fail = Fail::new(
+                        abi::E_PANIC,
+                        format!("a panic was caught in the object function `{what}`"),
+                    );
+                    (lib.hooks.set_last)(&fail);
+                    LAST_CODE.with(|last| last.set(fail.reason()));
+                });
+            }));
+            abi::E_PANIC
+        }
+    }
 }
 
 /// `last_error_code(buf, cap)` of the table: copies the code of the last failed call on this thread into `buf`, NUL terminated and

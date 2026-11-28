@@ -79,10 +79,15 @@ fn fill(template: &str, pairs: &[(&str, &str)]) -> String {
     text
 }
 
-/// A declaration as a reader of the public API spells it: the library's result alias `go::Res<T>` is `Result<T, Fail>`, with the `Fail`
-/// that `gnoblin_core` exports.
+/// A declaration as a reader of the public API spells it: the library's result alias `crate::Res<T>` is `Result<T, Fail>`, with the `Fail`
+/// that `gnoblin_core` exports, and a name the crate exports at its root (`crate::Listener`) is written without the path of the crate.
 pub(crate) fn public_result(text: &str) -> String {
-    const OPEN: &str = "go::Res<";
+    result_alias(text).replace("crate::", "")
+}
+
+/// `text` with every `crate::Res<T>` written as `Result<T, Fail>`.
+fn result_alias(text: &str) -> String {
+    const OPEN: &str = "crate::Res<";
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(start) = rest.find(OPEN) {
@@ -106,7 +111,7 @@ pub(crate) fn public_result(text: &str) -> String {
             end += 1;
         }
         out.push_str("Result<");
-        out.push_str(&public_result(&rest[inner..end]));
+        out.push_str(&result_alias(&rest[inner..end]));
         out.push_str(", Fail>");
         rest = &rest[(end + 1).min(rest.len())..];
     }
@@ -244,7 +249,7 @@ impl<'a> Renderer<'a> {
     }
 
     /// Notes that the member `member` of the schema's class `class` was declared as `text`, as a reader of the public API spells it:
-    /// the library's result alias `go::Res<T>` is `Result<T, Fail>`, with `Fail` of `gnoblin_core`.
+    /// the library's result alias `crate::Res<T>` is `Result<T, Fail>`, with `Fail` of `gnoblin_core`.
     fn declared(&self, class: &str, member: &str, text: impl AsRef<str>) {
         if self.declarations.is_some() {
             note(self.declarations, class, member, public_result(text.as_ref()));
@@ -287,8 +292,8 @@ impl<'a> Renderer<'a> {
             Type::Uint => "u64".to_owned(),
             Type::Double => "f64".to_owned(),
             Type::Text => "String".to_owned(),
-            Type::Bytes => "go::typed::Octets".to_owned(),
-            Type::Any => "go::Val".to_owned(),
+            Type::Bytes => "crate::Octets".to_owned(),
+            Type::Any => "crate::Val".to_owned(),
             Type::ObjectRef(name) if name.contains('.') => self.foreign_path(name)?,
             Type::ObjectRef(name) => class_name(self.class(name)?),
             Type::Enum(name) => self.enum_name(name)?,
@@ -305,7 +310,7 @@ impl<'a> Renderer<'a> {
     fn param(&self, ty: &Type) -> Result<String, String> {
         Ok(match ty {
             Type::Text => "&str".to_owned(),
-            Type::Bytes => "&go::typed::Octets".to_owned(),
+            Type::Bytes => "&crate::Octets".to_owned(),
             Type::ObjectRef(name) if name.contains('.') => format!("&{}", self.foreign_path(name)?),
             Type::ObjectRef(name) => format!("&{}", class_name(self.class(name)?)),
             Type::List(inner) => format!("&[{}]", self.owned(inner)?),
@@ -334,7 +339,10 @@ impl<'a> Renderer<'a> {
             Some(ty) => self.owned(ty)?,
             None => "()".to_owned(),
         };
-        Ok(format!("FnMut({}) -> go::Res<{returns}> + 'static", params.join(", ")))
+        Ok(format!(
+            "FnMut({}) -> crate::Res<{returns}> + 'static",
+            params.join(", ")
+        ))
     }
 
     /// A field or an argument as the value a closure or a signal listener receives.
@@ -475,7 +483,7 @@ impl go::typed::ToVal for @Name@ {
 }
 
 impl go::typed::FromVal<Objects> for @Name@ {
-    fn from_val(_: &Objects, value: &go::Val) -> go::Res<@Name@> {
+    fn from_val(_: &Objects, value: &go::Val) -> crate::Res<@Name@> {
         match value.enum_value()? {
             @Reads@
             other => Err(go::Fail::type_error(format!("{other} is not a value of `@Schema@`"))),
@@ -700,7 +708,7 @@ impl go::typed::ToVal for @Name@ {
 }
 
 impl go::typed::FromVal<Objects> for @Name@ {
-    fn from_val(cx: &Objects, value: &go::Val) -> go::Res<@Name@> {
+    fn from_val(cx: &Objects, value: &go::Val) -> crate::Res<@Name@> {
         let fields = value.record()?;
 @Guard@@Setup@        Ok(@Name@ {
 @Reads@
@@ -802,7 +810,7 @@ impl go::typed::ToVal for @Name@ {
 }
 
 impl go::typed::FromVal<Objects> for @Name@ {
-    fn from_val(cx: &Objects, value: &go::Val) -> go::Res<@Name@> {
+    fn from_val(cx: &Objects, value: &go::Val) -> crate::Res<@Name@> {
         let fields = value.record()?;
         let kind: @TagType@ = go::typed::arg(cx, fields, @TagAt@)?;
         match kind {
@@ -896,7 +904,7 @@ struct @Ids@ {
 }
 
 impl @Ids@ {
-    fn of(objects: &Objects) -> go::Res<&@Ids@> {
+    fn of(objects: &Objects) -> crate::Res<&@Ids@> {
         objects.ids.@Field@.get(|| {
             let api = &objects.api;
             let class = api.class(@Schema@)?;
@@ -963,7 +971,7 @@ impl @Ids@ {
             } else {
                 format!(", {}", params.join(", "))
             };
-            let sig = format!("pub fn {new_name}(objects: &Objects{params}) -> go::Res<{name}>");
+            let sig = format!("pub fn {new_name}(objects: &Objects{params}) -> crate::Res<{name}>");
             self.declared(&object.name, "#new", &sig);
             methods.push_str(&fill(
                 r#"    /// Makes the object.
@@ -987,7 +995,7 @@ impl @Ids@ {
     /// # Errors
     ///
     /// The object is already gone.
-    pub fn destroy(&self) -> go::Res<()> {
+    pub fn destroy(&self) -> crate::Res<()> {
         self.object.destroy().map_err(|fail| self.object.at(fail, @NameLit@, "destroy"))
     }
 
@@ -1036,12 +1044,12 @@ impl @Ids@ {
             let first = self.owned(first)?;
             let _ = write!(
                 methods,
-                "    /// The live objects of the kind `T` that match `filter`, in list order, or every one when it is left out. The kinds are {}: `find::<{first}>(None)`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library refuses the filter.\n    pub fn find<T: Finds<{name}>>(&self, filter: Option<&T::Filter>) -> go::Res<Vec<T>> {{\n        T::find_in(self, filter)\n    }}\n\n",
+                "    /// The live objects of the kind `T` that match `filter`, in list order, or every one when it is left out. The kinds are {}: `find::<{first}>(None)`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, or the library refuses the filter.\n    pub fn find<T: Finds<{name}>>(&self, filter: Option<&T::Filter>) -> crate::Res<Vec<T>> {{\n        T::find_in(self, filter)\n    }}\n\n",
                 kinds.join(", ")
             );
             let _ = write!(
                 methods,
-                "    /// The live objects of the kind `T` for which `keep` answers `true`, in list order: the test a filter record cannot say, written\n    /// as a closure (TypeScript's and Python's `find(kind, function)`). `keep` sees each object of the kind once, and its first error ends\n    /// the call and is the call's error: `find_matching::<{first}>(|window| Ok(window.title()?.contains(\"draft\")))`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, the library refuses the listing, or `keep` fails.\n    pub fn find_matching<T: Finds<{name}>>(&self, mut keep: impl FnMut(&T) -> go::Res<bool>) -> go::Res<Vec<T>> {{\n        let mut found = Vec::new();\n        for item in T::find_in(self, None)? {{\n            if keep(&item)? {{\n                found.push(item);\n            }}\n        }}\n        Ok(found)\n    }}\n\n"
+                "    /// The live objects of the kind `T` for which `keep` answers `true`, in list order: the test a filter record cannot say, written\n    /// as a closure (TypeScript's and Python's `find(kind, function)`). `keep` sees each object of the kind once, and its first error ends\n    /// the call and is the call's error: `find_matching::<{first}>(|window| Ok(window.title()?.contains(\"draft\")))`.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone, the library refuses the listing, or `keep` fails.\n    pub fn find_matching<T: Finds<{name}>>(&self, mut keep: impl FnMut(&T) -> crate::Res<bool>) -> crate::Res<Vec<T>> {{\n        let mut found = Vec::new();\n        for item in T::find_in(self, None)? {{\n            if keep(&item)? {{\n                found.push(item);\n            }}\n        }}\n        Ok(found)\n    }}\n\n"
             );
             for (kind, method) in &finds {
                 let Some(Type::List(inner)) = &method.returns else {
@@ -1052,7 +1060,7 @@ impl @Ids@ {
                 };
                 let _ = write!(
                     found_impls,
-                    "impl Finds<{name}> for {found} {{\n    type Filter = {filter};\n    const KIND: &'static str = {kind:?};\n\n    fn find_in(service: &{name}, filter: Option<&{filter}>) -> go::Res<Vec<{found}>> {{\n        service.{ident}(filter)\n    }}\n}}\n\n",
+                    "impl Finds<{name}> for {found} {{\n    type Filter = {filter};\n    const KIND: &'static str = {kind:?};\n\n    fn find_in(service: &{name}, filter: Option<&{filter}>) -> crate::Res<Vec<{found}>> {{\n        service.{ident}(filter)\n    }}\n}}\n\n",
                     found = self.owned(inner)?,
                     filter = self.owned(&method.params[0].ty)?,
                     ident = member_ident(&method.name, &method.extras.export.rust),
@@ -1075,7 +1083,7 @@ impl @Ids@ {
                 };
                 let _ = write!(
                     methods,
-                    "    /// This object as a `{base}`, to pass where a `{base}` is taken. The result holds a reference of its own, so dropping it\n    /// leaves this value and the object as they were.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn as_{snake}(&self) -> go::Res<{class}> {{\n        self.objects.api.retain(self.object.handle()).map_err(|fail| go::typed::at_class(fail, {name:?}, \"as_{snake}\"))?;\n        go::typed::FromVal::from_val(&self.objects, &self.object.val())\n    }}\n\n",
+                    "    /// This object as a `{base}`, to pass where a `{base}` is taken. The result holds a reference of its own, so dropping it\n    /// leaves this value and the object as they were.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn as_{snake}(&self) -> crate::Res<{class}> {{\n        self.objects.api.retain(self.object.handle()).map_err(|fail| go::typed::at_class(fail, {name:?}, \"as_{snake}\"))?;\n        go::typed::FromVal::from_val(&self.objects, &self.object.val())\n    }}\n\n",
                     snake = snake(base),
                     class = class_name(base_object),
                 );
@@ -1085,7 +1093,7 @@ impl @Ids@ {
                 // The other way: a value that holds an object as a base class or an interface, checked against the class the object has.
                 let _ = write!(
                     methods,
-                    "    /// `from` as a `{name}`, when the object it holds is of that class or of a class that extends it, and `None` when it is of\n    /// another: the checked downcast of a value held as a base class or an interface (TypeScript's `instanceof`, Python's `isinstance`).\n    /// The result holds a reference of its own.\n    ///\n    /// # Errors\n    ///\n    /// `from` holds no object, or the object is gone.\n    pub fn downcast(objects: &Objects, from: &impl go::typed::ToVal) -> go::Res<Option<{name}>> {{\n        let obj = match go::typed::ToVal::to_val(from) {{\n            go::Val::Object {{ obj, .. }} => obj,\n            other => return Err(go::Fail::type_error(format!(\"expected an object, got {{}}\", other.kind_name())).at({name:?})),\n        }};\n        let class = objects.api.class_of(obj).map_err(|fail| go::typed::at_class(fail, {name:?}, \"downcast\"))?;\n        if !{ids_name}::of(objects)?.family.contains(&class) {{\n            return Ok(None);\n        }}\n        objects.api.retain(obj).map_err(|fail| go::typed::at_class(fail, {name:?}, \"downcast\"))?;\n        Ok(Some({name} {{ object: go::client::Object::adopt(objects.api, class, obj), objects: objects.clone() }}))\n    }}\n\n",
+                    "    /// `from` as a `{name}`, when the object it holds is of that class or of a class that extends it, and `None` when it is of\n    /// another: the checked downcast of a value held as a base class or an interface (TypeScript's `instanceof`, Python's `isinstance`).\n    /// The result holds a reference of its own.\n    ///\n    /// # Errors\n    ///\n    /// `from` holds no object, or the object is gone.\n    pub fn downcast(objects: &Objects, from: &impl go::typed::ToVal) -> crate::Res<Option<{name}>> {{\n        let obj = match go::typed::ToVal::to_val(from) {{\n            go::Val::Object {{ obj, .. }} => obj,\n            other => return Err(go::Fail::type_error(format!(\"expected an object, got {{}}\", other.kind_name())).at({name:?})),\n        }};\n        let class = objects.api.class_of(obj).map_err(|fail| go::typed::at_class(fail, {name:?}, \"downcast\"))?;\n        if !{ids_name}::of(objects)?.family.contains(&class) {{\n            return Ok(None);\n        }}\n        objects.api.retain(obj).map_err(|fail| go::typed::at_class(fail, {name:?}, \"downcast\"))?;\n        Ok(Some({name} {{ object: go::client::Object::adopt(objects.api, class, obj), objects: objects.clone() }}))\n    }}\n\n",
                 );
             }
             text.push_str(&fill(
@@ -1120,7 +1128,7 @@ impl ::std::hash::Hash for @Name@ {
 }
 
 impl go::typed::FromVal<Objects> for @Name@ {
-    fn from_val(cx: &Objects, value: &go::Val) -> go::Res<@Name@> {
+    fn from_val(cx: &Objects, value: &go::Val) -> crate::Res<@Name@> {
         Ok(@Name@ { object: go::client::Object::from_val(cx.api, value)?, objects: cx.clone() })
     }
 }
@@ -1217,7 +1225,7 @@ pub struct @Options@ {
             ],
         );
         let sig = format!(
-            "pub fn new_with(objects: &Objects{params}, {}options: {options_name}) -> go::Res<{name}>",
+            "pub fn new_with(objects: &Objects{params}, {}options: {options_name}) -> crate::Res<{name}>",
             if moves { "mut " } else { "" }
         );
         self.declared(&object.name, "#new_with", &sig);
@@ -1280,7 +1288,7 @@ pub struct @Options@ {
             claim(&setter)?;
             let param = self.param(&property.ty)?;
             let value = self.arg_expr("run", &property.ty, false)?;
-            let sig = format!("pub fn {setter}(&self, run: {param}) -> go::Res<()>");
+            let sig = format!("pub fn {setter}(&self, run: {param}) -> crate::Res<()>");
             self.declared(schema_class, schema, &sig);
             let _ = write!(
                 out,
@@ -1290,7 +1298,7 @@ pub struct @Options@ {
         }
         claim(&ident)?;
         let getter = self.getter_type(property)?;
-        let sig = format!("pub fn {ident}(&self) -> go::Res<{getter}>");
+        let sig = format!("pub fn {ident}(&self) -> crate::Res<{getter}>");
         self.declared(schema_class, schema, &sig);
         let _ = write!(
             out,
@@ -1300,7 +1308,7 @@ pub struct @Options@ {
             let setter = format!("set_{}", property_stem(property));
             claim(&setter)?;
             let param = self.param(&property.ty)?;
-            let sig = format!("pub fn {setter}(&self, value: {param}) -> go::Res<()>");
+            let sig = format!("pub fn {setter}(&self, value: {param}) -> crate::Res<()>");
             self.declared(schema_class, schema, &sig);
             let _ = write!(
                 out,
@@ -1309,7 +1317,7 @@ pub struct @Options@ {
             if property.animated {
                 let timed = format!("set_{}_timed", property_stem(property));
                 claim(&timed)?;
-                let sig = format!("pub fn {timed}(&self, value: {param}, timing: &go::Timing) -> go::Res<()>");
+                let sig = format!("pub fn {timed}(&self, value: {param}, timing: &crate::Timing) -> crate::Res<()>");
                 self.declared(schema_class, schema, &sig);
                 let _ = write!(
                     out,
@@ -1321,11 +1329,11 @@ pub struct @Options@ {
         claim(&watch)?;
         let owned = self.owned(&property.ty)?;
         let sig =
-            format!("pub fn {watch}(&self, mut run: impl FnMut({owned}) + 'static) -> go::Res<go::typed::Listener>");
+            format!("pub fn {watch}(&self, mut run: impl FnMut({owned}) + 'static) -> crate::Res<crate::Listener>");
         self.declared(schema_class, &format!("{schema}#changed"), &sig);
         let _ = write!(
             out,
-            "{doc_watch}    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    {sig} {{\n        let ids = {ids}::of(&self.objects)?;\n        let objects = self.objects.clone();\n        let reg = self.objects.api.listen(self.object.handle(), {id}, move |_, args| {{\n            run(go::typed::arg(&objects, args, 0)?);\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(go::typed::Listener::new(self.objects.api, reg))\n    }}\n\n"
+            "{doc_watch}    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    {sig} {{\n        let ids = {ids}::of(&self.objects)?;\n        let objects = self.objects.clone();\n        let reg = self.objects.api.listen(self.object.handle(), {id}, move |_, args| {{\n            run(go::typed::arg(&objects, args, 0)?);\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(crate::Listener::new(self.objects.api, reg))\n    }}\n\n"
         );
         Ok(())
     }
@@ -1373,7 +1381,7 @@ pub struct @Options@ {
         let doc_method = doc_or("    ", described, &format!("The method `{schema}`."));
         let args = args.join(", ");
         if method.function {
-            let sig = format!("pub fn {ident}(objects: &Objects{params}) -> go::Res<{returns}>");
+            let sig = format!("pub fn {ident}(objects: &Objects{params}) -> crate::Res<{returns}>");
             self.declared(schema_class, schema, &sig);
             let _ = write!(
                 out,
@@ -1381,7 +1389,7 @@ pub struct @Options@ {
                 name = snake(schema),
             );
         } else {
-            let sig = format!("pub fn {ident}(&self{params}) -> go::Res<{returns}>");
+            let sig = format!("pub fn {ident}(&self{params}) -> crate::Res<{returns}>");
             self.declared(schema_class, schema, &sig);
             let _ = write!(
                 out,
@@ -1410,7 +1418,7 @@ pub struct @Options@ {
                 &self.member_doc(&class.name, &property.name),
                 &format!("The property `{}`.", property.name),
             );
-            let sig = format!("fn {ident}(&self) -> go::Res<{owned}>;");
+            let sig = format!("fn {ident}(&self) -> crate::Res<{owned}>;");
             self.declared(&class.name, &property.name, &sig);
             let _ = write!(
                 declared,
@@ -1426,7 +1434,7 @@ pub struct @Options@ {
             };
             let _ = write!(
                 defined,
-                "    fn {ident}(&self) -> go::Res<{owned}> {{\n        {read}\n    }}\n\n"
+                "    fn {ident}(&self) -> crate::Res<{owned}> {{\n        {read}\n    }}\n\n"
             );
         }
         // A receiver augment's methods take the object they act on first, which the trait's `self` is.
@@ -1463,7 +1471,7 @@ pub struct @Options@ {
                 &self.member_doc(&class.name, &method.name),
                 &format!("The {kind} `{}`.", method.name),
             );
-            let sig = format!("fn {ident}(&self{params}) -> go::Res<{returns}>;");
+            let sig = format!("fn {ident}(&self{params}) -> crate::Res<{returns}>;");
             self.declared(&class.name, &method.name, &sig);
             let _ = write!(
                 declared,
@@ -1471,7 +1479,7 @@ pub struct @Options@ {
             );
             let _ = write!(
                 defined,
-                "    fn {ident}(&self{params}) -> go::Res<{returns}> {{\n        {service}::get(&super::std_objects(self.handle().api())?)?.{ident}({})\n    }}\n\n",
+                "    fn {ident}(&self{params}) -> crate::Res<{returns}> {{\n        {service}::get(&super::std_objects(self.handle().api())?)?.{ident}({})\n    }}\n\n",
                 given.join(", ")
             );
         }
@@ -1487,7 +1495,7 @@ pub struct @Options@ {
             };
             let _ = write!(
                 finds,
-                "impl ::gnoblin_core::objects::Finds<{core}> for {found} {{\n    type Filter = {filter};\n    const KIND: &'static str = {kind:?};\n\n    fn find_in(service: &{core}, filter: Option<&{filter}>) -> go::Res<Vec<{found}>> {{\n        {trait_name}::{ident}(service, filter)\n    }}\n}}\n\n",
+                "impl ::gnoblin_core::objects::Finds<{core}> for {found} {{\n    type Filter = {filter};\n    const KIND: &'static str = {kind:?};\n\n    fn find_in(service: &{core}, filter: Option<&{filter}>) -> crate::Res<Vec<{found}>> {{\n        {trait_name}::{ident}(service, filter)\n    }}\n}}\n\n",
                 found = self.owned(inner)?,
                 filter = self.owned(&method.params[0].ty)?,
                 ident = member_ident(&method.name, &method.extras.export.rust),
@@ -1535,13 +1543,13 @@ pub struct @Options@ {
             ("        let objects = self.objects.clone();\n", "args")
         };
         let sig = format!(
-            "pub fn {ident}(&self, mut run: impl FnMut({}) + 'static) -> go::Res<go::typed::Listener>",
+            "pub fn {ident}(&self, mut run: impl FnMut({}) + 'static) -> crate::Res<crate::Listener>",
             types.join(", ")
         );
         self.declared(schema_class, schema, &sig);
         let _ = write!(
             out,
-            "{doc_signal}    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    {sig} {{\n        let ids = {ids}::of(&self.objects)?;\n{keep}        let reg = self.objects.api.listen(self.object.handle(), ids.s_{name}, move |_, {args}| {{\n            run({reads});\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(go::typed::Listener::new(self.objects.api, reg))\n    }}\n\n",
+            "{doc_signal}    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    {sig} {{\n        let ids = {ids}::of(&self.objects)?;\n{keep}        let reg = self.objects.api.listen(self.object.handle(), ids.s_{name}, move |_, {args}| {{\n            run({reads});\n            Ok(go::Val::None)\n        }}).map_err(|fail| self.object.at(fail, {class:?}, {schema:?}))?;\n        Ok(crate::Listener::new(self.objects.api, reg))\n    }}\n\n",
             reads = reads.join(", "),
             name = snake(schema),
         );
@@ -1589,7 +1597,7 @@ pub struct @Options@ {
                 Some(ty) => self.owned(ty)?,
                 None => "()".to_owned(),
             };
-            let closure = format!("Box<dyn FnMut({}) -> go::Res<{returns}>>", params.join(", "));
+            let closure = format!("Box<dyn FnMut({}) -> crate::Res<{returns}>>", params.join(", "));
             let optional = !method.required;
             let note = format!(
                 "The method `{schema}`{}.",
@@ -1613,7 +1621,7 @@ pub struct @Options@ {
                 starts.push(format!("{ident}: None"));
             } else {
                 required.push(format!(
-                    "{ident}: impl FnMut({}) -> go::Res<{returns}> + 'static",
+                    "{ident}: impl FnMut({}) -> crate::Res<{returns}> + 'static",
                     params.join(", ")
                 ));
                 required_inits.push(format!("{ident}: Box::new({ident})"));
@@ -1669,7 +1677,7 @@ struct @Ids@ {
 }
 
 impl @Ids@ {
-    fn of(objects: &Objects) -> go::Res<&@Ids@> {
+    fn of(objects: &Objects) -> crate::Res<&@Ids@> {
         objects.ids.@Field@.get(|| {
             let api = &objects.api;
             let class = api.class(@Schema@)?;
@@ -1702,7 +1710,7 @@ impl @Ids@ {
     /// # Errors
     ///
     /// The library refuses the object.
-    pub fn implement(self, objects: &Objects) -> go::Res<@Name@> {
+    pub fn implement(self, objects: &Objects) -> crate::Res<@Name@> {
         let ids = @Ids@::of(objects)?;
         let @Handlers@ { @Moves@ } = self;
         let mut implemented = Vec::new();
@@ -1753,7 +1761,7 @@ impl ::std::hash::Hash for @Name@ {
 }
 
 impl go::typed::FromVal<Objects> for @Name@ {
-    fn from_val(cx: &Objects, value: &go::Val) -> go::Res<@Name@> {
+    fn from_val(cx: &Objects, value: &go::Val) -> crate::Res<@Name@> {
         Ok(@Name@ { object: go::client::Object::from_val(cx.api, value)? })
     }
 }
@@ -1831,7 +1839,7 @@ pub trait Finds<S>: Sized {
     /// # Errors
     ///
     /// The service is gone, or the library refuses the filter.
-    fn find_in(service: &S, filter: Option<&Self::Filter>) -> go::Res<Vec<Self>>;
+    fn find_in(service: &S, filter: Option<&Self::Filter>) -> crate::Res<Vec<Self>>;
 }
 
 "#;
@@ -1883,7 +1891,7 @@ pub(super) fn render_described(
         let path = format!("{}::{}", crate_path_of(&home)?, class_name(class));
         let _ = write!(
             body,
-            "impl go::typed::FromVal<Objects> for {path} {{\n    fn from_val(cx: &Objects, value: &go::Val) -> go::Res<{path}> {{\n        let home = {}::for_generation(cx.api.ctx())?;\n        go::typed::FromVal::from_val(&home, &go::typed::foreign_in(value, {:?})?)\n    }}\n}}\n\n",
+            "impl go::typed::FromVal<Objects> for {path} {{\n    fn from_val(cx: &Objects, value: &go::Val) -> crate::Res<{path}> {{\n        let home = {}::for_generation(cx.api.ctx())?;\n        go::typed::FromVal::from_val(&home, &go::typed::foreign_in(value, {:?})?)\n    }}\n}}\n\n",
             crate_path_of(&home)?,
             home.as_str()
         );
@@ -1952,16 +1960,17 @@ impl<'a> Spelling<'a> {
             Type::Callback(_) => self.0.param(&property.ty),
             _ => self.0.getter_type(property),
         }
+        .map(|spelled| public_result(&spelled))
     }
 
     /// A parameter as the function takes it.
     pub(super) fn input(&self, field: &Field) -> Result<String, String> {
         let param = self.0.param(&field.ty)?;
-        Ok(if field.optional {
+        Ok(public_result(&if field.optional {
             format!("Option<{param}>")
         } else {
             param
-        })
+        }))
     }
 
     /// The type of the closure a callback declares, as a parameter takes it.
@@ -1971,10 +1980,10 @@ impl<'a> Spelling<'a> {
 
     /// What a method answers.
     pub(super) fn returns(&self, method: &Method) -> Result<String, String> {
-        Ok(match &method.returns {
+        Ok(public_result(&match &method.returns {
             Some(ty) if method.optional => format!("Option<{}>", self.0.owned(ty)?),
             Some(ty) => self.0.owned(ty)?,
             None => "()".to_owned(),
-        })
+        }))
     }
 }

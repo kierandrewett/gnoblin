@@ -36,9 +36,9 @@ use gnoblin_core as gnoblin;
 use gnoblin_core::Gnoblin;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Res<()> {
     g.bind("Super+b", move || {
-        if let Err(error) = g.spawn("waybar") {
+        if let Err(error) = g.spawn(&["waybar".to_owned()], None) {
             g.log(&format!("cannot start waybar: {error}"));
         }
     })?;

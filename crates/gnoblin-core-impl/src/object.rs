@@ -50,8 +50,8 @@ pub(crate) fn run_in<R>(
 struct Model;
 
 impl Provider for Model {
-    fn with<R>(work: impl FnOnce(&Library) -> R) -> R {
-        LIB.with(work)
+    fn with<R>(work: impl FnOnce(&Library) -> R) -> Option<R> {
+        LIB.try_with(work).ok()
     }
 }
 

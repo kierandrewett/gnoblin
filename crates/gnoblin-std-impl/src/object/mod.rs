@@ -9,7 +9,7 @@ pub(crate) mod client;
 pub(crate) mod entry_model;
 pub(crate) mod record;
 
-use gnoblin_core::LogLevel;
+use gnoblin_core::host::LogLevel;
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinObjectApi};
 use gnoblin_object::server::{Builder, Hooks, Library, Provider, api_table};
 use gnoblin_object::{Fail, Res};
@@ -29,8 +29,8 @@ thread_local! {
 struct Std;
 
 impl Provider for Std {
-    fn with<R>(work: impl FnOnce(&Library) -> R) -> R {
-        LIB.with(work)
+    fn with<R>(work: impl FnOnce(&Library) -> R) -> Option<R> {
+        LIB.try_with(work).ok()
     }
 }
 
@@ -95,7 +95,7 @@ pub(crate) fn core_api(ctx: GnoblinCtx) -> Res<gnoblin_object::client::Api> {
     foreign(ctx, "gnoblin.model")
 }
 
-fn core_fail(error: gnoblin_core::CoreError) -> Fail {
+fn core_fail(error: gnoblin_core::host::CoreError) -> Fail {
     Fail::new(error.kind().code(), error.to_string())
 }
 

@@ -16,12 +16,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gnoblin_core::objects::{BindingEvent, BindingPhase, InputPoint, ModelRoot};
-use gnoblin_std::objects::{ArcLayout, Carousel3dLayout, DwindleLayout, GridLayout, MonocleLayout, StripLayout};
-use gnoblin_std::objects::{
+use gnoblin_core::{BindingEvent, BindingPhase, Gnoblin, InputPoint};
+use gnoblin_std::prelude::*;
+use gnoblin_std::{ArcLayout, Carousel3dLayout, DwindleLayout, GridLayout, MonocleLayout, StripLayout};
+use gnoblin_std::{
     Gaps, LayoutHandlers, LayoutPlacement, LayoutRect, LayoutSplit, MasterStackLayout, SplitAxis, Workspace, Workspaces,
 };
-use gnoblin_std::prelude::*;
 
 /// Equal columns: the layout this shell implements.
 fn columns() -> LayoutHandlers {
@@ -62,10 +62,10 @@ const NAMES: [&str; 8] = [
 
 /// Gives `workspace` the layout the number `which` names. The layout objects the workspace takes stay alive in `keep`.
 fn give_layout(
-    objects: &gnoblin_std::objects::Objects,
+    objects: &gnoblin_std::Objects,
     workspace: &Workspace,
     which: usize,
-    keep: &RefCell<Vec<gnoblin_std::objects::Layout>>,
+    keep: &RefCell<Vec<gnoblin_std::Layout>>,
 ) -> gnoblin_std::Result<()> {
     let layout = match which {
         0 => MasterStackLayout::new(objects)?.as_layout()?,
@@ -108,7 +108,7 @@ struct Held {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
-    let objects = g.std()?.objects()?;
+    let objects = g.objects()?.std()?;
     let make = |id: &str, name: &str, gaps: Option<Gaps>| -> gnoblin_std::Result<Workspace> {
         let workspace = Workspace::new(&objects, id)?;
         workspace.set_name(name)?;
@@ -154,7 +154,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     }
 
     let core = g.objects()?;
-    let Some(context) = ModelRoot::get(&core)?.input()?.primary().ok() else {
+    let Some(context) = Gnoblin::get(&core)?.input()?.primary().ok() else {
         g.log("workspaces: the compositor reports no seat");
         return Ok(());
     };
@@ -193,7 +193,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
 
     // One function follows the drag from the press to the end. The press picks the window under the pointer.
     let held: Rc<RefCell<Option<Held>>> = Rc::new(RefCell::new(None));
-    let Some(seat) = ModelRoot::get(&core)?.input()?.primary().ok() else {
+    let Some(seat) = Gnoblin::get(&core)?.input()?.primary().ok() else {
         return Ok(());
     };
     let (workspace, shell) = (main.clone(), g.clone());
