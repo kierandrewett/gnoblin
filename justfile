@@ -166,10 +166,6 @@ gen-sdks-check:
 docs-examples:
     cargo xtask docs-examples
 
-# Write the generated API reference pages into infra/site/.generated/docs, where the website reads them. Never committed.
-docs-reference:
-    cargo xtask docs-reference
-
 # Prove the golden fixtures of the native std port are what the TypeScript std does now, over three runs
 # (crates/gnoblin-std-impl/tests/ORACLE.md). `cargo xtask oracle record` rewrites them.
 oracle-check:

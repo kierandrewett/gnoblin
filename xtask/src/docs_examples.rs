@@ -1,4 +1,4 @@
-//! `cargo xtask docs-examples` and `cargo xtask docs-reference`: the two commands the documentation build runs.
+//! `cargo xtask docs-examples`: the command the documentation build runs to check the examples of its pages.
 //!
 //! # `docs-examples`
 //!
@@ -18,14 +18,6 @@
 //!
 //! A TypeScript example marked `client` is a program outside a shell (a bridge client). It is checked with the Node declarations
 //! (`@types/node`) and without the shell's, so `node:` imports and `process` resolve there and nowhere else.
-//!
-//! # `docs-reference`
-//!
-//! Writes what an install gives an editor (`dist::write_editor_tree`: the TypeScript library with its generated declarations, and the Python stub
-//! package) into `infra/site/.generated/sdk` by default, with the `tsconfig.docs.json` that TypeDoc reads. The generated declarations carry the
-//! descriptions of the schema files as doc comments, so TypeDoc (TypeScript) and Sphinx (Python) write the reference of each language from them;
-//! rustdoc reads the Rust crates, which `gnoblin-sdkgen` writes the same way. The website build runs the three (`infra/site/scripts/reference.mjs`).
-//! Nothing of it is committed.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -34,13 +26,10 @@ use std::process::{Command, ExitCode};
 
 use crate::docs_tabs::{self, Example, Language};
 
-const USAGE: &str = "usage: cargo xtask docs-examples [--lang typescript|python|rust]... [--out DIR] [PAGE.md ...]
-       cargo xtask docs-reference [--out DIR]";
+const USAGE: &str = "usage: cargo xtask docs-examples [--lang typescript|python|rust]... [--out DIR] [PAGE.md ...]";
 
 /// Where the checks keep their scratch files, under the ignored `target/`.
 const SCRATCH: &str = "target/docs-examples";
-/// Where the declarations the reference tools read are written.
-const REFERENCE_OUT: &str = "infra/site/.generated/sdk";
 const SITE_BIN: &str = "infra/site/node_modules/.bin";
 
 /// One thing a checker said about an example.
@@ -597,44 +586,6 @@ fn parse_rustc(text: &str) -> Findings {
             });
     }
     findings
-}
-
-/// The `docs-reference` command.
-pub fn run_reference(args: &[String]) -> ExitCode {
-    match reference_command(args) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("[docs-reference] {error}");
-            ExitCode::from(2)
-        }
-    }
-}
-
-fn reference_command(args: &[String]) -> Result<(), String> {
-    let mut out = PathBuf::from(REFERENCE_OUT);
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--out" => out = PathBuf::from(iter.next().ok_or_else(|| format!("--out needs a directory\n{USAGE}"))?),
-            other => return Err(format!("unexpected argument `{other}`\n{USAGE}")),
-        }
-    }
-    // The directory is this command's: a file a renamed class left behind goes with it.
-    if out.exists() {
-        fs::remove_dir_all(&out).map_err(|error| format!("cannot clear {}: {error}", out.display()))?;
-    }
-    let repo = std::env::current_dir().map_err(|error| format!("cannot read the working directory: {error}"))?;
-    crate::dist::write_editor_tree(&repo, &out).map_err(|error| format!("cannot write the declarations: {error}"))?;
-    // TypeDoc reads the two entry modules the installed `tsconfig.json` maps the package names to, and that file lists none of them.
-    let types = out.join("share/gnoblin/types");
-    let config = serde_json::json!({
-        "extends": "./tsconfig.json",
-        "files": ["./gnoblin.d.ts", "./gnoblin-core/index.ts", "./gnoblin-std/index.ts"],
-    });
-    let path = types.join("tsconfig.docs.json");
-    fs::write(&path, format!("{config:#}\n")).map_err(|error| format!("cannot write {}: {error}", path.display()))?;
-    println!("[docs-reference] declarations written to {}", out.display());
-    Ok(())
 }
 
 /// The examples the schema files carry (`example` on a class, property, method or signal of a library's catalog), as the examples of a page
