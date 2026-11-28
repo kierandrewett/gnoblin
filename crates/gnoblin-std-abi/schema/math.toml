@@ -217,10 +217,12 @@ since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# The first vector.
 [[object.method.param]]
 name = "a"
 type = "object:vec3"
 
+# The vector added to `a`.
 [[object.method.param]]
 name = "b"
 type = "object:vec3"
@@ -232,10 +234,12 @@ since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# The vector to subtract from.
 [[object.method.param]]
 name = "a"
 type = "object:vec3"
 
+# The vector that is subtracted.
 [[object.method.param]]
 name = "b"
 type = "object:vec3"
@@ -247,10 +251,12 @@ since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# The vector to scale.
 [[object.method.param]]
 name = "a"
 type = "object:vec3"
 
+# The number each coordinate is multiplied by. A negative number reverses the vector.
 [[object.method.param]]
 name = "factor"
 type = "double"
@@ -262,10 +268,12 @@ since = "0.2.0"
 function = true
 returns = "double"
 
+# The first vector.
 [[object.method.param]]
 name = "a"
 type = "object:vec3"
 
+# The second vector.
 [[object.method.param]]
 name = "b"
 type = "object:vec3"
@@ -277,10 +285,12 @@ since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# The left vector of the product.
 [[object.method.param]]
 name = "a"
 type = "object:vec3"
 
+# The right vector of the product.
 [[object.method.param]]
 name = "b"
 type = "object:vec3"
@@ -292,6 +302,7 @@ since = "0.2.0"
 function = true
 returns = "double"
 
+# The vector to measure.
 [[object.method.param]]
 name = "a"
 type = "object:vec3"
@@ -303,6 +314,7 @@ since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# The vector to scale to length 1.
 [[object.method.param]]
 name = "a"
 type = "object:vec3"
@@ -314,10 +326,12 @@ since = "0.2.0"
 function = true
 returns = "double"
 
+# The first point.
 [[object.method.param]]
 name = "a"
 type = "object:vec3"
 
+# The second point.
 [[object.method.param]]
 name = "b"
 type = "object:vec3"
@@ -329,6 +343,7 @@ since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# The coordinates, in the order x, y, z. A list of fewer than three is padded with zeros.
 [[object.method.param]]
 name = "parts"
 type = "list<double>"
@@ -340,10 +355,12 @@ since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# The ray to follow.
 [[object.method.param]]
 name = "ray"
 type = "object:ray"
 
+# How far along the ray, in lengths of its direction. A negative distance is behind the origin.
 [[object.method.param]]
 name = "distance"
 type = "double"
@@ -355,10 +372,12 @@ since = "0.2.0"
 function = true
 returns = "object:ray_hit"
 
+# The plane to meet.
 [[object.method.param]]
 name = "plane"
 type = "object:plane"
 
+# The ray to cast.
 [[object.method.param]]
 name = "ray"
 type = "object:ray"
@@ -377,14 +396,17 @@ since = "0.2.0"
 function = true
 returns = "object:pose"
 
+# The translation along X.
 [[object.method.param]]
 name = "x"
 type = "double"
 
+# The translation along Y.
 [[object.method.param]]
 name = "y"
 type = "double"
 
+# The translation along Z.
 [[object.method.param]]
 name = "z"
 type = "double"
@@ -396,10 +418,12 @@ since = "0.2.0"
 function = true
 returns = "object:pose"
 
+# The outer pose, whose space `b` is placed in.
 [[object.method.param]]
 name = "a"
 type = "object:pose"
 
+# The inner pose, placed inside `a`.
 [[object.method.param]]
 name = "b"
 type = "object:pose"
@@ -411,6 +435,7 @@ since = "0.2.0"
 function = true
 returns = "object:pose"
 
+# The pose to invert. A scale of zero gives non-finite numbers.
 [[object.method.param]]
 name = "pose"
 type = "object:pose"
@@ -422,10 +447,12 @@ since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# The pose whose rotation is applied.
 [[object.method.param]]
 name = "pose"
 type = "object:pose"
 
+# The direction to turn.
 [[object.method.param]]
 name = "direction"
 type = "object:vec3"
@@ -437,10 +464,12 @@ since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# The pose to apply.
 [[object.method.param]]
 name = "pose"
 type = "object:pose"
 
+# The point to place: scaled, then rotated, then translated.
 [[object.method.param]]
 name = "point"
 type = "object:vec3"
@@ -452,165 +481,188 @@ since = "0.2.0"
 function = true
 returns = "object:plane"
 
+# The pose that sets the plane's point and facing.
 [[object.method.param]]
 name = "pose"
 type = "object:pose"
 
-# The angles about X, Y and Z, in radians, of a quaternion. A quaternion of length zero is refused.
+# The angles about X, Y and Z, in radians, of a quaternion, for the rotation order of a `pose`. A quaternion that is not of unit length is
+# normalised first; one of length zero is refused.
 [[object.method]]
 name = "euler_of_quaternion"
 since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# The rotation. It need not be of unit length, but its length must not be zero.
 [[object.method.param]]
 name = "quaternion"
 type = "object:quaternion"
 
-# Three finite numbers from a list of three. `target` names where it was given, for the error.
+# Three finite numbers from a list of three. A list of another length, or a number that is not finite, is refused.
 [[object.method]]
 name = "vector_from"
 since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# Where the value was given, such as `Node#7.rotation`. A refusal starts with it.
 [[object.method.param]]
 name = "target"
 type = "string"
 
+# The three numbers. Each must be finite.
 [[object.method.param]]
 name = "parts"
 type = "list<double>"
 
-# Three finite numbers from a vector.
+# Three finite numbers from a vector. A coordinate that is not finite is refused.
 [[object.method]]
 name = "vector_checked"
 since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# Where the value was given, such as `Node#7.rotation`. A refusal starts with it.
 [[object.method.param]]
 name = "target"
 type = "string"
 
+# The vector to check. Each coordinate must be finite.
 [[object.method.param]]
 name = "value"
 type = "object:vec3"
 
-# Three angles in radians from a list of three.
+# Three angles in radians from a list of three. Another length, or a number that is not finite, is refused.
 [[object.method]]
 name = "rotation_from_list"
 since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# Where the value was given, such as `Node#7.rotation`. A refusal starts with it.
 [[object.method.param]]
 name = "target"
 type = "string"
 
+# The three angles about X, Y and Z, in radians. Each must be finite.
 [[object.method.param]]
 name = "parts"
 type = "list<double>"
 
-# Three angles in radians from a vector of angles.
+# Three angles in radians from a vector of angles. A coordinate that is not finite is refused.
 [[object.method]]
 name = "rotation_from_angles"
 since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# Where the value was given, such as `Node#7.rotation`. A refusal starts with it.
 [[object.method.param]]
 name = "target"
 type = "string"
 
+# The angles about X, Y and Z, in radians. Each must be finite.
 [[object.method.param]]
 name = "angles"
 type = "object:vec3"
 
-# Three angles in radians from a quaternion, which is normalised first.
+# Three angles in radians from a quaternion, which is normalised first. A part that is not finite, or a length of zero, is refused.
 [[object.method]]
 name = "rotation_from_quaternion"
 since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# Where the value was given, such as `Node#7.rotation`. A refusal starts with it.
 [[object.method.param]]
 name = "target"
 type = "string"
 
+# The rotation. Each part must be finite and the length must not be zero.
 [[object.method.param]]
 name = "quaternion"
 type = "object:quaternion"
 
-# A scale along each axis from one number for every axis.
+# A scale along each axis from one number for every axis. A number that is not finite is refused.
 [[object.method]]
 name = "scale_from_number"
 since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# Where the value was given, such as `Node#7.rotation`. A refusal starts with it.
 [[object.method.param]]
 name = "target"
 type = "string"
 
+# The scale for every axis. It must be finite.
 [[object.method.param]]
 name = "value"
 type = "double"
 
-# A scale along each axis from a list of three.
+# A scale along each axis from a list of three. Another length, or a number that is not finite, is refused.
 [[object.method]]
 name = "scale_from_list"
 since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# Where the value was given, such as `Node#7.rotation`. A refusal starts with it.
 [[object.method.param]]
 name = "target"
 type = "string"
 
+# The scale along X, Y and Z. Each must be finite.
 [[object.method.param]]
 name = "parts"
 type = "list<double>"
 
-# A scale along each axis from a vector.
+# A scale along each axis from a vector. A coordinate that is not finite is refused.
 [[object.method]]
 name = "scale_from_vector"
 since = "0.2.0"
 function = true
 returns = "object:vec3"
 
+# Where the value was given, such as `Node#7.rotation`. A refusal starts with it.
 [[object.method.param]]
 name = "target"
 type = "string"
 
+# The scale along each axis. Each coordinate must be finite.
 [[object.method.param]]
 name = "value"
 type = "object:vec3"
 
-# A placement with each part checked and turned into what the tree stores: the position, the angles and the scale along each axis,
-# and none for a part left out.
+# A placement with each part checked and turned into what the tree stores: the position, the angles and the scale along each axis, and
+# none for a part left out. Giving both `rotation` and `orientation`, or both `scale` and `uniform_scale`, is refused, as is a part that
+# is not finite.
 [[object.method]]
 name = "transform_from"
 since = "0.2.0"
 function = true
 returns = "object:transform_parts"
 
+# Where the value was given, such as `Node#7.rotation`. A refusal starts with it.
 [[object.method.param]]
 name = "target"
 type = "string"
 
+# The parts to check. `rotation` and `orientation` are not both given, and neither are `scale` and `uniform_scale`.
 [[object.method.param]]
 name = "parts"
 type = "object:transform_parts"
 
-# The same placement with the rotation as the angles the library reports for it: about X and Z within a half turn either way and about
-# Y within a quarter turn either way, and zero about Z at a quarter turn about Y, where X and Z turn the same way.
+# The same placement with the rotation as the angles the library reports for it: about X and Z within a half turn either way and about Y
+# within a quarter turn either way, and zero about Z at a quarter turn about Y, where X and Z turn the same way.
 [[object.method]]
 name = "pose_normalise"
 since = "0.2.0"
 function = true
 returns = "object:pose"
 
+# The pose whose rotation is rewritten.
 [[object.method.param]]
 name = "pose"
 type = "object:pose"

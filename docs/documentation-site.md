@@ -171,7 +171,8 @@ On a machine that cannot build the SDK crates, `node scripts/reference.mjs --fro
   in a link. It changes spelling and nothing else: the anchors and the URLs are the same in the three languages.
 - Search finds a class or a member by any of its three spellings (`titleChanged`, `title_changed` and `on_title_changed`), as an
   "API reference" result, and shows it in the language that is picked.
-- The old `/reference/typescript/`, `/reference/python/` and `/reference/rust/` redirect to `/reference`.
+- The old `/reference/typescript/`, `/reference/python/` and `/reference/rust/`, and every page under them, answer a 301 to `/reference`. The
+  Worker does this from `redirects.json`, which the build writes; see `infra/terraform/worker.js`.
 - A page of the docs links to a reference page by its URL, `/reference/core/client`; the build checks that the page exists.
 
 ## Write for the reader
