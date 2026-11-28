@@ -16,6 +16,7 @@ title = "Lock screen"
 name = "password_submit"
 since = "0.2.0"
 
+# The password as typed, one string.
 [[callback.param]]
 name = "password"
 type = "string"
@@ -41,6 +42,7 @@ name = "card_width"
 type = "double"
 since = "0.2.0"
 default = 360.0
+unit = "px"
 
 # The card's height.
 [[object.property]]
@@ -48,6 +50,7 @@ name = "card_height"
 type = "double"
 since = "0.2.0"
 default = 220.0
+unit = "px"
 
 # The card's corner radius.
 [[object.property]]
@@ -55,6 +58,7 @@ name = "card_radius"
 type = "double"
 since = "0.2.0"
 default = 16.0
+unit = "px"
 
 # The space inside the card.
 [[object.property]]
@@ -62,6 +66,7 @@ name = "card_padding"
 type = "double"
 since = "0.2.0"
 default = 20.0
+unit = "px"
 
 # The space between what the card holds.
 [[object.property]]
@@ -69,6 +74,7 @@ name = "card_gap"
 type = "double"
 since = "0.2.0"
 default = 12.0
+unit = "px"
 
 # The card's background colour.
 [[object.property]]
@@ -90,6 +96,7 @@ name = "clock_size"
 type = "double"
 since = "0.2.0"
 default = 44.0
+unit = "px"
 
 # The clock's text colour.
 [[object.property]]
@@ -104,6 +111,7 @@ name = "entry_height"
 type = "double"
 since = "0.2.0"
 default = 44.0
+unit = "px"
 
 # The password entry's corner radius.
 [[object.property]]
@@ -111,6 +119,7 @@ name = "entry_radius"
 type = "double"
 since = "0.2.0"
 default = 10.0
+unit = "px"
 
 # The password entry's background colour.
 [[object.property]]
@@ -125,6 +134,7 @@ name = "entry_size"
 type = "double"
 since = "0.2.0"
 default = 15.0
+unit = "px"
 
 # The password entry's text colour.
 [[object.property]]
@@ -139,6 +149,7 @@ name = "entry_limit"
 type = "uint"
 since = "0.2.0"
 default = 1024
+unit = "characters"
 
 # The message's text size.
 [[object.property]]
@@ -146,6 +157,7 @@ name = "message_size"
 type = "double"
 since = "0.2.0"
 default = 13.0
+unit = "px"
 
 # The hint's text colour.
 [[object.property]]
@@ -234,12 +246,14 @@ default = true
 name = "limit"
 type = "uint"
 since = "0.2.0"
+unit = "characters"
 
 # The mask text's size.
 [[object.property]]
 name = "size"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The mask text's colour.
 [[object.property]]
@@ -253,6 +267,7 @@ name = "length"
 type = "uint"
 since = "0.2.0"
 readonly = true
+unit = "characters"
 
 # Receives the password on Return. The entry clears its characters after the callback returns or throws.
 [[object.property]]
@@ -270,7 +285,7 @@ since = "0.2.0"
 # The lock screen. Making one puts it to work for the generation: from then on it puts the screen up when the session locks and takes it down when
 # it unlocks, takes the compositor's answer to a password check, keeps the keyboard on its entry, and renews the compositor's lease while the screen
 # is whole. A screen that cannot draw is not one a password can be typed into: the turn that failed renews nothing, and the compositor's own card
-# takes the password when the lease lapses. Only one exists for a generation.
+# takes the password when the lease lapses. Only one exists for a generation: making a second is refused with `busy`.
 [[object]]
 name = "lock_screen"
 since = "0.2.0"
@@ -314,6 +329,7 @@ since = "0.2.0"
 function = true
 returns = "string"
 
+# The time to format, in milliseconds since the Unix epoch.
 [[object.method.param]]
 name = "milliseconds"
 type = "double"
@@ -330,6 +346,7 @@ returns = "object:lock_style"
 name = "submitted"
 since = "0.2.0"
 
+# The number the core's `session_lock` gave the check, which its answer carries too.
 [[object.signal.field]]
 name = "token"
 type = "uint"
