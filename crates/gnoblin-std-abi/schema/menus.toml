@@ -15,13 +15,31 @@ title = "Menus"
 [[enum]]
 name = "menu_key_kind"
 since = "0.2.0"
-values = ["escape", "move", "home", "end", "activate", "right", "left", "jump"]
+values = [
+    # Closes the submenu while one is open, and the menu otherwise.
+    "escape",
+    # Moves the selection one row, as `step` says.
+    "move",
+    # Selects the first row that can be run.
+    "home",
+    # Selects the last row that can be run.
+    "end",
+    # Runs the selected row.
+    "activate",
+    # Opens the selected row's submenu, when it has one and the main card is active.
+    "right",
+    # Closes the submenu.
+    "left",
+    # Selects the next row whose label starts with the typed letter.
+    "jump",
+]
 
 # Runs an entry, after the menu closed, for the client the menu was opened on.
 [[callback]]
 name = "menu_run"
 since = "0.2.0"
 
+# The window the menu was opened on, by its node number as text.
 [[callback.param]]
 name = "client"
 type = "string"
@@ -32,6 +50,7 @@ name = "menu_entries"
 since = "0.2.0"
 returns = "list<object:menu_entry>"
 
+# The window the menu was opened on, by its node number as text.
 [[callback.param]]
 name = "client"
 type = "string"
@@ -42,31 +61,37 @@ name = "menu_colours"
 since = "0.2.0"
 kind = "record"
 
+# The card's background, as `#rrggbb`. The stock look uses `#1e1e2e`.
 [[object.property]]
 name = "card"
 type = "string"
 since = "0.2.0"
 
+# The fill of the selected row, as `#rrggbb`. The stock look uses `#89b4fa`.
 [[object.property]]
 name = "hot"
 type = "string"
 since = "0.2.0"
 
+# The colour of a row's label and marks, as `#rrggbb`. The stock look uses `#cdd6f4`.
 [[object.property]]
 name = "text"
 type = "string"
 since = "0.2.0"
 
+# The colour of the label and marks of the selected row, as `#rrggbb`. The stock look uses `#11111b`.
 [[object.property]]
 name = "hot_text"
 type = "string"
 since = "0.2.0"
 
+# The colour of the label and marks of a disabled row, as `#rrggbb`. The stock look uses `#6c7086`.
 [[object.property]]
 name = "off"
 type = "string"
 since = "0.2.0"
 
+# The colour of the line a separator draws, as `#rrggbb`. The stock look uses `#45475a`.
 [[object.property]]
 name = "line"
 type = "string"
@@ -78,17 +103,20 @@ name = "menu_key_action"
 since = "0.2.0"
 kind = "record"
 
+# What the key does.
 [[object.property]]
 name = "kind"
 type = "enum:menu_key_kind"
 since = "0.2.0"
 
+# For `move`: 1 for the next row, -1 for the previous. Left out for any other kind.
 [[object.property]]
 name = "step"
 type = "int"
 since = "0.2.0"
 optional = true
 
+# For `jump`: the character whose row to select. Left out for any other kind.
 [[object.property]]
 name = "letter"
 type = "string"
@@ -114,6 +142,7 @@ since = "0.2.0"
 function = true
 returns = "double"
 
+# The entries the card shows. A separator counts as a gap and an entry as a row.
 [[object.method.param]]
 name = "entries"
 type = "list<object:menu_entry>"
@@ -125,14 +154,17 @@ since = "0.2.0"
 function = true
 returns = "object:ui_point"
 
+# The place the card is meant to open at, in logical screen pixels.
 [[object.method.param]]
 name = "anchor"
 type = "object:ui_point"
 
+# The card's size, in logical pixels.
 [[object.method.param]]
 name = "size"
 type = "object:ui_size"
 
+# The area the card has to stay inside, measured from the screen's top-left corner, in logical pixels.
 [[object.method.param]]
 name = "area"
 type = "object:ui_size"
@@ -146,10 +178,12 @@ function = true
 returns = "object:menu_key_action"
 optional = true
 
+# The key's keysym name, such as `Escape`, `Down`, `Return` or `space`.
 [[object.method.param]]
 name = "key"
 type = "string"
 
+# The text the key typed. Empty when it typed none.
 [[object.method.param]]
 name = "text"
 type = "string"
@@ -350,6 +384,7 @@ name = "is_selected"
 since = "0.2.0"
 returns = "bool"
 
+# The row to ask about.
 [[object.method.param]]
 name = "row"
 type = "object:menu_item"
@@ -359,6 +394,7 @@ type = "object:menu_item"
 name = "select"
 since = "0.2.0"
 
+# The row to select.
 [[object.method.param]]
 name = "row"
 type = "object:menu_item"
@@ -369,6 +405,7 @@ type = "object:menu_item"
 name = "move"
 since = "0.2.0"
 
+# 1 for the next row, -1 for the previous.
 [[object.method.param]]
 name = "step"
 type = "int"
@@ -388,6 +425,7 @@ since = "0.2.0"
 name = "jump"
 since = "0.2.0"
 
+# The first letter of the label to find. The comparison ignores case.
 [[object.method.param]]
 name = "letter"
 type = "string"
@@ -397,6 +435,7 @@ type = "string"
 name = "open_submenu"
 since = "0.2.0"
 
+# The rows of the submenu, in order.
 [[object.method.param]]
 name = "rows"
 type = "list<object:menu_item>"
@@ -455,6 +494,7 @@ optional = true
 name = "activate"
 since = "0.2.0"
 
+# The row to run.
 [[object.method.param]]
 name = "row"
 type = "object:menu_item"
@@ -464,6 +504,7 @@ type = "object:menu_item"
 name = "open_submenu"
 since = "0.2.0"
 
+# The row whose submenu to open.
 [[object.method.param]]
 name = "row"
 type = "object:menu_item"
@@ -491,6 +532,7 @@ since = "0.2.0"
 returns = "list<object:menu_entry>"
 default = "native"
 
+# The window the menu is for, by its node number as text.
 [[object.method.param]]
 name = "client"
 type = "string"
@@ -502,17 +544,22 @@ name = "show"
 since = "0.2.0"
 default = "native"
 
+# The window the menu is for, by its node number as text.
 [[object.method.param]]
 name = "client"
 type = "string"
 
+# The horizontal place to open at, in logical screen pixels.
 [[object.method.param]]
 name = "x"
 type = "double"
+unit = "px"
 
+# The vertical place to open at, in logical screen pixels.
 [[object.method.param]]
 name = "y"
 type = "double"
+unit = "px"
 
 # The window menu: it answers the compositor's `menu` requests, opens one menu at a time, and gives the keyboard back when it closes.
 # It also keeps the windows a person pinned with "Always on top" above the others.
@@ -567,7 +614,9 @@ since = "0.2.0"
 name = "default_items"
 since = "0.2.0"
 returns = "list<object:menu_entry>"
+raises = ["not_found"]
 
+# The window whose menu is wanted.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -577,7 +626,9 @@ type = "object:gnoblin.model.client"
 name = "items"
 since = "0.2.0"
 returns = "list<object:menu_entry>"
+raises = ["not_found"]
 
+# The window whose menu is wanted.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -588,20 +639,26 @@ name = "show"
 since = "0.2.0"
 returns = "object:window_menu"
 optional = true
+raises = ["not_found"]
 
+# The window to open the menu for.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
+# The horizontal place to open at, in logical screen pixels. Left out, the pointer's.
 [[object.method.param]]
 name = "x"
 type = "double"
 optional = true
+unit = "px"
 
+# The vertical place to open at, in logical screen pixels. Left out, the pointer's.
 [[object.method.param]]
 name = "y"
 type = "double"
 optional = true
+unit = "px"
 
 # Closes any open menu, then opens the stock menu, unless the window or the session cannot show it or it has no entries: the window is
 # gone or minimised, the session is locked, there is no screen, or the window is on a workspace that is not showing.
@@ -610,18 +667,24 @@ name = "open"
 since = "0.2.0"
 returns = "object:window_menu"
 optional = true
+raises = ["not_found"]
 
+# The window to open the menu for.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
+# The horizontal place to open at, in logical screen pixels.
 [[object.method.param]]
 name = "x"
 type = "double"
+unit = "px"
 
+# The vertical place to open at, in logical screen pixels.
 [[object.method.param]]
 name = "y"
 type = "double"
+unit = "px"
 
 # Closes the open menu and gives the keyboard back. Answers whether a menu was open.
 [[object.method]]
@@ -634,7 +697,9 @@ returns = "bool"
 name = "is_above"
 since = "0.2.0"
 returns = "bool"
+raises = ["not_found"]
 
+# The window to ask about.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -644,11 +709,14 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "set_above"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The window to pin or let go.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
+# `true` to pin the window above the others, `false` to let it go.
 [[object.method.param]]
 name = "on"
 type = "bool"
