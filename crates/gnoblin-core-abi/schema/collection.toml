@@ -25,6 +25,7 @@ name = "x"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # The top edge.
 [[object.property]]
@@ -32,6 +33,7 @@ name = "y"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # The width.
 [[object.property]]
@@ -39,6 +41,7 @@ name = "width"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # The height.
 [[object.property]]
@@ -46,6 +49,7 @@ name = "height"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # A width and a height in logical pixels.
 [[object]]
@@ -59,6 +63,7 @@ name = "width"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # The height.
 [[object.property]]
@@ -66,6 +71,7 @@ name = "height"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # A pointer edge on a window: where, in the window's own coordinates, and which button (0 for the others).
 [[object]]
@@ -79,6 +85,7 @@ name = "x"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # Vertical pointer position in window coordinates.
 [[object.property]]
@@ -86,6 +93,7 @@ name = "y"
 type = "double"
 since = "0.2.0"
 default = 0.0
+unit = "px"
 
 # Button number, or 0 when the event is not for a button.
 [[object.property]]
@@ -142,6 +150,7 @@ name = "x"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # The top edge.
 [[object.property]]
@@ -149,6 +158,7 @@ name = "y"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # The width.
 [[object.property]]
@@ -156,6 +166,7 @@ name = "width"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # The height.
 [[object.property]]
@@ -163,6 +174,7 @@ name = "height"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # One of these ids.
 [[object.property]]
@@ -253,6 +265,7 @@ name = "x"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # The top edge.
 [[object.property]]
@@ -260,6 +273,7 @@ name = "y"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # The width.
 [[object.property]]
@@ -267,6 +281,7 @@ name = "width"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # The height.
 [[object.property]]
@@ -274,6 +289,7 @@ name = "height"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "px"
 
 # One of these ids.
 [[object.property]]
@@ -300,10 +316,12 @@ kind = "interface"
 name = "on_title_changed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# The new title.
 [[object.method.param]]
 name = "title"
 type = "string"
@@ -313,10 +331,12 @@ type = "string"
 name = "on_app_id_changed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# The new application id.
 [[object.method.param]]
 name = "app_id"
 type = "string"
@@ -326,10 +346,12 @@ type = "string"
 name = "on_decoration_changed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# Who draws the frame now: `client`, `server` or `none`.
 [[object.method.param]]
 name = "decoration"
 type = "string"
@@ -339,10 +361,12 @@ type = "string"
 name = "on_pointer_enter"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.method.param]]
 name = "event"
 type = "object:pointer_event"
@@ -352,10 +376,12 @@ type = "object:pointer_event"
 name = "on_pointer_motion"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.method.param]]
 name = "event"
 type = "object:pointer_event"
@@ -365,10 +391,12 @@ type = "object:pointer_event"
 name = "on_pointer_leave"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.method.param]]
 name = "event"
 type = "object:pointer_event"
@@ -378,10 +406,12 @@ type = "object:pointer_event"
 name = "on_pointer_press"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.method.param]]
 name = "event"
 type = "object:pointer_event"
@@ -391,10 +421,12 @@ type = "object:pointer_event"
 name = "on_pointer_release"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.method.param]]
 name = "event"
 type = "object:pointer_event"
@@ -404,10 +436,12 @@ type = "object:pointer_event"
 name = "on_focus_changed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# `true` when the window gained the keyboard focus, `false` when it lost it.
 [[object.method.param]]
 name = "focused"
 type = "bool"
@@ -417,10 +451,12 @@ type = "bool"
 name = "on_geometry_changed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# The window's new position and size, in logical pixels.
 [[object.method.param]]
 name = "geometry"
 type = "object:rect"
@@ -430,6 +466,7 @@ type = "object:rect"
 name = "on_closed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
@@ -440,6 +477,7 @@ type = "object:client"
 name = "on_ready"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
@@ -457,10 +495,12 @@ kind = "interface"
 name = "on_applied"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
 
+# Why the request did not take effect, or an empty string when it did.
 [[object.method.param]]
 name = "error"
 type = "string"
@@ -470,15 +510,17 @@ type = "string"
 name = "on_connected"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
 
-# The output is gone. Its last values stay readable and `connected` is false.
+# The output is gone. Its last values stay readable and `alive` is false.
 [[object.method]]
 name = "on_disconnected"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
@@ -488,10 +530,12 @@ type = "object:output"
 name = "on_mode_changed"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
 
+# The output's new mode, `WxH@Hz`.
 [[object.method.param]]
 name = "mode"
 type = "string"
@@ -501,10 +545,12 @@ type = "string"
 name = "on_scale_changed"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
 
+# The output's new scale.
 [[object.method.param]]
 name = "scale"
 type = "double"
@@ -514,10 +560,12 @@ type = "double"
 name = "on_geometry_changed"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
 
+# The output's new place and size in the compositor's coordinates, in logical pixels.
 [[object.method.param]]
 name = "geometry"
 type = "object:rect"
@@ -534,10 +582,12 @@ kind = "interface"
 name = "on_added"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# The collection the window joined.
 [[object.method.param]]
 name = "collection"
 type = "object:client_collection"
@@ -547,10 +597,12 @@ type = "object:client_collection"
 name = "on_removed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# The collection the window left.
 [[object.method.param]]
 name = "collection"
 type = "object:client_collection"
@@ -560,10 +612,12 @@ type = "object:client_collection"
 name = "on_title_changed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# The new title.
 [[object.method.param]]
 name = "title"
 type = "string"
@@ -573,10 +627,12 @@ type = "string"
 name = "on_app_id_changed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# The new application id.
 [[object.method.param]]
 name = "app_id"
 type = "string"
@@ -586,10 +642,12 @@ type = "string"
 name = "on_decoration_changed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# Who draws the frame now: `client`, `server` or `none`.
 [[object.method.param]]
 name = "decoration"
 type = "string"
@@ -599,10 +657,12 @@ type = "string"
 name = "on_pointer_enter"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.method.param]]
 name = "event"
 type = "object:pointer_event"
@@ -612,10 +672,12 @@ type = "object:pointer_event"
 name = "on_pointer_motion"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.method.param]]
 name = "event"
 type = "object:pointer_event"
@@ -625,10 +687,12 @@ type = "object:pointer_event"
 name = "on_pointer_leave"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.method.param]]
 name = "event"
 type = "object:pointer_event"
@@ -638,10 +702,12 @@ type = "object:pointer_event"
 name = "on_pointer_press"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.method.param]]
 name = "event"
 type = "object:pointer_event"
@@ -651,10 +717,12 @@ type = "object:pointer_event"
 name = "on_pointer_release"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.method.param]]
 name = "event"
 type = "object:pointer_event"
@@ -664,10 +732,12 @@ type = "object:pointer_event"
 name = "on_focus_changed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# `true` when the window gained the keyboard focus, `false` when it lost it.
 [[object.method.param]]
 name = "focused"
 type = "bool"
@@ -677,10 +747,12 @@ type = "bool"
 name = "on_geometry_changed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
 
+# The window's new position and size, in logical pixels.
 [[object.method.param]]
 name = "geometry"
 type = "object:rect"
@@ -690,6 +762,7 @@ type = "object:rect"
 name = "on_closed"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
@@ -700,6 +773,7 @@ type = "object:client"
 name = "on_ready"
 since = "0.2.0"
 
+# The window.
 [[object.method.param]]
 name = "client"
 type = "object:client"
@@ -715,10 +789,12 @@ kind = "interface"
 name = "on_added"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
 
+# The collection the output joined.
 [[object.method.param]]
 name = "collection"
 type = "object:output_collection"
@@ -728,10 +804,12 @@ type = "object:output_collection"
 name = "on_removed"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
 
+# The collection the output left.
 [[object.method.param]]
 name = "collection"
 type = "object:output_collection"
@@ -741,10 +819,12 @@ type = "object:output_collection"
 name = "on_applied"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
 
+# Why the request did not take effect, or an empty string when it did.
 [[object.method.param]]
 name = "error"
 type = "string"
@@ -754,15 +834,17 @@ type = "string"
 name = "on_connected"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
 
-# The output is gone. Its last values stay readable and `connected` is false.
+# The output is gone. Its last values stay readable and `alive` is false.
 [[object.method]]
 name = "on_disconnected"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
@@ -772,10 +854,12 @@ type = "object:output"
 name = "on_mode_changed"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
 
+# The output's new mode, `WxH@Hz`.
 [[object.method.param]]
 name = "mode"
 type = "string"
@@ -785,10 +869,12 @@ type = "string"
 name = "on_scale_changed"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
 
+# The output's new scale.
 [[object.method.param]]
 name = "scale"
 type = "double"
@@ -798,10 +884,12 @@ type = "double"
 name = "on_geometry_changed"
 since = "0.2.0"
 
+# The output.
 [[object.method.param]]
 name = "output"
 type = "object:output"
 
+# The output's new place and size in the compositor's coordinates, in logical pixels.
 [[object.method.param]]
 name = "geometry"
 type = "object:rect"
@@ -878,6 +966,7 @@ since = "0.2.0"
 returns = "object:client"
 optional = true
 
+# The position of the member, from 0. A negative index counts from the end.
 [[object.method.param]]
 name = "index"
 type = "int"
@@ -890,6 +979,7 @@ export = { rust = "get_by_id" }
 returns = "object:client"
 optional = true
 
+# The window id, as `client.id` reads it.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -900,6 +990,7 @@ name = "contains"
 since = "0.2.0"
 returns = "bool"
 
+# The window.
 [[object.method.param]]
 name = "member"
 type = "object:client"
@@ -916,11 +1007,14 @@ returns = "list<object:client>"
 name = "where"
 since = "0.2.0"
 returns = "object:client_collection"
+raises = ["invalid_argument"]
 
+# What the members must match.
 [[object.method.param]]
 name = "query"
 type = "object:client_query"
 
+# What the selection ranks by among the selections that style a window. A finite number; 0 when it is left out.
 [[object.method.param]]
 name = "priority"
 type = "double"
@@ -932,6 +1026,7 @@ optional = true
 name = "add_listener"
 since = "0.2.0"
 
+# The listener to add or remove.
 [[object.method.param]]
 name = "listener"
 type = "object:client_collection_listener"
@@ -941,6 +1036,7 @@ type = "object:client_collection_listener"
 name = "remove_listener"
 since = "0.2.0"
 
+# The listener to add or remove.
 [[object.method.param]]
 name = "listener"
 type = "object:client_collection_listener"
@@ -949,7 +1045,9 @@ type = "object:client_collection_listener"
 [[object.method]]
 name = "add"
 since = "0.2.0"
+raises = ["read_only"]
 
+# The window.
 [[object.method.param]]
 name = "member"
 type = "object:client"
@@ -959,7 +1057,9 @@ type = "object:client"
 name = "remove"
 since = "0.2.0"
 returns = "bool"
+raises = ["read_only"]
 
+# The window.
 [[object.method.param]]
 name = "member"
 type = "object:client"
@@ -968,16 +1068,20 @@ type = "object:client"
 [[object.method]]
 name = "clear"
 since = "0.2.0"
+raises = ["read_only"]
 
 # Swaps two members in the order. Both must be in the collection. Refused on a root and on a selection.
 [[object.method]]
 name = "swap"
 since = "0.2.0"
+raises = ["read_only", "invalid_argument"]
 
+# One of the two windows to swap.
 [[object.method.param]]
 name = "a"
 type = "object:client"
 
+# The other window to swap.
 [[object.method.param]]
 name = "b"
 type = "object:client"
@@ -987,10 +1091,12 @@ type = "object:client"
 name = "added"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# The collection the window joined.
 [[object.signal.field]]
 name = "collection"
 type = "object:client_collection"
@@ -1000,10 +1106,12 @@ type = "object:client_collection"
 name = "removed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# The collection the window left.
 [[object.signal.field]]
 name = "collection"
 type = "object:client_collection"
@@ -1013,10 +1121,12 @@ type = "object:client_collection"
 name = "title_changed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# The new title.
 [[object.signal.field]]
 name = "title"
 type = "string"
@@ -1026,10 +1136,12 @@ type = "string"
 name = "app_id_changed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# The new application id.
 [[object.signal.field]]
 name = "app_id"
 type = "string"
@@ -1039,10 +1151,12 @@ type = "string"
 name = "decoration_changed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Who draws the frame now: `client`, `server` or `none`.
 [[object.signal.field]]
 name = "decoration"
 type = "string"
@@ -1052,10 +1166,12 @@ type = "string"
 name = "pointer_enter"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -1065,10 +1181,12 @@ type = "object:pointer_event"
 name = "pointer_motion"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -1078,10 +1196,12 @@ type = "object:pointer_event"
 name = "pointer_leave"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -1091,10 +1211,12 @@ type = "object:pointer_event"
 name = "pointer_press"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -1104,10 +1226,12 @@ type = "object:pointer_event"
 name = "pointer_release"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# Where the pointer is in the window's own coordinates, and the button involved, or 0.
 [[object.signal.field]]
 name = "event"
 type = "object:pointer_event"
@@ -1117,10 +1241,12 @@ type = "object:pointer_event"
 name = "focus_changed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# `true` when the window gained the keyboard focus, `false` when it lost it.
 [[object.signal.field]]
 name = "focused"
 type = "bool"
@@ -1130,10 +1256,12 @@ type = "bool"
 name = "geometry_changed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
 
+# The window's new position and size, in logical pixels.
 [[object.signal.field]]
 name = "geometry"
 type = "object:rect"
@@ -1143,6 +1271,7 @@ type = "object:rect"
 name = "closed"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
@@ -1153,6 +1282,7 @@ type = "object:client"
 name = "ready"
 since = "0.2.0"
 
+# The window.
 [[object.signal.field]]
 name = "client"
 type = "object:client"
@@ -1222,6 +1352,7 @@ since = "0.2.0"
 returns = "object:output"
 optional = true
 
+# The position of the member, from 0. A negative index counts from the end.
 [[object.method.param]]
 name = "index"
 type = "int"
@@ -1234,6 +1365,7 @@ export = { rust = "get_by_id" }
 returns = "object:output"
 optional = true
 
+# The output id, as `output.id` reads it.
 [[object.method.param]]
 name = "id"
 type = "string"
@@ -1244,6 +1376,7 @@ name = "contains"
 since = "0.2.0"
 returns = "bool"
 
+# The output.
 [[object.method.param]]
 name = "member"
 type = "object:output"
@@ -1253,7 +1386,9 @@ type = "object:output"
 [[object.method]]
 name = "add"
 since = "0.2.0"
+raises = ["unsupported"]
 
+# The description of the output to add.
 [[object.method.param]]
 name = "output"
 type = "object:virtual_output"
@@ -1270,11 +1405,14 @@ returns = "list<object:output>"
 name = "where"
 since = "0.2.0"
 returns = "object:output_collection"
+raises = ["invalid_argument"]
 
+# What the members must match.
 [[object.method.param]]
 name = "query"
 type = "object:output_query"
 
+# What the selection ranks by among the selections that style a window. A finite number; 0 when it is left out.
 [[object.method.param]]
 name = "priority"
 type = "double"
@@ -1286,6 +1424,7 @@ optional = true
 name = "add_listener"
 since = "0.2.0"
 
+# The listener to add or remove.
 [[object.method.param]]
 name = "listener"
 type = "object:output_collection_listener"
@@ -1295,6 +1434,7 @@ type = "object:output_collection_listener"
 name = "remove_listener"
 since = "0.2.0"
 
+# The listener to add or remove.
 [[object.method.param]]
 name = "listener"
 type = "object:output_collection_listener"
@@ -1304,10 +1444,12 @@ type = "object:output_collection_listener"
 name = "added"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The collection the output joined.
 [[object.signal.field]]
 name = "collection"
 type = "object:output_collection"
@@ -1317,10 +1459,12 @@ type = "object:output_collection"
 name = "removed"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The collection the output left.
 [[object.signal.field]]
 name = "collection"
 type = "object:output_collection"
@@ -1330,10 +1474,12 @@ type = "object:output_collection"
 name = "applied"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# Why the request did not take effect, or an empty string when it did.
 [[object.signal.field]]
 name = "error"
 type = "string"
@@ -1343,15 +1489,17 @@ type = "string"
 name = "connected"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
-# The output is gone. Its last values stay readable and `connected` is false.
+# The output is gone. Its last values stay readable and `alive` is false.
 [[object.signal]]
 name = "disconnected"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
@@ -1361,10 +1509,12 @@ type = "object:output"
 name = "mode_changed"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The output's new mode, `WxH@Hz`.
 [[object.signal.field]]
 name = "mode"
 type = "string"
@@ -1374,10 +1524,12 @@ type = "string"
 name = "scale_changed"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The output's new scale.
 [[object.signal.field]]
 name = "scale"
 type = "double"
@@ -1387,10 +1539,12 @@ type = "double"
 name = "geometry_changed"
 since = "0.2.0"
 
+# The output.
 [[object.signal.field]]
 name = "output"
 type = "object:output"
 
+# The output's new place and size in the compositor's coordinates, in logical pixels.
 [[object.signal.field]]
 name = "geometry"
 type = "object:rect"
