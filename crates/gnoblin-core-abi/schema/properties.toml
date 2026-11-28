@@ -69,11 +69,14 @@ kind = "handle"
 name = "bind_double"
 since = "0.2.0"
 returns = "object:property_binding"
+raises = ["not_found", "read_only"]
 
+# The name of the writable number property to bind.
 [[object.method.param]]
 name = "name"
 type = "string"
 
+# Gives the number. It runs on the next turn and again whenever a property it read changed.
 [[object.method.param]]
 name = "compute"
 type = "callback:compute_double"
@@ -83,11 +86,14 @@ type = "callback:compute_double"
 name = "bind_bool"
 since = "0.2.0"
 returns = "object:property_binding"
+raises = ["not_found", "read_only"]
 
+# The name of the writable flag property to bind.
 [[object.method.param]]
 name = "name"
 type = "string"
 
+# Gives true or false. It runs on the next turn and again whenever a property it read changed.
 [[object.method.param]]
 name = "compute"
 type = "callback:compute_bool"
@@ -97,11 +103,14 @@ type = "callback:compute_bool"
 name = "bind_string"
 since = "0.2.0"
 returns = "object:property_binding"
+raises = ["not_found", "read_only"]
 
+# The name of the writable text property to bind.
 [[object.method.param]]
 name = "name"
 type = "string"
 
+# Gives the text. It runs on the next turn and again whenever a property it read changed.
 [[object.method.param]]
 name = "compute"
 type = "callback:compute_string"
@@ -111,11 +120,14 @@ type = "callback:compute_string"
 name = "bind_list"
 since = "0.2.0"
 returns = "object:property_binding"
+raises = ["not_found", "read_only"]
 
+# The name of the writable list property to bind.
 [[object.method.param]]
 name = "name"
 type = "string"
 
+# Gives the list of numbers. It runs on the next turn and again whenever a property it read changed.
 [[object.method.param]]
 name = "compute"
 type = "callback:compute_list"
@@ -126,6 +138,7 @@ name = "unbind"
 since = "0.2.0"
 returns = "bool"
 
+# The name of the property whose binding to end.
 [[object.method.param]]
 name = "name"
 type = "string"

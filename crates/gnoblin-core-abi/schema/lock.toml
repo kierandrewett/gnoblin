@@ -20,7 +20,14 @@ title = "Session lock"
 [[enum]]
 name = "lock_condition"
 since = "0.2.0"
-values = ["not-locked", "pending", "locked"]
+values = [
+    # The session is not locked.
+    "not-locked",
+    # A lock was taken and the cover is not proven on every output yet. It already counts as locked.
+    "pending",
+    # The session is locked and every output is covered.
+    "locked",
+]
 
 # The compositor's answer to a password check: `result` is `ok`, or the wait in milliseconds under `rate-limited`.
 [[object]]
@@ -80,7 +87,9 @@ readonly = true
 [[object.method]]
 name = "engage"
 since = "0.2.0"
+raises = ["unavailable", "invalid_state", "not_found"]
 
+# `true` when the lock screen is up, `false` when it is gone.
 [[object.method.param]]
 name = "engaged"
 type = "bool"
@@ -91,7 +100,9 @@ type = "bool"
 name = "authenticate"
 since = "0.2.0"
 returns = "uint"
+raises = ["unavailable", "invalid_state", "not_found"]
 
+# The password to check, as typed. It is sent once, never kept or logged, and is the script's to clear afterwards.
 [[object.method.param]]
 name = "password"
 type = "string"
@@ -108,6 +119,7 @@ since = "0.2.0"
 name = "answered"
 since = "0.2.0"
 
+# The compositor's answer, or a `failed` one when none came in time.
 [[object.signal.field]]
 name = "answer"
 type = "object:lock_answer"

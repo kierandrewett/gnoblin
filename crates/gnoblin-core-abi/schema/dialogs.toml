@@ -16,7 +16,14 @@ title = "Dialogs"
 [[enum]]
 name = "dialog_kind"
 since = "0.2.0"
-values = ["consent", "secret", "auth"]
+values = [
+    # A consent dialog for a portal request.
+    "consent",
+    # The compositor's passphrase prompt.
+    "secret",
+    # A polkit authentication.
+    "auth",
+]
 
 # A request the compositor is about to open a dialog for. It lives for the observation window and no longer: `decline` after the window
 # has closed does nothing.
@@ -67,6 +74,7 @@ readonly = true
 name = "decline"
 since = "0.2.0"
 
+# Why the request is refused, for the log. The requester is not told it.
 [[object.method.param]]
 name = "reason"
 type = "string"
@@ -111,6 +119,7 @@ kind = "interface"
 name = "on_consent_request"
 since = "0.2.0"
 
+# The consent request.
 [[object.method.param]]
 name = "request"
 type = "object:dialog_request"
@@ -120,6 +129,7 @@ type = "object:dialog_request"
 name = "on_secret_request"
 since = "0.2.0"
 
+# The passphrase request.
 [[object.method.param]]
 name = "request"
 type = "object:dialog_request"
@@ -136,6 +146,7 @@ kind = "interface"
 name = "on_authentication_request"
 since = "0.2.0"
 
+# The authentication request.
 [[object.method.param]]
 name = "request"
 type = "object:authentication_request"
@@ -151,6 +162,7 @@ kind = "service"
 name = "add_listener"
 since = "0.2.0"
 
+# The listener to add.
 [[object.method.param]]
 name = "listener"
 type = "object:dialog_listener"
@@ -160,6 +172,7 @@ type = "object:dialog_listener"
 name = "remove_listener"
 since = "0.2.0"
 
+# The listener to remove.
 [[object.method.param]]
 name = "listener"
 type = "object:dialog_listener"
@@ -169,6 +182,7 @@ type = "object:dialog_listener"
 name = "consent_request"
 since = "0.2.0"
 
+# The consent request.
 [[object.signal.field]]
 name = "request"
 type = "object:dialog_request"
@@ -178,6 +192,7 @@ type = "object:dialog_request"
 name = "secret_request"
 since = "0.2.0"
 
+# The passphrase request.
 [[object.signal.field]]
 name = "request"
 type = "object:dialog_request"
@@ -194,6 +209,7 @@ kind = "service"
 name = "add_listener"
 since = "0.2.0"
 
+# The listener to add.
 [[object.method.param]]
 name = "listener"
 type = "object:authentication_listener"
@@ -203,6 +219,7 @@ type = "object:authentication_listener"
 name = "remove_listener"
 since = "0.2.0"
 
+# The listener to remove.
 [[object.method.param]]
 name = "listener"
 type = "object:authentication_listener"
@@ -212,6 +229,7 @@ type = "object:authentication_listener"
 name = "authentication_request"
 since = "0.2.0"
 
+# The authentication request.
 [[object.signal.field]]
 name = "request"
 type = "object:authentication_request"

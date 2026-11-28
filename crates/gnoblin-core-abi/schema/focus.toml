@@ -30,6 +30,7 @@ name = "limit"
 type = "int"
 since = "0.2.0"
 optional = true
+range = [1, 256]
 
 # The windows in the order they were last focused. The library notes who has the first seat's focus once a turn. A window that
 # closed leaves the history.
@@ -44,7 +45,9 @@ kind = "service"
 name = "history"
 since = "0.2.0"
 returns = "list<object:client>"
+raises = ["invalid_argument"]
 
+# Narrows the result. A filter on `workspace_id` or `monitor_id` keeps no window of the core alone, which has neither.
 [[object.method.param]]
 name = "filter"
 type = "object:focus_filter"

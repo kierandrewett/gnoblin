@@ -64,6 +64,7 @@ function = true
 returns = "bool"
 export = { js = "isNoInset", py = "is_no_inset" }
 
+# The inset to test.
 [[object.method.param]]
 name = "inset"
 type = "object:frame_inset"
@@ -76,10 +77,12 @@ function = true
 returns = "bool"
 export = { js = "sameInset", py = "same_inset" }
 
+# The first inset.
 [[object.method.param]]
 name = "a"
 type = "object:frame_inset"
 
+# The second inset.
 [[object.method.param]]
 name = "b"
 type = "object:frame_inset"
@@ -92,10 +95,12 @@ function = true
 returns = "object:rect"
 export = { js = "growRect", py = "grow_rect" }
 
+# The content rectangle to frame, in logical pixels.
 [[object.method.param]]
 name = "content"
 type = "object:rect"
 
+# The room to add on each side.
 [[object.method.param]]
 name = "inset"
 type = "object:frame_inset"
@@ -108,10 +113,12 @@ function = true
 returns = "object:rect"
 export = { js = "shrinkRect", py = "shrink_rect" }
 
+# The frame rectangle to shrink, in logical pixels.
 [[object.method.param]]
 name = "frame"
 type = "object:rect"
 
+# The room to take off each side.
 [[object.method.param]]
 name = "inset"
 type = "object:frame_inset"

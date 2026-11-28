@@ -15,19 +15,48 @@ title = "Processes"
 [[enum]]
 name = "stream_mode"
 since = "0.2.0"
-values = ["inherit", "discard", "capture"]
+values = [
+    # The stream goes to the session log.
+    "inherit",
+    # The stream is dropped.
+    "discard",
+    # The stream is kept in the end record, up to `output_limit` bytes.
+    "capture",
+]
 
 # The signals `process.kill` sends, to the process group.
 [[enum]]
 name = "process_signal"
 since = "0.2.0"
-values = ["term", "kill", "int", "hup", "usr1", "usr2", "stop", "cont"]
+values = [
+    # `SIGTERM`: asks the process to end.
+    "term",
+    # `SIGKILL`: ends it at once.
+    "kill",
+    # `SIGINT`: interrupts it, as Ctrl+C does.
+    "int",
+    # `SIGHUP`: tells it its terminal closed; many programs reload on it.
+    "hup",
+    # `SIGUSR1`: a signal of the program's own meaning.
+    "usr1",
+    # `SIGUSR2`: a signal of the program's own meaning.
+    "usr2",
+    # `SIGSTOP`: pauses it until `cont`.
+    "stop",
+    # `SIGCONT`: resumes a paused process.
+    "cont",
+]
 
 # Whether a program still runs.
 [[enum]]
 name = "process_status"
 since = "0.2.0"
-values = ["running", "exited"]
+values = [
+    # The program runs.
+    "running",
+    # The program ended and the end was seen.
+    "exited",
+]
 
 # The options of a spawn. Every one is optional.
 [[object]]
@@ -76,6 +105,8 @@ name = "output_limit"
 type = "int"
 since = "0.2.0"
 optional = true
+range = [0, 4194304]
+unit = "bytes"
 
 # Milliseconds before the group gets SIGTERM, and SIGKILL 2000 ms later. More than 0, at most 86400000.
 [[object.property]]
@@ -83,6 +114,7 @@ name = "timeout"
 type = "double"
 since = "0.2.0"
 optional = true
+unit = "ms"
 
 # How a process ended. A captured stream is decoded as UTF-8, with the replacement character for bad bytes.
 [[object]]
@@ -225,16 +257,19 @@ name = "kill"
 since = "0.2.0"
 returns = "object:operation"
 
+# The signal to send. `term` when it is left out.
 [[object.method.param]]
 name = "signal"
 type = "enum:process_signal"
 optional = true
+default = "term"
 
 # The process ended, however it ended. `exit_code` is its exit status, absent when a signal ended it (`signal` says which).
 [[object.signal]]
 name = "exited"
 since = "0.2.0"
 
+# The process that ended.
 [[object.signal.field]]
 name = "process"
 type = "object:process"
@@ -250,6 +285,7 @@ kind = "interface"
 name = "on_exited"
 since = "0.2.0"
 
+# The process that ended.
 [[object.method.param]]
 name = "process"
 type = "object:process"
@@ -261,16 +297,21 @@ since = "0.2.0"
 kind = "service"
 
 # Starts a program and returns its handle at once. Refuses when the program cannot start, saying why: an option out of range is a type
-# error, a program that cannot be found is `not_found`, and too many running programs is `busy`.
+# error, a program that cannot be found is `not_found`, and 64 programs already running is `busy`.
 [[object.method]]
 name = "spawn"
 since = "0.2.0"
 returns = "object:process"
+raises = ["invalid_argument", "not_found", "busy"]
 
+# The program and its arguments: 1 to 64 strings, at most 65536 bytes in all. The first is the program, looked up in `PATH` unless it has a
+# slash.
 [[object.method.param]]
 name = "argv"
 type = "list<string>"
 
+# How to start it. Without it the program runs in the runtime's directory with the session environment, no input and its output in the
+# session log.
 [[object.method.param]]
 name = "options"
 type = "object:spawn_options"
@@ -281,11 +322,14 @@ optional = true
 name = "shell"
 since = "0.2.0"
 returns = "object:process"
+raises = ["invalid_argument", "not_found", "busy"]
 
+# The command line, handed to `/bin/sh -c`. It must not be empty.
 [[object.method.param]]
 name = "command"
 type = "string"
 
+# How to start it, as for `spawn`.
 [[object.method.param]]
 name = "options"
 type = "object:spawn_options"
@@ -304,6 +348,7 @@ since = "0.2.0"
 returns = "object:process"
 optional = true
 
+# The id of a process, as `process.id` reads it.
 [[object.method.param]]
 name = "id"
 type = "uint"
@@ -313,6 +358,7 @@ type = "uint"
 name = "add_listener"
 since = "0.2.0"
 
+# The listener to add.
 [[object.method.param]]
 name = "listener"
 type = "object:process_listener"
@@ -322,6 +368,7 @@ type = "object:process_listener"
 name = "remove_listener"
 since = "0.2.0"
 
+# The listener to remove.
 [[object.method.param]]
 name = "listener"
 type = "object:process_listener"
@@ -331,6 +378,7 @@ type = "object:process_listener"
 name = "exited"
 since = "0.2.0"
 
+# The process that ended.
 [[object.signal.field]]
 name = "process"
 type = "object:process"
