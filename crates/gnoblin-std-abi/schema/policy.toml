@@ -17,19 +17,42 @@ title = "Window policy"
 [[enum]]
 name = "focus_mode"
 since = "0.2.0"
-values = ["click", "sloppy", "follow-mouse"]
+values = [
+    # A click focuses a window.
+    "click",
+    # The window under the pointer takes focus.
+    "sloppy",
+    # The window the pointer enters takes focus, on entry only.
+    "follow-mouse",
+]
 
 # Whether a window started from a launcher takes focus (`allow`) or not (`prevent`).
 [[enum]]
 name = "new_window_policy"
 since = "0.2.0"
-values = ["allow", "prevent"]
+values = [
+    # A window started from a launcher takes focus.
+    "allow",
+    # A window started from a launcher does not take focus.
+    "prevent",
+]
 
 # What happened to a window.
 [[enum]]
 name = "focus_event_kind"
 since = "0.2.0"
-values = ["added", "enter", "motion", "leave", "press"]
+values = [
+    # A window opened.
+    "added",
+    # The pointer entered the window.
+    "enter",
+    # The pointer moved over the window.
+    "motion",
+    # The pointer left the window.
+    "leave",
+    # A pointer button was pressed on the window.
+    "press",
+]
 
 # The focus settings in force.
 [[object]]
@@ -70,6 +93,7 @@ default = false
 name = "auto_raise_delay"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 default = 500.0
 
 # Whether pointer rest changes focus in hover modes.
@@ -87,6 +111,7 @@ name = "focus_event"
 since = "0.2.0"
 kind = "record"
 
+# What happened to the window.
 [[object.property]]
 name = "kind"
 type = "enum:focus_event_kind"
@@ -149,6 +174,7 @@ since = "0.2.0"
 name = "focus_after"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 optional = true
 
 # Raise the window after this long, if it has the focus then. Left out for none.
@@ -156,6 +182,7 @@ optional = true
 name = "raise_after"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 optional = true
 
 # The focus policy. Its functions need no desktop.
@@ -184,6 +211,7 @@ readonly = true
 name = "rest_delay"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 readonly = true
 
 # The clock the two timers (a rest that focuses, a delayed raise) run by, in milliseconds. Left out, the core's (`timers.now`), the clock the toolkit's
@@ -213,10 +241,12 @@ since = "0.2.0"
 function = true
 returns = "object:focus_action"
 
+# The focus settings in force.
 [[object.method.param]]
 name = "settings"
 type = "object:focus_settings"
 
+# What happened to the window.
 [[object.method.param]]
 name = "event"
 type = "object:focus_event"
@@ -228,10 +258,12 @@ since = "0.2.0"
 function = true
 returns = "bool"
 
+# The focus settings in force.
 [[object.method.param]]
 name = "settings"
 type = "object:focus_settings"
 
+# Whether the window was started from a launcher.
 [[object.method.param]]
 name = "from_launcher"
 type = "bool"
@@ -244,14 +276,17 @@ since = "0.2.0"
 function = true
 returns = "bool"
 
+# The focus settings in force.
 [[object.method.param]]
 name = "settings"
 type = "object:focus_settings"
 
+# Whether the pointer is over a window. False over the desktop.
 [[object.method.param]]
 name = "hovering"
 type = "bool"
 
+# Whether the pointer crossed into the window from outside it.
 [[object.method.param]]
 name = "entered"
 type = "bool"
@@ -263,6 +298,7 @@ since = "0.2.0"
 function = true
 returns = "bool"
 
+# The focus settings in force.
 [[object.method.param]]
 name = "settings"
 type = "object:focus_settings"
@@ -274,6 +310,7 @@ since = "0.2.0"
 function = true
 returns = "bool"
 
+# The focus settings in force.
 [[object.method.param]]
 name = "settings"
 type = "object:focus_settings"
@@ -285,18 +322,31 @@ type = "object:focus_settings"
 name = "client_request_kind"
 since = "0.2.0"
 values = [
+    # The window asks to be maximised.
     "maximize",
+    # The window asks to leave maximised.
     "unmaximize",
+    # The window asks to go fullscreen.
     "fullscreen",
+    # The window asks to leave fullscreen.
     "unfullscreen",
+    # The window asks to be minimised.
     "minimize",
+    # The window asks to be shown again.
     "unminimize",
+    # The window asks to be closed.
     "close",
+    # The window asks to be raised.
     "raise",
+    # The window asks to be lowered.
     "lower",
+    # The window asks to be activated: brought back if minimised, focused and raised.
     "activate",
+    # The window asks for a move drag.
     "move",
+    # The window asks for a resize drag.
     "resize",
+    # The window asks for its window menu, anchored at the request's `x` and `y`.
     "menu",
 ]
 
@@ -325,6 +375,7 @@ readonly = true
 name = "x"
 type = "double"
 since = "0.2.0"
+unit = "px"
 readonly = true
 
 # The vertical place of a `menu` request's anchor; 0 for every other kind.
@@ -332,6 +383,7 @@ readonly = true
 name = "y"
 type = "double"
 since = "0.2.0"
+unit = "px"
 readonly = true
 
 # Whether a listener has answered the request.
@@ -360,6 +412,7 @@ name = "on_request"
 since = "0.2.0"
 required = true
 
+# The request. `request.handle()` answers it.
 [[object.method.param]]
 name = "request"
 type = "object:client_request"
@@ -411,6 +464,7 @@ readonly = true
 name = "resize_corner_zone"
 type = "double"
 since = "0.2.0"
+unit = "px"
 readonly = true
 
 # A drag that a request started ends after this long even when no button edge arrives, in milliseconds.
@@ -418,6 +472,7 @@ readonly = true
 name = "drag_limit_ms"
 type = "double"
 since = "0.2.0"
+unit = "ms"
 readonly = true
 
 # The clock the drag's limit runs by, in milliseconds. Left out, the core's (`timers.now`), the clock the toolkit's wake timer runs by.
@@ -435,11 +490,14 @@ since = "0.2.0"
 [[object.method]]
 name = "add_listener"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The listener to add. The service holds it until it is removed.
 [[object.method.param]]
 name = "listener"
 type = "object:request_listener"
 
+# The window whose requests the listener hears. Left out, the requests of every window. Refused with `not_found` once the window is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -450,6 +508,7 @@ optional = true
 name = "remove_listener"
 since = "0.2.0"
 
+# The listener to remove.
 [[object.method.param]]
 name = "listener"
 type = "object:request_listener"
@@ -458,11 +517,14 @@ type = "object:request_listener"
 [[object.method]]
 name = "answer"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
+# What the window asks for.
 [[object.method.param]]
 name = "kind"
 type = "enum:client_request_kind"
@@ -472,8 +534,10 @@ type = "enum:client_request_kind"
 [[object.method]]
 name = "maximise"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "bool"
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -482,8 +546,10 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "unmaximise"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "bool"
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -493,8 +559,10 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "enter_fullscreen"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "bool"
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -503,8 +571,10 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "leave_fullscreen"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "bool"
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -514,8 +584,10 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "minimise"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "bool"
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -524,8 +596,10 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "unminimise"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "bool"
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -535,8 +609,10 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "present"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "bool"
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -545,7 +621,9 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "raise"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -554,7 +632,9 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "lower"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -564,8 +644,10 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "begin_move"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "bool"
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -574,8 +656,10 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "begin_resize"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "bool"
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -585,8 +669,10 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "kept"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "object:kept_rects"
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -595,11 +681,14 @@ type = "object:gnoblin.model.client"
 [[object.method]]
 name = "keep"
 since = "0.2.0"
+raises = ["not_found"]
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
+# The rectangles to give back.
 [[object.method.param]]
 name = "rects"
 type = "object:kept_rects"
@@ -610,7 +699,12 @@ type = "object:kept_rects"
 [[enum]]
 name = "reposition_mode"
 since = "0.2.0"
-values = ["move", "resize"]
+values = [
+    # The arrow keys carry the window.
+    "move",
+    # The arrow keys change the window's size.
+    "resize",
+]
 
 # The line that holds the keyboard while a window is moved or resized with it. It draws what the keys do. Return, Enter or Space keeps the new
 # place; Escape puts the window back; every other key is taken and does nothing.
@@ -653,13 +747,17 @@ optional = true
 name = "step"
 since = "0.2.0"
 
+# The change along x, in pixels.
 [[object.method.param]]
 name = "dx"
 type = "double"
+unit = "px"
 
+# The change along y, in pixels.
 [[object.method.param]]
 name = "dy"
 type = "double"
+unit = "px"
 
 # The keyboard move and resize mode of the shell: at most one window is repositioned at a time. It holds the keyboard until it ends, and ends
 # when the window closes (the window goes back where it was) or the session locks (the window keeps its place). Only a floating window on the
@@ -697,6 +795,7 @@ optional = true
 name = "key_step"
 type = "double"
 since = "0.2.0"
+unit = "px"
 readonly = true
 
 # The least width a resize keeps, in pixels.
@@ -704,6 +803,7 @@ readonly = true
 name = "min_width"
 type = "double"
 since = "0.2.0"
+unit = "px"
 readonly = true
 
 # The least height a resize keeps, in pixels.
@@ -711,6 +811,7 @@ readonly = true
 name = "min_height"
 type = "double"
 since = "0.2.0"
+unit = "px"
 readonly = true
 
 # Starts watching for the window going and the session locking.
@@ -723,12 +824,15 @@ since = "0.2.0"
 [[object.method]]
 name = "begin"
 since = "0.2.0"
+raises = ["not_found"]
 returns = "bool"
 
+# The window to reposition. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
+# Whether the arrow keys move the window or resize it.
 [[object.method.param]]
 name = "mode"
 type = "enum:reposition_mode"
@@ -740,6 +844,7 @@ name = "finish"
 since = "0.2.0"
 returns = "bool"
 
+# Whether the window stays where it is. Without, it goes back to where the mode found it.
 [[object.method.param]]
 name = "keep"
 type = "bool"
@@ -749,10 +854,12 @@ type = "bool"
 name = "ended"
 since = "0.2.0"
 
+# The window that was repositioned, as its node number as text.
 [[object.signal.field]]
 name = "client"
 type = "string"
 
+# Whether the window kept the place the mode left it in. False when it went back.
 [[object.signal.field]]
 name = "kept"
 type = "bool"
@@ -783,6 +890,7 @@ kind = "service"
 name = "margin"
 type = "double"
 since = "0.2.0"
+unit = "px"
 readonly = true
 
 # The edge the point is within `margin` pixels of in `area` (4 left out); none when it is near none.
@@ -793,21 +901,29 @@ function = true
 returns = "object:snap_edge"
 optional = true
 
+# Horizontal position of the pointer, in logical pixels.
 [[object.method.param]]
 name = "x"
 type = "double"
+unit = "px"
 
+# Vertical position of the pointer, in logical pixels.
 [[object.method.param]]
 name = "y"
 type = "double"
+unit = "px"
 
+# The rectangle the edges are taken from.
 [[object.method.param]]
 name = "area"
 type = "object:layout_rect"
 
+# How near an edge the pointer must be to name it, in pixels. Left out, 4. A number below 0 is refused as a bad argument.
 [[object.method.param]]
 name = "margin"
 type = "double"
+default = 4.0
+unit = "px"
 optional = true
 
 # The rectangle a window tiles to in `zone` of `area`, before its frame's room is taken off: the halves are whole pixels.
@@ -817,10 +933,12 @@ since = "0.2.0"
 function = true
 returns = "object:layout_rect"
 
+# The zone to tile to.
 [[object.method.param]]
 name = "zone"
 type = "enum:snap_zone"
 
+# The rectangle the zone is taken from.
 [[object.method.param]]
 name = "area"
 type = "object:layout_rect"
@@ -839,6 +957,7 @@ since = "0.2.0"
 name = "priority"
 type = "double"
 since = "0.2.0"
+raises = ["invalid_state"]
 default = 0.0
 
 # Whether the binding is installed.
@@ -853,7 +972,9 @@ readonly = true
 [[object.method]]
 name = "install"
 since = "0.2.0"
+raises = ["invalid_state", "not_found"]
 
+# The name of the input context. Left out, the first seat's. Refused with `not_found` when no context has it.
 [[object.method.param]]
 name = "context"
 type = "string"
@@ -877,6 +998,7 @@ base = "policy_binding"
 name = "trigger"
 type = "string"
 since = "0.2.0"
+raises = ["invalid_state"]
 default = "Super+MouseLeft+Drag"
 
 # Whether a drop on a screen edge snaps the window (left and right take half the work area, top all of it).
@@ -884,6 +1006,7 @@ default = "Super+MouseLeft+Drag"
 name = "snap"
 type = "bool"
 since = "0.2.0"
+raises = ["invalid_state"]
 default = true
 
 # How near a screen edge, in pixels, the pointer must be for a drop to snap the window.
@@ -891,13 +1014,28 @@ default = true
 name = "snap_margin"
 type = "double"
 since = "0.2.0"
+unit = "px"
+raises = ["invalid_state"]
 default = 4.0
 
 # How a resize drag picks the side or the corner it takes hold of.
 [[enum]]
 name = "resize_grip"
 since = "0.2.0"
-values = ["quadrant", "nearest", "top_left", "top_right", "bottom_left", "bottom_right"]
+values = [
+    # The corner of the quadrant of the window the press landed in.
+    "quadrant",
+    # The edge nearest the press.
+    "nearest",
+    # The top left corner.
+    "top_left",
+    # The top right corner.
+    "top_right",
+    # The bottom left corner.
+    "bottom_left",
+    # The bottom right corner.
+    "bottom_right",
+]
 
 # Resizes the window under the pointer by the side or the corner the grip names. A resize stops at the window's own least and greatest size (100
 # by 80 below when it has none), and the rectangle it floats at is remembered.
@@ -911,6 +1049,7 @@ base = "policy_binding"
 name = "trigger"
 type = "string"
 since = "0.2.0"
+raises = ["invalid_state"]
 default = "Super+MouseRight+Drag"
 
 # Which side or corner a resize takes hold of: the corner of the quadrant the press landed in, the edge nearest the press, or a corner.
@@ -918,6 +1057,7 @@ default = "Super+MouseRight+Drag"
 name = "grip"
 type = "enum:resize_grip"
 since = "0.2.0"
+raises = ["invalid_state"]
 default = "quadrant"
 
 # Swaps a tiled window with the tile it is dropped on: the pointer takes hold of a tile and the release decides.
@@ -931,6 +1071,7 @@ base = "policy_binding"
 name = "trigger"
 type = "string"
 since = "0.2.0"
+raises = ["invalid_state"]
 default = "Super+MouseLeft+Drag"
 
 # Moves the divider of a tiling layout nearest the press by as far as the pointer travels, so the tiles on both sides follow it while the pointer
@@ -946,6 +1087,7 @@ base = "policy_binding"
 name = "trigger"
 type = "string"
 since = "0.2.0"
+raises = ["invalid_state"]
 default = "Super+MouseRight+Drag"
 
 # What a gesture's function is told: the last event of the gesture.
@@ -971,12 +1113,14 @@ since = "0.2.0"
 name = "dx"
 type = "double"
 since = "0.2.0"
+unit = "touchpad units"
 
 # As `dx`, for the vertical way.
 [[object.property]]
 name = "dy"
 type = "double"
 since = "0.2.0"
+unit = "touchpad units"
 
 # A pinch: the size of the pinch compared with its start; 1 for a swipe.
 [[object.property]]
@@ -989,30 +1133,35 @@ since = "0.2.0"
 name = "rotation"
 type = "double"
 since = "0.2.0"
+unit = "rad"
 
 # How far the gesture has gone for the trigger, from 0 to 1.
 [[object.property]]
 name = "progress"
 type = "double"
 since = "0.2.0"
+range = [0, 1]
 
 # The pointer in the compositor's logical space.
 [[object.property]]
 name = "x"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # The vertical place of the pointer.
 [[object.property]]
 name = "y"
 type = "double"
 since = "0.2.0"
+unit = "px"
 
 # What a gesture runs when it ends: a function the shell gives, in place of a named action.
 [[callback]]
 name = "gesture_run"
 since = "0.2.0"
 
+# The last event of the gesture.
 [[callback.param]]
 name = "event"
 type = "object:gesture_event"
@@ -1021,13 +1170,27 @@ type = "object:gesture_event"
 [[enum]]
 name = "swipe_way"
 since = "0.2.0"
-values = ["left", "right", "up", "down"]
+values = [
+    # The swipe went left.
+    "left",
+    # The swipe went right.
+    "right",
+    # The swipe went up.
+    "up",
+    # The swipe went down.
+    "down",
+]
 
 # The way a pinch went: `in` when the fingers come together, `out` when they spread.
 [[enum]]
 name = "pinch_way"
 since = "0.2.0"
-values = ["in", "out"]
+values = [
+    # The fingers came together.
+    "in",
+    # The fingers spread.
+    "out",
+]
 
 # The way a swipe went.
 [[object]]
@@ -1055,6 +1218,7 @@ kind = "service"
 name = "swipe_threshold"
 type = "double"
 since = "0.2.0"
+unit = "touchpad units"
 readonly = true
 
 # How far from 1 a pinch's scale must be for an action binding to act on it.
@@ -1076,6 +1240,7 @@ readonly = true
 name = "run"
 since = "0.2.0"
 
+# The action's name, one of `action_names`. Any other name is refused as a bad argument.
 [[object.method.param]]
 name = "action"
 type = "string"
@@ -1089,17 +1254,24 @@ function = true
 returns = "object:swipe_direction"
 optional = true
 
+# Horizontal travel of the gesture, in touchpad units.
 [[object.method.param]]
 name = "dx"
 type = "double"
+unit = "touchpad units"
 
+# Vertical travel of the gesture, in touchpad units.
 [[object.method.param]]
 name = "dy"
 type = "double"
+unit = "touchpad units"
 
+# The least travel that counts, in touchpad units. A number below 0 or not finite is refused as a bad argument.
 [[object.method.param]]
 name = "threshold"
 type = "double"
+default = 48.0
+unit = "touchpad units"
 optional = true
 
 # A binding that runs `action` or a function when a swipe ends, for the way it went. A cancelled swipe runs nothing.
@@ -1113,6 +1285,7 @@ base = "policy_binding"
 name = "trigger"
 type = "string"
 since = "0.2.0"
+raises = ["invalid_state"]
 default = "Swipe3"
 
 # The shortest swipe that counts, in touchpad units.
@@ -1120,17 +1293,22 @@ default = "Swipe3"
 name = "threshold"
 type = "double"
 since = "0.2.0"
+unit = "touchpad units"
+raises = ["invalid_state"]
 default = 48.0
 
 # Runs the named stock action when a swipe ends going `way`. A name that is not an action is refused.
 [[object.method]]
 name = "set_action"
 since = "0.2.0"
+raises = ["invalid_state"]
 
+# The way the swipe ends going.
 [[object.method.param]]
 name = "way"
 type = "enum:swipe_way"
 
+# The name of the stock action, one of `gestures.action_names`. Any other name is refused as a bad argument.
 [[object.method.param]]
 name = "action"
 type = "string"
@@ -1139,11 +1317,14 @@ type = "string"
 [[object.method]]
 name = "set_function"
 since = "0.2.0"
+raises = ["invalid_state"]
 
+# The way the swipe ends going.
 [[object.method.param]]
 name = "way"
 type = "enum:swipe_way"
 
+# The function to run. It is told the last event of the gesture.
 [[object.method.param]]
 name = "run"
 type = "callback:gesture_run"
@@ -1152,7 +1333,9 @@ type = "callback:gesture_run"
 [[object.method]]
 name = "clear"
 since = "0.2.0"
+raises = ["invalid_state"]
 
+# The way to leave with no action.
 [[object.method.param]]
 name = "way"
 type = "enum:swipe_way"
@@ -1169,6 +1352,7 @@ base = "policy_binding"
 name = "trigger"
 type = "string"
 since = "0.2.0"
+raises = ["invalid_state"]
 default = "Pinch2"
 
 # How far the scale must be from 1 to count.
@@ -1176,17 +1360,21 @@ default = "Pinch2"
 name = "threshold"
 type = "double"
 since = "0.2.0"
+raises = ["invalid_state"]
 default = 0.12
 
 # Runs the named stock action when a pinch ends going `way`. A name that is not an action is refused.
 [[object.method]]
 name = "set_action"
 since = "0.2.0"
+raises = ["invalid_state"]
 
+# The way the pinch ends going.
 [[object.method.param]]
 name = "way"
 type = "enum:pinch_way"
 
+# The name of the stock action, one of `gestures.action_names`. Any other name is refused as a bad argument.
 [[object.method.param]]
 name = "action"
 type = "string"
@@ -1195,11 +1383,14 @@ type = "string"
 [[object.method]]
 name = "set_function"
 since = "0.2.0"
+raises = ["invalid_state"]
 
+# The way the pinch ends going.
 [[object.method.param]]
 name = "way"
 type = "enum:pinch_way"
 
+# The function to run. It is told the last event of the gesture.
 [[object.method.param]]
 name = "run"
 type = "callback:gesture_run"
@@ -1208,7 +1399,9 @@ type = "callback:gesture_run"
 [[object.method]]
 name = "clear"
 since = "0.2.0"
+raises = ["invalid_state"]
 
+# The way to leave with no action.
 [[object.method.param]]
 name = "way"
 type = "enum:pinch_way"
@@ -1227,6 +1420,7 @@ base = "policy_binding"
 name = "trigger"
 type = "string"
 since = "0.2.0"
+raises = ["invalid_state"]
 default = "Swipe3"
 
 # How far fingers move for a slide of one whole workspace, in touchpad units.
@@ -1234,6 +1428,8 @@ default = "Swipe3"
 name = "travel"
 type = "double"
 since = "0.2.0"
+unit = "touchpad units"
+raises = ["invalid_state"]
 default = 400.0
 
 # The share of a slide at which lifting the fingers finishes it, from 0 to 1.
@@ -1241,6 +1437,8 @@ default = 400.0
 name = "commit"
 type = "double"
 since = "0.2.0"
+range = [0, 1]
+raises = ["invalid_state"]
 default = 0.25
 
 # Milliseconds a whole slide takes; a slide finished part way takes what is left of it.
@@ -1248,6 +1446,8 @@ default = 0.25
 name = "duration"
 type = "double"
 since = "0.2.0"
+unit = "ms"
+raises = ["invalid_state"]
 default = 250.0
 
 # The gesture policy is `gnoblin.gestures` of the core's root once this library is loaded: the core binds no gesture to an action.
