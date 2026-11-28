@@ -14,7 +14,14 @@ title = "Shell parts"
 [[enum]]
 name = "alert_answer"
 since = "0.2.0"
-values = ["wait", "force", "recovered"]
+values = [
+    # The user chose Wait.
+    "wait",
+    # The user chose Force quit.
+    "force",
+    # The alert ended without a choice: the window answers again, is gone, or lies under a lock.
+    "recovered",
+]
 
 # ---- callbacks -----------------------------------------------------------------------------------------------------------------------
 
@@ -23,6 +30,7 @@ values = ["wait", "force", "recovered"]
 name = "launch_command"
 since = "0.2.0"
 
+# The command line as it was typed.
 [[callback.param]]
 name = "command"
 type = "string"
@@ -65,7 +73,9 @@ retained = true
 name = "is_open"
 since = "0.2.0"
 returns = "bool"
+raises = ["not_found"]
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -75,7 +85,9 @@ type = "object:gnoblin.model.client"
 name = "is_waiting"
 since = "0.2.0"
 returns = "bool"
+raises = ["not_found"]
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -87,10 +99,12 @@ name = "check"
 since = "0.2.0"
 returns = "object:alert_changes"
 
+# The windows to look at, each named by its node number as text. Text that is not a number is refused as a bad argument.
 [[object.method.param]]
 name = "clients"
 type = "list<string>"
 
+# Whether the session is locked. While it is, no window gets an alert and the alerts that are open close.
 [[object.method.param]]
 name = "locked"
 type = "bool"
@@ -101,11 +115,14 @@ type = "bool"
 name = "answered"
 since = "0.2.0"
 returns = "bool"
+raises = ["not_found"]
 
+# The window the alert was for. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
 
+# How the alert ended.
 [[object.method.param]]
 name = "answer"
 type = "enum:alert_answer"
@@ -117,10 +134,12 @@ since = "0.2.0"
 function = true
 returns = "string"
 
+# The text to clean. Each control character (U+0000 to U+001F and U+007F to U+009F) becomes a space.
 [[object.method.param]]
 name = "text"
 type = "string"
 
+# The most characters to keep. A longer text is cut to this many characters and an ellipsis follows.
 [[object.method.param]]
 name = "max"
 type = "uint"
@@ -199,6 +218,7 @@ readonly = true
 name = "select"
 since = "0.2.0"
 
+# The button: 0 is Wait, 1 is Force quit. A number above 1 leaves the keyboard on neither.
 [[object.method.param]]
 name = "index"
 type = "uint"
@@ -213,6 +233,7 @@ since = "0.2.0"
 name = "activate"
 since = "0.2.0"
 
+# The button: 0 is Wait, 1 is Force quit.
 [[object.method.param]]
 name = "index"
 type = "uint"
@@ -222,6 +243,7 @@ type = "uint"
 name = "chosen"
 since = "0.2.0"
 
+# What the user chose: `wait` or `force`.
 [[object.signal.field]]
 name = "answer"
 type = "enum:alert_answer"
@@ -249,6 +271,7 @@ name = "arm_ms"
 type = "double"
 since = "0.2.0"
 default = 500.0
+unit = "ms"
 
 # The least milliseconds between two looks at the windows.
 [[object.property]]
@@ -256,6 +279,7 @@ name = "interval_ms"
 type = "double"
 since = "0.2.0"
 default = 250.0
+unit = "ms"
 
 # The clock the alert times the arming by, in milliseconds. Left out, the core's (`timers.now`), the clock the toolkit's wake timer runs by.
 [[object.property]]
@@ -297,7 +321,9 @@ name = "card_of"
 since = "0.2.0"
 returns = "object:not_responding_dialog"
 optional = true
+raises = ["not_found"]
 
+# The window. Refused with `not_found` once it is gone.
 [[object.method.param]]
 name = "client"
 type = "object:gnoblin.model.client"
@@ -307,10 +333,12 @@ type = "object:gnoblin.model.client"
 name = "answered"
 since = "0.2.0"
 
+# The window's node number, as text.
 [[object.signal.field]]
 name = "client"
 type = "string"
 
+# How the alert ended.
 [[object.signal.field]]
 name = "answer"
 type = "enum:alert_answer"
@@ -339,6 +367,7 @@ since = "0.2.0"
 function = true
 returns = "object:launcher"
 
+# Starts the command line. Left out, the core's `shell` does.
 [[object.method.param]]
 name = "spawn"
 type = "callback:launch_command"
